@@ -69,6 +69,23 @@ Three subtleties worth highlighting:
 
 2. **Gradient accumulation.** A node can be used in multiple downstream places. Each use contributes to the node's total gradient, so backward must *add* to a node's gradient field rather than overwrite it. (Hence the `.zero_grad()` calls you'll see later.)
 
+   The classic case is a diamond, where one node feeds two paths that later merge:
+
+   ```
+              a
+             / \
+            /   \
+           b     c        b = a * x      c = a * y
+            \   /
+             \ /
+              f           f = b + c
+
+      df/da = (df/db)(db/da) + (df/dc)(dc/da)
+            = the contribution along the b-path PLUS the contribution along the c-path
+   ```
+
+   If `_backward` writes `self.grad = ...` instead of `self.grad += ...`, the second path silently overwrites the first and the answer is wrong by half (or worse).
+
 3. **The graph is implicit.** You don't build a graph object up-front. You just construct expressions, and each operation records its parents. The graph is the linked structure of `Value` objects.
 
 ## Concepts to internalize
