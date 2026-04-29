@@ -45,3 +45,4 @@ data/*
 runs/
 logs/
 wandb/
+.obsidian

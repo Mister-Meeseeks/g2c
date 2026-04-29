@@ -40,3 +40,28 @@ AGENTS.md
 ```
 
 The split is intentional: `docs/` is what a student reads, `g2c/` is what the student builds. They evolve together.
+
+## Getting started
+
+Prerequisites (system-level — checked, not installed, by `setup.sh`):
+
+- **Python 3.11+** — `brew install python@3.11` (or via pyenv)
+- **uv** — `brew install uv` (or `curl -LsSf https://astral.sh/uv/install.sh | sh`)
+
+Then bootstrap the project environment:
+
+```bash
+./setup.sh
+```
+
+The script is idempotent. It creates a project-local venv at `./.venv`, installs `g2c` (editable) plus dev dependencies, and runs a smoke test that verifies PyTorch's MPS backend works on your machine. Re-run it any time to re-verify.
+
+After setup:
+
+```bash
+source .venv/bin/activate
+pytest                          # run tests
+python scripts/smoke_test.py    # re-run env health check
+```
+
+Begin with `docs/syllabus.md`, then `docs/modules/01-autodiff.md`.

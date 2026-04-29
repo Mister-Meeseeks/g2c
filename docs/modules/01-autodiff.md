@@ -1,0 +1,124 @@
+# Module 01 — Scalar autodiff
+
+> **Question this module answers:** *How does the model learn?*
+
+## Why we start here
+
+A neural network is a function with millions to billions of adjustable knobs. Training it is the process of repeatedly nudging each knob in the direction that makes the output less wrong. To do that, you need the partial derivative of the loss with respect to every knob. For any nontrivial network, computing those derivatives by hand would be hopeless — there are too many, and they share structure.
+
+**Reverse-mode automatic differentiation** is the algorithm that solves this. It computes all those derivatives in one pass over a graph, in time proportional to the forward pass. Modern deep learning frameworks (PyTorch, JAX, MLX, TensorFlow) are, at their core, fast and well-engineered implementations of this single idea applied to tensors.
+
+We start with the *scalar* version. No tensors, no broadcasting, no GPU. Just numbers and a small Python class. The reason: every confusing thing about deep learning training — gradient flow, vanishing gradients, the role of nonlinearities, why some architectures train and others don't — is easier to see when the machinery is laid bare. Once you've built this from scratch, `loss.backward()` is no longer magic. It's something you wrote.
+
+This module is the analogue of NAND gates in *NAND to Tetris*. Everything else stacks on top.
+
+## The big idea
+
+Every computation can be drawn as a graph:
+
+```
+   a ──┐
+       ├── (*) ── d ──┐
+   b ──┘              ├── (+) ── e
+                  c ──┘
+```
+
+Here `d = a * b` and `e = d + c`. Each node holds a value (computed forward) and a gradient (computed backward). The gradient at a node is `de/dnode` — how much the final output `e` changes per unit change in the node's value.
+
+**The forward pass** computes node values by walking the graph from inputs to outputs, applying each operation.
+
+**The backward pass** computes gradients by walking the graph in reverse. At the output, `de/de = 1`. For each operation, you know how to push gradient from the output to the inputs using the chain rule:
+
+- For `e = d + c`: `de/dd = 1`, `de/dc = 1`
+- For `d = a * b`: `dd/da = b`, `dd/db = a`, so `de/da = de/dd · b`, `de/db = de/dd · a`
+
+Each operation type carries a small **local rule** for how to distribute the incoming gradient to its inputs. That's it. Stack these rules across a graph of millions of nodes and you've reproduced the heart of every modern deep learning library.
+
+Three subtleties worth highlighting:
+
+1. **Topological order matters.** When you compute the gradient of a node, you need the gradients of all its downstream consumers to already be finalized. The standard approach is a topological sort of the graph, then iterate in reverse.
+
+2. **Gradient accumulation.** A node can be used in multiple downstream places. Each use contributes to the node's total gradient, so backward must *add* to a node's gradient field rather than overwrite it. (Hence the `.zero_grad()` calls you'll see later.)
+
+3. **The graph is implicit.** You don't build a graph object up-front. You just construct expressions, and each operation records its parents. The graph is the linked structure of `Value` objects.
+
+## Concepts to internalize
+
+- **Computational graph** — every expression is a DAG of operations on Values.
+- **Forward pass** — compute each node's value by traversing inputs → outputs.
+- **Local derivatives** — every operation type defines how its output's gradient flows back to its inputs (`+`: pass through; `*`: swap and multiply; `tanh`: `1 - tanh²`; etc.).
+- **Reverse-mode autodiff** — apply the chain rule by walking the graph backwards once.
+- **Topological sort** — the right order to apply backward updates so each node sees all its downstream gradients.
+- **Gradient accumulation** — a node used in multiple expressions accumulates the sum of contributions.
+- **Loss minimization via gradient descent** — once you have `dL/dparam` for each parameter, update `param ← param - lr · dL/dparam`.
+
+## What you'll build
+
+Package: `g2c/autodiff/`
+
+A `Value` class wrapping a single Python float, with:
+
+- Constructor: `Value(data, _children=(), _op="")`
+- Forward operations: `+`, `-` (binary and unary), `*`, `/`, `**` (with constant exponent), `exp`, `log`, `tanh`, `relu`
+- Reverse operations from the right side: `__radd__`, `__rmul__`, etc., so `2 * Value(3)` works
+- A `.backward()` method that:
+  - Builds the topological order of the graph rooted at `self`
+  - Initializes `self.grad = 1.0`
+  - Walks the topo order in reverse, calling each node's local backward rule
+
+Suggested API:
+
+```python
+from g2c.autodiff import Value
+
+a = Value(2.0)
+b = Value(3.0)
+c = a * b + a.tanh()
+c.backward()
+print(a.grad, b.grad)  # dc/da, dc/db
+```
+
+Keep the implementation small — well under 200 lines. Legibility wins.
+
+## Exercises
+
+1. **Forward and backward by hand.** Take the expression `f = (a * b + b**2) * tanh(c)` with `a=1, b=2, c=0.5`. Compute the forward pass and all three gradients by hand on paper. Then verify against your engine.
+
+2. **Gradient checking.** Implement a function that takes an expression and a tunable input, and compares the analytic gradient (from `.backward()`) against a finite-difference estimate `(f(x + h) - f(x - h)) / (2h)` for small `h`. Verify your engine on at least three nontrivial expressions.
+
+3. **A neuron from scratch.** Build a single neuron `y = tanh(w1*x1 + w2*x2 + b)` using only `Value`. Compute the gradient of the loss `(y_target - y)**2` with respect to `w1`, `w2`, `b`. Manually update the weights for one step.
+
+4. **XOR with a tiny MLP.** Build a 2-2-1 MLP (2 inputs, 2 hidden units with tanh, 1 output) using only your `Value` class — no PyTorch, no NumPy. Train it on the XOR truth table. Verify that loss decreases over a few hundred steps. (XOR is the canonical "needs a hidden layer" test case.)
+
+5. **Topology stress test.** Build an expression that uses the same `Value` multiple times (e.g., `f = a * a + a`). Verify that gradient accumulation works: `df/da` should be `2a + 1`, not just `1` or `2a`.
+
+## Pitfalls to expect
+
+- **Forgetting accumulation.** If your `_backward` writes `self.grad = ...` instead of `self.grad += ...`, exercise 5 will quietly produce wrong answers. Always accumulate.
+- **Topo order off-by-one.** A correct topological sort is essential. The standard pattern is post-order DFS with a visited set, then reverse the result before iterating.
+- **Mutating inputs vs. returning new Values.** Each operation should return a new `Value`. Don't try to be clever about in-place updates — they make the graph confusing and break re-execution.
+- **Float precision in gradient checks.** Finite differences with `h = 1e-7` can give noisy comparisons. Use `h = 1e-5` and tolerate ~1e-4 absolute error.
+
+## Reading
+
+Primary:
+
+- **Karpathy, *micrograd* repo** — the canonical reference implementation. <https://github.com/karpathy/micrograd>
+- **Karpathy, "The spelled-out intro to neural networks and backpropagation: building micrograd"** (YouTube). The single best DL pedagogy resource for this topic. ~2.5 hours; worth all of it.
+
+Secondary:
+
+- **Goodfellow, Bengio, Courville, *Deep Learning*, Chapter 6.5** — the textbook treatment of backprop.
+- **Olah, "Calculus on Computational Graphs: Backpropagation"** (colah.github.io) — the cleanest written explanation of the chain rule on graphs.
+
+## Deliverable checklist
+
+- [ ] `g2c/autodiff/__init__.py` exports `Value`
+- [ ] All operations from the suggested API are implemented
+- [ ] `tests/test_autodiff.py` covers: each operation forward and backward, gradient accumulation on shared nodes, gradient check vs. finite differences
+- [ ] `notebooks/01-autodiff-xor.ipynb` trains a 2-2-1 MLP on XOR using only `Value`
+- [ ] You can explain — out loud, without notes — why backward must traverse in topological order
+
+## M-series notes
+
+Pure Python on a single CPU thread. Runs in seconds. No PyTorch, no MPS, no installs beyond what's already in the venv.
