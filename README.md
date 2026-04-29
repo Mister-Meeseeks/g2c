@@ -65,3 +65,12 @@ python scripts/smoke_test.py    # re-run env health check
 ```
 
 Begin with `docs/syllabus.md`, then `docs/modules/01-autodiff.md`.
+
+## Branching model
+
+The repo is structured for two audiences at once: anyone working through the course, and the author maintaining a worked-out reference. Two long-running branches:
+
+- **`main`** — pristine course material. Lesson pages, scaffolded `Value` classes with `# TODO` markers, tests that fail until the student fills things in. Clone this branch to take the course.
+- **`solutions`** — the author's working branch with everything filled in. Doubles as a reference answer key.
+
+Updates flow `main → solutions` only. When course material improves (a clearer lesson, a better scaffold), commits land on `main`, then `git merge main` into `solutions` brings the improvement forward without leaking solutions back to `main`. If you fork the course to do your own work, branch off `main` and use whatever name you like (`student/<name>` is a reasonable convention).
