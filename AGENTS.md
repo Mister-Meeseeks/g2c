@@ -28,6 +28,7 @@ The student is the repo author. Both roles are live.
 ## Layout conventions
 
 - `docs/modules/NN-name.md` — lesson + motivation + exercises + deliverable spec for module NN
+- `docs/modules/NN-name/` — assets for that module (images, diagrams, supplementary files). Reference from the lesson with relative paths, e.g. `![](NN-name/summary.png)`.
 - `g2c/<topic>/` — Python subpackage for that module's deliverable
 - `notebooks/NN-*.ipynb` — exploratory notebooks tied to module NN
 - `data/` — datasets; anything large is gitignored

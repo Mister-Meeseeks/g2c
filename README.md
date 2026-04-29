@@ -23,7 +23,9 @@ docs/
   syllabus.md           # the detailed syllabus
   modules/
     01-autodiff.md      # lesson, motivation, exercises, deliverable spec
+    01-autodiff/        # assets for module 01 (diagrams, supplementary files)
     02-tensors.md
+    02-tensors/
     ...
 g2c/                    # the work-product Python package — grows over the course
   autodiff/             # module 1

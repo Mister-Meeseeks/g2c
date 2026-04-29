@@ -2,6 +2,10 @@
 
 > **Question this module answers:** *How does the model learn?*
 
+![Training loop summary: parameters → forward pass → loss → backward pass (autodiff) → gradients → parameter update, repeat.](01-autodiff/summary.png)
+
+*The training loop end-to-end. Module 01 builds the **backward pass** — the autodiff machinery that converts a forward computation into gradients with respect to every parameter. The forward pass, the loss, and the parameter update are all straightforward arithmetic; the gradient computation is the keystone, and it's what every later module's training loop will lean on.*
+
 ## Prerequisites
 
 The math, CS, and programming concepts this module uses. If any feel rusty, the linked refreshers will get you back up to speed in 10–30 minutes each.
