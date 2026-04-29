@@ -40,6 +40,19 @@ The student is the repo author. Both roles are live.
 - Add tests under `tests/test_<topic>.py`.
 - Each module's public API should be minimal and stable — later modules will import it.
 
+## When authoring a new module
+
+When building scaffolding for any module that has a coding exercise, the goal is for the student to focus on the conceptual core, not on Python plumbing. Always provide:
+
+- **The boilerplate, fully implemented.** Class skeletons, constructors, `__repr__`, and any convenience operators that aren't the point of the lesson. The student's attention should land on the math/CS being taught, not on dunder-method ergonomics or argument validation.
+- **Scaffolds for the methods that ARE the point.** Empty bodies that `raise NotImplementedError`, with docstrings that name the contract — including, where helpful, the local rule (e.g., the gradient formula for an autodiff op, the recurrence for an attention computation). This gives the student the API surface and the math, but not the implementation.
+- **A test suite that pins the contract.** Comprehensive enough that "all tests pass" is a strong signal of correctness. Tests should fail informatively against the empty scaffolding so the failing test names tell the student what to implement next.
+- **A suggested implementation order.** A docstring at the top of the test file (or a checklist in the lesson page) describing which TODOs to tackle first. Each step should turn a coherent batch of tests green so progress is visible.
+
+The lesson page (`docs/modules/NN-name.md`) should have a dedicated **Scaffolding and how to run the tests** section pointing the student at the `# TODO` markers and the relevant `pytest` invocations.
+
+The principle: a student should be able to type `pytest -x`, read the failing test name, and use it as their next directive — with no software-engineering overhead between them and the concept under study.
+
 ## What not to do
 
 - Don't paper over a missing from-scratch implementation by reaching for a high-level library. If `g2c.attention.MultiHeadAttention` doesn't exist yet, build it; don't import `torch.nn.MultiheadAttention` as a substitute.
