@@ -1,2 +1,47 @@
 prompts/scratch*
 .DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+
+# OS
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Data — keep the directory but not its contents
+data/*
+!data/.gitkeep
+
+# Model checkpoints and weights
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.gguf
+*.bin
+
+# Logs and runs
+runs/
+logs/
+wandb/
