@@ -1,7 +1,42 @@
-# From Scalars to LLMs
+# From Gradients to ChatGPT
 
-A course on the core building blocks of LLMs modeled after "From NAND to Tetris"
+A self-study course on the core building blocks of LLMs, modeled after *From NAND to Tetris*.
 
-This repo contains the associated work products and notes for a synthetic course. It includes both the
-instructional material and the work product
+This repo contains both the instructional material and the student work product. The codebase grows layer-by-layer from scalar autodiff up through a working chat assistant — each module's deliverable becomes a building block for the next.
 
+The hard constraint: **all tasks must be runnable on an M-series MacBook**, without access to expensive cloud environments or GPUs.
+
+(The repository directory is historically named `scalarToLLM`; the formal course title is *From Gradients to ChatGPT*.)
+
+## Foundational choices
+
+- **Pacing unit.** Each module is one "week" of effort at the level of a rigorous elite-college course. Calendar pace is whatever it ends up being.
+- **Framework.** PyTorch with the MPS backend (Apple Silicon GPU) is the primary framework throughout. MLX is used selectively for inference-heavy stages where Apple-native performance matters. Rationale: PyTorch has the deepest ecosystem and the broadest reference material; MLX is faster on M-series but is an optimization tool, not a pedagogical one.
+- **From-scratch boundary.** Weeks 1–11 (autodiff through pretraining + sampling) build the concept under study from scratch — no `torch.nn.MultiheadAttention` in the attention module, etc. Using PyTorch tensor primitives and autograd as substrate is fine once those layers are themselves established. Weeks 12–15 (scaling, SFT, DPO, eval) keep working with the model you trained yourself; quality is visibly toy and that's the point.
+- **Capstone pivot.** Weeks 16–20 (inference, RAG, tools, agents, capstone) pivot to a small pretrained open model (e.g. Llama 3 8B, Qwen 2.5) via Ollama or MLX, so the resulting assistant is actually usable.
+- **Repo style.** One monorepo. The `g2c/` Python package grows over the course; each module's submodule is consumed by later modules.
+
+## Repository layout
+
+```
+docs/
+  syllabus.md           # the detailed syllabus
+  modules/
+    01-autodiff.md      # lesson, motivation, exercises, deliverable spec
+    02-tensors.md
+    ...
+g2c/                    # the work-product Python package — grows over the course
+  autodiff/             # module 1
+  tensors/              # module 2
+  nn/                   # module 3
+  tokenizer/            # module 4
+  ...
+notebooks/              # exploratory work, runs, attention visualizations
+data/                   # corpora and datasets (large files gitignored)
+prompts/                # course brainstorms, prompt drafts
+tests/                  # tests across modules
+README.md
+AGENTS.md
+```
+
+The split is intentional: `docs/` is what a student reads, `g2c/` is what the student builds. They evolve together.
