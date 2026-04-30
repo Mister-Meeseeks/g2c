@@ -1,0 +1,245 @@
+# Module 05 — Embeddings and positions
+
+> **Question this module answers:** *How do discrete symbols become meaning-like vectors, and how does order get in?*
+
+<!-- Hero image to go in 05-embeddings/ when ready. -->
+
+## Prerequisites
+
+The math, CS, and programming concepts this module uses.
+
+### Math
+
+- **Trigonometric basics.** `sin(0) = 0`, `cos(0) = 1`. Sin and cos are bounded in `[−1, 1]`. Sin and cos at multiple frequencies. Nothing more exotic than what's in a high school trig review.
+- **2D rotation matrices.** A rotation by angle θ takes `(x, y)` to `(x cos θ − y sin θ, x sin θ + y cos θ)`. Composing two rotations adds their angles: `R(α) · R(β) = R(α + β)`. RoPE leans on exactly this.
+- **Dot product as a measure of alignment.** `q · k` is large when q and k point the same direction; zero when orthogonal; negative when opposite. Attention scores are dot products, so anything that controls how dot products behave shapes attention behavior.
+
+### Computer science
+
+- **Lookup tables and integer indexing.** Both `TokenEmbedding` and `LearnedPositionalEmbedding` are just lookup tables — `weight[id]` returns a row.
+
+### Programming
+
+- **PyTorch tensor indexing.** Integer-tensor indexing into a 2D tensor: if `weight` has shape `(V, D)` and `ids` has shape `(B, T)`, then `weight[ids]` has shape `(B, T, D)`. This is the core operation of a token embedding, and PyTorch routes gradients through it correctly.
+- **`torch.outer` and broadcasting.** Used for building the angle table in sinusoidal and RoPE encodings.
+
+### What you can skip
+
+You don't need to understand attention yet — RoPE will be wired into it in Module 07. We implement it now, in isolation, with a unit test of its key property. You don't need to be able to derive RoPE from first principles; the formulas are given.
+
+## Why we start here
+
+After Module 04 you can turn text into a sequence of integer token IDs. After this module you can turn that sequence into a sequence of vectors that a neural network can actually use.
+
+Two things have to happen:
+
+1. **Each token gets a vector.** A learned `(vocab_size, embedding_dim)` lookup table — the same trick we used for biases and weights in earlier modules, just bigger and indexed by token ID. This is `TokenEmbedding`.
+2. **Each position gets distinguishable.** Without position info, a transformer is order-blind: `dog bites man` and `man bites dog` produce identical attention patterns because they're the same multiset of tokens. We need to inject "I am at position m" into each input. There are three common ways, and we implement all three.
+
+The token-embedding part is mechanically trivial — one tensor index. The positional-encoding part is where the design space opens up. Three schemes worth knowing:
+
+```
+                Learned       Sinusoidal      Rotary (RoPE)
+              ──────────────────────────────────────────────
+Parameters?    yes            no              no
+Extrapolates   no             yes (formula)   yes (formula)
+beyond max?
+Mechanism      added to       added to        rotates Q, K
+               token emb      token emb       inside attention
+Used in        BERT,          original        Llama, Mistral,
+               GPT-2          Transformer     Qwen, modern LLMs
+```
+
+Modern LLMs all use RoPE. Older ones used learned or sinusoidal. The reason RoPE won is the relative-position property — explained in detail below.
+
+## The big idea
+
+### Embeddings as learnable lookup tables
+
+A token embedding is one of the simplest ideas in deep learning:
+
+```
+  Embedding table   weight: (vocab_size, embedding_dim)
+
+  ID      Vector
+   0   →  [ 0.12, -0.44,  0.91, ... ,  0.05 ]
+   1   →  [-0.33,  0.18,  0.62, ... ,  0.71 ]
+   2   →  [ 0.55, -0.22, -0.18, ... ,  0.40 ]
+   ...
+   V-1 →  [-0.07,  0.65,  0.32, ... , -0.13 ]
+
+  Forward:   ids   = [3, 1, 7]
+             output = (3, embedding_dim) tensor — rows 3, 1, 7 of weight
+```
+
+That's it. The vector for each token is a learnable parameter — initialized random, updated by gradient descent like any other parameter. The forward pass is `weight[ids]`.
+
+What makes this work is what gets *learned*. After training on enough text, the rows of `weight` arrange themselves into a geometry that reflects how tokens are used. Tokens that occur in similar contexts end up with similar vectors. Famously: word2vec's `king − man + woman ≈ queen`. The model never told that king is to man as queen is to woman; the geometry just emerged from co-occurrence statistics.
+
+LLM tokenizers have vocab sizes of 32k–200k and embedding dimensions of hundreds to thousands. The embedding table is one of the largest single parameter tensors in the model.
+
+### Why positions need explicit encoding
+
+A transformer's attention layer is symmetric in its inputs — it computes `softmax(QKᵀ/√d)V` and the only way order enters is through the position-dependent contents of Q, K, V themselves. If those contents have no position information baked in, the model literally cannot tell `dog bites man` from `man bites dog`. Both are evaluated as the same bag of three vectors.
+
+So we encode position into the token vectors themselves before they reach attention. There are two design choices: ADD a positional vector (Learned, Sinusoidal) or MULTIPLY (rotate) the vectors (RoPE).
+
+### The sinusoidal trick
+
+Vaswani et al. proposed encoding position with a fixed table of sines and cosines at exponentially decaying frequencies:
+
+```
+  PE[pos, 2i]   = sin( pos / 10000^(2i/d) )
+  PE[pos, 2i+1] = cos( pos / 10000^(2i/d) )
+```
+
+Each pair of dimensions is `(sin, cos)` at a particular frequency. Low `i` → fast oscillation (small wavelength); high `i` → slow oscillation. The model gets a multi-resolution view of position: nearby positions look similar in the slow dimensions but differ in the fast ones; far-apart positions differ in both.
+
+This scheme has zero learnable parameters (the table is determined by the formula) and can be evaluated at any position, including beyond the longest sequence ever trained. The 2017 transformer paper used this; many models since have used learned positional embeddings instead, on the theory that learning is rarely worse than fixing.
+
+### Rotary positional embeddings (RoPE)
+
+The most important development in positional encoding since 2017. Instead of adding a position vector to embeddings, RoPE *rotates* the query and key vectors by an angle proportional to their position before the attention dot product.
+
+The key property is mechanical:
+
+```
+Without RoPE — positions are added vectors:
+    q' = q + p_m            (p_m is the position embedding for position m)
+    k' = k + p_n            (p_n likewise for n)
+    q' · k' = q·k  +  q·p_n  +  p_m·k  +  p_m·p_n
+                       ↑────── depends on absolute m, n ──────↑
+
+With RoPE — positions are rotations:
+    q' = R(m) · q           (R is a rotation matrix; angle ∝ m)
+    k' = R(n) · k
+    q' · k' = (R(m)q)ᵀ (R(n)k)
+            = qᵀ R(m)ᵀ R(n) k
+            = qᵀ R(n − m) k     ← only the RELATIVE offset (n − m) matters
+```
+
+The dot product of two RoPE'd vectors depends only on `(n − m)`. Token-pair attention scores are naturally functions of relative position, which is what we usually want — what matters in language is "this token is two words after that one", not "this token is at absolute position 437."
+
+This is implemented as a per-position-pair 2D rotation, applied across all dimensions. The split-halves variant (Llama and friends): split the last dimension in half, treat dim `i` and dim `d/2 + i` as a 2-vector, rotate each pair by `m · θ_i` where `θ_i = 1/10000^(2i/d)`. The cos/sin tables are precomputed; the forward pass is `x · cos + rotate_half(x) · sin` — three tensor ops.
+
+We implement RoPE as a standalone module here and unit-test the relative-position property in isolation. In Module 07 it gets dropped into attention.
+
+## Concepts to internalize
+
+- **Embedding table = learnable lookup.** Forward is integer indexing; backward routes gradients only to the rows that were touched. PyTorch's autograd handles this for free.
+- **The bag-of-tokens problem.** Without explicit position information, a transformer can't distinguish word orderings. Position must be injected somehow before attention.
+- **Three positional schemes, three tradeoffs.** Learned (max_seq_len cap, more parameters), sinusoidal (no params, extrapolates by formula), rotary (no params, encodes relative position by construction).
+- **Multi-frequency sinusoids.** The decaying-frequency table is what gives sinusoidal positional encodings their multi-scale resolution. Each pair of dimensions is one (sin, cos) frequency.
+- **`R(m)ᵀ R(n) = R(n − m)`.** Rotations form a group; their composition adds angles. This is the algebraic identity that makes RoPE work.
+- **`_rotate_half` is a notational trick.** The 2D rotation `(a, b) → (a cos θ − b sin θ, a sin θ + b cos θ)` can be written as `(a, b) ⊙ cos θ + (−b, a) ⊙ sin θ`. The `(−b, a)` part is what `_rotate_half` produces, applied across all paired dimensions in one tensor op.
+- **Position 0 is the identity rotation.** `cos(0) = 1, sin(0) = 0`, so `RoPE(x, position=0) = x`. The test suite verifies this.
+
+## Scaffolding and how to run the tests
+
+Three scaffolded files in `g2c/embeddings/`:
+
+- **`token.py`** — `TokenEmbedding`. `__init__` (with uniform random init) and `parameters()` are implemented; `forward` is scaffolded.
+- **`positional.py`** — `LearnedPositionalEmbedding` (mechanically the same as `TokenEmbedding`) and `SinusoidalPositionalEmbedding`. The learned variant has only `forward` scaffolded; the sinusoidal one has both `__init__` (the table-building math is the lesson) and `forward` scaffolded.
+- **`rotary.py`** — `RotaryEmbedding`. `__init__` is scaffolded for the cos/sin table construction, and `forward` for the rotation itself. The `_rotate_half` helper is implemented because it's a notational utility, not the lesson.
+
+Tests live in `tests/test_embeddings.py`. Initial state: 7 passed, 24 failed.
+
+```bash
+pytest tests/test_embeddings.py             # run all module-05 tests
+pytest tests/test_embeddings.py -x          # stop at first failure (recommended)
+pytest tests/test_embeddings.py -k rotary   # only the RoPE tests
+pytest tests/test_embeddings.py -v          # verbose
+```
+
+The docstring at the top of `tests/test_embeddings.py` has the implementation order. The trickiest piece is `RotaryEmbedding`'s relative-position test — it places two random vectors at three different absolute-position pairs (all with the same offset) and checks the dot products agree.
+
+## What you'll build
+
+Package: `g2c/embeddings/`
+
+```python
+class TokenEmbedding(Module):
+    def __init__(self, vocab_size: int, embedding_dim: int): ...    # implemented
+    def forward(self, ids: torch.Tensor) -> torch.Tensor: ...
+
+class LearnedPositionalEmbedding(Module):
+    def __init__(self, max_seq_len: int, embedding_dim: int): ...   # implemented
+    def forward(self, seq_len: int) -> torch.Tensor: ...
+
+class SinusoidalPositionalEmbedding(Module):
+    def __init__(self, max_seq_len: int, embedding_dim: int): ...   # scaffolded (table)
+    def forward(self, seq_len: int) -> torch.Tensor: ...
+
+class RotaryEmbedding(Module):
+    def __init__(self, max_seq_len: int, embedding_dim: int): ...   # scaffolded (cos/sin)
+    def forward(self, x: torch.Tensor) -> torch.Tensor: ...
+```
+
+A typical use looks like this (built fully in Module 07, sketched here):
+
+```
+  ids: (batch, seq_len)
+  ↓ TokenEmbedding(vocab_size, dim)
+  tok_emb: (batch, seq_len, dim)
+  +
+  ↓ SinusoidalPositionalEmbedding(max_seq_len, dim)
+  pos_emb: (seq_len, dim)              ← broadcasts across batch
+  =
+  x: (batch, seq_len, dim)             ← input to first transformer block
+```
+
+For RoPE, the addition is replaced by `RotaryEmbedding` applied inside attention to Q and K — that's a Module 07 concern.
+
+## Exercises
+
+1. **Implement `TokenEmbedding` and `LearnedPositionalEmbedding` first.** They're the simplest, mechanically identical, and their tests are quick to turn green. Both forwards are one-liners.
+
+2. **Implement `SinusoidalPositionalEmbedding`.** The table-building in `__init__` is the lesson — translating the Vaswani formula into vectorized PyTorch. The recipe is in the scaffolded docstring; follow the steps. Verify with `test_sinusoidal_known_value_at_pos_one_dim_zero` (that's `sin(1.0)`) and `_dim_one` (that's `cos(1.0)`).
+
+3. **Implement `RotaryEmbedding.__init__`.** Build the cos/sin tables. The trick is the `torch.cat([freqs, freqs], dim=-1)` step — that's what makes the split-halves variant align with `_rotate_half`. Verify with `test_rotary_cos_at_position_zero_is_one`.
+
+4. **Implement `RotaryEmbedding.forward`.** Two-line recipe: slice cos/sin to seq_len, return `x * cos + _rotate_half(x) * sin`. The test_rotary_relative_position_property is the real correctness check — if your rotation isn't a true rotation, the dot product will depend on absolute position and the test will fail.
+
+5. **Train a tiny embedding model on word co-occurrence.** In `notebooks/05-train-embeddings.ipynb`: pick a small corpus (a chapter of a public-domain book is fine), tokenize with your Module 04 BPE, build a tiny model that predicts a token given its context window (a Bengio-style trigram or skip-gram). Train. Visualize the learned embeddings via t-SNE or UMAP. Look for clusters of semantically related tokens.
+
+6. **Replicate `king − man + woman ≈ queen` on a pretrained model.** Download a small set of pretrained word vectors (GloVe, ~100MB; or even better, `gensim`'s `glove-wiki-gigaword-50`). Verify the analogy. Try a few others: `Paris − France + Italy ≈ Rome`. Then attempt the same on the embeddings you trained in exercise 5 — your tiny model probably won't recover these analogies, and it's instructive to see how much corpus and capacity matter.
+
+7. **Compare positional schemes side-by-side.** In a notebook, plot the learned, sinusoidal, and (cos slice of) rotary positional encodings as heatmaps. Look at the patterns: learned is structureless noise (early in training); sinusoidal has the multi-frequency banding; RoPE's cos table has the same multi-frequency structure but at different scales.
+
+## Pitfalls to expect
+
+- **Wrong axis when slicing sin/cos in sinusoidal.** Even dimensions should get sines; odd should get cosines. `weight[:, 0::2] = sin(angles)` and `weight[:, 1::2] = cos(angles)`. Mixing these up gives a tensor that's not a valid sinusoidal encoding.
+- **`embedding_dim` odd.** Sinusoidal and RoPE both require an even dim. The `__init__`s raise a `ValueError`; if you instantiate at the wrong size, the error tells you what's wrong.
+- **Forgetting `.requires_grad_(False)` (or just not setting requires_grad) on fixed tables.** The sinusoidal weight and the RoPE cos/sin tables are NOT parameters — they should not appear in `parameters()` and should not be updated by the optimizer.
+- **`outer` vs. element-wise multiply.** Building the angles table requires `torch.outer(positions, inv_freq)` (or `positions[:, None] * inv_freq[None, :]`), not just `positions * inv_freq` (which would be element-wise on mismatched-shape tensors).
+- **Wrong half-split convention for RoPE.** We use the *split-halves* variant: pair dim `i` with dim `d/2 + i`. The original RoPE paper paired dim `2i` with dim `2i+1` (interleaved). Both are valid rotations and produce the same end-to-end behavior in attention, but they're not interchangeable — `_rotate_half` is specifically the split-halves version.
+- **Not handling `seq_len > max_seq_len`.** None of these implementations does — slicing past the end just truncates. In production you'd either error out or expand the table on the fly. For our scope, `max_seq_len` should be set generously.
+
+## Reading
+
+Primary:
+
+- **Mikolov et al., "Efficient Estimation of Word Representations in Vector Space" (2013).** The word2vec paper. Establishes that learned embeddings encode semantic structure.
+- **Vaswani et al., "Attention is All You Need" (2017), §3.5.** The original sinusoidal positional encoding.
+- **Su et al., "RoFormer: Enhanced Transformer with Rotary Position Embedding" (2021).** The RoPE paper. Skim — the math is heavy; the conceptual picture in this lesson is enough to use it.
+
+Secondary:
+
+- **Karpathy, "Neural Networks: Zero to Hero" lecture 2 ("makemore part 1").** Walks through token embeddings end to end on a tiny model.
+- **Jay Alammar, "The Illustrated Word2vec."** Best visual intuition for how learned embeddings get their structure.
+- **Eleuther blog posts on RoPE.** Several practical writeups on RoPE in production transformers.
+
+## Deliverable checklist
+
+- [ ] All tests in `tests/test_embeddings.py` pass.
+- [ ] `notebooks/05-train-embeddings.ipynb`: tiny embedding model trained on a corpus, t-SNE/UMAP visualization included.
+- [ ] `notebooks/05-analogies.ipynb` (or in the same notebook): `king − man + woman ≈ queen` reproduced on pretrained vectors; honest assessment of whether your tiny model reproduces any analogies.
+- [ ] You can explain — out loud, without notes — why RoPE'd attention scores depend only on the relative position offset.
+
+## M-series notes
+
+This module is light on compute.
+
+- A 32k × 256 token-embedding table is ~8M parameters, ~32MB. Fits anywhere.
+- Sinusoidal and RoPE tables for `max_seq_len = 4096, dim = 512` are around 8MB each. Trivial.
+- The exercises that move some compute (training a tiny embedding model, t-SNE on the result) all fit comfortably on CPU; MPS isn't even necessary unless your corpus is large. Plan tens of seconds to a few minutes per exercise.
