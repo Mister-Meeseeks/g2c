@@ -2,9 +2,9 @@
 
 > **Question this module answers:** *What is the actual training objective of a language model?*
 
-![The language-model ladder: three architectures (CountsBigramLM, NeuralBigramLM, MLPLanguageModel) all estimating P(next | context), with their internals, parameter counts, and tradeoffs side by side.](06-language-models/Module06-Ladder.png)
+![Four panels showing language modeling as next-token prediction: (1) raw text becomes a sequence of token IDs via BPE; (2) a sliding window over those IDs produces (context, target) training examples; (3) at each position the model emits a probability distribution over the vocabulary, scored by cross-entropy against the true next token; (4) at inference the same model is called autoregressively — predict, append, repeat — to generate text.](06-language-models/Module06-Hero.png)
 
-*The whole module on one page. Same input (context tokens), same output (a probability distribution over the vocabulary), three increasingly expressive ways to compute it. Each row also previews exactly what you'll implement: a counts table, an embedding-then-projection neural bigram, and a Bengio-style concat-MLP. Comparing them on the same corpus is exercise 5.*
+*The whole module on one page. The training-time path (panels 1–3) and the inference-time path (panel 4) use the same model with the same forward pass — the only difference is whether the next token comes from the corpus (training) or from sampling the model's own output (generation). Internalizing that those are the same loop, run with different inputs, is the conceptual breakthrough this module is built around.*
 
 ## Prerequisites
 
@@ -76,6 +76,10 @@ sophistication, all sharing the same training objective:
   NeuralBigramLM    embed → linear → logits       1 token     V·D + D·V + V
   MLPLanguageModel  embed → concat → MLP → logits N tokens    V·D + N·D·H + H·V + ...
 ```
+
+![The language-model ladder: three architectures (CountsBigramLM, NeuralBigramLM, MLPLanguageModel) all estimating P(next | context), with their internals, parameter counts, and tradeoffs laid out side by side.](06-language-models/Module06-Ladder.png)
+
+*Same input (context tokens), same output (a probability distribution over the vocabulary), three increasingly expressive ways to compute it. Each row previews exactly what you'll implement: a counts table, an embedding-then-projection neural bigram, and a Bengio-style concat-MLP. Comparing all three on the same corpus is exercise 5 — and the visual companion to that comparison is the perplexity plot near the end of this page.*
 
 By comparing them on the same corpus, you'll see exactly what each layer of
 machinery buys you — and where each one runs out of road.
