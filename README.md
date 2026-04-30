@@ -30,6 +30,11 @@ Start with the [syllabus](docs/syllabus.md) for the full 20-week arc. Lessons pu
 | 12 | [Scaling experiments](docs/modules/12-scaling.md)               | IV — Behavior shaping |
 | 13 | [Instruction tuning (SFT)](docs/modules/13-sft.md)              | IV — Behavior shaping |
 | 14 | [Preference tuning (DPO)](docs/modules/14-dpo.md)               | IV — Behavior shaping |
+| 15 | [Hallucination and evaluation](docs/modules/15-evaluation.md)   | IV — Behavior shaping |
+| 16 | [Local pretrained models and inference](docs/modules/16-inference.md) | V — Assistant systems |
+| 17 | [Retrieval-augmented generation](docs/modules/17-rag.md)         | V — Assistant systems |
+| 18 | [Tool use](docs/modules/18-tools.md)                            | V — Assistant systems |
+| 19 | [Agent loops](docs/modules/19-agent.md)                         | V — Assistant systems |
 
 ## Foundational choices
 

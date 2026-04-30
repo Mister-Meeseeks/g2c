@@ -1,0 +1,337 @@
+"""Parser — extract Thought/Action/Action Input/Final Answer from text.
+
+One scaffolded function:
+
+  * `parse_react_step(text) -> ParsedStep`. Reads a model completion
+    and pulls out the four ReAct fields:
+
+        Thought: <reasoning>
+        Action: <tool_name>
+        Action Input: <json>
+        Final Answer: <text>
+
+    Not all four are required on every step. The contract: a
+    well-formed step has either an Action (with Action Input) OR a
+    Final Answer — but not both. The Thought is best-effort
+    (instruction-tuned models reliably emit it; we tolerate its
+    absence).
+
+    **This is the lesson — SCAFFOLDED.** It's the agent module's
+    counterpart to `parse_tool_calls` from Module 18. Same shape: a
+    regex-driven extractor that converts free-form text into a
+    structured record.
+
+Why parse this way (regex per marker, not a single grammar)?
+
+  * **Robust to extra prose.** The model often emits chain-of-thought
+    on its own initiative — "Let me think... Thought: I should..." or
+    "I think the answer is X. Final Answer: X." A per-marker regex
+    finds the structured part regardless of surrounding prose.
+
+  * **Order-independent.** Sometimes the model emits Action before
+    Thought, or interleaves them. We extract each marker independently
+    rather than enforcing an order.
+
+  * **Forgiving of formatting wobble.** "Thought:" vs "**Thought:**"
+    vs "Thought :", different newline conventions, code fences around
+    the JSON — the regex tolerates a lot. Strict parsing would punish
+    the model for harmless variations.
+
+The single `ParsedStep` dataclass is the parser's output shape. It's
+the input to the loop's "what does this step mean" branch:
+
+    parsed = parse_react_step(completion)
+    if parsed.final_answer is not None:
+        return ...
+    if parsed.action is not None:
+        observation = dispatch(parsed.action)
+        ...
+    else:
+        # No action AND no final answer — stuck step.
+        ...
+
+Why not a `ToolCall` from Module 18? Because the wire format is
+different. Module 18 uses `<tool_call>{json}</tool_call>` (tagged JSON
+blob); Module 19 uses `Action: name\\nAction Input: {json}` (per-line
+markers). Both are valid — the agent module just chose the ReAct
+canonical format. If you wanted to compose with Module 18's tool-call
+format, you'd build a different parser.
+"""
+from __future__ import annotations
+
+import json  # noqa: F401 (used by parse_react_step scaffold)
+import re
+from dataclasses import dataclass
+
+from .base import Action  # noqa: F401 (used by parse_react_step scaffold)
+
+# `Thought:` up to the next marker (or end). Non-greedy, multiline.
+_THOUGHT_RE = re.compile(
+    r"Thought\s*:\s*(.*?)(?=\n\s*(?:Action|Action Input|Final Answer|Observation)\s*:|\Z)",
+    re.DOTALL | re.IGNORECASE,
+)
+# `Action:` line — the tool name. Stops at newline. Post-colon
+# whitespace is restricted to spaces/tabs so the regex doesn't
+# accidentally gobble the newline and capture the next line's content
+# (which would be the start of `Action Input: ...`).
+_ACTION_RE = re.compile(
+    r"Action\s*:[ \t]*([^\n]+)",
+    re.IGNORECASE,
+)
+# `Action Input:` followed by a JSON-ish blob, until the next marker
+# (Observation, Thought, Action, Final Answer) or end-of-string.
+# Non-greedy + DOTALL so the body can span newlines (some models pretty-print JSON).
+_ACTION_INPUT_RE = re.compile(
+    r"Action Input\s*:\s*(.*?)(?=\n\s*(?:Observation|Thought|Action|Final Answer)\s*:|\Z)",
+    re.DOTALL | re.IGNORECASE,
+)
+# `Final Answer:` to end-of-string. Captures everything after the marker.
+_FINAL_ANSWER_RE = re.compile(
+    r"Final Answer\s*:\s*(.*?)\Z",
+    re.DOTALL | re.IGNORECASE,
+)
+
+
+@dataclass(frozen=True)
+class ParsedStep:
+    """The structured result of one `parse_react_step` call.
+
+    Attributes:
+        thought: the parsed Thought text (stripped). Empty string if
+            the model didn't emit a Thought line.
+        action: a parsed Action, or `None` if no Action was emitted
+            OR if the Action could not be turned into a valid
+            (tool_name + dict arguments) pair (e.g., Action Input
+            was malformed JSON).
+        final_answer: the Final Answer text (stripped), or `None` if
+            the model didn't emit a Final Answer.
+        parse_error: a string describing why parsing produced no
+            usable action AND no final answer, or `None` on success.
+            Set when:
+              * there's an `Action:` marker but no `Action Input:`,
+              * the Action Input isn't valid JSON,
+              * the Action Input parses to a non-dict,
+              * neither Action nor Final Answer is present.
+
+    Invariant: if `final_answer` is not None, `action` is None.
+    Invariant: if both `action` and `final_answer` are None,
+    `parse_error` is set (the loop reads this as "stuck step").
+    """
+
+    thought: str
+    action: Action | None
+    final_answer: str | None
+    parse_error: str | None
+
+
+def _strip_code_fences(s: str) -> str:
+    """Strip ``` ``` fences from a JSON blob, if present.
+
+    Some models wrap the Action Input in a ```json ... ``` fence.
+    The parser tolerates this; the JSON inside is what we want.
+    """
+    s = s.strip()
+    if s.startswith("```"):
+        # Drop opening fence (possibly with a language tag).
+        first_newline = s.find("\n")
+        if first_newline != -1:
+            s = s[first_newline + 1 :]
+        else:
+            s = s[3:]
+    if s.endswith("```"):
+        s = s[:-3]
+    return s.strip()
+
+
+def parse_react_step(text: str) -> ParsedStep:
+    """Extract structured fields from a ReAct-format model completion.
+
+    The contract:
+
+      * Find a `Thought:` marker (case-insensitive, optional whitespace
+        around the colon). Capture everything up to the next marker.
+        If no Thought, the parsed `thought` is `""`.
+
+      * Find a `Final Answer:` marker. If present, capture the rest of
+        the text (up to end-of-string). The parsed `final_answer` is
+        the captured text, stripped. The `action` is `None`. The
+        `parse_error` is `None`. Even if the model also emits an
+        `Action:` line, Final Answer wins — the model is signaling it's
+        done.
+
+      * If no Final Answer: look for `Action:` and `Action Input:`.
+        Both must be present for the step to be valid:
+          - The Action body is the captured text (the tool name),
+            stripped of whitespace and trailing punctuation.
+          - The Action Input body is parsed as JSON. Strip code fences
+            (```...```) before parsing.
+          - The parsed JSON must be a dict. If not, the action is
+            invalid.
+        If everything checks out, build an `Action(tool, arguments)`.
+
+      * If neither a valid Action nor a Final Answer was extracted,
+        set `parse_error` to a short string explaining what happened.
+        The loop reads this as "stuck step."
+
+    Args:
+        text: the model's completion text. Anything is allowed —
+            free prose, ReAct-formatted markers, mixed.
+
+    Returns:
+        `ParsedStep` — see the dataclass for invariants.
+
+    Recipe:
+
+        1. # Type-check the input.
+           if not isinstance(text, str):
+               raise TypeError(
+                   f"parse_react_step expected str, got {type(text).__name__}"
+               )
+
+        2. # Extract the Thought (best-effort).
+           thought = ""
+           m = _THOUGHT_RE.search(text)
+           if m:
+               thought = m.group(1).strip()
+
+        3. # Look for a Final Answer FIRST. If present, that's the step.
+           m = _FINAL_ANSWER_RE.search(text)
+           if m:
+               final = m.group(1).strip()
+               if final:
+                   return ParsedStep(
+                       thought=thought,
+                       action=None,
+                       final_answer=final,
+                       parse_error=None,
+                   )
+
+        4. # Otherwise look for Action + Action Input.
+           m_action = _ACTION_RE.search(text)
+           m_input = _ACTION_INPUT_RE.search(text)
+
+           if m_action is None and m_input is None:
+               # Nothing structured. Stuck.
+               return ParsedStep(
+                   thought=thought,
+                   action=None,
+                   final_answer=None,
+                   parse_error="no Action, Action Input, or Final Answer found",
+               )
+           if m_action is None:
+               return ParsedStep(
+                   thought=thought,
+                   action=None,
+                   final_answer=None,
+                   parse_error="Action Input present but Action missing",
+               )
+           if m_input is None:
+               return ParsedStep(
+                   thought=thought,
+                   action=None,
+                   final_answer=None,
+                   parse_error=(
+                       f"Action {m_action.group(1).strip()!r} found but "
+                       "no Action Input"
+                   ),
+               )
+
+        5. # Pull the tool name (strip whitespace + trailing punctuation).
+           tool_name = m_action.group(1).strip().rstrip(".,;:")
+           if not tool_name:
+               return ParsedStep(
+                   thought=thought,
+                   action=None,
+                   final_answer=None,
+                   parse_error="Action name is empty",
+               )
+
+        6. # Parse the Action Input as JSON. Tolerate code fences.
+           raw_input = _strip_code_fences(m_input.group(1))
+           try:
+               args = json.loads(raw_input)
+           except json.JSONDecodeError as e:
+               return ParsedStep(
+                   thought=thought,
+                   action=None,
+                   final_answer=None,
+                   parse_error=f"Action Input is not valid JSON: {e.msg}",
+               )
+           if not isinstance(args, dict):
+               return ParsedStep(
+                   thought=thought,
+                   action=None,
+                   final_answer=None,
+                   parse_error=(
+                       f"Action Input must be a JSON object, got "
+                       f"{type(args).__name__}"
+                   ),
+               )
+
+        7. # Success.
+           return ParsedStep(
+               thought=thought,
+               action=Action(tool=tool_name, arguments=args),
+               final_answer=None,
+               parse_error=None,
+           )
+
+    Implementation notes:
+
+      * **Final Answer wins over Action.** If both appear, the model
+        is signaling it's done. The Action is probably leftover from
+        a partial earlier turn (or the model double-emitted). Treating
+        Final Answer as authoritative matches the ReAct paper's
+        convention and avoids "model said it's done but the loop kept
+        going" bugs.
+
+      * **Empty Final Answer counts as "no final answer."** The
+        recipe checks `if final:` after stripping — an empty string
+        means the model emitted "Final Answer:" with nothing after,
+        which is not a real answer. Better to treat that as a stuck
+        step than to return a blank answer to the user.
+
+      * **Why not enforce Thought presence?** Some completions skip
+        Thought when they want to give a one-shot answer:
+        "Final Answer: 4". Forcing Thought would punish good behavior.
+        The Thought is best-effort; its absence is not an error.
+
+      * **Why strip trailing punctuation from the Action name?** The
+        model sometimes emits "Action: calculator." with a period. The
+        registry lookup is exact-match. Stripping ".,;:" handles the
+        common cases without being too aggressive.
+
+      * **Code fence tolerance for Action Input.** Models occasionally
+        wrap JSON in ```json ... ``` (probably from instruction-tuning
+        data that contained code blocks). The `_strip_code_fences`
+        helper removes them; the JSON inside parses normally.
+
+    Sanity values:
+
+      * Just a Final Answer:
+        `parse_react_step("Final Answer: 4")` →
+        `ParsedStep(thought="", action=None, final_answer="4",
+                    parse_error=None)`.
+
+      * Thought + Final Answer:
+        `"Thought: easy\\nFinal Answer: 4"` →
+        thought="easy", final_answer="4", action=None.
+
+      * Thought + Action + Action Input:
+        `"Thought: use calc\\nAction: calculator\\nAction Input: {\\"x\\": 1}"` →
+        thought="use calc", action=Action("calculator", {"x": 1}).
+
+      * Both Action and Final Answer:
+        `"Thought: ...\\nAction: calc\\nAction Input: {\\"x\\":1}\\nFinal Answer: 4"` →
+        Final Answer wins. action=None, final_answer="4".
+
+      * Bad JSON:
+        `"Action: calc\\nAction Input: {not json}"` →
+        action=None, parse_error containing "not valid JSON".
+
+      * No structured content:
+        `"I don't know what to do."` →
+        action=None, final_answer=None, parse_error set.
+    """
+    # TODO
+    raise NotImplementedError

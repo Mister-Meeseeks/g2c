@@ -264,7 +264,7 @@ A "week" is one week of effort at the level of a rigorous elite-college course. 
 - **Reading.** Rafailov et al., "Direct Preference Optimization"; Ouyang et al. (RLHF, for context); Christiano et al., "Deep RL from Human Preferences" (skim).
 - **M-series notes.** DPO is more memory-hungry than SFT (two model copies in memory). 32GB+ helps materially.
 
-### Week 15 — Hallucination and evaluation
+### Week 15 — Hallucination and evaluation — [module ↗](modules/15-evaluation.md)
 
 - **Question.** Why does the model confidently invent things, and how do we measure it?
 - **Goal.** Build a small eval harness; characterize your model's failure modes precisely.
@@ -282,7 +282,7 @@ A "week" is one week of effort at the level of a rigorous elite-college course. 
 
 ## Phase V — Assistant systems
 
-### Week 16 — Local pretrained models and inference
+### Week 16 — Local pretrained models and inference — [module ↗](modules/16-inference.md)
 
 - **Question.** How do we get from "I built it" to "I can use it"?
 - **Goal.** Set up a stronger pretrained open model running locally and understand the inference stack.
@@ -296,7 +296,7 @@ A "week" is one week of effort at the level of a rigorous elite-college course. 
 - **Reading.** GGUF / llama.cpp docs; MLX examples repo; Ollama docs; Dettmers, "LLM.int8()" (skim).
 - **M-series notes.** Unified-memory size really starts to matter. 16GB → comfortable up to 7B at 4-bit; 32GB+ → easier headroom; 64GB → comfortable with 13B-class.
 
-### Week 17 — Retrieval-augmented generation
+### Week 17 — Retrieval-augmented generation — [module ↗](modules/17-rag.md)
 
 - **Question.** How does the model use external knowledge it doesn't have memorized?
 - **Goal.** Build a working RAG pipeline.
@@ -310,7 +310,7 @@ A "week" is one week of effort at the level of a rigorous elite-college course. 
 - **Reading.** Lewis et al., "Retrieval-Augmented Generation"; Karpukhin et al., "Dense Passage Retrieval"; Anthropic / Llamaindex blog posts on retrieval evaluation.
 - **M-series notes.** Comfortable. Embedding generation can be MLX-accelerated.
 
-### Week 18 — Tool use
+### Week 18 — Tool use — [module ↗](modules/18-tools.md)
 
 - **Question.** How does the model act outside itself?
 - **Goal.** Give the model a registry of structured tools and a dispatch loop.
@@ -324,7 +324,7 @@ A "week" is one week of effort at the level of a rigorous elite-college course. 
 - **Reading.** Schick et al., "Toolformer"; Anthropic tool use docs; OpenAI function-calling docs; Patil et al., "Gorilla" (skim).
 - **M-series notes.** All local; quality depends on the inference model's instruction-following.
 
-### Week 19 — Agent loops
+### Week 19 — Agent loops — [module ↗](modules/19-agent.md)
 
 - **Question.** How does the model pursue multi-step goals?
 - **Goal.** Build a minimal agent loop with state, planning, tool use, and stopping criteria.
