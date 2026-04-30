@@ -2,6 +2,10 @@
 
 > **Question this module answers:** *How do tokens communicate?*
 
+![Self-attention as six steps from tokens to refined representations: input embeddings (T, D); query/key/value projections via three Linear layers; pairwise compatibility scores from Q · Kᵀ / √D; softmax to row-normalized attention weights; mixed value vectors; an output projection. The bottom strip restates the same recipe as a one-position view ("ask, compare, pass, gather, update") and pins the headline takeaway: every token looks at every token, decides who is relevant, and mixes their information.](07-attention/Module07-Hero.png)
+
+*The whole module on one page. The same six-step pipeline runs at every position in parallel, with the only per-position difference being which Q vector poses the question — every other piece of machinery (the K/V tables, the scaling factor, the softmax, the output projection) is shared. Most of the rest of this lesson page is unpacking the "why" behind each of these six boxes; everything you'll implement in `SelfAttention.forward` is encoded here.*
+
 ## Prerequisites
 
 The math, CS, and programming concepts this module uses. Module 07 is the
@@ -108,6 +112,10 @@ position `t`.
 
 The whole module is that diagram, generalized to a batch dim.
 
+![Scaled dot-product attention as a six-stage pipeline: input X (T, D); three linear projections build Q, K, V; scores S = Q · Kᵀ / √D; a softmax (with optional causal mask) turns scores into attention weights A (each row a probability distribution over key positions); the weights mix the value vectors to produce Z = A · V; an output projection W_O lands the result back in (T, D).](07-attention/Module07-DotProduct.png)
+
+*The same pipeline as the ASCII diagram above, with each tensor's shape pinned and the role of every operation labelled. Two details worth lingering on: the score matrix is always (T, T) regardless of D — that's the quadratic cost ceiling — and the √D divide before softmax is what keeps the softmax in a non-saturated regime as D grows, which is the most common bug to forget.*
+
 ### Why Q, K, V are three different projections
 
 In principle you could use the input vectors themselves as queries,
@@ -125,6 +133,10 @@ remap the mixed values back into a representation space that's useful
 for the next layer. (In single-head attention `W_o` is mostly
 ceremonial; in multi-head attention it's where the heads' outputs get
 combined and is genuinely critical.)
+
+![Each token plays three roles, each parameterized by its own learned matrix: the query asks "what am I looking for?", the key advertises "what's distinctive about me?", the value contributes "what I'd pass on if attended to." A worked example over the sentence "the animal didn't cross the street because it was too tired" shows how the three projections specialize after training, with separate row-vectors per token labelled by their semantic content.](07-attention/Module07-QKV.png)
+
+*The decoupling is what gives attention its expressive power. With one shared projection ("just use x"), the same vector would have to simultaneously be a question, an advertisement, and a contribution — three jobs that pull in different directions during training. Three separate matrices let each role specialize, and exercise 1 (the by-hand 3-token computation) is where the role separation stops being abstract.*
 
 ### The √D scaling
 
@@ -168,6 +180,10 @@ so the value at `s > t` cannot leak into the output at `t`.
   Diagonal is False — every position can attend to itself.
   Above-diagonal is True — no peeking at the future.
 ```
+
+![The causal mask shown three ways for T=6: as a True/False checkmark grid (True positions are allowed to attend), as the same grid applied to the (T, T) score matrix (above-diagonal scores set to −∞), and as the post-softmax weight matrix where above-diagonal weights are exactly 0. A side panel pins the conceptual point: token at position t can only attend to positions 0..t.](07-attention/Module07-Causal.png)
+
+*The mask is applied BEFORE the softmax so the −∞ scores become exact zeros after exponentiation, not merely small numbers. Setting the post-softmax weights to zero directly would be wrong — the remaining weights wouldn't sum to 1, and gradients would route through the zeroed entries during backprop. Exercise 3's "drop the mask, watch loss collapse to 0" is the visceral version of why this step is load-bearing.*
 
 The convention "True means blocked" matches `masked_fill(mask, value)`,
 which fills wherever the mask is True. The `causal_mask` static method
@@ -300,6 +316,10 @@ important one. Every transformer ever trained uses this exact mechanism.
 
 2. **Visualize the attention pattern on a real sentence.** In
    `notebooks/07-attention-viz.ipynb`: tokenize the canonical sentence
+
+   ![A T×T attention-weight heatmap for "the cat sat on the mat", with each row a query token and each column a key token. Darker blue = higher weight. Each row sums to 1 (post-softmax), and the upper triangle is exactly white because the causal mask zeroed those positions. Side panels label "what's happening" (queries on rows, keys on columns, softmax row-normalizes to a probability) and "key properties" (each row sums to 1, lower triangle only, different patterns per head).](07-attention/Module07-Heatmap.png)
+
+   *The kind of plot this exercise produces. Untrained attention has near-uniform rows (no token has learned to prefer any other), but the structural properties — row-stochastic, lower-triangular under causal masking — are visible from step 0. Module 10 will revisit this same heatmap on a trained model and show specialized rows: the "it" token putting most of its weight on its antecedent, copy-heads putting most weight on the previous token, etc.*
    *"the animal didn't cross the street because it was too tired"* with
    the Module 04 BPE. Embed with a small `TokenEmbedding` plus a
    `LearnedPositionalEmbedding` (both untrained — random init is fine

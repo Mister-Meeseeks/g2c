@@ -2,6 +2,10 @@
 
 > **Question this module answers:** *Why split attention into multiple heads?*
 
+![Multi-head attention end-to-end: input X (B, T, D); three big linear projections produce Q, K, V each of shape (B, T, D); a reshape + transpose splits the channel dim into H heads, each of size d_h = D/H, so every tensor becomes (B, H, T, d_h); H independent attention computations run in parallel (each with its own scaling factor √d_h); concatenation merges the heads back to (B, T, D); a final output projection W_O lands the result. A side panel emphasizes the headline fact: same total parameter count as a single big attention, but H different "ways of looking" at the same sequence.](08-multi-head-attention/Module08-Hero.png)
+
+*The whole module on one page. The two ideas to internalize from this diagram: (1) the projections Q = X · W_Q etc. are ONE big matrix multiply each, not H of them — the heads are a reshape, not separate Linears. (2) After the reshape, each head's attention is structurally identical to Module 07's single-head attention, just with `d_h = D/H` channels instead of D. Multi-head attention is single-head attention, run H times in parallel, with H ways of asking "who matters here?" combined at the end.*
+
 ## Prerequisites
 
 The math, CS, and programming concepts this module uses. Module 08 is a
@@ -147,6 +151,10 @@ one `(T, T)` score matrix per head independently. With `H` *not* in
 the leading slot, the matmul would mix queries from different heads
 together — which is the wrong thing.
 
+![A worked reshape: starting from Q of shape (B=2, T=5, D=8), `view(B, T, H=4, d_h=2)` reinterprets the channel dim as (H, d_h), then `transpose(1, 2)` swaps T and H to land at (B, H, T, d_h). Concrete numbers fill the cells so you can trace exactly which D-channels become which head's d_h slots; a "why this order?" panel explains that PyTorch's batched matmul treats every dim before the last two as batch dims, so heads MUST be in a leading batch-like position before scoring.](08-multi-head-attention/Module08-Reshape.png)
+
+*The two-line `view + transpose` is doing all the work that a Python loop over heads would otherwise do. Internalizing which dim ends up where, and why the matmul that follows treats H as just another batch dim, is the entire engineering content of multi-head attention. The Module 08 test `test_reshape_then_transpose_layout` pins this layout down by forcing Q to a known pattern and asserting the per-head slices match.*
+
 ### One projection plus reshape ≠ H independent projections
 
 Naively, you might implement multi-head attention as `H` independent
@@ -241,6 +249,10 @@ fidelity — you need many more parameters and training data — but the
 mechanism is set up here. The visualization exercise (exercise 4)
 will let you LOOK at attention patterns after training and see whether
 any heads have learned anything interpretable.
+
+![Four canonical head-specialization patterns visualized as attention heatmaps over a sample sentence: (1) a previous-token head — all mass on the position immediately before the query, a clean sub-diagonal stripe; (2) a syntactic head — sparse off-diagonal links between grammatically related tokens (subject↔verb, modifier↔noun); (3) an induction head — for the pattern "...A B...A", weight concentrates on the token after the previous A; (4) a global / broadcast head — diffuse weight covering most of the sequence. A side caption emphasizes the headline: nothing in the architecture forces these patterns; they emerge during training.](08-multi-head-attention/Module08-DiffHeads.png)
+
+*Multi-head attention's empirical payoff isn't visible from the math — it shows up only when you train and look. With H heads available, the optimizer is free to use one for previous-token copying, another for syntactic dependencies, another for induction, etc., and it tends to do so. Single-head attention has to commit one set of weights to ALL of these jobs simultaneously; multi-head attention can specialize and recombine via W_O. Exercise 4 (per-head visualization on a trained model) is the visceral version of this picture — at toy scale you'll see partial versions of these patterns rather than the textbook-clean ones above.*
 
 ## Concepts to internalize
 

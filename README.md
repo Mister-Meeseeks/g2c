@@ -1,5 +1,7 @@
 # From Gradients to ChatGPT
 
+![Cover illustration: a circus-themed map of the course. Numbered booths under a big top represent each of the twenty modules — pretraining, tokenization, embeddings, gradient descent, self-attention, multi-head attention, the transformer (a central tower of "Add & Norm / Feed Forward / Multi-Head Attention" floors), sampling, SFT, DPO, RAG, tools, the agent, the eval inspector, and an "inference booth" robot at the bottom. Banners read "A tiny LLM stack from first principles," "Data. Compute. Curiosity. That's all you need," and "Built step by step under the big top."](docs/CourseCover.png)
+
 A self-study course on the core building blocks of LLMs, modeled after *From NAND to Tetris*.
 
 This repo contains both the instructional material and the student work product. The codebase grows layer-by-layer from scalar autodiff up through a working chat assistant — each module's deliverable becomes a building block for the next.
@@ -20,6 +22,7 @@ The hard constraint: **all tasks must be runnable on an M-series MacBook**, with
 
 ```
 docs/
+  CourseCover.png       # cover illustration (used in README)
   syllabus.md           # the detailed syllabus
   modules/
     01-autodiff.md      # lesson, motivation, exercises, deliverable spec

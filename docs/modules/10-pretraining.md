@@ -2,6 +2,10 @@
 
 > **Question this module answers:** *How does the model absorb language patterns from raw text?*
 
+![Pretraining the tiny GPT end-to-end: a raw token stream is sliced into (B, T) windows; each window goes through TransformerLM to produce (B, T, V) logits; lm_cross_entropy averages per-position cross-entropy across all B × T positions; loss.backward populates parameter gradients; clip_grad_norm rescales them if their global norm is too large; cosine_with_warmup picks the lr for this step; optimizer.step applies the SGD update; the step counter advances. A side panel shows sample text quality progressing through training: random characters at step 0, locally-correct subwords at step 500, locally-coherent sentences by step 2000+.](10-pretraining/Module10-Hero.png)
+
+*The whole module on one page. The architecture from Module 09 doesn't change — pretraining is the loop that calls it. Three new utilities (`lm_cross_entropy`, `cosine_with_warmup`, `clip_grad_norm_`) plus the per-step composition `Trainer.train_step` are the entire deliverable. Internalizing the eight-step order of operations on the right side of this diagram — and the multi-position loss on the left — is the conceptual content of the module.*
+
 ## Prerequisites
 
 Module 10 closes Phase III by training the architecture you built in
@@ -159,6 +163,10 @@ predictions — at typical pretraining context lengths (256, 1024,
 2048, 8192), this is a factor-of-thousands speedup. It's a big part
 of what makes transformer pretraining tractable.
 
+![Multi-position targets in three steps: (1) sample a (B, T) window from the token stream, with the target window y being x shifted left by one; (2) one forward pass through TransformerLM produces (B, T, V) logits — every position's next-token prediction in parallel, courtesy of the causal mask; (3) per-position cross-entropy is computed at every (b, t) pair and averaged across all B × T positions to produce the scalar loss. A side comparison contrasts the Module 06 setup (1 window → 1 training signal) against pretraining (1 window → T training signals).](10-pretraining/Module10-MultiPosition.png)
+
+*This is what causal masking earned us. Because position t can never see token t+1, you can use position t's logits as a prediction for token t+1 — for every t in the window, simultaneously, in one forward pass. The loss then averages B × T per-position cross-entropies. Test `test_lm_cross_entropy_per_position_average` pins down that EVERY position contributes; a miswiring that only counted the last position would silently train at 1/T efficiency.*
+
 ### The training-step recipe
 
 Eight steps, in this order, every step:
@@ -198,6 +206,10 @@ Two reorderings that *look* equivalent but aren't:
       "the lr at step k" and "the lr the optimizer applied at step k"
       disagree. Logging is then misleading.
 ```
+
+![The eight-step training loop drawn in order: (1) zero_grad clears stale gradients; (2) forward runs the model to logits; (3) lm_cross_entropy averages per-position CE; (4) backward populates parameter .grad; (5) clip_grad_norm_ rescales if the global norm is too large; (6) set the learning rate from cosine_with_warmup; (7) optimizer.step applies the SGD update; (8) increment the step counter. A side panel pins the two most common reorderings — clipping after step (clip becomes a no-op on this step) and advancing the counter before optimizer.step (the lr you log isn't the lr you applied) — and labels both as silent-bug territory.](10-pretraining/Module10-TrainingSteps.png)
+
+*The order is the lesson. Most miswirings of this loop produce code that *looks* like it's training: loss goes down, no exceptions, training history fills in normally — but the schedule, regularization, or clip is happening to the wrong gradients or at the wrong time. `Trainer.train_step`'s docstring spells the order out one more time, and the headline test `test_trainer_smoke_train_decreases_val_loss` is the end-to-end check that all eight steps are wired correctly.*
 
 ### Linear warmup + cosine decay
 

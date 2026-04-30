@@ -2,6 +2,10 @@
 
 > **Question this module answers:** *How do we compose attention and per-token computation into a reusable unit?*
 
+![One transformer block, drawn as two pre-norm sublayers wrapped in residual connections. The residual stream (the (B, T, D) tensor at the top) flows forward unchanged by default; each sublayer reads it through a LayerNorm, computes an update, and adds the update back. Sublayer 1 is multi-head attention; sublayer 2 is the position-wise feed-forward network. Side panels label the two structural ideas (LayerNorm normalizes per token, residual connections add a small update) and pin the recipe `x = x + attn(ln1(x)); x = x + ffn(ln2(x))`.](09-transformer-block/Module09-Hero.png)
+
+*The whole module on one page. Once you have this block, scaling up is just "stack N of these and add embeddings + a final unembedding head." Three new architectural ideas wrap around the attention you built in Module 08 — LayerNorm (numerical stability), residual connections (gradient flow + a "communication bus" interpretation), and the position-wise FFN (per-token compute) — and the rest of the lesson page is unpacking why each one is where it is.*
+
 ## Prerequisites
 
 The math, CS, and programming concepts this module uses. Module 09 is
@@ -184,6 +188,10 @@ down concretely: zero out the final projections of `attn` and `ffn`
 and the block must reduce to the identity. Without the residual
 additions, the test fails.
 
+![The residual stream as a horizontal "bus" that threads through every block. The embedding sum enters on the left; each block reads the stream, computes a small update Δᵢ via its sublayer (attention or FFN), and adds it back onto the stream. Δ₁ might do "communication across tokens" (attention), Δ₂ might do "per-token computation" (the FFN), Δ₃ might be "feature refinement" — each block specializes in what it adds. After N blocks, the stream is x_N = x + Σᵢ Δᵢ; the final layer norm and unembedding head consume that sum.](09-transformer-block/Module09-ResidualBus.png)
+
+*The "communication bus" framing made popular by Anthropic's transformer-circuits work. The structural property to internalize: information flows forward UNCHANGED by default. Sublayers make incremental edits, not replacements. This is the property that makes deep transformers trainable (gradient-flow view) AND the property that lets mechanistic-interpretability research decompose what each layer does (residual-stream view) — same fact, two ways to read it.*
+
 ### Why LayerNorm specifically
 
 Three properties of LN are worth internalizing:
@@ -219,6 +227,10 @@ LayerNorm is what keeps the residual stream's scale bounded. Without
 it, after a few blocks the residual `x` has accumulated so many
 unnormalized sublayer outputs that its magnitude diverges, attention
 softmaxes saturate, and everything stops training.
+
+![LayerNorm worked through on a single token vector x ∈ ℝ^D: compute mean μ and variance σ² across the D channels of THIS token only (no pooling across batch or sequence positions); subtract μ and divide by √(σ²+ε); apply the learned per-channel affine γ * x̂ + β. A side panel contrasts what LayerNorm does NOT do (pool across batch — that's BatchNorm; pool across sequence positions — that doesn't exist as a standard layer) and pins down the headline: every token in every position is normalized independently with the same γ, β.](09-transformer-block/Module09-LayerNorm.png)
+
+*The structural difference from BatchNorm is "pool over channels, not over the batch." Three consequences fall out: batch size doesn't affect the output (so batch_size=1 works), train and inference behavior are identical (no running statistics to track), and packed/variable-length batches don't need any special handling. Tests `test_layer_norm_normalizes_each_position_independently` and `test_layer_norm_normalizes_last_dim` are the formalization of the picture above.*
 
 ### Pre-norm vs post-norm
 
@@ -267,6 +279,10 @@ they diverge; very deep pre-norm models do not.
 For Module 09 we use pre-norm. Exercise 1 will have you implement
 post-norm and observe the stability difference at small scale.
 
+![Pre-norm vs post-norm shown side by side as two block diagrams: pre-norm (used by GPT-2, Llama, PaLM, ...) — `x = x + sublayer(LN(x))` — has the residual stream flowing past LN, never normalized in place; post-norm (used by "Attention Is All You Need", 2017) — `x = LN(x + sublayer(x))` — has LN sitting ON the residual path so the stream IS normalized between blocks. A side caption explains the gradient-path difference: pre-norm's residual gradient is unobstructed by LN's Jacobian, so it propagates straight through deep stacks; post-norm's residual gradient gets attenuated layer by layer, which is why post-norm needs a learning-rate warmup hack to train at depth.](09-transformer-block/Module09-PrePostNorm.png)
+
+*Same code, different parenthesization, very different training dynamics. Exercise 1 has you train both at depth 6 and watch the post-norm version oscillate or diverge while pre-norm trains smoothly. The 2017 paper used post-norm with careful warmup and so it worked; modern wisdom (Xiong et al. 2020) is that pre-norm is structurally better and removes the need for warmup tricks. Every modern transformer you read about uses pre-norm.*
+
 ### The position-wise FFN
 
 After attention has mixed information across positions, the FFN does
@@ -295,6 +311,10 @@ Three things to internalize:
     `4 × D² = 4D²` weight parameters. So roughly two-thirds of a
     standard block's parameter count is in the FFN. When people talk
     about "scaling up the model," most of what scales up is the FFN.
+
+![The position-wise FFN: the SAME two-layer MLP applied independently to every position. Per-position view: x_t (D channels) → Linear up to 4D → GELU → Linear back down to D. Block view: attention writes a per-token update into the residual stream, then LayerNorm + FFN compute a second per-token update. Side panels show the parameter counts (2 · 4D² = 8D² weights, dominating the block's parameter budget) and the per-position independence (mutate one token, no others change).](09-transformer-block/Module09-FFN.png)
+
+*The FFN is the "compute" half of the block: attention is what mixes information across positions, the FFN is what the model does with that mixed information at each position. Two non-obvious facts: (1) the same Linear weights are reused at every position — there is no per-position parameterization, just per-position application; (2) most of the parameter budget of a transformer lives here, not in attention. When the literature talks about "scaling up D," the FFN's 4D bottleneck is what scales the most.*
 
 ### The full TransformerLM
 
