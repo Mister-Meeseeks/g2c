@@ -100,9 +100,12 @@ Three subtleties worth highlighting:
 
 ## Scaffolding and how to run the tests
 
-This module ships with the `Value` class skeleton already written: `__init__`, `__repr__`, and the unary / right-hand-side / convenience operators (`__neg__`, `__sub__`, `__truediv__`, `__radd__`, `__rmul__`, `__rsub__`, `__rtruediv__`) are implemented for you. Search for `# TODO` in `g2c/autodiff/value.py` to find the spots that need work — the primitive ops (`__add__`, `__mul__`, `__pow__`, `exp`, `log`, `tanh`, `relu`) and `backward()`. The `numerical_grad` utility in `g2c/autodiff/grad_check.py` is scaffolded the same way.
+This module ships scaffolded across two files in `g2c/autodiff/`:
 
-A pytest suite is already in place at `tests/test_autodiff.py`. Initial state when you start: 2 passed, 42 failed. As you implement each primitive its tests turn green, so the suite functions as a continuous progress indicator.
+- **`value.py`** — `Value` class. `__init__`, `__repr__`, and the unary / right-hand-side / convenience operators (`__neg__`, `__sub__`, `__truediv__`, `__radd__`, `__rmul__`, `__rsub__`, `__rtruediv__`) are implemented; the primitive ops (`__add__`, `__mul__`, `__pow__`, `exp`, `log`, `tanh`, `relu`) and `backward()` are scaffolded.
+- **`grad_check.py`** — `numerical_grad` utility, scaffolded with `NotImplementedError`.
+
+Tests are in `tests/test_autodiff.py`. Initial state: 2 passed, 42 failed.
 
 ```bash
 pytest tests/test_autodiff.py            # run all autodiff tests
@@ -117,17 +120,35 @@ The docstring at the top of `tests/test_autodiff.py` suggests an implementation 
 
 Package: `g2c/autodiff/`
 
-A `Value` class wrapping a single Python float, with:
+### `value.py` — the autodiff engine
 
-- Constructor: `Value(data, _children=(), _op="")`
-- Forward operations: `+`, `-` (binary and unary), `*`, `/`, `**` (with constant exponent), `exp`, `log`, `tanh`, `relu`
-- Reverse operations from the right side: `__radd__`, `__rmul__`, etc., so `2 * Value(3)` works
-- A `.backward()` method that:
-  - Builds the topological order of the graph rooted at `self`
-  - Initializes `self.grad = 1.0`
-  - Walks the topo order in reverse, calling each node's local backward rule
+```python
+class Value:
+    def __init__(self, data: float, _children=(), _op=""): ...
 
-Suggested API:
+    # primitive ops (each stores a backward closure)
+    def __add__(self, other): ...
+    def __mul__(self, other): ...
+    def __pow__(self, exponent: float): ...
+    def exp(self): ...
+    def log(self): ...
+    def tanh(self): ...
+    def relu(self): ...
+
+    def backward(self): ...   # topological sort + reverse-mode pass
+```
+
+Right-hand-side operators (`__radd__`, `__rmul__`, etc.) and unary/convenience ops (`__neg__`, `__sub__`, `__truediv__`) are implemented for you so that `2 * Value(3)` just works.
+
+### `grad_check.py` — numerical gradient checker
+
+```python
+def numerical_grad(f, val: Value, h: float = 1e-5) -> float: ...
+```
+
+Estimates `df/dval` by finite differences. Use it to verify your analytic gradients.
+
+### End-to-end usage
 
 ```python
 from g2c.autodiff import Value
