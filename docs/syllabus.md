@@ -57,7 +57,7 @@ A "week" is one week of effort at the level of a rigorous elite-college course. 
 
 ## Phase I — Foundations
 
-### Week 1 — Scalar autodiff
+### Week 1 — Scalar autodiff — [module ↗](modules/01-autodiff.md)
 
 - **Question.** How does the model learn?
 - **Goal.** Build a scalar-valued automatic differentiation engine from first principles.
@@ -71,7 +71,7 @@ A "week" is one week of effort at the level of a rigorous elite-college course. 
 - **Reading.** Karpathy, *micrograd* repo and "The spelled-out intro to neural networks and backpropagation: building micrograd" (YouTube).
 - **M-series notes.** Pure CPU; runs in seconds.
 
-### Week 2 — Tensors and matmul
+### Week 2 — Tensors and matmul — [module ↗](modules/02-tensors.md)
 
 - **Question.** How do we scale computation from single numbers to whole layers?
 - **Goal.** Move from scalar autograd to vectorized tensor operations and develop intuition for why GPU/MPS-class hardware matters.
@@ -85,7 +85,7 @@ A "week" is one week of effort at the level of a rigorous elite-college course. 
 - **Reading.** PyTorch broadcasting docs; Karpathy "Neural Networks: Zero to Hero" lectures 2–3; Parr & Howard, "The Matrix Calculus You Need For Deep Learning."
 - **M-series notes.** First MPS use of the course. Verify the backend works; expect occasional ops to fall back to CPU.
 
-### Week 3 — First neural net
+### Week 3 — First neural net — [module ↗](modules/03-nn.md)
 
 - **Question.** How do numbers approximate functions?
 - **Goal.** Train a small MLP from scratch with a clean training loop.
@@ -103,7 +103,7 @@ A "week" is one week of effort at the level of a rigorous elite-college course. 
 
 ## Phase II — Language gets in
 
-### Week 4 — Tokenization
+### Week 4 — Tokenization — [module ↗](modules/04-tokenizer.md)
 
 - **Question.** How does text become model input?
 - **Goal.** Implement byte-pair encoding from scratch.
@@ -117,7 +117,7 @@ A "week" is one week of effort at the level of a rigorous elite-college course. 
 - **Reading.** Karpathy, "Let's build the GPT Tokenizer"; Sennrich et al., "Neural Machine Translation of Rare Words with Subword Units" (BPE); GPT-2 paper §2.2.
 - **M-series notes.** CPU-bound; trains in seconds to minutes.
 
-### Week 5 — Embeddings and positions
+### Week 5 — Embeddings and positions — [module ↗](modules/05-embeddings.md)
 
 - **Question.** How do discrete symbols become meaning-like vectors, and how does order get in?
 - **Goal.** Implement learned token embeddings and several positional encoding schemes.
@@ -131,7 +131,7 @@ A "week" is one week of effort at the level of a rigorous elite-college course. 
 - **Reading.** Mikolov et al. "Efficient Estimation of Word Representations" (word2vec); Vaswani et al. §3.5; Su et al. "RoFormer" (RoPE — skim).
 - **M-series notes.** Embedding tables of 8k × 256 are tiny.
 
-### Week 6 — Next-token prediction
+### Week 6 — Next-token prediction — [module ↗](modules/06-language-models.md)
 
 - **Question.** What is the actual training objective of a language model?
 - **Goal.** Train the simplest possible language models on next-token prediction, before introducing transformers.
@@ -149,7 +149,7 @@ A "week" is one week of effort at the level of a rigorous elite-college course. 
 
 ## Phase III — The transformer
 
-### Week 7 — Self-attention
+### Week 7 — Self-attention — [module ↗](modules/07-attention.md)
 
 - **Question.** How do tokens communicate?
 - **Goal.** Build single-head self-attention from scratch.
@@ -163,7 +163,7 @@ A "week" is one week of effort at the level of a rigorous elite-college course. 
 - **Reading.** Vaswani et al. §3.2; Karpathy, "Let's build GPT: from scratch" (attention section); Alammar, "The Illustrated Transformer."
 - **M-series notes.** Tiny.
 
-### Week 8 — Multi-head attention
+### Week 8 — Multi-head attention — [module ↗](modules/08-multi-head-attention.md)
 
 - **Question.** Why split attention into multiple heads?
 - **Goal.** Implement multi-head attention efficiently (via reshaping, not N independent linear layers).
@@ -176,7 +176,7 @@ A "week" is one week of effort at the level of a rigorous elite-college course. 
 - **Reading.** Vaswani §3.2.2; Elhage et al., "A Mathematical Framework for Transformer Circuits" (introductory sections); Olsson et al., "In-context Learning and Induction Heads."
 - **M-series notes.** Still tiny.
 
-### Week 9 — The transformer block
+### Week 9 — The transformer block — [module ↗](modules/09-transformer-block.md)
 
 - **Question.** How do we compose attention and per-token computation into a reusable unit?
 - **Goal.** Assemble the canonical transformer block: pre-norm, MHA, residual, MLP, residual.
@@ -190,7 +190,7 @@ A "week" is one week of effort at the level of a rigorous elite-college course. 
 - **Reading.** Vaswani §3; Xiong et al., "On Layer Normalization in the Transformer Architecture"; Anthropic Transformer Circuits Thread (intro post).
 - **M-series notes.** Still tiny.
 
-### Week 10 — Pretraining a tiny GPT
+### Week 10 — Pretraining a tiny GPT — [module ↗](modules/10-pretraining.md)
 
 - **Question.** How does the model absorb language patterns from raw text?
 - **Goal.** Pretrain a small transformer LM on a real corpus.

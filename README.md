@@ -10,6 +10,23 @@ The hard constraint: **all tasks must be runnable on an M-series MacBook**, with
 
 (The repository directory is historically named `scalarToLLM`; the formal course title is *From Gradients to ChatGPT*.)
 
+## Contents
+
+Start with the [syllabus](docs/syllabus.md) for the full 20-week arc. Lessons published so far:
+
+| #  | Module                                                          | Phase                |
+| -- | --------------------------------------------------------------- | -------------------- |
+| 01 | [Scalar autodiff](docs/modules/01-autodiff.md)                  | I — Foundations      |
+| 02 | [Tensors and matmul](docs/modules/02-tensors.md)                | I — Foundations      |
+| 03 | [A first neural network](docs/modules/03-nn.md)                 | I — Foundations      |
+| 04 | [Tokenization](docs/modules/04-tokenizer.md)                    | II — Language        |
+| 05 | [Embeddings and positions](docs/modules/05-embeddings.md)       | II — Language        |
+| 06 | [Next-token prediction](docs/modules/06-language-models.md)     | II — Language        |
+| 07 | [Self-attention](docs/modules/07-attention.md)                  | III — The transformer |
+| 08 | [Multi-head attention](docs/modules/08-multi-head-attention.md) | III — The transformer |
+| 09 | [The transformer block](docs/modules/09-transformer-block.md)   | III — The transformer |
+| 10 | [Pretraining a tiny GPT](docs/modules/10-pretraining.md)        | III — The transformer |
+
 ## Foundational choices
 
 - **Pacing unit.** Each module is one "week" of effort at the level of a rigorous elite-college course. Calendar pace is whatever it ends up being.
