@@ -208,7 +208,7 @@ A "week" is one week of effort at the level of a rigorous elite-college course. 
 
 ## Phase IV — Behavior shaping
 
-### Week 11 — Sampling and decoding
+### Week 11 — Sampling and decoding — [module ↗](modules/11-sampling.md)
 
 - **Question.** How does a probability distribution over tokens become actual text?
 - **Goal.** Implement and compare decoding strategies on your trained model.
@@ -222,7 +222,7 @@ A "week" is one week of effort at the level of a rigorous elite-college course. 
 - **Reading.** Holtzman et al., "The Curious Case of Neural Text Degeneration" (top-p paper); Fan et al., "Hierarchical Neural Story Generation" (top-k).
 - **M-series notes.** Inference-only — fast.
 
-### Week 12 — Scaling experiments
+### Week 12 — Scaling experiments — [module ↗](modules/12-scaling.md)
 
 - **Question.** What gets better with size, and how cleanly does it scale?
 - **Goal.** Empirically measure how a few capabilities scale within MacBook range.
@@ -236,7 +236,7 @@ A "week" is one week of effort at the level of a rigorous elite-college course. 
 - **Reading.** Kaplan et al. 2020; Hoffmann et al. "Chinchilla"; Wei et al. "Emergent Abilities of Large Language Models" (and the BIG-bench debate paper that followed).
 - **M-series notes.** This is the most compute-hungry week. Plan for several training runs of a few hours each. 32GB+ helps.
 
-### Week 13 — Instruction tuning (SFT)
+### Week 13 — Instruction tuning (SFT) — [module ↗](modules/13-sft.md)
 
 - **Question.** Why does the model follow requests rather than just continuing text?
 - **Goal.** Convert your base LM into an instruction-following one via supervised fine-tuning.
@@ -250,7 +250,7 @@ A "week" is one week of effort at the level of a rigorous elite-college course. 
 - **Reading.** Ouyang et al., "InstructGPT"; the Stanford Alpaca blog post; the LIMA paper ("Less Is More for Alignment").
 - **M-series notes.** Tiny SFT trains in minutes. Output quality will be visibly toy — that's the point.
 
-### Week 14 — Preference tuning (DPO)
+### Week 14 — Preference tuning (DPO) — [module ↗](modules/14-dpo.md)
 
 - **Question.** Why is the model helpful, polite, or stylistically consistent?
 - **Goal.** Improve the SFT model with a preference-based objective.
