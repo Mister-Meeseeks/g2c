@@ -54,6 +54,46 @@ The lesson page (`docs/modules/NN-name.md`) should have a dedicated **Scaffoldin
 
 The principle: a student should be able to type `pytest -x`, read the failing test name, and use it as their next directive — with no software-engineering overhead between them and the concept under study.
 
+### Lesson page structure
+
+Use this section ordering as the canonical template (established in Modules 01 and 02):
+
+```
+# Module NN — <topic>
+> Question this module answers
+[hero image + italic caption]
+
+## Prerequisites
+  ### Math
+  ### Computer science
+  ### Programming
+  ### What you can skip
+
+## Why we start here
+## The big idea
+## Concepts to internalize
+## Scaffolding and how to run the tests
+## What you'll build
+## Exercises
+## Pitfalls to expect
+## Reading
+## Deliverable checklist
+## M-series notes
+```
+
+The order is stable; not every module needs every section. Skip what doesn't apply (e.g., M-series notes for a pure-CPU module). When skipping, drop the section heading entirely rather than leaving it empty.
+
+### Image assets and captions
+
+- **Filename convention:** `ModuleNN-<Descriptor>.png` inside `docs/modules/NN-name/`. The headline summary image is `ModuleNN-Hero.png`; specific diagrams use descriptive PascalCase names (`Module02-MatMul.png`, `Module02-Ladder.png`).
+- **Reference from the lesson** with relative paths: `![alt text](NN-name/ModuleNN-Foo.png)`. Always include real alt text — it's the fallback when the image fails to render and matters for accessibility.
+- **Every image gets a caption** underneath in *italics*. The caption explains both what the image shows AND why it matters here, ideally tying back to a specific exercise, concept, or upcoming module. Captions are signal, not decoration.
+- **Hero image placement:** immediately after the question pull-quote, before the Prerequisites section.
+
+### Test file conventions
+
+The top of each test file should have a docstring with a numbered "Suggested order to implement & turn green" — mapping each implementation step to the tests it unblocks. The student should be able to read this once and know exactly where to start. Construction / repr / boilerplate tests pass from the start (since the boilerplate is implemented), serving as a sanity check on the test file itself; the rest fail with `NotImplementedError` until the student implements.
+
 ### Visual aids in lesson pages
 
 Use small ASCII diagrams to crack genuinely dense conceptual sections — particularly anything involving graph topology, shape arithmetic, alignment rules, or memory layout — where prose alone makes the structural relationship hard to see. The bar is "would a reader struggle to picture this without it?" Don't add diagrams for visual flair or because diagrams seem like a nice idea. Roughly a handful per module is the ceiling; some modules may have zero, which is fine. Reserve image assets in `docs/modules/NN-name/` for content that genuinely needs full graphics; for everything else, ASCII inside a fenced code block reads cleanly in every markdown viewer the student is likely to use.

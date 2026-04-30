@@ -2,7 +2,9 @@
 
 > **Question this module answers:** *How do we scale computation from single numbers to whole layers?*
 
-<!-- Hero image to go in 02-tensors/ when ready. -->
+![Scalar World (Module 01) vs Tensor World (Module 02): batching scalar operations into tensor ops to reduce overhead and exploit SIMD/GPU parallelism.](02-tensors/Module02-Hero.png)
+
+*The shift this module pivots on. In Module 01, every number was its own Python object; one operation at a time, high overhead, low throughput. In Module 02, identical operations across an entire input batch are bundled into a single tensor op that compiles to vectorized native code. Same math, very different execution — and it's the only reason real deep learning is computationally feasible.*
 
 ## Prerequisites
 
@@ -44,6 +46,10 @@ This module has you:
 2. **Implement broadcasting from scratch** on a toy class. The broadcasting rules are how you avoid writing explicit loops for "add this bias vector to every row of this matrix" — a pattern that recurs every layer of every model.
 3. **Reproduce a linear + softmax forward pass with explicit shapes**, anchoring the discipline of "always know the shape of every tensor."
 
+![The vectorization ladder: Python loops → NumPy (BLAS) → PyTorch CPU → PyTorch MPS, with each rung roughly an order of magnitude faster than the last.](02-tensors/Module02-Ladder.png)
+
+*The same matmul, four engines. Each step up the ladder is roughly an order of magnitude faster than the one below it — Exercise 3 has you measure these gaps yourself on your own machine. Modern deep learning is feasible only because all four rungs exist; trying to train anything serious from rung 1 alone would take years per epoch.*
+
 ## The big idea
 
 A **tensor** is just a multi-dimensional array of numbers. A scalar is 0-D, a vector is 1-D, a matrix is 2-D, a batch of matrices is 3-D, etc. Tensors have a `shape` (a tuple of dimension sizes) and a `dtype` (the numeric type of each element).
@@ -61,6 +67,10 @@ Two ideas dominate tensor-based numerical code:
         they collapse via summation.
         outer dims (m and n) survive.
 ```
+
+![Matrix multiplication as a grid of dot products: each output entry C[i, j] is the dot product of row i of A with column j of B.](02-tensors/Module02-MatMul.png)
+
+*Matmul broken down to its atoms. Each output entry `C[i, j]` is one dot product — row `i` of `A` paired against column `j` of `B`, multiplied element-wise and summed. The triple-loop implementation in Exercise 1 just enumerates this directly: outer two loops over `(i, j)`, inner loop computing the dot product. Vendor BLAS does the same operation in a fundamentally different way (cache blocking, SIMD, parallelism), but the math is identical.*
 
 **2. Broadcasting.** When two tensors with different but compatible shapes are combined element-wise, smaller dimensions are *implicitly stretched* without copying memory. The standard rules (NumPy and PyTorch use the same):
 
