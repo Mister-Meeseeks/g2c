@@ -2,7 +2,9 @@
 
 > **Question this module answers:** *How do discrete symbols become meaning-like vectors, and how does order get in?*
 
-<!-- Hero image to go in 05-embeddings/ when ready. -->
+![From token IDs to meaning-like vectors: text → token IDs → embedding lookup → add positional information (learned, sinusoidal, or RoPE) → model-ready vectors. Embeddings become a learned geometry; positions tell the model where each token is.](05-embeddings/Module05-Hero.png)
+
+*The whole module on one page. Module 04 hands us integer IDs; this module turns them into vectors and stamps "where you are in the sequence" onto each one. The embedding lookup itself is a one-line table indexing — the lesson is what the table learns and which of the three positional schemes you use to break the bag-of-tokens symmetry.*
 
 ## Prerequisites
 
@@ -76,11 +78,19 @@ That's it. The vector for each token is a learnable parameter — initialized ra
 
 What makes this work is what gets *learned*. After training on enough text, the rows of `weight` arrange themselves into a geometry that reflects how tokens are used. Tokens that occur in similar contexts end up with similar vectors. Famously: word2vec's `king − man + woman ≈ queen`. The model never told that king is to man as queen is to woman; the geometry just emerged from co-occurrence statistics.
 
+![Embedding geometry: a 2D projection of the learned embedding table shows tokens clustered by meaning (animals, vehicles, countries, cities), nearest neighbors of "king" by cosine similarity, and vector arithmetic (king − man + woman ≈ queen, Paris − France + Italy ≈ Rome).](05-embeddings/Module05-Geometry.png)
+
+*Why we care about the embedding table beyond "it's a lookup." After training, semantically related tokens end up near each other (the clusters), and meaningful relationships line up as vector offsets (the analogies). Nothing in the loss told the model to do this — it falls out of co-occurrence statistics. Exercises 5 and 6 have you reproduce both phenomena: the cluster structure on a tiny model you train yourself, and the analogy property on pretrained GloVe vectors.*
+
 LLM tokenizers have vocab sizes of 32k–200k and embedding dimensions of hundreds to thousands. The embedding table is one of the largest single parameter tensors in the model.
 
 ### Why positions need explicit encoding
 
 A transformer's attention layer is symmetric in its inputs — it computes `softmax(QKᵀ/√d)V` and the only way order enters is through the position-dependent contents of Q, K, V themselves. If those contents have no position information baked in, the model literally cannot tell `dog bites man` from `man bites dog`. Both are evaluated as the same bag of three vectors.
+
+![The bag-of-tokens problem: "dog bites man" and "man bites dog" produce identical bag-of-vectors when position is dropped, identical attention without positional encoding, and only become distinguishable once a learned, sinusoidal, or RoPE positional signal is added.](05-embeddings/Module05-BagOfTokens.png)
+
+*The failure mode that motivates everything in the rest of this module. Without position information, the multiset `{dog, bites, man}` is what attention sees in either sentence — and the predicted next token is the same. The bottom of the figure shows the fix in two flavors: additive (concatenate or sum a position vector onto the token vector before attention) and rotary (rotate the query/key vectors inside attention, by an angle proportional to position).*
 
 So we encode position into the token vectors themselves before they reach attention. There are two design choices: ADD a positional vector (Learned, Sinusoidal) or MULTIPLY (rotate) the vectors (RoPE).
 
@@ -94,6 +104,10 @@ Vaswani et al. proposed encoding position with a fixed table of sines and cosine
 ```
 
 Each pair of dimensions is `(sin, cos)` at a particular frequency. Low `i` → fast oscillation (small wavelength); high `i` → slow oscillation. The model gets a multi-resolution view of position: nearby positions look similar in the slow dimensions but differ in the fast ones; far-apart positions differ in both.
+
+![Sinusoidal positional encoding visualized as many sine and cosine clocks ticking at multiple frequencies; each position is a snapshot across all clocks. The full PE table is a heatmap with banded structure across positions and dimensions.](05-embeddings/Module05-Sinusoidal.png)
+
+*The mental image to keep. Each pair of dimensions is one (sin, cos) clock; low-`i` pairs tick fast (resolve nearby positions); high-`i` pairs tick slow (resolve coarse position over the whole sequence). The heatmap on the right is exactly the table you build in `SinusoidalPositionalEmbedding.__init__` — the bands are those clocks. Pos 0 is all-zero in the sine columns and all-one in the cosine columns; the test suite checks exactly this.*
 
 This scheme has zero learnable parameters (the table is determined by the formula) and can be evaluated at any position, including beyond the longest sequence ever trained. The 2017 transformer paper used this; many models since have used learned positional embeddings instead, on the theory that learning is rarely worse than fixing.
 
@@ -121,6 +135,10 @@ With RoPE — positions are rotations:
 The dot product of two RoPE'd vectors depends only on `(n − m)`. Token-pair attention scores are naturally functions of relative position, which is what we usually want — what matters in language is "this token is two words after that one", not "this token is at absolute position 437."
 
 This is implemented as a per-position-pair 2D rotation, applied across all dimensions. The split-halves variant (Llama and friends): split the last dimension in half, treat dim `i` and dim `d/2 + i` as a 2-vector, rotate each pair by `m · θ_i` where `θ_i = 1/10000^(2i/d)`. The cos/sin tables are precomputed; the forward pass is `x · cos + rotate_half(x) · sin` — three tensor ops.
+
+![RoPE as position-as-rotation: queries and keys at positions m and n get rotated by their position angles, and the dot product of the rotated vectors depends only on (n − m). Bottom panels show many-frequency cos/sin tables and the split-halves implementation recipe.](05-embeddings/Module05-Rotation.png)
+
+*The whole RoPE story in one picture. Top: rotate q by angle proportional to m, rotate k by angle proportional to n; the dot product of the rotated vectors depends only on the relative offset (n − m), which is the property the test_rotary_relative_position_property test in tests/test_embeddings.py checks. Bottom-left: at any single position, every dimension pair is rotated at its own frequency, the same multi-frequency idea as sinusoidal. Bottom-right: the split-halves recipe — `x * cos + rotate_half(x) * sin` — is exactly what you implement in `RotaryEmbedding.forward`.*
 
 We implement RoPE as a standalone module here and unit-test the relative-position property in isolation. In Module 07 it gets dropped into attention.
 

@@ -2,7 +2,9 @@
 
 > **Question this module answers:** *How does text become model input?*
 
-<!-- Hero image to go in 04-tokenizer/ when ready. -->
+![From text to token IDs: raw text → UTF-8 bytes → BPE tokens (greedy pair merges) → integer ID sequence → model input. Robust (no OOV), efficient, learned from data, lossless, and the foundation every LLM is built on.](04-tokenizer/Module04-Hero.png)
+
+*The whole pipeline that turns `"The quick brown fox..."` into the integer list a model actually sees. Stage 3 — finding and merging the most frequent adjacent byte pairs — is the entire BPE algorithm and the only part you have to implement; the bytes-in / IDs-out wrappers around it are mechanical. Stage 5 (embedding lookup) is Module 05.*
 
 ## Prerequisites
 
@@ -42,6 +44,10 @@ There are three genuinely different ways to do this, with very different tradeof
 ```
 
 Character-level (or byte-level) is robust but produces sequences too long to fit in a context window. Word-level produces short sequences but explodes vocab size and silently drops out-of-vocabulary words. Subword tokenization — specifically **byte-pair encoding (BPE)** and its close cousins WordPiece and SentencePiece — splits the difference. Common substrings (`"the"`, `"ing"`, `"ation"`) become single tokens; rare or novel inputs fall back to smaller pieces; nothing is ever truly out-of-vocabulary because the base vocab covers every possible byte.
+
+![Character vs word vs subword (BPE) tokenization, applied to "The unbelievable speed of the spacecraft was astonishing!", with vocab-size, sequence-length, OOV-robustness, and compute tradeoffs side by side.](04-tokenizer/Module04-Subword.png)
+
+*The same sentence, three tokenizers. Character-level keeps the vocab tiny but blows out the sequence; word-level shortens the sequence but balloons the vocab and chokes on `"unbelievable"` if it wasn't seen during training; subword/BPE finds the middle by carving common substrings (`"_un"`, `"believ"`, `"_speed"`) into single tokens and falling back to pieces only for the rare bits. Every modern LLM picks the third column.*
 
 Modern LLMs all use BPE-family tokenizers. GPT-2/3/4, Llama, Mistral, Qwen — same algorithm, different training data. Module 04 has you build it.
 
@@ -85,6 +91,10 @@ After merge 2:
   Most common pair:  (257, 32)  =  'the' + ' '  (count 2)
   Mint new ID 258. ...
 ```
+
+![The BPE training loop: start → count adjacent pairs → pick the most frequent → mint a new token → merge non-overlapping occurrences → repeat. A worked example trains BPE on "the the the" iteration by iteration, building the vocab one merge at a time.](04-tokenizer/Module04-BPELoop.png)
+
+*The five-step greedy loop (left) and exactly the same worked example unrolled (right). At inference, encoding replays the merges in learned order; decoding is just byte concatenation. This loop is essentially the entire `train()` method you'll implement — and the picture should make the iteration order, the non-overlapping merge rule, and the "earliest merge wins" priority click before you hit the test suite.*
 
 Every merge shortens the sequence and adds one entry to the vocabulary. The merges learned earliest (lowest IDs) capture the most common patterns; later merges capture progressively more specific patterns. The final tokenizer is just the table of merges, applied left-to-right by priority.
 
