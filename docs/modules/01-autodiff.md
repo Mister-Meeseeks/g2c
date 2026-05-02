@@ -4,8 +4,9 @@
 
 ![Training loop summary: parameters → forward pass → loss → backward pass (autodiff) → gradients → parameter update, repeat.](01-autodiff/Module01-Hero.png)
 
-*The training loop end-to-end. Module 01 builds the **backward pass** — the autodiff machinery that converts a forward computation into gradients with respect to every parameter. The forward pass, the loss, and the parameter update are all straightforward arithmetic; the gradient computation is the keystone, and it's what every later module's training loop will lean on.*
+Module 01 builds the **backward pass** — the autodiff machinery that converts a forward computation into gradients with respect to every parameter. The forward pass, the loss, and the parameter update are all straightforward arithmetic; the gradient computation is the keystone, and it's what every later module's training loop will lean on.
 
+---
 ## Prerequisites
 
 The math, CS, and programming concepts this module uses. If any feel rusty, the linked refreshers will get you back up to speed in 10–30 minutes each.
@@ -27,9 +28,11 @@ The math, CS, and programming concepts this module uses. If any feel rusty, the 
 - **Python dunder methods.** `__add__`, `__mul__`, `__pow__`, `__radd__`, etc. — the protocol for overloading operators on a class. Refresher: Python language reference §3.3.7 ("Emulating numeric types").
 - **Closures.** Each operation defines a `_backward` function that captures local variables (the parents and the output Value). If "closures in Python" is fuzzy, skim Fluent Python's chapter on them or any short tutorial — they're central to the autodiff implementation pattern.
 
-### What you can skip
+## MacBook Requirements 
 
-You don't need linear algebra for this module. You don't need any prior PyTorch knowledge — we don't use it yet. You don't need to know what backpropagation is in advance; that's what you're about to build.
+Pure Python on a single CPU thread. Runs in seconds. No PyTorch, no MPS, no installs beyond what's already in the venv.
+
+---
 
 ## Why we start here
 
@@ -98,26 +101,7 @@ Three subtleties worth highlighting:
 - **Gradient accumulation** — a node used in multiple expressions accumulates the sum of contributions.
 - **Loss minimization via gradient descent** — once you have `dL/dparam` for each parameter, update `param ← param - lr · dL/dparam`.
 
-## Scaffolding and how to run the tests
-
-This module ships scaffolded across two files in `g2c/autodiff/`:
-
-- **`value.py`** — `Value` class. `__init__`, `__repr__`, and the unary / right-hand-side / convenience operators (`__neg__`, `__sub__`, `__truediv__`, `__radd__`, `__rmul__`, `__rsub__`, `__rtruediv__`) are implemented; the primitive ops (`__add__`, `__mul__`, `__pow__`, `exp`, `log`, `tanh`, `relu`) and `backward()` are scaffolded.
-- **`grad_check.py`** — `numerical_grad` utility, scaffolded with `NotImplementedError`.
-
-Tests are in `tests/test_autodiff.py`. Initial state: 2 passed, 42 failed.
-
-```bash
-source .venv/bin/activate
-python -m pytest tests/test_autodiff.py            # run all autodiff tests
-python -m pytest tests/test_autodiff.py -x         # stop at first failure (recommended while working)
-python -m pytest tests/test_autodiff.py -k add     # run only tests whose name matches "add"
-python -m pytest tests/test_autodiff.py -v         # verbose: list every test
-```
-
-The docstring at the top of `tests/test_autodiff.py` suggests an implementation order: primitives first (each turns its own batch of forward + backward tests green), then `backward()` lights up all the composition + gradient-accumulation tests at once, then `numerical_grad` finishes it off.
-
-After the tests pass, use [`notebooks/01-autodiff-xor.ipynb`](../../notebooks/01-autodiff-xor.ipynb) as the interactive workspace for the hand-checks, gradient checks, single-neuron update, XOR MLP, and topology stress test.
+---
 
 ## What you'll build
 
@@ -163,9 +147,23 @@ c.backward()
 print(a.grad, b.grad)  # dc/da, dc/db
 ```
 
-Keep the implementation small — well under 200 lines. Legibility wins.
+Keep the implementation small — well under 100 lines. Legibility wins.
+
+## How to run the tests
+
+Tests are in `tests/test_autodiff.py`. Initial state: 2 passed, 42 failed.
+
+```bash
+source .venv/bin/activate
+python -m pytest tests/test_autodiff.py            # run all autodiff tests
+python -m pytest tests/test_autodiff.py -x         # stop at first failure (recommended while working)
+python -m pytest tests/test_autodiff.py -k add     # run only tests whose name matches "add"
+python -m pytest tests/test_autodiff.py -v         # verbose: list every test
+```
 
 ## Exercises
+
+Use [`notebooks/01-autodiff-xor.ipynb`](../../notebooks/01-autodiff-xor.ipynb) as the interactive workspace for the exercise set
 
 1. **Forward and backward by hand.** Take the expression `f = (a * b + b**2) * tanh(c)` with `a=1, b=2, c=0.5`. Compute the forward pass and all three gradients by hand on paper. Then verify against your engine.
 
@@ -198,12 +196,8 @@ Secondary:
 
 ## Deliverable checklist
 
-- [ ] `g2c/autodiff/__init__.py` exports `Value`
 - [ ] All operations from the suggested API are implemented
-- [ ] `tests/test_autodiff.py` covers: each operation forward and backward, gradient accumulation on shared nodes, gradient check vs. finite differences
+- [ ] `tests/test_autodiff.py` passes all tests: each operation forward and backward, gradient accumulation on shared nodes, gradient check vs. finite differences
 - [ ] `notebooks/01-autodiff-xor.ipynb` trains a 2-2-1 MLP on XOR using only `Value`
 - [ ] You can explain — out loud, without notes — why backward must traverse in topological order
 
-## M-series notes
-
-Pure Python on a single CPU thread. Runs in seconds. No PyTorch, no MPS, no installs beyond what's already in the venv.
