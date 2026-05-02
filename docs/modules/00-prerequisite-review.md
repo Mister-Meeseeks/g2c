@@ -114,6 +114,10 @@ y: (B, D_out)
 
 The bias `b` broadcasts across the batch dimension. Broadcasting means a size-1 or missing dimension is conceptually repeated without copying data. It is convenient, but it can also hide shape bugs, so get in the habit of writing expected shapes next to tensor code.
 
+![Tensor shape reference covering scalars, vectors, matrices, batched tensors, matrix multiplication, broadcasting, and language-model data flow.](00-prerequisite-review/Module00-Shapes.png)
+
+*The shape vocabulary this course will reuse constantly. The same few contracts show up in linear layers, embeddings, attention, logits, and softmax; writing them down is the fastest way to catch a mistaken transpose, missing batch dimension, or accidental broadcast.*
+
 The dot product is the atom inside matmul:
 
 ```text
@@ -206,6 +210,10 @@ Perplexity is just cross-entropy put back on a multiplicative scale:
 perplexity = exp(average_cross_entropy)
 ```
 
+![Logits-to-loss diagram showing vocabulary scores, softmax probabilities, cross-entropy loss, perplexity, next-token targets, and gradient intuition.](00-prerequisite-review/Module00-Logits.png)
+
+*The prediction loop in probability language. A model emits logits, softmax turns them into probabilities, cross-entropy rewards probability on the true next token, and perplexity gives that loss a scale you can compare while training.*
+
 For language modeling, the dataset is text shifted by one position:
 
 ```text
@@ -270,18 +278,9 @@ You do not need to know all of PyTorch. You do need:
 - `torch.no_grad()` for inference
 - enough autograd familiarity to know that `loss.backward()` fills `.grad`
 
-For repo work, the core loop is:
-
-```bash
-source .venv/bin/activate
-pytest tests/test_autodiff.py -x
-```
-
-Use `-x` while implementing a module. The first failing test is usually the next concept to implement.
-
 ## Scaffolding and how to run the checks
 
-Module 00 has no `g2c/` package code and no dedicated pytest file. It is a readiness review.
+Module 00 is a readiness review. However it's a good idea to prepare your development environment for the rest of the course.
 
 Run the environment smoke test:
 
@@ -290,14 +289,6 @@ Run the environment smoke test:
 source .venv/bin/activate
 python scripts/smoke_test.py
 ```
-
-Then run the Module 01 boilerplate sanity checks:
-
-```bash
-pytest tests/test_autodiff.py::test_value_construction tests/test_autodiff.py::test_value_repr_runs -q
-```
-
-Do not expect the full test suite to pass on the scaffold branch. The course is designed so most module tests fail until you implement the conceptual core.
 
 ## What you'll build
 
