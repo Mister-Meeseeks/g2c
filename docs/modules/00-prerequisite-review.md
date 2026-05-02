@@ -282,6 +282,22 @@ You do not need to know all of PyTorch. You do need:
 
 Module 00 is a readiness review. However it's a good idea to prepare your development environment for the rest of the course.
 
+Write your exercise responses in [`answers/module-00.md`](../../answers/module-00.md). You can answer one exercise, a subset, or all of them; blank sections should be skipped by the grader rather than counted wrong. When you want feedback, ask:
+
+```text
+Can you grade my answers for module 0?
+```
+
+The grader should use [`docs/rubrics/module-00.md`](../rubrics/module-00.md) to check your work without replacing your answers with a full solution.
+
+If the feedback shows a weak spot, ask for a focused drill set:
+
+```text
+Can you make me more module 0 shape-trace problems?
+```
+
+Extra drills live in [`practice/module-00/`](../../practice/module-00/). Fill in the generated practice file, then ask the agent to grade that file. The agent can write concise notes into the practice file's `Agent feedback` sections, so a later follow-up set can target exactly what still needs work. You can repeat this loop until the concept feels stable.
+
 Run the environment smoke test:
 
 ```bash
@@ -292,7 +308,7 @@ python scripts/smoke_test.py
 
 ## What you'll build
 
-No package code lands in Module 00. The output is a short readiness artifact: notes, a scratch notebook, or a page in your course journal that proves the prerequisites are loaded.
+No package code lands in Module 00. The output is a short readiness artifact in [`answers/module-00.md`](../../answers/module-00.md) that proves the prerequisites are loaded.
 
 By the end, you should have:
 
