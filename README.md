@@ -92,7 +92,7 @@ After setup:
 
 ```bash
 source .venv/bin/activate
-pytest                          # run tests
+python -m pytest                # run tests
 python scripts/smoke_test.py    # re-run env health check
 ```
 

@@ -108,10 +108,11 @@ This module ships scaffolded across two files in `g2c/autodiff/`:
 Tests are in `tests/test_autodiff.py`. Initial state: 2 passed, 42 failed.
 
 ```bash
-pytest tests/test_autodiff.py            # run all autodiff tests
-pytest tests/test_autodiff.py -x         # stop at first failure (recommended while working)
-pytest tests/test_autodiff.py -k add     # run only tests whose name matches "add"
-pytest tests/test_autodiff.py -v         # verbose: list every test
+source .venv/bin/activate
+python -m pytest tests/test_autodiff.py            # run all autodiff tests
+python -m pytest tests/test_autodiff.py -x         # stop at first failure (recommended while working)
+python -m pytest tests/test_autodiff.py -k add     # run only tests whose name matches "add"
+python -m pytest tests/test_autodiff.py -v         # verbose: list every test
 ```
 
 The docstring at the top of `tests/test_autodiff.py` suggests an implementation order: primitives first (each turns its own batch of forward + backward tests green), then `backward()` lights up all the composition + gradient-accumulation tests at once, then `numerical_grad` finishes it off.
