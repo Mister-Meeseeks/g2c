@@ -297,7 +297,7 @@ Run the setup script once:
 ./setup.sh
 ```
 
-If you need extra practice after feedback, start with [`practice/module-00/set-001.md`](../../practice/module-00/set-001.md). Ask an agent to fill that shell with a focused drill set, then use the same file for hints, answers, and review.
+If feedback shows a weak spot, ask the agent for a few focused practice problems in chat. You can answer one, some, or all of them, and the agent should grade only what you attempt.
 
 ## What you'll build
 
