@@ -297,6 +297,8 @@ Run the setup script once:
 ./setup.sh
 ```
 
+If you need extra practice after feedback, start with [`practice/module-00/set-001.md`](../../practice/module-00/set-001.md). Ask an agent to fill that shell with a focused drill set, then use the same file for hints, answers, and review.
+
 ## What you'll build
 
 No package code lands in Module 00. The output is a short readiness artifact in [`answers/module-00.md`](../../answers/module-00.md) that proves the prerequisites are loaded.

@@ -32,6 +32,7 @@ The student is the repo author. Both roles are live.
 - `g2c/<topic>/` — Python subpackage for that module's deliverable
 - `notebooks/NN-*.ipynb` — exploratory notebooks tied to module NN
 - `answers/module-NN.md` — student-owned written answers for that module's exercises
+- `practice/_template.md` — shared template for generated practice sets
 - `practice/module-NN/` — generated extra practice sets for that module; use numbered files like `set-001-shapes.md`; students fill `Help request / hint request` or `Student answer` sections and agents may fill `Agent feedback` sections
 - `docs/rubrics/module-NN.md` — course-owned grading rubric for written answers; use for review, not as a replacement for the student's work
 - `data/` — datasets; anything large is gitignored
@@ -69,13 +70,14 @@ When the user asks to grade, check, review, or give feedback on answers for a mo
 When the student asks for more problems, drills, practice, remediation, or another round on a weak area:
 
 1. Read `docs/modules/NN-name.md`, `docs/rubrics/module-NN.md`, and any relevant previous answers or practice feedback.
-2. Create a new numbered file in `practice/module-NN/`, choosing the next available name such as `set-001-shapes.md`, `set-002-softmax-loss.md`, or `set-003-backprop.md`.
-3. Keep each practice set focused on one concept unless the user asks for a mixed review.
-4. Include blank `Help request / hint request`, `Student answer`, `Notes / uncertainty`, and `Agent feedback` sections under each problem.
-5. Do not include full solutions in the student-facing practice file. If a short check value is necessary, phrase it as an optional self-check only when it will not defeat the exercise.
-6. Calibrate difficulty from the student's latest mistakes: start near the missed concept, then add one small variation per problem.
-7. Tell the student exactly which file to fill in and the prompt to use for help or grading, for example: `Can you review practice/module-00/set-001-shapes.md?`
-8. For repeated loops, use the prior graded attempt to generate the next set, rather than repeating the same problem shape with new numbers only.
+2. Start from the shared scaffold in `practice/_template.md`.
+3. Create a new numbered file in `practice/module-NN/`, choosing the next available name such as `set-001-shapes.md`, `set-002-softmax-loss.md`, or `set-003-backprop.md`. If the module already has an unused linked shell such as `set-001.md`, fill that shell before creating another file.
+4. Keep each practice set focused on one concept unless the user asks for a mixed review.
+5. Include blank `Help request / hint request`, `Student answer`, `Notes / uncertainty`, and `Agent feedback` sections under each problem.
+6. Do not include full solutions in the student-facing practice file. If a short check value is necessary, phrase it as an optional self-check only when it will not defeat the exercise.
+7. Calibrate difficulty from the student's latest mistakes: start near the missed concept, then add one small variation per problem.
+8. Tell the student exactly which file to fill in and the prompt to use for help or grading, for example: `Can you review practice/module-00/set-001-shapes.md?`
+9. For repeated loops, use the prior graded attempt to generate the next set, rather than repeating the same problem shape with new numbers only.
 
 ## When authoring a new module
 
@@ -85,7 +87,7 @@ When building scaffolding for any module that has a coding exercise, the goal is
 - **Scaffolds for the methods that ARE the point.** Empty bodies that `raise NotImplementedError`, with docstrings that name the contract — including, where helpful, the local rule (e.g., the gradient formula for an autodiff op, the recurrence for an attention computation). This gives the student the API surface and the math, but not the implementation.
 - **A test suite that pins the contract.** Comprehensive enough that "all tests pass" is a strong signal of correctness. Tests should fail informatively against the empty scaffolding so the failing test names tell the student what to implement next.
 - **A suggested implementation order.** A docstring at the top of the test file (or a checklist in the lesson page) describing which TODOs to tackle first. Each step should turn a coherent batch of tests green so progress is visible.
-- **An answer workspace, practice area, and rubric for written exercises.** Add `answers/module-NN.md` with blank student-owned `Help request / hint request`, `Student answer`, and `Notes / uncertainty` slots, add `practice/module-NN/README.md` plus a practice-set template, add `docs/rubrics/module-NN.md` with grading criteria, and point the lesson's scaffolding section at these files.
+- **An answer workspace, practice area, and rubric for written exercises.** Add `answers/module-NN.md` with blank student-owned `Help request / hint request`, `Student answer`, and `Notes / uncertainty` slots, ensure `practice/module-NN/` exists for generated practice sets using `practice/_template.md`, add `docs/rubrics/module-NN.md` with grading criteria, and point the lesson's scaffolding section at these files.
 - **An answer link at the start of exercises.** The first paragraph after every `## Exercises` heading should link to `answers/module-NN.md`, say that students can ask for hints or submit answers for agent grading, and state that partial submissions are fine because blank answer sections are skipped.
 
 The lesson page (`docs/modules/NN-name.md`) should have a dedicated **Scaffolding and how to run the tests** section pointing the student at the `# TODO` markers and the relevant `pytest` invocations.

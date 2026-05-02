@@ -47,16 +47,29 @@ fi
 ok "uv $(uv --version | awk '{print $2}')"
 
 # ---- 3. venv -----------------------------------------------------------------
+PROJECT_ROOT=$(pwd -P)
 if [[ ! -d .venv ]]; then
     info "Creating venv at .venv"
-    uv venv --python 3.11
+    uv venv --python 3.11 --prompt g2c .venv
     ok "venv created"
 else
     ok "venv exists"
+    REFRESH_VENV=0
+    if [[ -f .venv/pyvenv.cfg ]] && ! grep -qx "prompt = g2c" .venv/pyvenv.cfg; then
+        warn "venv prompt is stale; refreshing activation metadata"
+        REFRESH_VENV=1
+    fi
+    if [[ -f .venv/bin/activate ]] && ! grep -q "VIRTUAL_ENV='$PROJECT_ROOT/.venv'" .venv/bin/activate; then
+        warn "venv activation path is stale; refreshing activation metadata"
+        REFRESH_VENV=1
+    fi
+    if [[ "$REFRESH_VENV" == "1" ]]; then
+        uv venv --python 3.11 --prompt g2c --allow-existing .venv
+        ok "venv metadata refreshed"
+    fi
 fi
 
 REINSTALL_PYTEST=0
-PROJECT_ROOT=$(pwd -P)
 if [[ -f .venv/bin/pytest ]]; then
     PYTEST_SHEBANG=$(head -n 1 .venv/bin/pytest)
     case "$PYTEST_SHEBANG" in
