@@ -4,10 +4,9 @@
 
 ![Prerequisite review map showing the math, computer science, programming, and ML workflow basics that feed into the course's training loop.](00-prerequisite-review/Module00-Hero.png)
 
-*The prerequisite surface for the course in one pass. Module 00 is not a separate fundamentals course; it is a cache warm-up for the pieces that make the first real loop legible: examples and parameters, a forward pass, logits, loss, backward gradients, and a parameter update.*
-
 This is a fast review, not a remedial course. If these ideas are familiar but rusty, this module should put the right concepts back in working memory before Module 01. If several sections feel new, pause here and use this page as a map for a longer fundamentals pass before starting the course.
 
+---
 ## Prerequisites
 
 This module assumes you are already a competent programmer and have seen the math before. The goal is recall, not first exposure.
@@ -31,10 +30,11 @@ This module assumes you are already a competent programmer and have seen the mat
 - **Testing.** Running `pytest`, using `-x`, and reading a failing test as a contract.
 - **Numerical Python basics.** Enough NumPy or PyTorch familiarity to read `.shape`, use `@`, and understand that vectorized code runs outside the Python interpreter.
 
-### What you can skip
+## MacBook Requirements
 
-You do **not** need integration, measure theory, full convex optimization, Hessians, eigenvalue algorithms, SVD proofs, Bayesian statistics, CUDA programming, distributed systems, or production MLOps. Those are real topics, but they are not the gate for this course.
+Module 00 is almost entirely pencil-and-paper plus environment setup. The only compute check here is confirming the course setup script.
 
+---
 ## Why we start here
 
 Module 01 starts by building scalar autodiff. That only feels enlightening if derivatives, the chain rule, and "a computation as a graph" are already close at hand. Module 02 immediately moves to tensors and matrix multiplication. Module 03 adds loss functions, mini-batches, and train/validation splits. By Module 04, text has become token IDs; by Module 07, those token IDs are communicating through attention.
@@ -287,7 +287,8 @@ You do not need to know all of PyTorch. You do need:
 - `torch.no_grad()` for inference
 - enough autograd familiarity to know that `loss.backward()` fills `.grad`
 
-## Scaffolding and how to run the checks
+---
+## Setup
 
 Module 00 is a readiness review. However it's a good idea to prepare your development environment for the rest of the course.
 
@@ -298,18 +299,6 @@ Run the setup script once:
 ```
 
 If feedback shows a weak spot, ask the agent for a few focused practice problems in chat. You can answer one, some, or all of them, and the agent should grade only what you attempt.
-
-## What you'll build
-
-No package code lands in Module 00. The output is a short readiness artifact in [`answers/module-00.md`](../../answers/module-00.md) that proves the prerequisites are loaded.
-
-By the end, you should have:
-
-- One hand-traced shape example.
-- One hand-derived chain-rule gradient.
-- One softmax/cross-entropy calculation.
-- A working local environment.
-- A clear sense of which prerequisite, if any, needs a longer review before Module 01.
 
 ## Exercises
 
@@ -373,6 +362,3 @@ Optional:
 - [ ] `./setup.sh` runs successfully, including its smoke-test step.
 - [ ] You know to use `pytest -x` as the next directive while implementing.
 
-## M-series notes
-
-Module 00 is almost entirely pencil-and-paper plus environment setup. MPS matters later, starting in Module 02. The only compute check here is confirming that PyTorch can see the MPS backend on your machine.
