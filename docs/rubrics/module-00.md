@@ -1,6 +1,6 @@
 # Module 00 Rubric
 
-Use this rubric to grade submitted answers in `answers/module-00.md`. Blank `Student answer` sections are not wrong; skip them unless the student asks for a completeness check. Give feedback by exercise and avoid replacing the student's work with a full solution unless explicitly asked.
+Use this rubric to grade submitted answers in `answers/module-00.md`. If `Help request / hint request` is filled, tutor before grading and avoid giving away the full solution unless explicitly asked. Blank `Student answer` sections are not wrong; skip them unless the student asks for a completeness check. Give feedback by exercise and avoid replacing the student's work with a full solution unless explicitly asked.
 
 ## Exercise 00.01 — Shape trace
 

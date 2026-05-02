@@ -95,6 +95,15 @@ token representations     (B, T, C)
 logits over vocabulary    (B, T, V)
 ```
 
+For language-model shapes, the letters usually mean:
+
+- `B` is batch size: how many examples are processed at once.
+- `T` is sequence length: how many token positions are in each example.
+- `C` is channel or hidden size: how many numbers represent each token after lookup.
+- `V` is vocabulary size: how many distinct token IDs the tokenizer can produce.
+
+An **embedding table** is a lookup table with shape `(V, C)`: one row for each token ID, and one `C`-dimensional vector in each row. If token IDs have shape `(B, T)`, looking up each ID returns token representations with shape `(B, T, C)`. You do not need to know how embeddings are trained yet; for now, the important idea is that lookup adds the representation dimension `C`.
+
 The central operation is matrix multiplication:
 
 ```text
@@ -282,21 +291,7 @@ You do not need to know all of PyTorch. You do need:
 
 Module 00 is a readiness review. However it's a good idea to prepare your development environment for the rest of the course.
 
-Write your exercise responses in [`answers/module-00.md`](../../answers/module-00.md). You can answer one exercise, a subset, or all of them; blank sections should be skipped by the grader rather than counted wrong. When you want feedback, ask:
-
-```text
-Can you grade my answers for module 0?
-```
-
-The grader should use [`docs/rubrics/module-00.md`](../rubrics/module-00.md) to check your work without replacing your answers with a full solution.
-
-If the feedback shows a weak spot, ask for a focused drill set:
-
-```text
-Can you make me more module 0 shape-trace problems?
-```
-
-Extra drills live in [`practice/module-00/`](../../practice/module-00/). Fill in the generated practice file, then ask the agent to grade that file. The agent can write concise notes into the practice file's `Agent feedback` sections, so a later follow-up set can target exactly what still needs work. You can repeat this loop until the concept feels stable.
+Write questions or exercise responses in [`answers/module-00.md`](../../answers/module-00.md). If you are stuck, use that file's `Help request / hint request` section for the exercise instead of answering. Blank sections should be skipped by the grader rather than counted wrong.
 
 Run the environment smoke test:
 
@@ -319,6 +314,8 @@ By the end, you should have:
 - A clear sense of which prerequisite, if any, needs a longer review before Module 01.
 
 ## Exercises
+
+Enter questions or answers in [`answers/module-00.md`](../../answers/module-00.md) for agent help and grading. You can ask for a hint, answer one question, answer a subset, or answer all of them; blank answer sections are skipped rather than counted wrong.
 
 1. **Shape trace.** Let `B = 4`, `T = 8`, `C = 16`, and `V = 1000`. Token IDs have shape `(B, T)`. An embedding table has shape `(V, C)`. What is the shape after embedding lookup? If the final projection has shape `(C, V)`, what shape are the logits?
 

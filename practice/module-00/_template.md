@@ -4,10 +4,10 @@ Generated because: <one sentence about the concept being practiced>
 
 Related rubric: `docs/rubrics/module-00.md`
 
-When finished, ask:
+When ready for help or grading, ask:
 
 ```text
-Can you grade practice/module-00/set-XXX-<topic>.md?
+Can you review practice/module-00/set-XXX-<topic>.md?
 ```
 
 ## Problem P00.XXX.01 — <short title>
@@ -15,6 +15,9 @@ Can you grade practice/module-00/set-XXX-<topic>.md?
 ### Prompt
 
 <problem statement>
+
+### Help request / hint request
+
 
 ### Student answer
 
@@ -31,6 +34,9 @@ Can you grade practice/module-00/set-XXX-<topic>.md?
 
 <problem statement>
 
+### Help request / hint request
+
+
 ### Student answer
 
 
@@ -46,6 +52,9 @@ Can you grade practice/module-00/set-XXX-<topic>.md?
 
 <problem statement>
 
+### Help request / hint request
+
+
 ### Student answer
 
 
@@ -53,4 +62,3 @@ Can you grade practice/module-00/set-XXX-<topic>.md?
 
 
 ### Agent feedback
-
