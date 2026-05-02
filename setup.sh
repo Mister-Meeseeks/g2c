@@ -69,22 +69,30 @@ else
     fi
 fi
 
-REINSTALL_PYTEST=0
-if [[ -f .venv/bin/pytest ]]; then
-    PYTEST_SHEBANG=$(head -n 1 .venv/bin/pytest)
-    case "$PYTEST_SHEBANG" in
-        "#!$PROJECT_ROOT/.venv/bin/python"*) ;;
-        *)
-            warn "pytest launcher points outside this checkout; reinstalling pytest"
-            REINSTALL_PYTEST=1
-            ;;
-    esac
+REINSTALL_DEV=0
+if [[ -d .venv/bin ]]; then
+    for launcher in .venv/bin/*; do
+        [[ -f "$launcher" ]] || continue
+        IFS= read -r SHEBANG < "$launcher" || true
+        case "$SHEBANG" in
+            "#!"*".venv/bin/python"*)
+                case "$SHEBANG" in
+                    "#!$PROJECT_ROOT/.venv/bin/python"*) ;;
+                    *)
+                        warn "$(basename "$launcher") points outside this checkout; reinstalling dev deps"
+                        REINSTALL_DEV=1
+                        break
+                        ;;
+                esac
+                ;;
+        esac
+    done
 fi
 
 # ---- 4. Project deps ---------------------------------------------------------
 info "Installing g2c (editable) + dev deps"
-if [[ "$REINSTALL_PYTEST" == "1" ]]; then
-    uv pip install -e ".[dev]" --reinstall-package pytest --quiet
+if [[ "$REINSTALL_DEV" == "1" ]]; then
+    uv pip install -e ".[dev]" --reinstall --quiet
 else
     uv pip install -e ".[dev]" --quiet
 fi
