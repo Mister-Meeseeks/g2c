@@ -293,10 +293,15 @@ Module 00 is a readiness review. However it's a good idea to prepare your develo
 
 Write questions or exercise responses in [`answers/module-00.md`](../../answers/module-00.md). If you are stuck, use that file's `Help request / hint request` section for the exercise instead of answering. Blank sections should be skipped by the grader rather than counted wrong.
 
-Run the environment smoke test:
+Run the setup script once:
 
 ```bash
 ./setup.sh
+```
+
+`setup.sh` creates or reuses `.venv`, installs the project dependencies, and runs `scripts/smoke_test.py`. If you only want to rerun the smoke test after setup has already succeeded:
+
+```bash
 source .venv/bin/activate
 python scripts/smoke_test.py
 ```
@@ -340,7 +345,7 @@ Enter questions or answers in [`answers/module-00.md`](../../answers/module-00.m
 
 5. **Training-loop narration.** In five sentences or fewer, explain what happens in `forward -> loss -> backward -> step -> zero_grad`.
 
-6. **Environment check.** Run `python scripts/smoke_test.py`. If MPS is unavailable on an Apple Silicon machine, fix that before Module 02.
+6. **Environment check.** Run `./setup.sh`. It already runs `scripts/smoke_test.py`. If MPS is unavailable on an Apple Silicon machine, fix that before Module 02.
 
 ## Pitfalls to expect
 
@@ -372,7 +377,7 @@ Optional:
 - [ ] You can compute a small matmul by hand.
 - [ ] You can derive a one-neuron gradient with the chain rule.
 - [ ] You can explain logits, softmax, cross-entropy, and perplexity.
-- [ ] `python scripts/smoke_test.py` runs successfully.
+- [ ] `./setup.sh` runs successfully, including its smoke-test step.
 - [ ] You know to use `pytest -x` as the next directive while implementing.
 
 ## M-series notes

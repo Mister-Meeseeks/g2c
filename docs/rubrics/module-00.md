@@ -97,7 +97,7 @@ Common issues:
 
 A correct answer should include:
 
-- The command that was run: `python scripts/smoke_test.py`.
+- The command that was run: either `./setup.sh` for first setup or `python scripts/smoke_test.py` for a smoke-test rerun.
 - Whether it completed successfully.
 - If it failed, the relevant error and the next debugging step.
 - On an Apple Silicon machine, whether PyTorch reports MPS availability or why it does not.

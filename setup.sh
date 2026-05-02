@@ -55,18 +55,31 @@ else
     ok "venv exists"
 fi
 
+REINSTALL_PYTEST=0
+PROJECT_ROOT=$(pwd -P)
+if [[ -f .venv/bin/pytest ]]; then
+    PYTEST_SHEBANG=$(head -n 1 .venv/bin/pytest)
+    case "$PYTEST_SHEBANG" in
+        "#!$PROJECT_ROOT/.venv/bin/python"*) ;;
+        *)
+            warn "pytest launcher points outside this checkout; reinstalling pytest"
+            REINSTALL_PYTEST=1
+            ;;
+    esac
+fi
+
 # ---- 4. Project deps ---------------------------------------------------------
 info "Installing g2c (editable) + dev deps"
-uv pip install -e ".[dev]" --quiet
+if [[ "$REINSTALL_PYTEST" == "1" ]]; then
+    uv pip install -e ".[dev]" --reinstall-package pytest --quiet
+else
+    uv pip install -e ".[dev]" --quiet
+fi
 ok "deps installed"
 
 # ---- 5. Smoke test -----------------------------------------------------------
 info "Running smoke test"
 .venv/bin/python scripts/smoke_test.py
-
-# ---- 6. Test suite -----------------------------------------------------------
-info "Running pytest"
-.venv/bin/pytest
 
 echo ""
 ok "Setup complete."
