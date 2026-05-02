@@ -28,12 +28,7 @@ The math, CS, and programming concepts this module uses. If any feel rusty, the 
 - **Python dunder methods.** `__add__`, `__mul__`, `__pow__`, `__radd__`, etc. — the protocol for overloading operators on a class. Refresher: Python language reference §3.3.7 ("Emulating numeric types").
 - **Closures.** Each operation defines a `_backward` function that captures local variables (the parents and the output Value). If "closures in Python" is fuzzy, skim Fluent Python's chapter on them or any short tutorial — they're central to the autodiff implementation pattern.
 
-## MacBook Requirements 
-
-Pure Python on a single CPU thread. Runs in seconds. No PyTorch, no MPS, no installs beyond what's already in the venv.
-
 ---
-
 ## Why we start here
 
 A neural network is a function with millions to billions of adjustable knobs. Training it is the process of repeatedly nudging each knob in the direction that makes the output less wrong. To do that, you need the partial derivative of the loss with respect to every knob. For any nontrivial network, computing those derivatives by hand would be hopeless — there are too many, and they share structure.
@@ -102,7 +97,6 @@ Three subtleties worth highlighting:
 - **Loss minimization via gradient descent** — once you have `dL/dparam` for each parameter, update `param ← param - lr · dL/dparam`.
 
 ---
-
 ## What you'll build
 
 Package: `g2c/autodiff/`
@@ -182,6 +176,11 @@ Use [`notebooks/01-autodiff-xor.ipynb`](../../notebooks/01-autodiff-xor.ipynb) a
 - **Mutating inputs vs. returning new Values.** Each operation should return a new `Value`. Don't try to be clever about in-place updates — they make the graph confusing and break re-execution.
 - **Float precision in gradient checks.** Finite differences with `h = 1e-7` can give noisy comparisons. Use `h = 1e-5` and tolerate ~1e-4 absolute error.
 
+## M-Series Notes 
+
+Pure Python on a single CPU thread. Runs in seconds. No PyTorch, no MPS, no installs beyond what's already in the venv.
+
+---
 ## Reading
 
 Primary:

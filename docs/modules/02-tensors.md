@@ -4,35 +4,30 @@
 
 ![Scalar World (Module 01) vs Tensor World (Module 02): batching scalar operations into tensor ops to reduce overhead and exploit SIMD/GPU parallelism.](02-tensors/Module02-Hero.png)
 
-*The shift this module pivots on. In Module 01, every number was its own Python object; one operation at a time, high overhead, low throughput. In Module 02, identical operations across an entire input batch are bundled into a single tensor op that compiles to vectorized native code. Same math, very different execution — and it's the only reason real deep learning is computationally feasible.*
+In Module 01, every number was its own Python object; one operation at a time, high overhead, low throughput. In Module 02, identical operations across an entire input batch are bundled into a single tensor op that compiles to vectorized native code. Same math, very different execution — and it's the only reason real deep learning is computationally feasible.
 
+---
 ## Prerequisites
 
 The math, CS, and programming concepts this module uses. None of them require deep prior exposure — refresher pointers below if any feel rusty.
-
 ### Math
 
 - **Matrix-vector and matrix-matrix multiplication.** You should be able to compute a small matmul (2×3 @ 3×2) by hand. Refresher: 3Blue1Brown's "Essence of Linear Algebra" chapters 3–4 (15 min).
 - **The matmul shape rule.** `(m × k) @ (k × n) = (m × n)`. The inner dimensions must agree and they collapse; the outer dimensions become the output shape.
 - **The dot product as the building block.** Each entry of the output is the dot product of one row of the left matrix with one column of the right matrix.
-- **Asymptotic complexity at the level of intuition.** Comfortable with "this is O(n³), this is O(n²)" and what that implies as `n` grows.
-
 ### Computer science
 
 - **Memory locality (loose intuition).** Why traversing memory sequentially is much faster than jumping around. This is part of why a hand-written triple loop is slow and a vendor BLAS implementation is fast.
 - **The vectorization mental model.** Modern hardware does many arithmetic operations in parallel per clock cycle when fed contiguous data. A Python `for` loop fails to use this; a NumPy or torch op exploits it fully.
-
+- **Asymptotic complexity at the level of intuition.** Comfortable with "this is O(n³), this is O(n²)" and what that implies as `n` grows.
 ### Programming
 
 - **NumPy basics.** `np.array`, `.shape`, `.dtype`, `@` for matmul. We use NumPy as the middle benchmark rung.
 - **PyTorch tensor basics.** `torch.tensor`, `.to(device)`, `@`. Refresher: the official PyTorch "Tensors" tutorial (10 min).
 - **Tuple indexing and slicing.** Used heavily in broadcasting logic.
 
-### What you can skip
-
-You don't need autograd in this module — we use raw tensor ops without tracking gradients. (When the autodiff engine becomes tensor-shaped later in the course, we'll re-integrate them.) You don't need to know any specific deep-learning architecture yet.
-
-## Why we start here
+---
+## Why we study this
 
 The Module 01 autodiff engine works on individual scalars wrapped in `Value` objects. That's pedagogically beautiful — every node is legible. But it's hopeless for real neural networks. A small MLP on MNIST has thousands of parameters; per-Python-object overhead would make even one forward pass take minutes. A real LLM has hundreds of billions of parameters. Per-scalar Python is not just slow — it's the wrong shape of computation entirely.
 
@@ -40,15 +35,10 @@ The fix is **vectorization**: stop treating each number as its own object, batch
 
 The dominant operation in deep learning is **matrix multiplication**. Linear layers are matmul. Attention is a sequence of matmuls. Embedding lookups are an indexing-then-matmul pattern. Convolutions can be expressed as matmuls. The reason GPUs (and Apple Silicon's MPS) matter for ML is that their architectures are specifically optimized for the bandwidth-and-throughput pattern of large matmuls. Understanding matmul — its math, its memory access pattern, the cost difference between implementations — is the single most important step in seeing why hardware matters.
 
-This module has you:
-
-1. **Implement matmul three ways** — pure Python triple loop, NumPy, and PyTorch on MPS — so the speedup is something you measure rather than read about.
-2. **Implement broadcasting from scratch** on a toy class. The broadcasting rules are how you avoid writing explicit loops for "add this bias vector to every row of this matrix" — a pattern that recurs every layer of every model.
-3. **Reproduce a linear + softmax forward pass with explicit shapes**, anchoring the discipline of "always know the shape of every tensor."
 
 ![The vectorization ladder: Python loops → NumPy (BLAS) → PyTorch CPU → PyTorch MPS, with each rung roughly an order of magnitude faster than the last.](02-tensors/Module02-Ladder.png)
 
-*The same matmul, four engines. Each step up the ladder is roughly an order of magnitude faster than the one below it — Exercise 3 has you measure these gaps yourself on your own machine. Modern deep learning is feasible only because all four rungs exist; trying to train anything serious from rung 1 alone would take years per epoch.*
+*The same matmul, four engines. Each step up the ladder is roughly an order of magnitude faster than the one below it. Modern deep learning is feasible only because all four rungs exist. trying to train anything serious from rung 1 alone would take years per epoch.*
 
 ## The big idea
 
@@ -70,7 +60,7 @@ Two ideas dominate tensor-based numerical code:
 
 ![Matrix multiplication as a grid of dot products: each output entry C[i, j] is the dot product of row i of A with column j of B.](02-tensors/Module02-MatMul.png)
 
-*Matmul broken down to its atoms. Each output entry `C[i, j]` is one dot product — row `i` of `A` paired against column `j` of `B`, multiplied element-wise and summed. The triple-loop implementation in Exercise 1 just enumerates this directly: outer two loops over `(i, j)`, inner loop computing the dot product. Vendor BLAS does the same operation in a fundamentally different way (cache blocking, SIMD, parallelism), but the math is identical.*
+*Matmul broken down to its atoms. The triple-loop implementation in Exercise 1 just enumerates this directly. Vendor BLAS does the same operation in a fundamentally different way (cache blocking, SIMD, parallelism), but the math is identical.*
 
 **2. Broadcasting.** When two tensors with different but compatible shapes are combined element-wise, smaller dimensions are *implicitly stretched* without copying memory. The standard rules (NumPy and PyTorch use the same):
 
@@ -121,25 +111,7 @@ These two ideas — matmul and broadcasting — together cover an enormous fract
 - **Numerical stability of softmax.** `exp(x_i)` overflows for `x_i ≳ 88` in float32. Subtract the max along the softmax axis before exponentiating; the result is mathematically identical (softmax is shift-invariant) but stays in floating-point range.
 - **Always know your shapes.** Annotate them in comments or docstrings, especially at function boundaries. Most deep learning bugs are silent shape bugs — code that runs and produces wrong numbers because broadcasting masked an error.
 
-## Scaffolding and how to run the tests
-
-This module ships with three scaffolded files in `g2c/tensors/`:
-
-- **`matmul.py`** — three matmul implementations (`matmul_loops`, `matmul_numpy`, `matmul_torch`) scaffolded with `NotImplementedError`.
-- **`broadcasting.py`** — `broadcast_shapes` function and `TinyArray` class. The class boilerplate (`__init__`, `__repr__`, `to_nested`) is implemented; `__add__`, `__mul__`, and `broadcast_shapes` itself are scaffolded.
-- **`forward.py`** — `linear` and `softmax` scaffolded with their shape contracts in the docstrings.
-
-A pytest suite is in `tests/test_tensors.py`. Initial state: a small number of construction/repr tests pass; the rest fail informatively until you implement.
-
-```bash
-pytest tests/test_tensors.py             # run all module-02 tests
-pytest tests/test_tensors.py -x          # stop at first failure (recommended while working)
-pytest tests/test_tensors.py -k matmul   # only the matmul tests
-pytest tests/test_tensors.py -v          # verbose
-```
-
-The docstring at the top of `tests/test_tensors.py` suggests an implementation order: matmul first (each of the three implementations turns its tests green independently), then broadcasting (`broadcast_shapes` first, then `__add__` / `__mul__`), then `linear` and `softmax`.
-
+---
 ## What you'll build
 
 Package: `g2c/tensors/`
@@ -177,9 +149,20 @@ softmax(x: torch.Tensor, dim: int = -1) -> torch.Tensor
 
 A linear layer (`y = x @ W + b`) and a numerically stable softmax. Together they form the forward pass of a single-layer classifier.
 
+## How to run the tests
+
+A pytest suite is in `tests/test_tensors.py`. Initial state: a small number of construction/repr tests pass; the rest fail informatively until you implement.
+
+```bash
+pytest tests/test_tensors.py             # run all module-02 tests
+pytest tests/test_tensors.py -x          # stop at first failure (recommended while working)
+pytest tests/test_tensors.py -k matmul   # only the matmul tests
+pytest tests/test_tensors.py -v          # verbose
+```
+
 ## Exercises
 
-1. **Triple-loop matmul.** Implement `matmul_loops` and verify it on small known cases. Note the index pattern: `C[i, j] += A[i, p] * B[p, j]` summed over `p`. Three loops in one canonical order.
+1. **Triple-loop matmul.** Verify `matmul_loops` and verify it on small known cases. Note the index pattern: `C[i, j] += A[i, p] * B[p, j]` summed over `p`. Three loops in one canonical order.
 
 2. **Vectorized matmul.** Implement `matmul_numpy` (use `@` or `np.einsum("ij,jk->ik", A, B)`) and `matmul_torch` (use `@` or `torch.matmul`). Verify all three implementations agree on a randomly-generated input.
 
@@ -199,7 +182,18 @@ A linear layer (`y = x @ W + b`) and a numerically stable softmax. Together they
 - **Right-aligning the wrong way.** Broadcasting aligns shapes by their *last* (right-most) dimension. A common mistake is to align by the first. Pad on the *left* with 1s, not the right.
 - **Forgetting to consult `.shape`.** Most "this works but the numbers are wrong" bugs are silent shape mismatches that broadcasting masked. When a test fails, print shapes first.
 - **Using `torch.nn.Linear`.** Don't. The point is to write the matmul + bias yourself with explicit shape discipline.
+ 
+## M-series notes
 
+This is the first module that uses Apple Silicon GPU acceleration. The setup script's smoke test already verified MPS is available. For the benchmarks:
+
+- Expect MPS matmul to be roughly an order of magnitude faster than torch CPU on large sizes (≥512), with a smaller advantage on small sizes where kernel launch overhead dominates.
+- A few PyTorch ops still fall back to CPU on MPS even though MPS is selected as the device. For matmul this is not an issue, but if you experiment with other ops you may see warnings — they're informational, not errors.
+- The first MPS op of a session has a one-time JIT compilation cost. Do a warm-up call before timing.
+
+For the Python loop benchmark: stop at size 512 or 1024 unless you want to wait. The growth is genuinely cubic, and 2048³ Python operations is on the order of an hour.
+
+---
 ## Reading
 
 Primary:
@@ -224,14 +218,6 @@ Optional:
 - [ ] `g2c/tensors/forward.py`: `linear` and numerically stable `softmax` passing
 - [ ] `notebooks/02-matmul-benchmark.ipynb`: log-log timing plot across implementations and sizes, including MPS
 - [ ] `notebooks/02-classifier-forward.ipynb`: a one-layer classifier forward pass with shape annotations
-- [ ] You can explain, out loud, why the Python-loop matmul falls so far behind NumPy, and what would need to change in your code to close the gap (you couldn't — you'd need vendor BLAS)
+- [ ] You can explain, out loud, why the Python-loop matmul falls so far behind NumPy, and what would need to change in your code to close the gap 
 
-## M-series notes
 
-This is the first module that uses Apple Silicon GPU acceleration. The setup script's smoke test already verified MPS is available. For the benchmarks:
-
-- Expect MPS matmul to be roughly an order of magnitude faster than torch CPU on large sizes (≥512), with a smaller advantage on small sizes where kernel launch overhead dominates.
-- A few PyTorch ops still fall back to CPU on MPS even though MPS is selected as the device. For matmul this is not an issue, but if you experiment with other ops you may see warnings — they're informational, not errors.
-- The first MPS op of a session has a one-time JIT compilation cost. Do a warm-up call before timing.
-
-For the Python loop benchmark: stop at size 512 or 1024 unless you want to wait. The growth is genuinely cubic, and 2048³ Python operations is on the order of an hour.

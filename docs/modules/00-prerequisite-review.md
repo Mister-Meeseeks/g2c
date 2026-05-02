@@ -10,29 +10,22 @@ This is a fast review, not a remedial course. If these ideas are familiar but ru
 ## Prerequisites
 
 This module assumes you are already a competent programmer and have seen the math before. The goal is recall, not first exposure.
-
 ### Math
 
 - **Algebraic manipulation.** Rearranging formulas, reading subscripts, and following expressions with several variables.
 - **Derivatives.** Single-variable derivatives, partial derivatives, and the chain rule.
 - **Vectors and matrices.** Dot products, matrix multiplication, and shape reasoning.
 - **Basic probability.** Discrete distributions, expected "probability mass over choices," and logarithms.
-
 ### Computer science
 
 - **Functions and composition.** The whole course treats models as large composed functions.
 - **Loops and state.** Training loops, decode loops, and agent loops are all explicit loops with changing state.
 - **Graphs.** Computational graphs in Module 01 are directed acyclic graphs; later attention maps are dense communication graphs over tokens.
-
 ### Programming
 
 - **Python.** Classes, functions, list/dict basics, imports, virtual environments, and reading stack traces.
 - **Testing.** Running `pytest`, using `-x`, and reading a failing test as a contract.
 - **Numerical Python basics.** Enough NumPy or PyTorch familiarity to read `.shape`, use `@`, and understand that vectorized code runs outside the Python interpreter.
-
-## MacBook Requirements
-
-Module 00 is almost entirely pencil-and-paper plus environment setup. The only compute check here is confirming the course setup script.
 
 ---
 ## Why we start here
@@ -338,6 +331,7 @@ Enter questions or answers in [`answers/module-00.md`](../../answers/module-00.m
 - **Using the test suite wrong.** On scaffold branches, full-module tests are supposed to fail. Use the failing test names as implementation directives.
 - **Over-reading before coding.** If you can do the exercises above, start Module 01. The course is designed to teach by building.
 
+---
 ## Reading
 
 Primary refreshers:
