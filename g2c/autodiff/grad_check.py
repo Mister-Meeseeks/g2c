@@ -29,5 +29,6 @@ def numerical_grad(f: Callable[[Value], Value], x: Value, h: float = 1e-5) -> fl
         minus = f(Value(x.data - h)).data
         return (plus - minus) / (2 * h)
     """
-    # TODO
-    raise NotImplementedError
+    plus = f(Value(x.data + h)).data
+    minus = f(Value(x.data - h)).data
+    return (plus - minus) / (2 * h)

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 from typing import Union
+import math
 
 Number = Union[int, float]
 
@@ -64,8 +65,15 @@ class Value:
             d(out)/d(self)  = 1
             d(out)/d(other) = 1
         """
-        # TODO
-        raise NotImplementedError
+        if not isinstance(other, Value):
+            other = Value(other)
+        out = Value(self.data + other.data, (self, other), "+")
+
+        def _backward() -> None:
+            self.grad += out.grad * 1.0
+            other.grad += out.grad * 1.0
+        out._backward = _backward
+        return out
 
     def __mul__(self, other: Union["Value", Number]) -> "Value":
         """Forward: self * other.
@@ -74,8 +82,15 @@ class Value:
             d(out)/d(self)  = other.data
             d(out)/d(other) = self.data
         """
-        # TODO
-        raise NotImplementedError
+        if not isinstance(other, Value):
+            other = Value(other)
+        out = Value(self.data * other.data, (self, other), "*")
+
+        def _backward() -> None:
+            self.grad += out.grad * other.data
+            other.grad += out.grad * self.data
+        out._backward = _backward
+        return out
 
     def __pow__(self, exponent: Number) -> "Value":
         """Forward: self ** exponent. `exponent` is a numeric constant.
@@ -83,8 +98,12 @@ class Value:
         Local rule:
             d(out)/d(self) = exponent * self.data ** (exponent - 1)
         """
-        # TODO
-        raise NotImplementedError
+        out = Value(self.data ** exponent, (self,), f"**{exponent}")
+
+        def _backward() -> None:
+            self.grad += out.grad * exponent * self.data ** (exponent - 1)
+        out._backward = _backward
+        return out  
 
     def exp(self) -> "Value":
         """Forward: e ** self.
@@ -92,8 +111,12 @@ class Value:
         Local rule:
             d(out)/d(self) = e ** self.data    (which equals out.data)
         """
-        # TODO
-        raise NotImplementedError
+        out = Value(math.exp(self.data), (self,), "exp")
+
+        def _backward() -> None:
+            self.grad += out.grad * out.data
+        out._backward = _backward
+        return out
 
     def log(self) -> "Value":
         """Forward: ln(self). Requires self.data > 0.
@@ -101,8 +124,12 @@ class Value:
         Local rule:
             d(out)/d(self) = 1 / self.data
         """
-        # TODO
-        raise NotImplementedError
+        out = Value(math.log(self.data), (self,), "log")
+
+        def _backward() -> None:
+            self.grad += out.grad * (1 / self.data)
+        out._backward = _backward
+        return out
 
     def tanh(self) -> "Value":
         """Forward: tanh(self).
@@ -110,8 +137,13 @@ class Value:
         Local rule:
             d(out)/d(self) = 1 - tanh(self.data) ** 2     (= 1 - out.data ** 2)
         """
-        # TODO
-        raise NotImplementedError
+        t = math.tanh(self.data)
+        out = Value(t, (self,), "tanh")
+
+        def _backward() -> None:
+            self.grad += out.grad * (1 - t ** 2)
+        out._backward = _backward
+        return out
 
     def relu(self) -> "Value":
         """Forward: max(0, self).
@@ -119,8 +151,12 @@ class Value:
         Local rule:
             d(out)/d(self) = 1 if self.data > 0 else 0
         """
-        # TODO
-        raise NotImplementedError
+        out = Value(self.data if self.data > 0 else 0, (self,), "ReLU")
+
+        def _backward() -> None:
+            self.grad += out.grad * (1.0 if self.data > 0 else 0.0)
+        out._backward = _backward
+        return out
 
     # ------------------------------------------------------------------
     # The reverse pass — STUDENT IMPLEMENTS
@@ -136,8 +172,22 @@ class Value:
           3. Walk the topological order in REVERSE, calling each node's
              `_backward()` to accumulate gradients into its parents' `.grad`.
         """
-        # TODO
-        raise NotImplementedError
+        topo_nodes = self.topological_sort()
+        topo_nodes.reverse()
+
+        self.grad = 1.0
+        for node in topo_nodes:
+            node._backward()
+
+    def topological_sort(self) -> list[Value]:
+        topo_nodes: list[Value] = []
+        for node in self._prev:
+            next_nodes = node.topological_sort()
+            for next_node in next_nodes:
+                if next_node not in topo_nodes:
+                    topo_nodes.append(next_node)
+        topo_nodes.append(self)
+        return topo_nodes
 
     # ------------------------------------------------------------------
     # Convenience operators — already implemented in terms of the primitives.
