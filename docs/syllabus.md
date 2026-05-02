@@ -2,7 +2,7 @@
 
 ![Cover illustration: a circus-themed map of the course. Numbered booths under a big top represent each of the twenty modules — pretraining, tokenization, embeddings, gradient descent, self-attention, multi-head attention, the transformer (a central tower of "Add & Norm / Feed Forward / Multi-Head Attention" floors), sampling, SFT, DPO, RAG, tools, the agent, the eval inspector, and an "inference booth" robot at the bottom. Banners read "A tiny LLM stack from first principles," "Data. Compute. Curiosity. That's all you need," and "Built step by step under the big top."](CourseCover.png)
 
-A 20-week self-study course building a tiny LLM stack from scalar autograd up through a working chat assistant. Each week builds on the previous one. The codebase grows in `g2c/` as a single Python package; later modules import earlier ones.
+A 20-week self-study course, preceded by a fast prerequisite review, building a tiny LLM stack from scalar autograd up through a working chat assistant. Each week builds on the previous one. The codebase grows in `g2c/` as a single Python package; later modules import earlier ones.
 
 ## How to read this syllabus
 
@@ -19,6 +19,8 @@ Each week has the same structure:
 
 A "week" is one week of effort at the level of a rigorous elite-college course. Real calendar time will vary.
 
+Module 0 is the exception: it is a fast review, not a full course week. Use it to put the necessary math, ML, PyTorch, and repo mechanics back in working memory before starting Module 1.
+
 ## Prerequisites
 
 - Comfortable Python and software engineering hygiene (testing, packaging, debugging).
@@ -26,6 +28,8 @@ A "week" is one week of effort at the level of a rigorous elite-college course. 
 - Linear algebra: matrix-vector products, inner products, basis transformations.
 - Classical ML literacy (regression, classification, train/val/test, overfitting).
 - Limited prior deep-learning experience is expected — DL concepts are introduced as new material.
+
+If these are familiar but rusty, start with [Module 0: Prerequisite review](modules/00-prerequisite-review.md). If several are new, treat Module 0 as a map for a longer fundamentals pass before beginning the course.
 
 ## Stack
 
@@ -47,6 +51,7 @@ A "week" is one week of effort at the level of a rigorous elite-college course. 
 
 | Phase | Weeks | Theme |
 |---|---|---|
+| 0 — Review | 0 | Fast prerequisite refresh |
 | I — Foundations | 1–3 | Scalar autograd → tensors → first neural net |
 | II — Language gets in | 4–6 | Tokenization → embeddings/positions → next-token prediction |
 | III — The transformer | 7–10 | Attention → multi-head → block → pretrain a tiny GPT |
@@ -54,6 +59,22 @@ A "week" is one week of effort at the level of a rigorous elite-college course. 
 | V — Assistant systems | 16–20 | Pretrained inference → RAG → tools → agents → capstone |
 
 ---
+
+## Module 0 — Prerequisite review — [module ↗](modules/00-prerequisite-review.md)
+
+- **Question.** What do I need back in cache before building the stack?
+- **Goal.** Refresh the exact prerequisite surface the course depends on: shapes, matmul, derivatives, chain rule, logits, softmax, cross-entropy, train/validation workflow, PyTorch tensors, and repo mechanics.
+- **Concepts.** The training loop as the anchor; tensors and shape contracts; local derivatives and reverse-mode backprop; logits as unnormalized scores; loss as the scalar training signal; mini-batch optimization; `pytest -x` as the implementation workflow.
+- **Build.** No package code. This is a readiness review and environment check.
+- **Exercises.**
+  - Trace tensor shapes through embedding lookup and a projection to vocabulary logits.
+  - Compute a small matrix multiply by hand.
+  - Derive a one-neuron gradient with the chain rule.
+  - Compute a softmax and negative log likelihood from small logits.
+  - Run the repo smoke test.
+- **Deliverable.** A short readiness artifact — notes, a scratch notebook, or course journal page — proving you can trace one training step end-to-end.
+- **Reading.** 3Blue1Brown linear algebra and backprop refreshers; PyTorch "Tensors" tutorial; Karpathy's micrograd lecture as the bridge into Module 1.
+- **M-series notes.** Environment setup only. MPS becomes operationally relevant in Module 2.
 
 ## Phase I — Foundations
 
@@ -338,7 +359,7 @@ A "week" is one week of effort at the level of a rigorous elite-college course. 
 - **Reading.** Yao et al., "ReAct"; Anthropic, "Building Effective Agents"; Park et al., "Generative Agents" (skim); SWE-bench / GAIA papers (skim).
 - **M-series notes.** Loop length × per-step inference cost — keep contexts tight.
 
-### Week 20 — Capstone: a tiny ChatGPT
+### Week 20 — Capstone: a tiny ChatGPT — [module ↗](modules/20-capstone.md)
 
 - **Question.** Can I integrate everything?
 - **Goal.** Ship a working assistant that you understand end-to-end.

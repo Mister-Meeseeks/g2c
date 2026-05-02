@@ -12,10 +12,11 @@ The hard constraint: **all tasks must be runnable on an M-series MacBook**, with
 
 ## Contents
 
-Start with the [syllabus](docs/syllabus.md) for the full 20-week arc. Lessons published so far:
+Start with the [syllabus](docs/syllabus.md) for the full 20-week arc plus the fast Module 00 review. Lessons published so far:
 
 | #  | Module                                                          | Phase                |
 | -- | --------------------------------------------------------------- | -------------------- |
+| 00 | [Prerequisite review](docs/modules/00-prerequisite-review.md)   | 0 — Review           |
 | 01 | [Scalar autodiff](docs/modules/01-autodiff.md)                  | I — Foundations      |
 | 02 | [Tensors and matmul](docs/modules/02-tensors.md)                | I — Foundations      |
 | 03 | [A first neural network](docs/modules/03-nn.md)                 | I — Foundations      |
@@ -35,6 +36,7 @@ Start with the [syllabus](docs/syllabus.md) for the full 20-week arc. Lessons pu
 | 17 | [Retrieval-augmented generation](docs/modules/17-rag.md)         | V — Assistant systems |
 | 18 | [Tool use](docs/modules/18-tools.md)                            | V — Assistant systems |
 | 19 | [Agent loops](docs/modules/19-agent.md)                         | V — Assistant systems |
+| 20 | [Capstone: a tiny ChatGPT](docs/modules/20-capstone.md)         | V — Assistant systems |
 
 ## Foundational choices
 
@@ -51,6 +53,7 @@ docs/
   CourseCover.png       # cover illustration (used in README)
   syllabus.md           # the detailed syllabus
   modules/
+    00-prerequisite-review.md
     01-autodiff.md      # lesson, motivation, exercises, deliverable spec
     01-autodiff/        # assets for module 01 (diagrams, supplementary files)
     02-tensors.md
@@ -95,7 +98,7 @@ pytest                          # run tests
 python scripts/smoke_test.py    # re-run env health check
 ```
 
-Begin with `docs/syllabus.md`, then `docs/modules/01-autodiff.md`.
+Begin with `docs/syllabus.md`, then `docs/modules/00-prerequisite-review.md`, then `docs/modules/01-autodiff.md`.
 
 ## Branching model
 
