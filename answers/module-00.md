@@ -14,7 +14,7 @@ Can you review my module 0 answers?
 
 
 ### Student answer
-
+After embedding lookup the shape is (B,T,C) this is (4,8,16) because each token gets projected to a vector of length C. The logits have shape (B,T,V) this is (4,8,1000) because each token has a logic across every possible token. 
 
 ### Notes / uncertainty
 
@@ -26,6 +26,8 @@ Can you review my module 0 answers?
 
 ### Student answer
 
+| 220   280 |
+| 490   640 |
 
 ### Notes / uncertainty
 
@@ -36,8 +38,9 @@ Can you review my module 0 answers?
 
 
 ### Student answer
-
-
+dL/db = (2a - 2 * target) * (1 - a^2) 
+dL/dx = w * (2a - 2 * target) * (1 - a^2)
+dL/dw = x * (2a - 2 * target) * (1 - a^2)
 ### Notes / uncertainty
 
 
@@ -47,10 +50,11 @@ Can you review my module 0 answers?
 
 
 ### Student answer
-
+Probabilities: 0.665, 0.245, 0.09
+Neg log likelihod: 0.4, 1.4, 2.4
 
 ### Notes / uncertainty
-
+Values are rounded
 
 ## Exercise 00.05 — Training-loop narration
 
@@ -58,7 +62,7 @@ Can you review my module 0 answers?
 
 
 ### Student answer
-
+In the loop logits are generated in the forward. Then a loss score for the entire batch is calculated. Then backprop is used to derive the gradient of the loss against each parameter. The gradient is multiplier by a step size along each parameter dimension. This step is added back to the previous parameter values. And then the loop repeats 
 
 ### Notes / uncertainty
 
@@ -69,6 +73,6 @@ Can you review my module 0 answers?
 
 
 ### Student answer
-
+Environmnet works. MPS is installed
 
 ### Notes / uncertainty
