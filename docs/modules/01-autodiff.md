@@ -117,6 +117,8 @@ python -m pytest tests/test_autodiff.py -v         # verbose: list every test
 
 The docstring at the top of `tests/test_autodiff.py` suggests an implementation order: primitives first (each turns its own batch of forward + backward tests green), then `backward()` lights up all the composition + gradient-accumulation tests at once, then `numerical_grad` finishes it off.
 
+After the tests pass, use [`notebooks/01-autodiff-xor.ipynb`](../../notebooks/01-autodiff-xor.ipynb) as the interactive workspace for the hand-checks, gradient checks, single-neuron update, XOR MLP, and topology stress test.
+
 ## What you'll build
 
 Package: `g2c/autodiff/`
