@@ -8,8 +8,6 @@ This repo contains both the instructional material and the student work product.
 
 The hard constraint: **all tasks must be runnable on an M-series MacBook**, without access to expensive cloud environments or GPUs.
 
-(The repository directory is historically named `scalarToLLM`; the formal course title is *From Gradients to ChatGPT*.)
-
 ## Contents
 
 Start with the [syllabus](docs/syllabus.md) for the full 20-week arc plus the fast Module 00 review. Lessons published so far:

@@ -297,6 +297,8 @@ Run the setup script once:
 ./setup.sh
 ```
 
+If feedback shows a weak spot, ask the agent for a few focused practice problems in chat. You can answer one, some, or all of them, and the agent should grade only what you attempt.
+
 ## What you'll build
 
 No package code lands in Module 00. The output is a short readiness artifact in [`answers/module-00.md`](../../answers/module-00.md) that proves the prerequisites are loaded.
