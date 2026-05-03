@@ -130,18 +130,24 @@ class BPETokenizer:
 
 About 50 lines of real implementation in total. The smallest module's worth of code in the course so far — and yet it's a surprisingly capable tokenizer.
 
-## How to run the tests
+## Scaffolding and how to run the tests
 
 Tests live in `tests/test_tokenizer.py`. Initial state: 3 passed (the construction tests verifying the base vocab), 29 failed.
 
 ```bash
-pytest tests/test_tokenizer.py             # run all module-04 tests
-pytest tests/test_tokenizer.py -x          # stop at first failure (recommended)
-pytest tests/test_tokenizer.py -k pair     # only the _get_pair_counts tests
-pytest tests/test_tokenizer.py -v          # verbose
+.venv/bin/python -m pytest tests/test_tokenizer.py             # run all module-04 tests
+.venv/bin/python -m pytest tests/test_tokenizer.py -x          # stop at first failure
+.venv/bin/python -m pytest tests/test_tokenizer.py -k pair     # only pair-count tests
+.venv/bin/python -m pytest tests/test_tokenizer.py -v          # verbose
 ```
 
 ## Exercises
+
+Set up or resume the working notebook for this exercise set by running:
+
+```bash
+.venv/bin/python scripts/open_notebook.py 04
+```
 
 1. **Implement and test `_get_pair_counts` and `_merge` first.** These are the algorithmic atoms. Their tests are pure data-structure exercises — no string handling, no UTF-8 — so you can verify them in isolation before tackling the bigger methods. Pay attention to the overlap rule in `_merge`: `[1, 1, 1]` merging `(1, 1)` produces `[99, 1]`, not `[99, 99]`.
 
@@ -149,7 +155,7 @@ pytest tests/test_tokenizer.py -v          # verbose
 
 3. **Implement `encode` and `decode`, then verify round-trip.** The round-trip property — `decode(encode(text)) == text` for any text, including multi-byte Unicode — is the headline correctness check. The test suite hammers this from several angles.
 
-4. **Train at three different vocab sizes and compare.** In `notebooks/04-tokenizer-vocab-sizes.ipynb`: train your tokenizer on a corpus (TinyShakespeare is a good choice — ~1MB of text, available everywhere) at vocab sizes 256 (no merges), 1024, and 8192. Tokenize the same passage with each and report the token count. Plot vocab size vs. compression ratio. The shape of that curve tells you what "diminishing returns" looks like in BPE land.
+4. **Train at three different vocab sizes and compare.** In the Module 04 notebook: train your tokenizer on a corpus (TinyShakespeare is a good choice — ~1MB of text, available everywhere) at vocab sizes 256 (no merges), 1024, and 8192. Tokenize the same passage with each and report the token count. Plot vocab size vs. compression ratio. The shape of that curve tells you what "diminishing returns" looks like in BPE land.
 
 5. **Visualize learned tokens.** Print the first 20 and the last 20 entries of `tok.vocab` after training. The first entries (lowest IDs above 255) should be the most common bigrams in the corpus — short, high-frequency. The last entries should be longer, more specific subwords. This is the ladder of generality BPE builds, made visible.
 
@@ -163,6 +169,7 @@ pytest tests/test_tokenizer.py -v          # verbose
 - **`encode` infinite loop.** If your encode logic finds a merge to apply but doesn't actually shorten the list, you'll loop forever. Always verify the new list is shorter than the old.
 - **UTF-8 decode of partial sequences.** If you ever construct an ID list that doesn't correspond to a valid UTF-8 byte stream, `bytes.decode("utf-8")` raises. Use `errors="replace"` for robustness — but a correct `encode/decode` round-trip should never trigger this.
 - **Performance on big corpora.** A naive implementation re-counts all pairs on the full sequence every iteration: O(n) per merge × thousands of merges = slow on real corpora. For training on TinyShakespeare it's fine; if you wanted to train on Wikipedia you'd need to keep counts incrementally. For this course's scope, the naive version is the right call.
+
 ## M-series notes
 
 This module is pure CPU. No GPU, no MPS — every operation is pointer chasing through Python data structures.
@@ -191,8 +198,6 @@ Optional:
 ## Deliverable checklist
 
 - [ ] All tests in `tests/test_tokenizer.py` pass.
-- [ ] `notebooks/04-tokenizer-vocab-sizes.ipynb`: trained on a real corpus at three vocab sizes; token count + compression ratio table; printed top-20 / bottom-20 of learned vocab at the largest size.
+- [ ] `notebooks/solutions/04-tokenizer.ipynb`: trained on a real corpus at three vocab sizes; token count + compression ratio table; printed top-20 / bottom-20 of learned vocab at the largest size.
 - [ ] You've inspected the learned vocabulary and can point to a few subword tokens that are obviously frequent patterns (`"the"`, `"ing"`, `" of"`, etc.) and a few that are more specific to your corpus.
 - [ ] You can explain — out loud, without notes — why `[1, 1, 1]` merging `(1, 1)` produces `[99, 1]`, not `[99, 99]`.
-
-
