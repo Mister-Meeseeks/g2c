@@ -161,8 +161,12 @@ class Value:
         Hints:
             Make sure to initialize self.grad at 1.0.
         """
-        # TODO
-        raise NotImplementedError
+        topo_nodes = self.topological_sort()
+        topo_nodes.reverse()
+
+        self.grad = 1.0
+        for node in topo_nodes:
+            node._backward()
     
     # ------------------------------------------------------------------
     # Helper for backward() — STUDENT IMPLEMENTS
@@ -176,14 +180,6 @@ class Value:
         Hint: 
             You will have to use recursion. Don't add the same node twice.
         """
-        topo_nodes = self.topological_sort()
-        topo_nodes.reverse()
-
-        self.grad = 1.0
-        for node in topo_nodes:
-            node._backward()
-
-    def topological_sort(self) -> list[Value]:
         topo_nodes: list[Value] = []
         for node in self._prev:
             next_nodes = node.topological_sort()
