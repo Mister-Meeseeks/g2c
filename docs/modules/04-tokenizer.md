@@ -130,26 +130,15 @@ class BPETokenizer:
 
 About 50 lines of real implementation in total. The smallest module's worth of code in the course so far — and yet it's a surprisingly capable tokenizer.
 
-<<<<<<< HEAD
 ## How to run the tests
-=======
-## Scaffolding and how to run the tests
->>>>>>> master
 
 Tests live in `tests/test_tokenizer.py`. Initial state: 3 passed (the construction tests verifying the base vocab), 29 failed.
 
 ```bash
-<<<<<<< HEAD
-pytest tests/test_tokenizer.py             # run all module-04 tests
-pytest tests/test_tokenizer.py -x          # stop at first failure (recommended)
-pytest tests/test_tokenizer.py -k pair     # only the _get_pair_counts tests
-pytest tests/test_tokenizer.py -v          # verbose
-=======
 .venv/bin/python -m pytest tests/test_tokenizer.py             # run all module-04 tests
 .venv/bin/python -m pytest tests/test_tokenizer.py -x          # stop at first failure
 .venv/bin/python -m pytest tests/test_tokenizer.py -k pair     # only pair-count tests
 .venv/bin/python -m pytest tests/test_tokenizer.py -v          # verbose
->>>>>>> master
 ```
 
 ## Exercises
