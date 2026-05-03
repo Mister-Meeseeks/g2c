@@ -146,7 +146,7 @@ softmax(x: torch.Tensor, dim: int = -1) -> torch.Tensor
 
 A linear layer (`y = x @ W + b`) and a numerically stable softmax. Together they form the forward pass of a single-layer classifier.
 
-## How to run the tests
+## Scaffolding and how to run the tests
 
 A pytest suite is in `tests/test_tensors.py`. Initial state: a small number of construction/repr tests pass; the rest fail informatively until you implement.
 

@@ -4,32 +4,24 @@
 
 ![From text to token IDs: raw text → UTF-8 bytes → BPE tokens (greedy pair merges) → integer ID sequence → model input. Robust (no OOV), efficient, learned from data, lossless, and the foundation every LLM is built on.](04-tokenizer/Module04-Hero.png)
 
-*The whole pipeline that turns `"The quick brown fox..."` into the integer list a model actually sees. Stage 3 — finding and merging the most frequent adjacent byte pairs — is the entire BPE algorithm and the only part you have to implement; the bytes-in / IDs-out wrappers around it are mechanical. Stage 5 (embedding lookup) is Module 05.*
+The whole pipeline that turns `"The quick brown fox..."` into the integer list a model actually sees. Finding and merging the most frequent adjacent byte pairs is the entire BPE algorithm.
 
+---
 ## Prerequisites
-
-The math, CS, and programming concepts this module uses. The first non-numerical module of the course — the prerequisites are mostly classical-algorithmic.
-
-### Math
-
-- None to speak of. There is no calculus, linear algebra, or probability in this module. Tokenization is a string-processing problem dressed up in clever choices.
 
 ### Computer science
 
 - **Frequency counting with hash maps.** Build a dict of `pair → count` in one pass over a sequence. The single most-used technique in the BPE algorithm.
-- **Greedy algorithms.** BPE is greedy in two places: at training time it merges the most-frequent pair available, and at encode time it applies the earliest-learned applicable merge. Comfortable with "make the locally best choice; iterate" as a strategy is enough.
+- **Greedy algorithms.** Comfort with "make the locally best choice; iterate" as a strategy is enough.
 - **Sliding-window scans.** Adjacent-pair counting and merge application are both window-of-2 scans over a list.
 
 ### Programming
 
-- **Python `bytes` and UTF-8.** A `bytes` object is a sequence of integers in `[0, 256)`. `"héllo".encode("utf-8")` returns `b'h\xc3\xa9llo'`, a 6-byte sequence (the `é` character is 2 bytes). `bytes.decode("utf-8")` reverses it. UTF-8 is variable-width: ASCII is 1 byte, common European characters 2, CJK 3, emoji 4.
+- **Python `bytes` and UTF-8.** A `bytes` object is a sequence of integers in `[0, 256)`. UTF-8 is variable-width: ASCII is 1 byte, common European characters 2, emoji 4. `bytes.encode()` and `bytes.decode()`
 - **Dict iteration order.** Since Python 3.7, dicts preserve insertion order. We rely on this for "earliest learned merge wins" priority.
 
-### What you can skip
-
-You don't need any tensors or PyTorch in this module. You don't need to know any LLM architecture. The output of this module — a list of integer token IDs — is what feeds into Module 05 (embeddings) and beyond, but that's later.
-
-## Why we start here
+---
+## Why we tokenize
 
 The course up to this point has worked with numbers. Real LLMs work with text. Tokenization is the bridge between the two — the function that turns `"The quick brown fox"` into `[464, 2068, 7586, 21831]` and back. Every input to every transformer in production goes through a tokenizer first; every output comes from one in reverse. It's the first thing you'd build in an LLM pipeline and the last thing in inference.
 
@@ -113,23 +105,7 @@ The whole thing is ~50 lines of Python. The cleverness is in the choice — BPE 
 - **Lossless round-trip is structural.** As long as every byte ends up in the vocab and merges are concatenations of their parents, `decode(encode(text)) == text` for any UTF-8 string. This is not a property you have to test for at every input — it's guaranteed by the construction.
 - **Vocab size is a tunable knob.** Bigger vocab → more compression on the training distribution → shorter sequences but more parameters in the embedding table. Real LLMs use 32k–200k range.
 
-## Scaffolding and how to run the tests
-
-This module ships with one scaffolded file:
-
-- **`g2c/tokenizer/bpe.py`** — `BPETokenizer` class. The `__init__` (which sets up the 256-entry byte-level base vocab) is implemented. The five real pieces — `_get_pair_counts`, `_merge`, `train`, `encode`, `decode` — are scaffolded with detailed contract docstrings.
-
-Tests live in `tests/test_tokenizer.py`. Initial state: 3 passed (the construction tests verifying the base vocab), 29 failed.
-
-```bash
-pytest tests/test_tokenizer.py             # run all module-04 tests
-pytest tests/test_tokenizer.py -x          # stop at first failure (recommended)
-pytest tests/test_tokenizer.py -k pair     # only the _get_pair_counts tests
-pytest tests/test_tokenizer.py -v          # verbose
-```
-
-The docstring at the top of `tests/test_tokenizer.py` gives the implementation order. Each piece's tests live in their own block, so once you implement `_get_pair_counts` exactly its tests turn green; same for `_merge`; and so on. The round-trip tests at the end need both `encode` and `decode` to be working.
-
+---
 ## What you'll build
 
 Package: `g2c/tokenizer/`
@@ -154,6 +130,17 @@ class BPETokenizer:
 
 About 50 lines of real implementation in total. The smallest module's worth of code in the course so far — and yet it's a surprisingly capable tokenizer.
 
+## How to run the tests
+
+Tests live in `tests/test_tokenizer.py`. Initial state: 3 passed (the construction tests verifying the base vocab), 29 failed.
+
+```bash
+pytest tests/test_tokenizer.py             # run all module-04 tests
+pytest tests/test_tokenizer.py -x          # stop at first failure (recommended)
+pytest tests/test_tokenizer.py -k pair     # only the _get_pair_counts tests
+pytest tests/test_tokenizer.py -v          # verbose
+```
+
 ## Exercises
 
 1. **Implement and test `_get_pair_counts` and `_merge` first.** These are the algorithmic atoms. Their tests are pure data-structure exercises — no string handling, no UTF-8 — so you can verify them in isolation before tackling the bigger methods. Pay attention to the overlap rule in `_merge`: `[1, 1, 1]` merging `(1, 1)` produces `[99, 1]`, not `[99, 99]`.
@@ -176,7 +163,15 @@ About 50 lines of real implementation in total. The smallest module's worth of c
 - **`encode` infinite loop.** If your encode logic finds a merge to apply but doesn't actually shorten the list, you'll loop forever. Always verify the new list is shorter than the old.
 - **UTF-8 decode of partial sequences.** If you ever construct an ID list that doesn't correspond to a valid UTF-8 byte stream, `bytes.decode("utf-8")` raises. Use `errors="replace"` for robustness — but a correct `encode/decode` round-trip should never trigger this.
 - **Performance on big corpora.** A naive implementation re-counts all pairs on the full sequence every iteration: O(n) per merge × thousands of merges = slow on real corpora. For training on TinyShakespeare it's fine; if you wanted to train on Wikipedia you'd need to keep counts incrementally. For this course's scope, the naive version is the right call.
+## M-series notes
 
+This module is pure CPU. No GPU, no MPS — every operation is pointer chasing through Python data structures.
+
+- Training on TinyShakespeare (~1MB, ~1M characters) at `vocab_size=8192` takes 1–5 minutes on a typical M-series machine. Most of the time is spent recounting all pairs after each merge — that's where the naive implementation pays its O(n²) cost.
+- Training on a much smaller corpus (a few KB) finishes in seconds.
+- If you want to scale to 100MB+ corpora, you'd want incremental pair counting; but for the course's scope, the naive version is plenty.
+
+---
 ## Reading
 
 Primary:
@@ -200,10 +195,4 @@ Optional:
 - [ ] You've inspected the learned vocabulary and can point to a few subword tokens that are obviously frequent patterns (`"the"`, `"ing"`, `" of"`, etc.) and a few that are more specific to your corpus.
 - [ ] You can explain — out loud, without notes — why `[1, 1, 1]` merging `(1, 1)` produces `[99, 1]`, not `[99, 99]`.
 
-## M-series notes
 
-This module is pure CPU. No GPU, no MPS — every operation is pointer chasing through Python data structures.
-
-- Training on TinyShakespeare (~1MB, ~1M characters) at `vocab_size=8192` takes 1–5 minutes on a typical M-series machine. Most of the time is spent recounting all pairs after each merge — that's where the naive implementation pays its O(n²) cost.
-- Training on a much smaller corpus (a few KB) finishes in seconds.
-- If you want to scale to 100MB+ corpora, you'd want incremental pair counting; but for the course's scope, the naive version is plenty.
