@@ -98,7 +98,51 @@ else
 fi
 ok "deps installed"
 
-# ---- 5. Smoke test -----------------------------------------------------------
+# ---- 5. Optional data assets -------------------------------------------------
+GLOVE_FILE="data/glove.6B.50d.txt"
+GLOVE_ZIP="data/glove.6B.zip"
+GLOVE_URL="https://downloads.cs.stanford.edu/nlp/data/glove.6B.zip"
+
+info "Checking GloVe vectors"
+if [[ -f "$GLOVE_FILE" ]]; then
+    ok "$GLOVE_FILE exists"
+else
+    mkdir -p data
+
+    if ! command -v curl >/dev/null 2>&1; then
+        fail "curl not found; needed to download $GLOVE_URL"
+    fi
+    if ! command -v unzip >/dev/null 2>&1; then
+        fail "unzip not found; needed to extract $GLOVE_FILE"
+    fi
+
+    if [[ -f "$GLOVE_ZIP" ]] && unzip -t "$GLOVE_ZIP" glove.6B.50d.txt >/dev/null 2>&1; then
+        ok "existing $GLOVE_ZIP contains glove.6B.50d.txt"
+    else
+        warn "$GLOVE_FILE not found; downloading GloVe 6B archive (~822MB)"
+        if [[ -f "$GLOVE_ZIP" ]]; then
+            info "Resuming existing download at $GLOVE_ZIP"
+            if ! curl --fail --location --continue-at - --output "$GLOVE_ZIP" "$GLOVE_URL"; then
+                warn "resume failed; restarting GloVe download"
+                rm -f "$GLOVE_ZIP"
+                curl --fail --location --output "$GLOVE_ZIP" "$GLOVE_URL"
+            fi
+        else
+            curl --fail --location --output "$GLOVE_ZIP" "$GLOVE_URL"
+        fi
+    fi
+
+    info "Extracting glove.6B.50d.txt"
+    unzip -o "$GLOVE_ZIP" glove.6B.50d.txt -d data
+    rm -f "$GLOVE_ZIP"
+
+    if [[ ! -f "$GLOVE_FILE" ]]; then
+        fail "expected $GLOVE_FILE after extraction, but it was not found"
+    fi
+    ok "$GLOVE_FILE ready"
+fi
+
+# ---- 6. Smoke test -----------------------------------------------------------
 info "Running smoke test"
 .venv/bin/python scripts/smoke_test.py
 

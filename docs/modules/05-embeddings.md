@@ -200,19 +200,21 @@ The clean scaffold lives at `notebooks/clean/05-embeddings.ipynb`; do your work 
 
 ## Exercises
 
-1. **Implement `TokenEmbedding` and `LearnedPositionalEmbedding` first.** They're the simplest, mechanically identical, and their tests are quick to turn green. Both forwards are one-liners.
+The implementation path is the test suite above. The notebook starts with an executable test gate, then turns the implemented pieces into prediction, inspection, and explanation exercises.
 
-2. **Implement `SinusoidalPositionalEmbedding`.** The table-building in `__init__` is the lesson — translating the Vaswani formula into vectorized PyTorch. The recipe is in the scaffolded docstring; follow the steps. Verify with `test_sinusoidal_known_value_at_pos_one_dim_zero` (that's `sin(1.0)`) and `_dim_one` (that's `cos(1.0)`).
+1. **Token and learned position lookups.** Predict the output shape when token IDs shaped `(B, T)` index an embedding table shaped `(V, C)`. Verify that token vectors are literal rows from the table, then explain why a `(T, C)` learned position table broadcasts cleanly across a `(B, T, C)` batch.
 
-3. **Implement `RotaryEmbedding.__init__`.** Build the cos/sin tables. The trick is the `torch.cat([freqs, freqs], dim=-1)` step — that's what makes the split-halves variant align with `_rotate_half`. Verify with `test_rotary_cos_at_position_zero_is_one`.
+2. **Inspect sinusoidal positional encoding.** Build a small sinusoidal table and check the position-zero values. Plot the heatmap and describe the multi-frequency pattern. The point is to see the formula as a table, not just to pass the constructor tests.
 
-4. **Implement `RotaryEmbedding.forward`.** Two-line recipe: slice cos/sin to seq_len, return `x * cos + _rotate_half(x) * sin`. The test_rotary_relative_position_property is the real correctness check — if your rotation isn't a true rotation, the dot product will depend on absolute position and the test will fail.
+3. **Inspect RoPE table construction.** Instantiate a small RoPE table, inspect `cos[0]` and `sin[0]`, and explain the split-halves pairing convention. Make sure you can say why the cos/sin tables have shape `(max_seq_len, embedding_dim)`.
 
-5. **Train a tiny embedding model on word co-occurrence.** In the Module 05 notebook: pick a small corpus, tokenize with your Module 04 BPE, build a tiny model that predicts a token given its context window, and train it. Visualize the learned embeddings with the provided 2D projection helper. Look for clusters of related tokens.
+4. **Verify RoPE's relative-position behavior.** Run the notebook's rotated-dot-product check for several absolute position pairs with the same relative offset. Explain why the scores match and why that property is useful for attention.
 
-6. **Replicate `king − man + woman ≈ queen` on a pretrained model.** Download a small set of pretrained word vectors (GloVe, ~100MB; or even better, `gensim`'s `glove-wiki-gigaword-50`). Verify the analogy. Try a few others: `Paris − France + Italy ≈ Rome`. Then attempt the same on the embeddings you trained in exercise 5 — your tiny model probably won't recover these analogies, and it's instructive to see how much corpus and capacity matter.
+5. **Train tiny co-occurrence embeddings.** Use the notebook's skip-gram scaffold: tokenize a small corpus, generate center/context pairs, train a tiny model, and plot the learned embedding rows in 2D. Look for any visible structure, but be honest about what a tiny corpus can and cannot learn.
 
-7. **Compare positional schemes side-by-side.** In the Module 05 notebook, plot the learned, sinusoidal, and (cos slice of) rotary positional encodings as heatmaps. Look at the patterns: learned is structureless noise (early in training); sinusoidal has the multi-frequency banding; RoPE's cos table has the same multi-frequency structure but at different scales.
+6. **Try pretrained vector analogies.** `./setup.sh` prepares `data/glove.6B.50d.txt` for this exercise, downloading and extracting it if needed. Load a small subset, check analogies like `king - man + woman`, and plot a 2D projection of the selected pretrained vectors. Compare that result with your tiny trained embeddings and explain what corpus scale changes.
+
+7. **Compare positional schemes side-by-side.** Plot learned, sinusoidal, and RoPE tables as heatmaps. Identify which table is learned, which ones are fixed, and what visual pattern sinusoidal and RoPE share.
 
 ## Pitfalls to expect
 
