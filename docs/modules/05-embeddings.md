@@ -12,8 +12,8 @@ The last module handed us integer IDs. This module turns them into vectors. The 
 ### Math
 
 - **Trigonometric basics.** `sin(0) = 0`, `cos(0) = 1`. Sin and cos are bounded in `[−1, 1]`. Sin and cos at multiple frequencies. Nothing more exotic than what's in a high school trig review.
-- **2D rotation matrices.** A rotation by angle θ takes `(x, y)` to `(x cos θ − y sin θ, x sin θ + y cos θ)`. Composing two rotations adds their angles: `R(α) · R(β) = R(α + β)`. 
-- **Dot product as a measure of alignment.** `q · k` is large when q and k point the same direction; zero when orthogonal; negative when opposite. Attention scores are dot products. 
+- **2D rotation matrices.** A rotation by angle θ takes `(x, y)` to `(x cos θ − y sin θ, x sin θ + y cos θ)`. Composing two rotations adds their angles: `R(α) · R(β) = R(α + β)`.
+- **Dot product as a measure of alignment.** `q · k` is large when q and k point the same direction; zero when orthogonal; negative when opposite. Attention scores are dot products.
 ### Programming
 
 - **PyTorch**  Tensor indexing, `torch.outer`, and broadcasting.
@@ -25,7 +25,7 @@ After Module 04 you can turn text into a sequence of integer token IDs. After th
 
 Two things have to happen:
 
-1. **Each token gets a vector.** The same trick we used for biases and weights in earlier modules, just bigger and indexed by token ID. 
+1. **Each token gets a vector.** The same trick we used for biases and weights in earlier modules, just bigger and indexed by token ID.
 2. **Each position gets distinguishable.** Without position info, a transformer is order-blind: `dog bites man` and `man bites dog` produce identical attention patterns because they're the same multiset of tokens. We need to inject "I am at position m" into each input.
 
 ## The big idea

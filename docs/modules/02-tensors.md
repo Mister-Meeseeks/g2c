@@ -16,7 +16,7 @@ The math, CS, and programming concepts this module uses. None of them require de
 ### Computer science
 
 - **Memory locality (loose intuition).** Why traversing memory sequentially is much faster than jumping around. This is part of why a hand-written triple loop is slow and a vendor BLAS implementation is fast.
-- **The vectorization mental model.** Modern hardware does many arithmetic operations in parallel per clock cycle when fed contiguous data. 
+- **The vectorization mental model.** Modern hardware does many arithmetic operations in parallel per clock cycle when fed contiguous data.
 - **Asymptotic complexity at the level of intuition.** Comfortable with "this is O(n³), this is O(n²)" and what that implies as `n` grows.
 ### Programming
 
@@ -242,4 +242,4 @@ Optional:
 - [ ] `g2c/tensors/forward.py`: `linear` and numerically stable `softmax` passing
 - [ ] `notebooks/solutions/02-tensors.ipynb`: log-log timing plot across implementations and sizes, including MPS
 - [ ] `notebooks/solutions/02-tensors.ipynb`: a one-layer classifier forward pass with shape annotations
-- [ ] You can explain, out loud, why the Python-loop matmul falls so far behind NumPy, and what would need to change in your code to close the gap 
+- [ ] You can explain, out loud, why the Python-loop matmul falls so far behind NumPy, and what would need to change in your code to close the gap
