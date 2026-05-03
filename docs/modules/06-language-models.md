@@ -13,7 +13,7 @@ The training-time path (panels 1–3) and the inference-time path (panel 4) use 
 - **Conditional probability and the chain rule of probability.** Factorize conditional probability `P(x_1, x_2, ..., x_T) = ∏_t P(x_t | x_{<t})`.
 - **Cross-entropy.** `H(p, q) = -∑ p(x) log q(x)`. When `p` is a one-hot of the true next token, this collapses to `-log q(true_token)`
 - **Exponents** Perplexity is `exp(mean cross-entropy)`.
-- **Random sampling**
+- **Random sampling** 
 
 ### Computer science
 
@@ -31,22 +31,6 @@ The breakthrough — and it really is the conceptual breakthrough that makes LLM
 
 1. **The label is just the next token in the corpus.** We don't need human-labeled data — we just slide a window forward, and the next token is the target. This is "self-supervision," and it's why LLMs can be trained on the entire internet.
 2. **Inference is autoregressive.** To generate text, we predict the next token, append it to the context, predict again, and so on. The generation process IS the prediction process, called repeatedly.
-
-This module's deliverable is three language models, increasing in sophistication, all sharing the same training objective:
-
-```
-                    Architecture                  Context     Parameters
-  ─────────────────────────────────────────────────────────────────────────
-  CountsBigramLM    pure counts table             1 token     0 (counts only)
-  NeuralBigramLM    embed → linear → logits       1 token     V·D + D·V + V
-  MLPLanguageModel  embed → concat → MLP → logits N tokens    V·D + N·D·H + H·V + ...
-```
-
-![The language-model ladder: three architectures (CountsBigramLM, NeuralBigramLM, MLPLanguageModel) all estimating P(next | context), with their internals, parameter counts, and tradeoffs laid out side by side.](06-language-models/Module06-Ladder.png)
-
-*Same input (context tokens), same output (a probability distribution over the vocabulary), three increasingly expressive ways to compute it. Each row previews exactly what you'll implement: a counts table, an embedding-then-projection neural bigram, and a Bengio-style concat-MLP. Comparing all three on the same corpus is exercise 5 — and the visual companion to that comparison is the perplexity plot near the end of this page.*
-
-By comparing them on the same corpus, you'll see exactly what each layer of machinery buys you — and where each one runs out of road.
 
 ## The big idea
 
@@ -84,6 +68,22 @@ That loop IS the inference path of every LLM you've ever talked to. Everything e
 ![Autoregressive generation: predict → append → repeat. A sequence of frames shows a model extending "the cat sat on" one token at a time, sampling from the next-token distribution and feeding each output back as part of the new context.](06-language-models/Module06-Loop.png)
 
 *The same loop drawn frame by frame. Each step asks the model for a next-token distribution given the current context, samples one token, appends it, and slides the context window forward. It's the same model used during training, just called repeatedly with its own outputs as input. The `sample()` helper in `train.py` is exactly this loop in code.*
+
+### The language model ladder
+
+This module's deliverable is three language models, increasing in sophistication, all sharing the same training objective:
+
+```
+                    Architecture                  Context     Parameters
+  ─────────────────────────────────────────────────────────────────────────
+  CountsBigramLM    pure counts table             1 token     0 (counts only)
+  NeuralBigramLM    embed → linear → logits       1 token     V·D + D·V + V
+  MLPLanguageModel  embed → concat → MLP → logits N tokens    V·D + N·D·H + H·V + ...
+```
+
+![The language-model ladder: three architectures (CountsBigramLM, NeuralBigramLM, MLPLanguageModel) all estimating P(next | context), with their internals, parameter counts, and tradeoffs laid out side by side.](06-language-models/Module06-Ladder.png)
+
+*Same input (context tokens), same output (a probability distribution over the vocabulary), three increasingly expressive ways to compute it. Each row previews exactly what you'll implement: a counts table, an embedding-then-projection neural bigram, and a Bengio-style concat-MLP. Comparing all three on the same corpus is exercise 5 — and the visual companion to that comparison is the perplexity plot near the end of this page.*
 
 ### Counts vs. neural: same model, two implementations
 
