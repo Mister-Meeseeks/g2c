@@ -154,16 +154,10 @@ python -m pytest tests/test_autodiff.py -v         # verbose: list every test
 
 ## Exercises
 
-Use the clean notebook scaffold at [`notebooks/clean/01-autodiff-xor.ipynb`](../../notebooks/clean/01-autodiff-xor.ipynb) through the launcher, which creates or resumes your working copy in `notebooks/solutions/`:
+To start setup a Jupyter notebook for the exercise set by running:
 
 ```bash
 .venv/bin/python scripts/open_notebook.py 01
-```
-
-To start over, archive your current working notebook and reset from the clean scaffold:
-
-```bash
-.venv/bin/python scripts/open_notebook.py 01 --fresh
 ```
 
 1. **Forward and backward by hand.** Take the expression `f = (a * b + b**2) * tanh(c)` with `a=1, b=2, c=0.5`. Compute the forward pass and all three gradients by hand on paper. Then verify against your engine.
