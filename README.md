@@ -63,7 +63,9 @@ g2c/                    # the work-product Python package — grows over the cou
   nn/                   # module 3
   tokenizer/            # module 4
   ...
-notebooks/              # exploratory work, runs, attention visualizations
+notebooks/
+  clean/                # canonical pristine notebooks
+  solutions/            # working notebook copies and solved notebooks
 data/                   # corpora and datasets (large files gitignored)
 prompts/                # course brainstorms, prompt drafts
 tests/                  # tests across modules
@@ -94,6 +96,13 @@ After setup:
 source .venv/bin/activate
 python -m pytest                # run tests
 python scripts/smoke_test.py    # re-run env health check
+```
+
+For notebook exercises, open the working copy through the launcher:
+
+```bash
+.venv/bin/python scripts/open_notebook.py 01           # create/resume notebooks/solutions/01-*.ipynb
+.venv/bin/python scripts/open_notebook.py 01 --fresh   # archive the old working copy, then reset from notebooks/clean/
 ```
 
 Begin with `docs/syllabus.md`, then `docs/modules/00-prerequisite-review.md`, then `docs/modules/01-autodiff.md`.

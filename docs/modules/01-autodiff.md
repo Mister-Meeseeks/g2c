@@ -154,7 +154,17 @@ python -m pytest tests/test_autodiff.py -v         # verbose: list every test
 
 ## Exercises
 
-Use [`notebooks/01-autodiff-xor.ipynb`](../../notebooks/01-autodiff-xor.ipynb) as the interactive workspace for the exercise set
+Use the clean notebook scaffold at [`notebooks/clean/01-autodiff-xor.ipynb`](../../notebooks/clean/01-autodiff-xor.ipynb) through the launcher, which creates or resumes your working copy in `notebooks/solutions/`:
+
+```bash
+.venv/bin/python scripts/open_notebook.py 01
+```
+
+To start over, archive your current working notebook and reset from the clean scaffold:
+
+```bash
+.venv/bin/python scripts/open_notebook.py 01 --fresh
+```
 
 1. **Forward and backward by hand.** Take the expression `f = (a * b + b**2) * tanh(c)` with `a=1, b=2, c=0.5`. Compute the forward pass and all three gradients by hand on paper. Then verify against your engine.
 
@@ -194,6 +204,5 @@ Secondary:
 
 - [ ] All operations from the suggested API are implemented
 - [ ] `tests/test_autodiff.py` passes all tests: each operation forward and backward, gradient accumulation on shared nodes, gradient check vs. finite differences
-- [ ] `notebooks/01-autodiff-xor.ipynb` trains a 2-2-1 MLP on XOR using only `Value`
+- [ ] `notebooks/solutions/01-autodiff-xor.ipynb` trains a 2-2-1 MLP on XOR using only `Value`
 - [ ] You can explain — out loud, without notes — why backward must traverse in topological order
-
