@@ -69,8 +69,9 @@ class LearnedPositionalEmbedding(Module):
 
         Hint: a one-liner — slice the weight table.
         """
-        # TODO
-        raise NotImplementedError
+        if seq_len > self.max_seq_len:
+            raise ValueError(f"seq_len {seq_len} exceeds max_seq_len {self.max_seq_len}")
+        return self.weight[:seq_len]
 
 
 class SinusoidalPositionalEmbedding(Module):
@@ -120,7 +121,16 @@ class SinusoidalPositionalEmbedding(Module):
         #      weight[:, 0::2] = sin(angles)
         #      weight[:, 1::2] = cos(angles)
         #   5. self.weight = weight   (no requires_grad — fixed table)
-        raise NotImplementedError
+        
+        positions = torch.arange(max_seq_len)
+        i = torch.arange(0, embedding_dim, 2)
+        div_term = 1.0 / (10000 ** (i / embedding_dim))
+        angles = positions[:, None] * div_term[None, :]
+        weight = torch.empty(max_seq_len, embedding_dim)
+        weight[:, 0::2] = angles.sin()
+        weight[:, 1::2] = angles.cos()
+        weight.requires_grad_(False)
+        self.weight = weight
 
     def parameters(self) -> Iterable[torch.Tensor]:
         return []
@@ -136,5 +146,6 @@ class SinusoidalPositionalEmbedding(Module):
 
         Hint: a one-liner — slice `self.weight`.
         """
-        # TODO
-        raise NotImplementedError
+        if seq_len > self.max_seq_len:
+            raise ValueError(f"seq_len {seq_len} exceeds max_seq_len {self.max_seq_len}")
+        return self.weight[:seq_len]

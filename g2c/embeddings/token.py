@@ -60,5 +60,4 @@ class TokenEmbedding(Module):
         a one-liner. The autograd will correctly route gradients back to the
         rows of `self.weight` that were touched.
         """
-        # TODO
-        raise NotImplementedError
+        return self.weight[ids]

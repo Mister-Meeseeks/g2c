@@ -62,7 +62,14 @@ class RotaryEmbedding(Module):
         #   4. emb = torch.cat([freqs, freqs], dim=-1)    shape (max_seq_len, dim)
         #   5. self.cos = emb.cos()
         #      self.sin = emb.sin()
-        raise NotImplementedError
+        inv_freq = 1.0 / (base ** (torch.arange(0, embedding_dim, 2) / embedding_dim))
+        positions = torch.arange(max_seq_len)
+        freqs = torch.outer(positions, inv_freq)
+        emb = torch.cat([freqs, freqs], dim=-1)
+        self.cos = emb.cos()
+        self.sin = emb.sin()
+        self.cos.requires_grad_(False)
+        self.sin.requires_grad_(False)
 
     def parameters(self) -> Iterable[torch.Tensor]:
         return []
@@ -106,5 +113,7 @@ class RotaryEmbedding(Module):
         At position 0, cos is all 1s and sin is all 0s, so the rotation is
         the identity — the test suite verifies this.
         """
-        # TODO
-        raise NotImplementedError
+        seq_lqen = x.shape[-2]
+        cos = self.cos[:seq_lqen]
+        sin = self.sin[:seq_lqen]
+        return x * cos + self._rotate_half(x) * sin
