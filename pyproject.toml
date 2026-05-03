@@ -17,6 +17,7 @@ dev = [
     "ruff>=0.4",
     "jupyter>=1.0",
     "matplotlib>=3.8",
+    "torchvision>=0.19",
 ]
 
 [build-system]
