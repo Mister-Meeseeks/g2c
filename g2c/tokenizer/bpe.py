@@ -49,8 +49,11 @@ class BPETokenizer:
 
         Hint: a single pass with a sliding window of size 2.
         """
-        # TODO
-        raise NotImplementedError
+        pair_counts = {} 
+        for i in range(len(ids) - 1):
+            pair = (ids[i], ids[i + 1])
+            pair_counts[pair] = pair_counts.get(pair, 0) + 1
+        return pair_counts
 
     @staticmethod
     def _merge(ids: list[int], pair: tuple[int, int], new_id: int) -> list[int]:
@@ -66,8 +69,11 @@ class BPETokenizer:
         Hint: scan with an explicit index `i`, advancing by 2 on a match
         and by 1 otherwise.
         """
-        # TODO
-        raise NotImplementedError
+        for i in range(len(ids)):
+            if i < len(ids) - 1 and (ids[i], ids[i + 1]) == pair:
+                ids[i] = new_id
+                del ids[i + 1]
+        return ids
 
     # ------------------------------------------------------------------
     # The main API — STUDENT IMPLEMENTS
@@ -97,8 +103,24 @@ class BPETokenizer:
         Raises:
             ValueError: if `vocab_size < 256`.
         """
-        # TODO
-        raise NotImplementedError
+        byte_text = list(text.encode("utf-8"))
+        ids = list(byte_text)
+
+        if vocab_size < 256:
+            raise ValueError("vocab_size must be at least 256 to include all byte values")
+        
+        while len(self.vocab) < vocab_size:
+            pair_counts = self._get_pair_counts(ids)
+            if not pair_counts:
+                break
+
+            best_pair = max(pair_counts, key=pair_counts.get)
+            new_id = len(self.vocab)
+            self.merges[best_pair] = new_id
+            self.vocab[new_id] = self.vocab[best_pair[0]] + self.vocab[best_pair[1]]
+
+            ids = self._merge(ids, best_pair, new_id)
+
 
     def encode(self, text: str) -> list[int]:
         """Encode `text` into a list of token IDs using the learned merges.
@@ -119,8 +141,22 @@ class BPETokenizer:
           - `text` containing characters never seen in training → still works,
             because every UTF-8 byte is in the base vocab.
         """
-        # TODO
-        raise NotImplementedError
+        byte_text = text.encode("utf-8")
+        ids = list(byte_text)
+
+        while True:
+            pairs = []
+            for i in range(len(ids) - 1):
+                pairs.append((ids[i], ids[i + 1]))
+            merge_candidates = [pair for pair in pairs if pair in self.merges]
+
+            if not merge_candidates:
+                break
+
+            best_pair = min(merge_candidates, key=lambda pair: self.merges[pair])
+            ids = self._merge(ids, best_pair, self.merges[best_pair])
+
+        return ids  
 
     def decode(self, ids: list[int]) -> str:
         """Reverse of `encode`: reconstruct the original text from IDs.
@@ -136,5 +172,5 @@ class BPETokenizer:
 
         Hint: a one-liner with `b"".join(...)` and `.decode("utf-8", errors="replace")`.
         """
-        # TODO
-        raise NotImplementedError
+        byte_text = b"".join(self.vocab[id] for id in ids)
+        return byte_text.decode("utf-8", errors="replace")
