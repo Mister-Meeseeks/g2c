@@ -130,7 +130,7 @@ class BPETokenizer:
 
 About 50 lines of real implementation in total. The smallest module's worth of code in the course so far — and yet it's a surprisingly capable tokenizer.
 
-## Scaffolding and how to run the tests
+## How to run the tests
 
 Tests live in `tests/test_tokenizer.py`. Initial state: 3 passed (the construction tests verifying the base vocab), 29 failed.
 
