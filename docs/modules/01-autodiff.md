@@ -10,19 +10,16 @@ Module 01 builds the **backward pass** — the autodiff machinery that converts 
 ## Prerequisites
 
 The math, CS, and programming concepts this module uses. If any feel rusty, the linked refreshers will get you back up to speed in 10–30 minutes each.
-
 ### Math
 
 - **Single-variable derivatives.** You should be able to differentiate something like `f(x) = x³ + 2x` by hand without thinking about it. Refresher: Khan Academy "Differentiation rules" or Paul's Online Math Notes.
 - **The chain rule.** `d/dx[f(g(x))] = f'(g(x)) · g'(x)`. The single most important rule in deep learning — every gradient propagation step is one application of it. Refresher: 3Blue1Brown's "Backpropagation calculus" video (10 min) gives the geometric picture.
 - **Partial derivatives.** `d/dx[xy] = y`, `d/dy[xy] = x`. Used implicitly because every binary op has two inputs and you need a derivative with respect to each.
 - **Standard derivatives to have memorized.** Power rule: `d/dx[xⁿ] = n·xⁿ⁻¹`. Exponential: `d/dx[eˣ] = eˣ`. Logarithm: `d/dx[ln x] = 1/x`. Tanh: `d/dx[tanh x] = 1 − tanh²x`.
-
 ### Computer science
 
 - **DAGs and topological sort.** A directed acyclic graph; a topological ordering places each node after all its parents. Refresher: any algorithms textbook, or just the Wikipedia article. The standard recursive-DFS algorithm is what you'll write here.
 - **Recursion.** Comfortable enough to write a depth-first traversal by hand.
-
 ### Programming
 
 - **Python dunder methods.** `__add__`, `__mul__`, `__pow__`, `__radd__`, etc. — the protocol for overloading operators on a class. Refresher: Python language reference §3.3.7 ("Emulating numeric types").

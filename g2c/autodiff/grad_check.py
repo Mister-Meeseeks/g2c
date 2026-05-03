@@ -25,9 +25,7 @@ def numerical_grad(f: Callable[[Value], Value], x: Value, h: float = 1e-5) -> fl
         The estimated derivative df/dx at x.data, as a Python float.
 
     Implementation hint:
-        plus  = f(Value(x.data + h)).data
-        minus = f(Value(x.data - h)).data
-        return (plus - minus) / (2 * h)
+        df/dx = f(x+h) - f(x-h) / 2h
     """
     # TODO
     raise NotImplementedError

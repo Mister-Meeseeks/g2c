@@ -13,18 +13,15 @@ The math, CS, and programming concepts this module uses. None of them require de
 ### Math
 
 - **Matrix-vector and matrix-matrix multiplication.** You should be able to compute a small matmul (2×3 @ 3×2) by hand. Refresher: 3Blue1Brown's "Essence of Linear Algebra" chapters 3–4 (15 min).
-- **The matmul shape rule.** `(m × k) @ (k × n) = (m × n)`. The inner dimensions must agree and they collapse; the outer dimensions become the output shape.
-- **The dot product as the building block.** Each entry of the output is the dot product of one row of the left matrix with one column of the right matrix.
 ### Computer science
 
 - **Memory locality (loose intuition).** Why traversing memory sequentially is much faster than jumping around. This is part of why a hand-written triple loop is slow and a vendor BLAS implementation is fast.
-- **The vectorization mental model.** Modern hardware does many arithmetic operations in parallel per clock cycle when fed contiguous data. A Python `for` loop fails to use this; a NumPy or torch op exploits it fully.
+- **The vectorization mental model.** Modern hardware does many arithmetic operations in parallel per clock cycle when fed contiguous data. 
 - **Asymptotic complexity at the level of intuition.** Comfortable with "this is O(n³), this is O(n²)" and what that implies as `n` grows.
 ### Programming
 
 - **NumPy basics.** `np.array`, `.shape`, `.dtype`, `@` for matmul. We use NumPy as the middle benchmark rung.
 - **PyTorch tensor basics.** `torch.tensor`, `.to(device)`, `@`. Refresher: the official PyTorch "Tensors" tutorial (10 min).
-- **Tuple indexing and slicing.** Used heavily in broadcasting logic.
 
 ---
 ## Why we study this

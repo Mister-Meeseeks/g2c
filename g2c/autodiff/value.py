@@ -60,9 +60,7 @@ class Value:
     def __add__(self, other: Union["Value", Number]) -> "Value":
         """Forward: self + other.
 
-        Local rule:
-            d(out)/d(self)  = 1
-            d(out)/d(other) = 1
+        Hint: Gradient is the partial derivatives of y = x + z
         """
         # TODO
         raise NotImplementedError
@@ -70,9 +68,7 @@ class Value:
     def __mul__(self, other: Union["Value", Number]) -> "Value":
         """Forward: self * other.
 
-        Local rule:
-            d(out)/d(self)  = other.data
-            d(out)/d(other) = self.data
+        Hint: Gradient is the partial derivatives of y = x * z
         """
         # TODO
         raise NotImplementedError
@@ -80,8 +76,7 @@ class Value:
     def __pow__(self, exponent: Number) -> "Value":
         """Forward: self ** exponent. `exponent` is a numeric constant.
 
-        Local rule:
-            d(out)/d(self) = exponent * self.data ** (exponent - 1)
+        Hint: Gradient is the derivative of y = x^c
         """
         # TODO
         raise NotImplementedError
@@ -89,8 +84,7 @@ class Value:
     def exp(self) -> "Value":
         """Forward: e ** self.
 
-        Local rule:
-            d(out)/d(self) = e ** self.data    (which equals out.data)
+        Hint: Gradient is the derivative of y = e^x
         """
         # TODO
         raise NotImplementedError
@@ -98,8 +92,7 @@ class Value:
     def log(self) -> "Value":
         """Forward: ln(self). Requires self.data > 0.
 
-        Local rule:
-            d(out)/d(self) = 1 / self.data
+        Hint: Gradient is the derivative of y = ln(x)
         """
         # TODO
         raise NotImplementedError
@@ -107,8 +100,7 @@ class Value:
     def tanh(self) -> "Value":
         """Forward: tanh(self).
 
-        Local rule:
-            d(out)/d(self) = 1 - tanh(self.data) ** 2     (= 1 - out.data ** 2)
+        Hint: Gradient is the derivative of y = tanh(x)
         """
         # TODO
         raise NotImplementedError
@@ -116,8 +108,7 @@ class Value:
     def relu(self) -> "Value":
         """Forward: max(0, self).
 
-        Local rule:
-            d(out)/d(self) = 1 if self.data > 0 else 0
+        Hint: Gradient is the derivative of y = max(0, x)
         """
         # TODO
         raise NotImplementedError
@@ -129,12 +120,25 @@ class Value:
     def backward(self) -> None:
         """Run reverse-mode autodiff from this Value.
 
-        Steps:
-          1. Build the topological order of the computation graph rooted at `self`
-             (each node appears after all its parents).
-          2. Set `self.grad = 1.0` (the seed: d(self) / d(self) = 1).
-          3. Walk the topological order in REVERSE, calling each node's
-             `_backward()` to accumulate gradients into its parents' `.grad`.
+        Calls _backward on every node in the graph in reverse topological order
+
+        Hints:
+            Make sure to initialize self.grad at 1.0.
+        """
+        # TODO
+        raise NotImplementedError
+    
+    # ------------------------------------------------------------------
+    # Helper for backward() — STUDENT IMPLEMENTS
+    # ------------------------------------------------------------------
+    def topological_sort(self) -> list["Value"]:
+        """ Helper for topological sorting of the child nodes.
+
+        Returns:
+            A list of Values in topological order (i.e., each node only appears after all its parents).
+
+        Hint: 
+            You will have to use recursion. Don't add the same node twice.
         """
         # TODO
         raise NotImplementedError
