@@ -21,7 +21,7 @@ The whole pipeline that turns `"The quick brown fox..."` into the integer list a
 - **Dict iteration order.** Since Python 3.7, dicts preserve insertion order. We rely on this for "earliest learned merge wins" priority.
 
 ---
-## Why we tokenize
+## Where this fits
 
 The course up to this point has worked with numbers. Real LLMs work with text. Tokenization is the bridge between the two — the function that turns `"The quick brown fox"` into `[464, 2068, 7586, 21831]` and back. Every input to every transformer in production goes through a tokenizer first; every output comes from one in reverse. It's the first thing you'd build in an LLM pipeline and the last thing in inference.
 
@@ -135,10 +135,12 @@ About 50 lines of real implementation in total. The smallest module's worth of c
 Tests live in `tests/test_tokenizer.py`. Initial state: 3 passed (the construction tests verifying the base vocab), 29 failed.
 
 ```bash
-.venv/bin/python -m pytest tests/test_tokenizer.py             # run all module-04 tests
-.venv/bin/python -m pytest tests/test_tokenizer.py -x          # stop at first failure
-.venv/bin/python -m pytest tests/test_tokenizer.py -k pair     # only pair-count tests
-.venv/bin/python -m pytest tests/test_tokenizer.py -v          # verbose
+source .venv/bin/activate
+
+pytest tests/test_tokenizer.py             # run all module-04 tests
+pytest tests/test_tokenizer.py -x          # stop at first failure
+pytest tests/test_tokenizer.py -k pair     # only pair-count tests
+pytest tests/test_tokenizer.py -v          # verbose
 ```
 
 ## Exercises
