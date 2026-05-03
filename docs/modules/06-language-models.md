@@ -21,10 +21,7 @@ The training-time path (panels 1–3) and the inference-time path (panel 4) use 
 
 ### Programming
 
-- **You'll be reusing your earlier modules.** `g2c.embeddings.TokenEmbedding`, `g2c.nn.Linear`, `g2c.nn.CrossEntropyLoss`,
-  `g2c.nn.SGD`. Module 06 is the first one that depends on most of what
-  came before. If those are still scaffolded, fill them in first — the
-  test suite for this module presupposes they work.
+- **You'll be reusing your earlier modules.** `g2c.embeddings.TokenEmbedding`, `g2c.nn.Linear`, `g2c.nn.CrossEntropyLoss`, `g2c.nn.SGD`. Module 06 is the first one that depends on most of what came before. If those are still scaffolded, fill them in first — the test suite for this module presupposes they work.
 
 ## Where this fits in
 
@@ -35,8 +32,7 @@ The breakthrough — and it really is the conceptual breakthrough that makes LLM
 1. **The label is just the next token in the corpus.** We don't need human-labeled data — we just slide a window forward, and the next token is the target. This is "self-supervision," and it's why LLMs can be trained on the entire internet.
 2. **Inference is autoregressive.** To generate text, we predict the next token, append it to the context, predict again, and so on. The generation process IS the prediction process, called repeatedly.
 
-This module's deliverable is three language models, increasing in
-sophistication, all sharing the same training objective:
+This module's deliverable is three language models, increasing in sophistication, all sharing the same training objective:
 
 ```
                     Architecture                  Context     Parameters
@@ -148,8 +144,7 @@ The Bengio architecture is the direct ancestor of the transformer. Most of what 
 
 The headline metric for any LM. Perplexity is `exp(mean cross-entropy per token)` on a held-out corpus. Intuitively:
 
-> The model behaves, on average, as uncertain as if it were uniformly choosing
-> from `perplexity` tokens.
+> The model behaves, on average, as uncertain as if it were uniformly choosing from `perplexity` tokens.
 
 ```
   Sanity values for a vocab of size V:
@@ -220,8 +215,7 @@ def sample(model, prompt_ids, num_tokens, *, temperature=1.0) -> torch.Tensor: .
 def train_lm(model, train_ids, *, val_ids=None, ...) -> dict: ...
 ```
 
-A typical training-and-evaluation flow looks like this (will land in your
-notebook):
+A typical training-and-evaluation flow looks like this (will land in your notebook):
 
 ```python
 # Counts baseline — no SGD.
@@ -245,144 +239,79 @@ for name, m in [("counts", counts), ("neural", neural), ("mlp", mlp)]:
     print(f"\n--- {name} ---")
     print(tokenizer.decode(out.tolist()))
 ```
-## How to run the tests
+
+## Scaffolding and how to run the tests
 
 Tests live in `tests/test_lm.py`. Initial state: 13 passed, 35 failed.
 
 ```bash
-source .venv/bin/activate
-
-pytest tests/test_lm.py             # run all module-06 tests
-pytest tests/test_lm.py -x          # stop at first failure (recommended)
-pytest tests/test_lm.py -k counts   # only the counts-model tests
-pytest tests/test_lm.py -k mlp      # only the MLP tests
-pytest tests/test_lm.py -v          # verbose
+.venv/bin/python -m pytest tests/test_lm.py             # run all module-06 tests
+.venv/bin/python -m pytest tests/test_lm.py -x          # stop at first failure (recommended)
+.venv/bin/python -m pytest tests/test_lm.py -k counts   # only the counts-model tests
+.venv/bin/python -m pytest tests/test_lm.py -k mlp      # only the MLP tests
+.venv/bin/python -m pytest tests/test_lm.py -v          # verbose
 ```
+
+Open the working notebook copy with:
+
+```bash
+.venv/bin/python scripts/open_notebook.py 06
+```
+
+The clean scaffold lives at `notebooks/clean/06-language-models.ipynb`; do your work in the generated `notebooks/solutions/06-language-models.ipynb` copy.
 
 ## Exercises
 
-1. **Implement `CountsBigramLM.fit` and `.logits`.** The `fit` is a one-or-two-line
-   tally over adjacent pairs (use `index_put_(..., accumulate=True)` for the
-   vectorized version, or a `for` loop for the obvious version). The `logits`
-   is the smoothing + normalize + log recipe in the scaffolded docstring.
+The implementation path is the test suite above. The notebook starts with an executable test gate, then uses the implemented pieces for prediction, inspection, generation, and comparison.
 
-2. **Implement `NeuralBigramLM.forward`.** Three lines: optionally squeeze
-   trailing dim, embed, project. The hardest thing here is realizing it's
-   genuinely that short.
+1. **Context windows and targets.** Turn one token stream into supervised `(context, target)` examples. Predict the windows by hand for a tiny sequence, then inspect what `get_batch` returns.
 
-3. **Implement `MLPLanguageModel.forward`.** Embed → flatten → hidden →
-   tanh → output. The flatten step is `e.view(e.shape[0], -1)` — the place
-   where `(batch, N, D)` becomes `(batch, N·D)`. Pay attention here: this
-   is the exact operation that makes the model "see" position via
-   concatenation rather than summation.
+2. **Counts bigram model.** Fit a counts table on a tiny stream, print the raw counts, then inspect the smoothed next-token probabilities row by row.
 
-4. **Implement `perplexity`, `sample`, `train_lm`.** All three follow the
-   recipes in their docstrings. `perplexity` uses `CrossEntropyLoss` (yes,
-   even on `CountsBigramLM`, whose logits are already log-probs — `CrossEntropyLoss`
-   adds another log-softmax which is the identity on a normalized log-prob
-   vector, up to numerical noise). `sample` is a 6-line autoregressive loop.
-   `train_lm` is the same loop you wrote in Module 03's MNIST trainer, just
-   with `get_batch` instead of a DataLoader.
+3. **Neural bigram and MLP shapes.** Verify that both neural models return `(batch, vocab_size)` logits. Compare `[a, b]` vs. `[b, a]` through the MLP to see why concatenation preserves order.
 
-5. **Train all three on the same tokenized corpus and compare.**
-   In `notebooks/06-three-lms.ipynb`: tokenize TinyShakespeare with the
-   Module 04 BPE at `vocab_size=1024`. Hold out the last 10% as validation.
-   Train the neural bigram and the MLP for ~2000 steps each. Report
-   validation perplexity for all three in a table. The expected ranking
-   is `counts ≈ neural bigram > MLP` (lower is better) — and the gap
-   between the bigrams and the MLP should be large enough to see clearly.
+4. **Perplexity and autoregressive sampling.** Check the two sanity cases: a uniform model has perplexity `vocab_size`, and a perfect deterministic model has perplexity 1. Then sample from the deterministic model to make the predict-append-repeat loop visible.
 
-6. **Sample 500 tokens from each model and read them.** Tokenize the
-   produced text. The counts and neural bigram outputs will look like
-   broken garbage that occasionally has plausible 2-grams. The MLP's output
-   will be visibly more coherent — short phrases may be valid, occasional
-   words may be in the right grammatical context. None of them will produce
-   anything resembling Shakespeare. That's the point: this is what you can
-   do without attention.
+5. **Train all three on the same tokenized corpus and compare.** Use the notebook's built-in tiny corpus or add `data/tinyshakespeare.txt` for a larger run. Fit the counts model, train the neural bigram and MLP, and report validation perplexity in one table.
 
-7. **Plot validation perplexity vs. training step.** In the same notebook,
-   pull `train_losses` and `val_perplexities` out of the `train_lm` return
-   dict and plot them. Look for the typical patterns: training loss going
-   down monotonically, validation perplexity going down then plateauing or
-   creeping up (overfitting). On a small corpus this happens fast — the
-   model can memorize bigrams in seconds.
+6. **Sample from each model and read the text.** Generate from the counts bigram, neural bigram, and MLP. Compare their failure modes: repeated fragments, locally plausible pairs, and the limits of a fixed small context.
+
+7. **Plot training curves.** Plot training cross-entropy and validation perplexity for the neural bigram and MLP. Use the counts bigram perplexity as a horizontal baseline.
 
 ## Pitfalls to expect
 
 - **`fit` not accumulating.** Calling `fit` twice should add to the existing table, not replace it. Reset the counts in `__init__`, not in `fit`.
 - **Smoothing zero by accident.** Without smoothing (or with `smoothing=0`), any unseen bigram pair has probability zero, which makes `log(0) = -inf`, which propagates through perplexity as `inf`. The default `smoothing=1.0` fixes this; if a user explicitly sets `smoothing=0`, expect `-inf` in log-probs and accept it.
-- **Forgetting to squeeze a `(batch, 1)` context.** `NeuralBigramLM.forward`
-  receives `(batch, 1)` inputs from `get_batch` (because `context_length=1`
-  produces a length-1 context window). Without a squeeze, `embed` returns
-  `(batch, 1, D)` and the projected logits are `(batch, 1, V)`, breaking
-  every downstream shape assumption.
-- **MLP using sum/mean instead of concat.** The MLP's flatten step is
-  `e.view(B, -1)`, which preserves order. `e.mean(dim=1)` would silently
-  collapse `[a, b]` and `[b, a]` to the same vector. The
-  `test_mlp_forward_position_sensitive` test exists to catch exactly this.
-- **`train_lm` not zeroing grads.** Standard PyTorch trap. Without
-  `optimizer.zero_grad()` between steps, gradients accumulate across
-  iterations and SGD walks in roughly random directions. The training-loss
-  curve will look haywire.
-- **Sampling without `torch.no_grad()`.** Not a correctness bug — but every
-  sampling step builds an autograd graph that's never used, wasting memory
-  and time. Wrap the `sample` loop body in `with torch.no_grad():` for free
-  speedup. Same goes for the inner loop of `perplexity`.
-- **Perplexity blowing up on a tiny held-out set.** If `val_ids` is shorter
-  than `context_length`, perplexity is undefined (no windows to score). The
-  test for this throws `ValueError` from `get_batch`; for `perplexity` itself,
-  guarantee `len(val_ids) > context_length` in the calling code.
-- **Comparing perplexities across vocab sizes.** A bigger vocab makes every
-  individual prediction harder; perplexities aren't directly comparable
-  across tokenizers. For exercise 5, train all three models on the *same*
-  tokenized stream so the comparison is fair.
+- **Forgetting to squeeze a `(batch, 1)` context.** `NeuralBigramLM.forward` receives `(batch, 1)` inputs from `get_batch` (because `context_length=1` produces a length-1 context window). Without a squeeze, `embed` returns `(batch, 1, D)` and the projected logits are `(batch, 1, V)`, breaking every downstream shape assumption.
+- **MLP using sum/mean instead of concat.** The MLP's flatten step is `e.view(B, -1)`, which preserves order. `e.mean(dim=1)` would silently collapse `[a, b]` and `[b, a]` to the same vector. The `test_mlp_forward_position_sensitive` test exists to catch exactly this.
+- **`train_lm` not zeroing grads.** Standard PyTorch trap. Without `optimizer.zero_grad()` between steps, gradients accumulate across iterations and SGD walks in roughly random directions. The training-loss curve will look haywire.
+- **Sampling without `torch.no_grad()`.** Not a correctness bug — but every sampling step builds an autograd graph that's never used, wasting memory and time. Wrap the `sample` loop body in `with torch.no_grad():` for free speedup. Same goes for the inner loop of `perplexity`.
+- **Perplexity blowing up on a tiny held-out set.** If `val_ids` is shorter than `context_length`, perplexity is undefined (no windows to score). The test for this throws `ValueError` from `get_batch`; for `perplexity` itself, guarantee `len(val_ids) > context_length` in the calling code.
+- **Comparing perplexities across vocab sizes.** A bigger vocab makes every individual prediction harder; perplexities aren't directly comparable across tokenizers. For exercise 5, train all three models on the *same* tokenized stream so the comparison is fair.
 
 ## Reading
 
 Primary:
 
-- **Karpathy, "Building makemore"** — the YouTube series. Parts 1–3 cover
-  exactly the three models in this module: counts bigram, neural bigram, and
-  the Bengio MLP. Single best resource on the topic.
-- **Bengio et al., "A Neural Probabilistic Language Model" (2003).** The
-  paper that introduced the architecture you're building in `mlp.py`. A
-  surprisingly short read; the conceptual machinery is small. The "look up
-  embeddings, concatenate, MLP, softmax" recipe is right there.
+- **Karpathy, "Building makemore"** — the YouTube series. Parts 1–3 cover exactly the three models in this module: counts bigram, neural bigram, and the Bengio MLP. Single best resource on the topic.
+- **Bengio et al., "A Neural Probabilistic Language Model" (2003).** The paper that introduced the architecture you're building in `mlp.py`. A surprisingly short read; the conceptual machinery is small. The "look up embeddings, concatenate, MLP, softmax" recipe is right there.
 
 Secondary:
 
-- **Jurafsky & Martin, *Speech and Language Processing* (3rd ed.), ch. 3.**
-  Classical-NLP treatment of n-gram language models, smoothing, and perplexity.
-  Free PDF online. Read the perplexity section if you want a deeper account
-  of why this is the canonical metric.
-- **Mikolov et al. (2010), "Recurrent Neural Network Language Model."**
-  The first big jump past Bengio's MLP. We don't implement RNNs in this
-  course (we go straight to attention), but the paper is a useful waypoint
-  for understanding what attention later replaces.
+- **Jurafsky & Martin, *Speech and Language Processing* (3rd ed.), ch. 3.** Classical-NLP treatment of n-gram language models, smoothing, and perplexity. Free PDF online. Read the perplexity section if you want a deeper account of why this is the canonical metric.
+- **Mikolov et al. (2010), "Recurrent Neural Network Language Model."** The first big jump past Bengio's MLP. We don't implement RNNs in this course (we go straight to attention), but the paper is a useful waypoint for understanding what attention later replaces.
 
 ## Deliverable checklist
 
 - [ ] All tests in `tests/test_lm.py` pass.
-- [ ] `notebooks/06-three-lms.ipynb`: counts, neural bigram, MLP all trained
-      and evaluated on TinyShakespeare; perplexity comparison table; sampled
-      text from each.
-- [ ] `notebooks/06-three-lms.ipynb` (or a sibling): a perplexity-vs-step
-      plot for the neural bigram and the MLP.
-- [ ] You can explain — out loud, without notes — why a counts model can
-      represent the same distribution as a neural bigram, but does not scale
-      to context length 3 the way the MLP does.
+- [ ] `notebooks/solutions/06-language-models.ipynb`: counts, neural bigram, MLP all trained and evaluated on the same token stream; perplexity comparison table; sampled text from each.
+- [ ] `notebooks/solutions/06-language-models.ipynb`: training-loss and validation-perplexity plots for the neural bigram and the MLP.
+- [ ] You can explain — out loud, without notes — why a counts model can represent the same distribution as a neural bigram, but does not scale to context length 3 the way the MLP does.
 
 ## M-series notes
 
 This module is light on compute.
 
-- The counts table for `vocab_size = 1024` is 4MB (int64, `1024 × 1024`).
-  At `vocab_size = 8192` it's 256MB — fine on a 16GB machine, getting heavy.
-  This is a glimpse of why counts models don't scale.
-- The neural bigram and MLP at the sizes used in exercise 5 (`embedding_dim=64`,
-  `hidden_dim=128`, `vocab_size=1024`) have well under 1M parameters — a
-  few seconds per training step on CPU, fractions of a second on MPS.
-- Training all three for the recommended 2000 steps takes 2–5 minutes total.
-  Sampling 500 tokens from each takes seconds. There is no need to think
-  about MPS for this module — CPU is fast enough — but using MPS works and
-  is a fine warm-up for Module 10.
+- The counts table for `vocab_size = 1024` is 4MB (int64, `1024 × 1024`). At `vocab_size = 8192` it's 256MB — fine on a 16GB machine, getting heavy. This is a glimpse of why counts models don't scale.
+- The neural bigram and MLP at the sizes used in exercise 5 (`embedding_dim=64`, `hidden_dim=128`, `vocab_size=1024`) have well under 1M parameters — a few seconds per training step on CPU, fractions of a second on MPS.
+- Training all three for the recommended 2000 steps takes 2–5 minutes total. Sampling 500 tokens from each takes seconds. There is no need to think about MPS for this module — CPU is fast enough — but using MPS works and is a fine warm-up for Module 10.

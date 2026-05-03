@@ -96,9 +96,7 @@ DPO is the closed-form simplification of the RLHF objective. The pipeline:
 
 1. Collect or hand-author a few hundred `(prompt, chosen, rejected)` preference triples.
 2. Hold a frozen copy of the SFT'd model as the "reference."
-3. Train a separate "policy" copy by minimizing
-   `−log σ(β · ( (log π(c|x) − log π_ref(c|x)) − (log π(r|x) − log π_ref(r|x)) ))`,
-   averaged over the preference dataset.
+3. Train a separate "policy" copy by minimizing `−log σ(β · ( (log π(c|x) − log π_ref(c|x)) − (log π(r|x) − log π_ref(r|x)) ))`, averaged over the preference dataset.
 
 That's the whole thing. There is no separate reward model, no PPO loop, no rollouts at training time, no learning-from-on-policy-samples; just a frozen reference, a trainable policy, and a sigmoid on the log-ratio difference.
 
