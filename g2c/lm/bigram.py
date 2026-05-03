@@ -85,8 +85,10 @@ class CountsBigramLM:
 
         N adjacent pairs come from a length-N sequence: there are `N-1` of them.
         """
-        # TODO
-        raise NotImplementedError
+        for i in range(len(ids) - 1):
+            prev = ids[i]
+            next = ids[i + 1]
+            self.counts[prev, next] += 1
 
     def logits(self, ctx_ids: torch.Tensor) -> torch.Tensor:
         """Return log-probabilities of next token, given the previous token.
@@ -114,8 +116,12 @@ class CountsBigramLM:
         unnormalized logits — both can be fed to a softmax/log-softmax for
         sampling and to `gather` for evaluation.
         """
-        # TODO
-        raise NotImplementedError
+        if ctx_ids.dim() == 2:
+            ctx_ids = ctx_ids.squeeze(-1)
+        row_counts = self.counts[ctx_ids]  # (batch, vocab_size)
+        smoothed = row_counts.float() + self.smoothing
+        probs = smoothed / smoothed.sum(dim=-1, keepdim=True)
+        return torch.log(probs)
 
     def __call__(self, ctx_ids: torch.Tensor) -> torch.Tensor:
         return self.logits(ctx_ids)
@@ -179,8 +185,10 @@ class NeuralBigramLM(Module):
             2. `e = self.embed(ctx_ids)`        # (batch, embedding_dim)
             3. Return `self.proj(e)`            # (batch, vocab_size)
         """
-        # TODO
-        raise NotImplementedError
+        if ctx_ids.dim() == 2:
+            ctx_ids = ctx_ids.squeeze(-1)
+        e = self.embed(ctx_ids)  # (batch, embedding_dim)
+        return self.proj(e)     # (batch, vocab_size)
 
     def logits(self, ctx_ids: torch.Tensor) -> torch.Tensor:
         """Alias for `forward` — provides the same interface as `CountsBigramLM`."""

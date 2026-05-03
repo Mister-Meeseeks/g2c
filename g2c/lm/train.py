@@ -123,9 +123,21 @@ def perplexity(
     whole evaluation, which prevents PyTorch from building the autograd graph.
     Unnecessary for correctness; nice for speed and memory.
     """
-    # TODO
-    raise NotImplementedError
-
+    ctx_len = model.context_length
+    n_windows = len(ids) - ctx_len
+    contexts = torch.stack([ids[i : i + ctx_len] for i in range(n_windows)])
+    targets = ids[ctx_len : ctx_len + n_windows]
+    losses = []
+    for start in range(0, n_windows, batch_size):
+        with torch.no_grad():
+            cb = contexts[start : start + batch_size]
+            tb = targets[start : start + batch_size]
+            logits = model.logits(cb)  # (batch, vocab_size)
+            loss_fn = CrossEntropyLoss()
+            loss = loss_fn(logits, tb)
+            losses.append(loss.item())
+    mean_ce = sum(losses) / len(losses)
+    return float(torch.exp(torch.tensor(mean_ce)))
 
 def sample(
     model,
@@ -175,8 +187,20 @@ def sample(
         bigram model (`ctx_len=1`) the same loop applies; we just grab
         the very last token as context.
     """
-    # TODO
-    raise NotImplementedError
+    ctx_len = model.context_length
+    if prompt_ids.shape[0] < ctx_len:
+        raise ValueError(f"prompt_ids has length {len(prompt_ids)}; need at least {ctx_len}")
+    
+    out = list(prompt_ids.tolist())
+    for _ in range(num_tokens):
+        ctx = torch.tensor(out[-ctx_len:]).unsqueeze(0)   # (1, ctx_len)
+        logits = model.logits(ctx)[0]                     # (vocab_size,)
+        scaled = logits / temperature
+        probs = torch.softmax(scaled, dim=-1)
+        next_id = torch.multinomial(probs, num_samples=1, generator=generator).item()
+        out.append(next_id)
+
+    return torch.tensor(out, dtype=prompt_ids.dtype)
 
 
 def train_lm(
@@ -247,5 +271,25 @@ def train_lm(
         with `context_length=N`, `x` has shape `(batch, N)`. Both go straight
         into `model.logits(x)` — no extra reshaping needed in the loop.
     """
-    # TODO
-    raise NotImplementedError
+    loss_fn = CrossEntropyLoss()
+    optimizer = SGD(model.parameters(), lr=lr, weight_decay=weight_decay)
+
+    train_losses = []
+    val_perplexities = []
+    ctx_len = model.context_length
+
+    for step in range(num_steps):
+        x, y = get_batch(train_ids, ctx_len, batch_size, generator=generator)
+        logits = model.logits(x)             # (batch, vocab_size)
+        loss = loss_fn(logits, y)
+
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        if step % log_every == 0 or step == num_steps - 1:
+            train_losses.append(loss.item())
+            if val_ids is not None:
+                val_perplexities.append(perplexity(model, val_ids))
+
+    return {'train_losses': train_losses, 'val_perplexities': val_perplexities}
