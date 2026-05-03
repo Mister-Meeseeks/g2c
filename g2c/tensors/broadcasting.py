@@ -52,9 +52,25 @@ def broadcast_shapes(
     Raises:
         ValueError: if the shapes are not broadcast-compatible.
     """
-    # TODO
-    raise NotImplementedError
 
+    reverse_output_shape: list[int] = []
+    reverse_shape_a = shape_a[::-1]
+    reverse_shape_b = shape_b[::-1]
+
+    for i in range(max(len(shape_a), len(shape_b))):
+        dim_a = reverse_shape_a[i] if i < len(shape_a) else 1
+        dim_b = reverse_shape_b[i] if i < len(shape_b) else 1
+
+        if dim_a == dim_b:
+            reverse_output_shape.append(dim_a)
+        elif dim_a == 1:
+            reverse_output_shape.append(dim_b)
+        elif dim_b == 1:
+            reverse_output_shape.append(dim_a)
+        else:
+            raise ValueError(f"Shapes {shape_a} and {shape_b} are not broadcast-compatible")
+    
+    return tuple(reverse_output_shape[::-1])
 
 class TinyArray:
     """A minimal teaching array with NumPy-style broadcasting in element-wise ops.
@@ -118,11 +134,80 @@ class TinyArray:
                  c. Sum the two scalar values into the output position.
             4. Return TinyArray(out_data, out_shape).
         """
-        # TODO
-        raise NotImplementedError
+        
+        return self.__cross__(other, lambda a, b: a + b)
 
     def __mul__(self, other: "TinyArray") -> "TinyArray":
         """Element-wise multiply with broadcasting. Same logic as __add__,
         with multiplication instead of addition."""
-        # TODO
-        raise NotImplementedError
+
+        return self.__cross__(other, lambda a, b: a * b)
+
+
+    def __cross__(self, other: "TinyArray", op: callable) -> "TinyArray":
+        """Element-wise add with broadcasting.
+
+        Steps:
+            1. Compute `out_shape = broadcast_shapes(self.shape, other.shape)`.
+            2. Allocate an output data list of the right total length.
+            3. For each output multi-dimensional index:
+                 a. Map it back to an index into `self`, treating any size-1
+                    or padded dim of `self` as 0 in that position.
+                 b. Same for `other`.
+                 c. Sum the two scalar values into the output position.
+            4. Return TinyArray(out_data, out_shape).
+        """
+        
+        out_shape = broadcast_shapes(self.shape, other.shape)
+        out_data = alloc_shape_array(out_shape)
+
+        for i in range(len(out_data)):
+            multidim_index_rev = []
+            remaining = i
+            for dim in reversed(out_shape):
+                multidim_index_rev.append(remaining % dim)
+                remaining //= dim
+
+            self_shape_rev = list(reversed(self.shape))
+            for _ in range(len(out_shape) - len(self.shape)):
+                self_shape_rev = list(self_shape_rev) + [1]
+
+            self_index = []
+            for dim_idx in range(len(out_shape)):
+                dim = self_shape_rev[dim_idx]
+                if dim == 1:
+                    self_index.append(0)
+                else:
+                    self_index.append(multidim_index_rev[dim_idx])
+            self_index.reverse()
+            
+            other_shape_rev = list(reversed(other.shape))
+            for _ in range(len(out_shape) - len(other.shape)):
+                other_shape_rev = list(other_shape_rev) + [1]
+            
+            other_index = []
+            for dim_idx in range(len(out_shape)):
+                dim = other_shape_rev[dim_idx]
+                if dim == 1:
+                    other_index.append(0)
+                else:
+                    other_index.append(multidim_index_rev[dim_idx])
+            other_index.reverse()
+
+            out_data[i] = op(_nested_index(self, self_index), _nested_index(other, other_index))
+
+        return TinyArray(out_data, out_shape) 
+
+def _nested_index (arr: TinyArray, index: list[int]) -> float:
+    flat_index = 0
+    stride = 1
+    for dim_size in reversed(arr.shape):
+        flat_index += index.pop() * stride
+        stride *= dim_size
+    return arr.data[flat_index]
+
+def alloc_shape_array(shape: tuple[int, ...]) -> list[float]:
+    out_data = [0.0]
+    for i in range(len(shape)):
+        out_data *= shape[i]
+    return out_data

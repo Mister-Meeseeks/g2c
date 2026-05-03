@@ -35,9 +35,14 @@ def matmul_loops(A: list[list[float]], B: list[list[float]]) -> list[list[float]
     Each output entry:
         C[i][j] = sum over p in 0..k of A[i][p] * B[p][j]
     """
-    # TODO
-    raise NotImplementedError
-
+    C: list[list[float]] = []
+    for i in range(len(A)):
+        C.append([])
+        for j in range(len(B[0])):
+            C[i].append(0.0)
+            for p in range(len(B)):
+                C[i][j] += A[i][p] * B[p][j]
+    return C
 
 def matmul_numpy(A: np.ndarray, B: np.ndarray) -> np.ndarray:
     """NumPy matmul. C = A @ B.
@@ -45,8 +50,8 @@ def matmul_numpy(A: np.ndarray, B: np.ndarray) -> np.ndarray:
     One line. Use the `@` operator or `np.matmul`. (`np.einsum("ij,jk->ik", A, B)`
     works too, and makes the dimension contraction explicit, but `@` is idiomatic.)
     """
-    # TODO
-    raise NotImplementedError
+    return A @ B
+
 
 
 def matmul_torch(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
@@ -54,5 +59,4 @@ def matmul_torch(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
 
     One line. Use `torch.matmul` or the `@` operator.
     """
-    # TODO
-    raise NotImplementedError
+    return torch.matmul(A, B)
