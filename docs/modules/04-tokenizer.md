@@ -130,17 +130,15 @@ class BPETokenizer:
 
 About 50 lines of real implementation in total. The smallest module's worth of code in the course so far — and yet it's a surprisingly capable tokenizer.
 
-## How to run the tests
+## Scaffolding and how to run the tests
 
 Tests live in `tests/test_tokenizer.py`. Initial state: 3 passed (the construction tests verifying the base vocab), 29 failed.
 
 ```bash
-source .venv/bin/activate
-
-pytest tests/test_tokenizer.py             # run all module-04 tests
-pytest tests/test_tokenizer.py -x          # stop at first failure
-pytest tests/test_tokenizer.py -k pair     # only pair-count tests
-pytest tests/test_tokenizer.py -v          # verbose
+.venv/bin/python -m pytest tests/test_tokenizer.py             # run all module-04 tests
+.venv/bin/python -m pytest tests/test_tokenizer.py -x          # stop at first failure
+.venv/bin/python -m pytest tests/test_tokenizer.py -k pair     # only pair-count tests
+.venv/bin/python -m pytest tests/test_tokenizer.py -v          # verbose
 ```
 
 ## Exercises
@@ -151,17 +149,19 @@ Set up or resume the working notebook for this exercise set by running:
 .venv/bin/python scripts/open_notebook.py 04
 ```
 
-1. **Implement and test `_get_pair_counts` and `_merge` first.** These are the algorithmic atoms. Their tests are pure data-structure exercises — no string handling, no UTF-8 — so you can verify them in isolation before tackling the bigger methods. Pay attention to the overlap rule in `_merge`: `[1, 1, 1]` merging `(1, 1)` produces `[99, 1]`, not `[99, 99]`.
+The implementation path is the test suite above. The notebook exercises are for prediction, inspection, and explanation after you have the relevant pieces working.
 
-2. **Implement `train`.** Once the helpers are right, the BPE loop is straightforward: repeatedly count pairs, merge the most frequent, record. The trickiest decision is what to do when no pairs remain (sequence too short or too uniform) — break out of the loop early.
+1. **Pair counts and merge behavior.** Predict the adjacent-pair counts for a tiny integer sequence before running your helper. Then predict the non-overlapping merge result for `[1, 1, 1]`. This is the easiest place to catch the overlap rule before it gets buried inside full BPE training.
 
-3. **Implement `encode` and `decode`, then verify round-trip.** The round-trip property — `decode(encode(text)) == text` for any text, including multi-byte Unicode — is the headline correctness check. The test suite hammers this from several angles.
+2. **Train BPE on a tiny corpus.** Use `"the the the"` or another very small repeated string and inspect the learned merges. The goal is to connect the loop in the lesson to concrete `merges` and `vocab` entries you can read by hand.
 
-4. **Train at three different vocab sizes and compare.** In the Module 04 notebook: train your tokenizer on a corpus (TinyShakespeare is a good choice — ~1MB of text, available everywhere) at vocab sizes 256 (no merges), 1024, and 8192. Tokenize the same passage with each and report the token count. Plot vocab size vs. compression ratio. The shape of that curve tells you what "diminishing returns" looks like in BPE land.
+3. **Encode, decode, and verify round-trip.** Encode text that includes punctuation, whitespace, and multi-byte Unicode, then decode it back. Explain why byte-level BPE can handle unseen text, why earliest learned merges get priority, and what makes decoding lossless.
 
-5. **Visualize learned tokens.** Print the first 20 and the last 20 entries of `tok.vocab` after training. The first entries (lowest IDs above 255) should be the most common bigrams in the corpus — short, high-frequency. The last entries should be longer, more specific subwords. This is the ladder of generality BPE builds, made visible.
+4. **Compare vocab size vs. compression.** Train several tokenizers at different vocab sizes and tokenize the same passage with each. Report token count and compression ratio, then explain the tradeoff: larger vocabularies shorten sequences but make the embedding table larger.
 
-6. **(Optional) GPT-2-style byte-level pre-tokenization.** GPT-2 doesn't merge across whitespace boundaries — it pre-splits on a regex that respects word edges, then runs BPE within each chunk. This avoids learning useless merges like `"the_"` (where `_` is a space) on every common word. Implement the GPT-2 regex pre-split and observe how the learned vocab changes. Karpathy's tokenizer video walks through exactly this.
+5. **Inspect learned tokens.** Print early and late learned vocab entries. Early IDs above 255 should usually be short, frequent patterns; later IDs should often be longer or more corpus-specific. Pick a few and explain why they make sense for your training text.
+
+6. **Optional: pre-tokenization.** Try a GPT-2-style pre-split before BPE so merges do not freely cross every boundary. Compare the learned vocab before and after. The useful question is not "which one is correct?" but "what kinds of tokens does each procedure encourage?"
 
 ## Pitfalls to expect
 
