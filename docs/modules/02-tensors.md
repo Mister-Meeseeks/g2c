@@ -24,7 +24,7 @@ The math, CS, and programming concepts this module uses. None of them require de
 - **PyTorch tensor basics.** `torch.tensor`, `.to(device)`, `@`. Refresher: the official PyTorch "Tensors" tutorial (10 min).
 
 ---
-## Why we study this
+## Why learn this
 
 The Module 01 autodiff engine works on individual scalars wrapped in `Value` objects. That's pedagogically beautiful — every node is legible. But it's hopeless for real neural networks. A small MLP on MNIST has thousands of parameters; per-Python-object overhead would make even one forward pass take minutes. A real LLM has hundreds of billions of parameters. Per-scalar Python is not just slow — it's the wrong shape of computation entirely.
 
