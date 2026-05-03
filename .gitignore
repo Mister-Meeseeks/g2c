@@ -20,6 +20,7 @@ env/
 .ruff_cache/
 .mypy_cache/
 .ipynb_checkpoints/
+notebooks/solutions/revisions/
 
 # OS
 Thumbs.db

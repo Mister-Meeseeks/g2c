@@ -30,7 +30,8 @@ The student is the repo author. Both roles are live.
 - `docs/modules/NN-name.md` — lesson + motivation + exercises + deliverable spec for module NN
 - `docs/modules/NN-name/` — assets for that module (images, diagrams, supplementary files). Reference from the lesson with relative paths, e.g. `![](NN-name/summary.png)`.
 - `g2c/<topic>/` — Python subpackage for that module's deliverable
-- `notebooks/NN-*.ipynb` — exploratory notebooks tied to module NN
+- `notebooks/clean/NN-*.ipynb` — canonical pristine notebooks tied to module NN
+- `notebooks/solutions/NN-*.ipynb` — working or solved notebook copies; use `.venv/bin/python scripts/open_notebook.py NN` to create or resume, and `--fresh` to archive the existing copy before resetting from clean
 - `answers/module-NN.md` — student-owned written answers for that module's exercises
 - `docs/rubrics/module-NN.md` — course-owned grading rubric for written answers; use for review, not as a replacement for the student's work
 - `data/` — datasets; anything large is gitignored
