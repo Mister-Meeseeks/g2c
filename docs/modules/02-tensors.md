@@ -146,30 +146,57 @@ softmax(x: torch.Tensor, dim: int = -1) -> torch.Tensor
 
 A linear layer (`y = x @ W + b`) and a numerically stable softmax. Together they form the forward pass of a single-layer classifier.
 
-## How to run the tests
+## Scaffolding and how to run the tests
 
 A pytest suite is in `tests/test_tensors.py`. Initial state: a small number of construction/repr tests pass; the rest fail informatively until you implement.
 
 ```bash
-pytest tests/test_tensors.py             # run all module-02 tests
-pytest tests/test_tensors.py -x          # stop at first failure (recommended while working)
-pytest tests/test_tensors.py -k matmul   # only the matmul tests
-pytest tests/test_tensors.py -v          # verbose
+.venv/bin/python -m pytest tests/test_tensors.py             # run all module-02 tests
+.venv/bin/python -m pytest tests/test_tensors.py -x          # stop at first failure
+.venv/bin/python -m pytest tests/test_tensors.py -k matmul   # only matmul tests
+.venv/bin/python -m pytest tests/test_tensors.py -v          # verbose
 ```
 
 ## Exercises
 
-1. **Triple-loop matmul.** Verify `matmul_loops` and verify it on small known cases. Note the index pattern: `C[i, j] += A[i, p] * B[p, j]` summed over `p`. Three loops in one canonical order.
+These are practice and investigation prompts. The implementation targets are the TODOs in `g2c/tensors/` and the tests above; the exercises use those pieces to build shape intuition and performance intuition.
 
-2. **Vectorized matmul.** Implement `matmul_numpy` (use `@` or `np.einsum("ij,jk->ik", A, B)`) and `matmul_torch` (use `@` or `torch.matmul`). Verify all three implementations agree on a randomly-generated input.
+Set up or resume the working notebook for the exercise set by running:
 
-3. **Benchmark the three implementations.** In `notebooks/02-matmul-benchmark.ipynb`, time all three at sizes 32, 64, 128, 256, 512, 1024, 2048. The Python loop version will be unusable past a few hundred. Plot time vs. size on a log-log scale and identify the slope. Add a fourth implementation: PyTorch on MPS (`A.to("mps")` before the matmul). Compare to PyTorch on CPU.
+```bash
+.venv/bin/python scripts/open_notebook.py 02
+```
 
-4. **Broadcasting from scratch.** Implement `broadcast_shapes` per the rules in "The big idea" above. Then implement `TinyArray.__add__` using your `broadcast_shapes` to compute the output shape, and a nested loop over the output indices to compute each output element (mapping each output index back to the appropriate input index, treating size-1 dims as stretched). Repeat for `__mul__`.
+1. **Shape tracing.** For each expression, write the output shape or mark it invalid. For invalid expressions, name the mismatched dimensions.
 
-5. **Linear + softmax forward pass.** Implement `linear` and `softmax`. For softmax, subtract the max along `dim` before exponentiating — verify this matters by trying `softmax(torch.tensor([1000.0, 1001.0]))` with and without the shift.
+   - `A @ B` where `A.shape == (2, 3)` and `B.shape == (3, 4)`
+   - `B @ A` for the same `A` and `B`
+   - `x @ W + b` where `x.shape == (5, 2)`, `W.shape == (2, 6)`, and `b.shape == (6,)`
+   - `x @ W + b_bad` where `b_bad.shape == (5,)`
 
-6. **A tiny classifier.** In `notebooks/02-classifier-forward.ipynb`, build a one-layer classifier on top of `linear` and `softmax`: random weights, a batch of inputs, output a probability distribution over classes. Annotate every shape. (No training in this module — we don't have tensor-shaped autograd yet.)
+2. **Manual matmul.** Compute this product by hand, showing the dot product for each output entry. Then, after your implementations pass the matmul tests, verify the same result with `matmul_loops`, `matmul_numpy`, and `matmul_torch`.
+
+   ```
+   [[ 1, 2, 0],      [[2,  1],
+    [-1, 3, 4]]  @    [0, -2],
+                      [5,  3]]
+   ```
+
+3. **Benchmark and interpret matmul.** In the Module 02 notebook, time loop matmul, NumPy matmul, PyTorch CPU matmul, and PyTorch MPS matmul at increasing square sizes. Before running, write down your predicted ordering. After running, plot time vs. size on a log-log scale and answer: which implementation has the best constant factor, where does MPS start to win, and why does the Python loop become unusable so quickly?
+
+4. **Broadcasting predictions.** Before running code, predict each output shape or mark it invalid. For valid cases, identify which dimensions stretch.
+
+   - `(3, 4) + (4,)`
+   - `(2, 1, 3) + (1, 5, 1)`
+   - `(5, 1) + (1, 4)`
+   - `(2, 3) + (3, 2)`
+   - `() + (2, 3, 4)`
+
+   Then verify your predictions with `broadcast_shapes` and at least two `TinyArray` examples.
+
+5. **Softmax stability.** Explain why a naive softmax over `[1000.0, 1001.0]` overflows in float32. Then compute the stable version by subtracting the max first, and verify that adding the same constant to every logit does not change the output distribution.
+
+6. **A tiny classifier forward pass.** In the Module 02 notebook, build a one-layer classifier on top of `linear` and `softmax`: random weights, a batch of inputs, and an output probability distribution over classes. Annotate every shape. Check that each row of probabilities sums to 1. No training in this module — we don't have tensor-shaped autograd yet.
 
 ## Pitfalls to expect
 
@@ -213,8 +240,7 @@ Optional:
 - [ ] `g2c/tensors/matmul.py`: all three matmul functions implemented and tests passing
 - [ ] `g2c/tensors/broadcasting.py`: `broadcast_shapes` + `TinyArray.__add__` + `TinyArray.__mul__` passing
 - [ ] `g2c/tensors/forward.py`: `linear` and numerically stable `softmax` passing
-- [ ] `notebooks/02-matmul-benchmark.ipynb`: log-log timing plot across implementations and sizes, including MPS
-- [ ] `notebooks/02-classifier-forward.ipynb`: a one-layer classifier forward pass with shape annotations
+- [ ] `notebooks/solutions/02-tensors.ipynb`: log-log timing plot across implementations and sizes, including MPS
+- [ ] `notebooks/solutions/02-tensors.ipynb`: a one-layer classifier forward pass with shape annotations
 - [ ] You can explain, out loud, why the Python-loop matmul falls so far behind NumPy, and what would need to change in your code to close the gap 
-
 
