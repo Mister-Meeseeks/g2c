@@ -196,7 +196,7 @@ Set up or resume the working notebook for the exercise set by running:
 
 5. **Softmax stability.** Explain why a naive softmax over `[1000.0, 1001.0]` overflows in float32. Then compute the stable version by subtracting the max first, and verify that adding the same constant to every logit does not change the output distribution.
 
-6. **A tiny classifier forward pass.** In the Module 02 notebook, build a one-layer classifier on top of `linear` and `softmax`: random weights, a batch of inputs, and an output probability distribution over classes. Annotate every shape. Check that each row of probabilities sums to 1. No training in this module — we don't have tensor-shaped autograd yet.
+6. **A tiny classifier forward pass.** In the Module 02 notebook, implement `classifier_forward(x, W, b)` on top of `linear` and `softmax`: random weights, a batch of inputs, logits, and an output probability distribution over classes. Annotate every shape. Check that each row of probabilities sums to 1. No training in this module — we don't have tensor-shaped autograd yet.
 
 ## Pitfalls to expect
 
@@ -243,4 +243,3 @@ Optional:
 - [ ] `notebooks/solutions/02-tensors.ipynb`: log-log timing plot across implementations and sizes, including MPS
 - [ ] `notebooks/solutions/02-tensors.ipynb`: a one-layer classifier forward pass with shape annotations
 - [ ] You can explain, out loud, why the Python-loop matmul falls so far behind NumPy, and what would need to change in your code to close the gap 
-
