@@ -4,59 +4,31 @@
 
 ![From token IDs to meaning-like vectors: text → token IDs → embedding lookup → add positional information (learned, sinusoidal, or RoPE) → model-ready vectors. Embeddings become a learned geometry; positions tell the model where each token is.](05-embeddings/Module05-Hero.png)
 
-*The whole module on one page. Module 04 hands us integer IDs; this module turns them into vectors and stamps "where you are in the sequence" onto each one. The embedding lookup itself is a one-line table indexing — the lesson is what the table learns and which of the three positional schemes you use to break the bag-of-tokens symmetry.*
+The last module handed us integer IDs. This module turns them into vectors. The embedding lookup itself is a one-line table indexing — the lesson is what the table learns and which of the three positional schemes you use to break the bag-of-tokens symmetry.
 
+---
 ## Prerequisites
-
-The math, CS, and programming concepts this module uses.
 
 ### Math
 
 - **Trigonometric basics.** `sin(0) = 0`, `cos(0) = 1`. Sin and cos are bounded in `[−1, 1]`. Sin and cos at multiple frequencies. Nothing more exotic than what's in a high school trig review.
-- **2D rotation matrices.** A rotation by angle θ takes `(x, y)` to `(x cos θ − y sin θ, x sin θ + y cos θ)`. Composing two rotations adds their angles: `R(α) · R(β) = R(α + β)`. RoPE leans on exactly this.
-- **Dot product as a measure of alignment.** `q · k` is large when q and k point the same direction; zero when orthogonal; negative when opposite. Attention scores are dot products, so anything that controls how dot products behave shapes attention behavior.
-
-### Computer science
-
-- **Lookup tables and integer indexing.** Both `TokenEmbedding` and `LearnedPositionalEmbedding` are just lookup tables — `weight[id]` returns a row.
-
+- **2D rotation matrices.** A rotation by angle θ takes `(x, y)` to `(x cos θ − y sin θ, x sin θ + y cos θ)`. Composing two rotations adds their angles: `R(α) · R(β) = R(α + β)`. 
+- **Dot product as a measure of alignment.** `q · k` is large when q and k point the same direction; zero when orthogonal; negative when opposite. Attention scores are dot products. 
 ### Programming
 
-- **PyTorch tensor indexing.** Integer-tensor indexing into a 2D tensor: if `weight` has shape `(V, D)` and `ids` has shape `(B, T)`, then `weight[ids]` has shape `(B, T, D)`. This is the core operation of a token embedding, and PyTorch routes gradients through it correctly.
-- **`torch.outer` and broadcasting.** Used for building the angle table in sinusoidal and RoPE encodings.
+- **PyTorch**  Tensor indexing, `torch.outer`, and broadcasting.
 
-### What you can skip
-
-You don't need to understand attention yet — RoPE will be wired into it in Module 07. We implement it now, in isolation, with a unit test of its key property. You don't need to be able to derive RoPE from first principles; the formulas are given.
-
-## Why we start here
+---
+## Where this fits
 
 After Module 04 you can turn text into a sequence of integer token IDs. After this module you can turn that sequence into a sequence of vectors that a neural network can actually use.
 
 Two things have to happen:
 
-1. **Each token gets a vector.** A learned `(vocab_size, embedding_dim)` lookup table — the same trick we used for biases and weights in earlier modules, just bigger and indexed by token ID. This is `TokenEmbedding`.
-2. **Each position gets distinguishable.** Without position info, a transformer is order-blind: `dog bites man` and `man bites dog` produce identical attention patterns because they're the same multiset of tokens. We need to inject "I am at position m" into each input. There are three common ways, and we implement all three.
-
-The token-embedding part is mechanically trivial — one tensor index. The positional-encoding part is where the design space opens up. Three schemes worth knowing:
-
-```
-                Learned       Sinusoidal      Rotary (RoPE)
-              ──────────────────────────────────────────────
-Parameters?    yes            no              no
-Extrapolates   no             yes (formula)   yes (formula)
-beyond max?
-Mechanism      added to       added to        rotates Q, K
-               token emb      token emb       inside attention
-Used in        BERT,          original        Llama, Mistral,
-               GPT-2          Transformer     Qwen, modern LLMs
-```
-
-Modern LLMs all use RoPE. Older ones used learned or sinusoidal. The reason RoPE won is the relative-position property — explained in detail below.
+1. **Each token gets a vector.** The same trick we used for biases and weights in earlier modules, just bigger and indexed by token ID. 
+2. **Each position gets distinguishable.** Without position info, a transformer is order-blind: `dog bites man` and `man bites dog` produce identical attention patterns because they're the same multiset of tokens. We need to inject "I am at position m" into each input.
 
 ## The big idea
-
-### Embeddings as learnable lookup tables
 
 A token embedding is one of the simplest ideas in deep learning:
 
@@ -92,7 +64,24 @@ A transformer's attention layer is symmetric in its inputs — it computes `soft
 
 *The failure mode that motivates everything in the rest of this module. Without position information, the multiset `{dog, bites, man}` is what attention sees in either sentence — and the predicted next token is the same. The bottom of the figure shows the fix in two flavors: additive (concatenate or sum a position vector onto the token vector before attention) and rotary (rotate the query/key vectors inside attention, by an angle proportional to position).*
 
-So we encode position into the token vectors themselves before they reach attention. There are two design choices: ADD a positional vector (Learned, Sinusoidal) or MULTIPLY (rotate) the vectors (RoPE).
+So we encode position into the token vectors themselves before they reach attention. There are two design choices: ADD a positional vector (Learned, Sinusoidal) or ROTATE the vectors (RoPE).
+
+```
+                Learned       Sinusoidal      Rotary (RoPE)
+              ──────────────────────────────────────────────
+Parameters?    yes            no              no
+
+Extrapolates   no             yes (formula)   yes (formula)
+beyond max?
+
+Mechanism      ADD to         ADD to          ROTATE Q, K
+               token emb      token emb       inside attention
+               
+Used in        BERT,          original        Llama, Mistral,
+               GPT-2          Transformer     Qwen, modern LLMs
+```
+
+Modern LLMs all use RoPE. Older ones used learned or sinusoidal. The reason RoPE won is the relative-position property — explained in detail below.
 
 ### The sinusoidal trick
 
@@ -113,9 +102,9 @@ This scheme has zero learnable parameters (the table is determined by the formul
 
 ### Rotary positional embeddings (RoPE)
 
-The most important development in positional encoding since 2017. Instead of adding a position vector to embeddings, RoPE *rotates* the query and key vectors by an angle proportional to their position before the attention dot product.
+The most important development in positional encoding since 2017. We'll cover attention in Module 7, but for now all you need to know is attention models care about token pair comparisons. For an ordered token pair (i, j), token i supplies the **query vector**, and token j supplies the **key vector**, and the dot product tells us how much token i pays attention to token j.
 
-The key property is mechanical:
+Instead of adding a position vector to the embedding vector, RoPE *rotates* the query and key vectors by an angle proportional to their position before the attention dot product. The key property is mechanical:
 
 ```
 Without RoPE — positions are added vectors:
@@ -152,25 +141,7 @@ We implement RoPE as a standalone module here and unit-test the relative-positio
 - **`_rotate_half` is a notational trick.** The 2D rotation `(a, b) → (a cos θ − b sin θ, a sin θ + b cos θ)` can be written as `(a, b) ⊙ cos θ + (−b, a) ⊙ sin θ`. The `(−b, a)` part is what `_rotate_half` produces, applied across all paired dimensions in one tensor op.
 - **Position 0 is the identity rotation.** `cos(0) = 1, sin(0) = 0`, so `RoPE(x, position=0) = x`. The test suite verifies this.
 
-## Scaffolding and how to run the tests
-
-Three scaffolded files in `g2c/embeddings/`:
-
-- **`token.py`** — `TokenEmbedding`. `__init__` (with uniform random init) and `parameters()` are implemented; `forward` is scaffolded.
-- **`positional.py`** — `LearnedPositionalEmbedding` (mechanically the same as `TokenEmbedding`) and `SinusoidalPositionalEmbedding`. The learned variant has only `forward` scaffolded; the sinusoidal one has both `__init__` (the table-building math is the lesson) and `forward` scaffolded.
-- **`rotary.py`** — `RotaryEmbedding`. `__init__` is scaffolded for the cos/sin table construction, and `forward` for the rotation itself. The `_rotate_half` helper is implemented because it's a notational utility, not the lesson.
-
-Tests live in `tests/test_embeddings.py`. Initial state: 7 passed, 24 failed.
-
-```bash
-pytest tests/test_embeddings.py             # run all module-05 tests
-pytest tests/test_embeddings.py -x          # stop at first failure (recommended)
-pytest tests/test_embeddings.py -k rotary   # only the RoPE tests
-pytest tests/test_embeddings.py -v          # verbose
-```
-
-The docstring at the top of `tests/test_embeddings.py` has the implementation order. The trickiest piece is `RotaryEmbedding`'s relative-position test — it places two random vectors at three different absolute-position pairs (all with the same offset) and checks the dot products agree.
-
+---
 ## What you'll build
 
 Package: `g2c/embeddings/`
@@ -208,6 +179,25 @@ A typical use looks like this (built fully in Module 07, sketched here):
 
 For RoPE, the addition is replaced by `RotaryEmbedding` applied inside attention to Q and K — that's a Module 07 concern.
 
+## Scaffolding and how to run the tests
+
+Tests live in `tests/test_embeddings.py`. Initial state: 7 passed, 24 failed.
+
+```bash
+.venv/bin/python -m pytest tests/test_embeddings.py             # run all module-05 tests
+.venv/bin/python -m pytest tests/test_embeddings.py -x          # stop at first failure (recommended)
+.venv/bin/python -m pytest tests/test_embeddings.py -k rotary   # only the RoPE tests
+.venv/bin/python -m pytest tests/test_embeddings.py -v          # verbose
+```
+
+Open the working notebook copy with:
+
+```bash
+.venv/bin/python scripts/open_notebook.py 05
+```
+
+The clean scaffold lives at `notebooks/clean/05-embeddings.ipynb`; do your work in the generated `notebooks/solutions/05-embeddings.ipynb` copy.
+
 ## Exercises
 
 1. **Implement `TokenEmbedding` and `LearnedPositionalEmbedding` first.** They're the simplest, mechanically identical, and their tests are quick to turn green. Both forwards are one-liners.
@@ -218,11 +208,11 @@ For RoPE, the addition is replaced by `RotaryEmbedding` applied inside attention
 
 4. **Implement `RotaryEmbedding.forward`.** Two-line recipe: slice cos/sin to seq_len, return `x * cos + _rotate_half(x) * sin`. The test_rotary_relative_position_property is the real correctness check — if your rotation isn't a true rotation, the dot product will depend on absolute position and the test will fail.
 
-5. **Train a tiny embedding model on word co-occurrence.** In `notebooks/05-train-embeddings.ipynb`: pick a small corpus (a chapter of a public-domain book is fine), tokenize with your Module 04 BPE, build a tiny model that predicts a token given its context window (a Bengio-style trigram or skip-gram). Train. Visualize the learned embeddings via t-SNE or UMAP. Look for clusters of semantically related tokens.
+5. **Train a tiny embedding model on word co-occurrence.** In the Module 05 notebook: pick a small corpus, tokenize with your Module 04 BPE, build a tiny model that predicts a token given its context window, and train it. Visualize the learned embeddings with the provided 2D projection helper. Look for clusters of related tokens.
 
 6. **Replicate `king − man + woman ≈ queen` on a pretrained model.** Download a small set of pretrained word vectors (GloVe, ~100MB; or even better, `gensim`'s `glove-wiki-gigaword-50`). Verify the analogy. Try a few others: `Paris − France + Italy ≈ Rome`. Then attempt the same on the embeddings you trained in exercise 5 — your tiny model probably won't recover these analogies, and it's instructive to see how much corpus and capacity matter.
 
-7. **Compare positional schemes side-by-side.** In a notebook, plot the learned, sinusoidal, and (cos slice of) rotary positional encodings as heatmaps. Look at the patterns: learned is structureless noise (early in training); sinusoidal has the multi-frequency banding; RoPE's cos table has the same multi-frequency structure but at different scales.
+7. **Compare positional schemes side-by-side.** In the Module 05 notebook, plot the learned, sinusoidal, and (cos slice of) rotary positional encodings as heatmaps. Look at the patterns: learned is structureless noise (early in training); sinusoidal has the multi-frequency banding; RoPE's cos table has the same multi-frequency structure but at different scales.
 
 ## Pitfalls to expect
 
@@ -233,6 +223,15 @@ For RoPE, the addition is replaced by `RotaryEmbedding` applied inside attention
 - **Wrong half-split convention for RoPE.** We use the *split-halves* variant: pair dim `i` with dim `d/2 + i`. The original RoPE paper paired dim `2i` with dim `2i+1` (interleaved). Both are valid rotations and produce the same end-to-end behavior in attention, but they're not interchangeable — `_rotate_half` is specifically the split-halves version.
 - **Not handling `seq_len > max_seq_len`.** None of these implementations does — slicing past the end just truncates. In production you'd either error out or expand the table on the fly. For our scope, `max_seq_len` should be set generously.
 
+## M-series notes
+
+This module is light on compute.
+
+- A 32k × 256 token-embedding table is ~8M parameters, ~32MB. Fits anywhere.
+- Sinusoidal and RoPE tables for `max_seq_len = 4096, dim = 512` are around 8MB each. Trivial.
+- The exercises that move some compute (training a tiny embedding model, t-SNE on the result) all fit comfortably on CPU; MPS isn't even necessary unless your corpus is large. Plan tens of seconds to a few minutes per exercise.
+
+---
 ## Reading
 
 Primary:
@@ -250,14 +249,6 @@ Secondary:
 ## Deliverable checklist
 
 - [ ] All tests in `tests/test_embeddings.py` pass.
-- [ ] `notebooks/05-train-embeddings.ipynb`: tiny embedding model trained on a corpus, t-SNE/UMAP visualization included.
-- [ ] `notebooks/05-analogies.ipynb` (or in the same notebook): `king − man + woman ≈ queen` reproduced on pretrained vectors; honest assessment of whether your tiny model reproduces any analogies.
+- [ ] `notebooks/solutions/05-embeddings.ipynb`: tiny embedding model trained on a corpus, 2D visualization included.
+- [ ] `notebooks/solutions/05-embeddings.ipynb`: `king − man + woman ≈ queen` reproduced on pretrained vectors; honest assessment of whether your tiny model reproduces any analogies.
 - [ ] You can explain — out loud, without notes — why RoPE'd attention scores depend only on the relative position offset.
-
-## M-series notes
-
-This module is light on compute.
-
-- A 32k × 256 token-embedding table is ~8M parameters, ~32MB. Fits anywhere.
-- Sinusoidal and RoPE tables for `max_seq_len = 4096, dim = 512` are around 8MB each. Trivial.
-- The exercises that move some compute (training a tiny embedding model, t-SNE on the result) all fit comfortably on CPU; MPS isn't even necessary unless your corpus is large. Plan tens of seconds to a few minutes per exercise.
