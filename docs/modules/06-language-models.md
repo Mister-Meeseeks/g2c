@@ -285,7 +285,7 @@ The implementation path is the test suite above. The notebook starts with an exe
 
 4. **Perplexity and autoregressive sampling.** Check the two sanity cases: a uniform model has perplexity `vocab_size`, and a perfect deterministic model has perplexity 1. Then sample from the deterministic model to make the predict-append-repeat loop visible.
 
-5. **Train all three on the same tokenized corpus and compare.** Use the notebook's built-in tiny corpus or add `data/tinyshakespeare.txt` for a larger run. Fit the counts model, train the neural bigram and MLP, and report validation perplexity in one table.
+5. **Train all three on the same tokenized corpus and compare.** `./setup.sh` prepares `data/tinyshakespeare.txt`; the notebook has only a small fallback if that file is missing. Fit the counts model, train the neural bigram and MLP, and report validation perplexity in one table.
 
 6. **Sample from each model and read the text.** Generate from the counts bigram, neural bigram, and MLP. Compare their failure modes: repeated fragments, locally plausible pairs, and the limits of a fixed small context.
 
