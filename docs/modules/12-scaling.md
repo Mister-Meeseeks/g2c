@@ -31,7 +31,7 @@ Module 12 is the first module without new package code. You're not implementing 
 ### What you can skip
 
 - **Mixed precision (fp16, bf16) on MPS.** Officially supported, occasionally fast, but introduces silent op-fallback edges and changes loss curves enough to confuse a scaling experiment. Stay in fp32 for this module. Module 16 returns to inference-time precision.
-- **Adam / AdamW.** Continue with the `SGD` optimizer from Module 03. The empirical scaling-laws literature uses Adam, and the absolute values of `max_lr` and final loss differ by an order of magnitude — but the *shape* of the curves (loss as a power of params) is the same. We're after the shape, not the exponent.
+- **Optimizer internals.** Use the AdamW-backed trainer path from Modules 03B and 10. The empirical scaling-laws literature also uses Adam-style optimizers, but exact `max_lr` values and final losses at toy scale will still differ from published runs. We're after the shape of the comparison, not the published exponent.
 - **Tied embeddings.** The Module 09 `TransformerLM` keeps `token_embed` and `head` as separate matrices. Tying them halves the embedding parameter cost; nothing else changes. Out of scope here.
 - **Theoretical derivations of the scaling exponents.** The Kaplan paper has them; Hoffmann's Chinchilla paper revisits them with cleaner methodology. They're worth reading, but the exponent itself is not a deep theoretical object — it's an empirical fit and the value at toy scale will not match published large-scale numbers.
 - **Inverse scaling (`Inverse Scaling Prize`, McKenzie et al.).** A small but real set of tasks where larger models do *worse*. Genuinely interesting, but our smallest model is too small for this to manifest. Skim later if curious.

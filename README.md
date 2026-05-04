@@ -10,7 +10,7 @@ The hard constraint: **all tasks must be runnable on an M-series MacBook**, with
 
 ## Contents
 
-Start with the [syllabus](docs/syllabus.md) for the full 20-week arc plus the fast Module 00 review. Lessons published so far:
+Start with the [syllabus](docs/syllabus.md) for the full 20-week arc plus the fast Module 00 review. Module 03B is a draft insertion being tested before a possible full renumber. Lessons published so far:
 
 | #  | Module                                                          | Phase                |
 | -- | --------------------------------------------------------------- | -------------------- |
@@ -18,6 +18,7 @@ Start with the [syllabus](docs/syllabus.md) for the full 20-week arc plus the fa
 | 01 | [Scalar autodiff](docs/modules/01-autodiff.md)                  | I — Foundations      |
 | 02 | [Tensors and matmul](docs/modules/02-tensors.md)                | I — Foundations      |
 | 03 | [A first neural network](docs/modules/03-nn.md)                 | I — Foundations      |
+| 03B | [Training neural networks well](docs/modules/03b-training-neural-networks.md) | I — Foundations |
 | 04 | [Tokenization](docs/modules/04-tokenizer.md)                    | II — Language        |
 | 05 | [Embeddings and positions](docs/modules/05-embeddings.md)       | II — Language        |
 | 06 | [Next-token prediction](docs/modules/06-language-models.md)     | II — Language        |

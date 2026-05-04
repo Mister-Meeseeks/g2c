@@ -33,7 +33,7 @@ import math
 import pytest
 import torch
 
-from g2c.nn import SGD
+from g2c.nn import AdamW, SGD
 from g2c.training import (
     Trainer,
     clip_grad_norm_,
@@ -413,6 +413,7 @@ def test_trainer_defaults():
     assert t.warmup_steps == 0
     assert t.weight_decay == 0.0
     assert t.grad_clip is None
+    assert t.optimizer_name == "sgd"
     expected_device = torch.device(
         "mps" if torch.backends.mps.is_available() else "cpu"
     )
@@ -482,6 +483,34 @@ def test_trainer_optimizer_is_sgd():
     assert isinstance(t.optimizer, SGD)
     assert t.optimizer.lr == 1e-3
     assert t.optimizer.weight_decay == 0.05
+
+
+def test_trainer_can_construct_adamw_optimizer():
+    t = Trainer(
+        _tiny_model(),
+        batch_size=4,
+        context_length=6,
+        max_steps=10,
+        max_lr=3e-4,
+        weight_decay=0.01,
+        optimizer="adamw",
+    )
+    assert t.optimizer_name == "adamw"
+    assert isinstance(t.optimizer, AdamW)
+    assert t.optimizer.lr == 3e-4
+    assert t.optimizer.weight_decay == 0.01
+
+
+def test_trainer_rejects_unknown_optimizer():
+    with pytest.raises(ValueError, match="optimizer"):
+        Trainer(
+            _tiny_model(),
+            batch_size=4,
+            context_length=6,
+            max_steps=10,
+            max_lr=1e-3,
+            optimizer="rmsprop",
+        )
 
 
 # ----------------------------------------------------------------------

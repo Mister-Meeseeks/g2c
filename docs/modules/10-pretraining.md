@@ -2,7 +2,7 @@
 
 > **Question this module answers:** *How does the model absorb language patterns from raw text?*
 
-![Pretraining the tiny GPT end-to-end: a raw token stream is sliced into (B, T) windows; each window goes through TransformerLM to produce (B, T, V) logits; lm_cross_entropy averages per-position cross-entropy across all B × T positions; loss.backward populates parameter gradients; clip_grad_norm rescales them if their global norm is too large; cosine_with_warmup picks the lr for this step; optimizer.step applies the SGD update; the step counter advances. A side panel shows sample text quality progressing through training: random characters at step 0, locally-correct subwords at step 500, locally-coherent sentences by step 2000+.](10-pretraining/Module10-Hero.png)
+![Pretraining the tiny GPT end-to-end: a raw token stream is sliced into (B, T) windows; each window goes through TransformerLM to produce (B, T, V) logits; lm_cross_entropy averages per-position cross-entropy across all B × T positions; loss.backward populates parameter gradients; clip_grad_norm rescales them if their global norm is too large; cosine_with_warmup picks the lr for this step; optimizer.step applies the optimizer update; the step counter advances. A side panel shows sample text quality progressing through training: random characters at step 0, locally-correct subwords at step 500, locally-coherent sentences by step 2000+.](10-pretraining/Module10-Hero.png)
 
 The architecture from Module 09 doesn't change, pretraining is the loop that calls it. Internalizing the eight-step order of operations on this diagram is the conceptual content of the module.
 
@@ -14,6 +14,7 @@ Module 10 closes Phase III by training the architecture you built in Module 09. 
 
 - **Cross-entropy.** Same loss function you've used since Module 03; the only new thing is the reshape.
 - **Global gradient norm.** `‖g‖ = sqrt(∑_p ‖∇p‖²)` where the sum is over every parameter.
+- **Training dynamics from Module 03B.** AdamW, warmup/cosine schedules, gradient clipping, and train/validation curve diagnosis should already be familiar.
 
 ### PyTorch
 
@@ -23,7 +24,7 @@ Module 10 closes Phase III by training the architecture you built in Module 09. 
 ---
 ## Why we start here
 
-After Module 09 you have a `TransformerLM` that can do a forward pass. You don't yet have a model that has been trained on a corpus. The full pretraining recipe is short — sample a batch, forward, loss, backward, clip, step — but every line of it has a particular order that matters, and three new utilities pretraining cares about that the Module 06 trainer didn't:
+After Module 09 you have a `TransformerLM` that can do a forward pass. You don't yet have a model that has been trained on a corpus. The full pretraining recipe is short — sample a batch, forward, loss, backward, clip, step — but every line of it has a particular order that matters:
 
 ```
               ┌─────────────────────────────────────────────┐
@@ -57,7 +58,7 @@ After Module 09 you have a `TransformerLM` that can do a forward pass. You don't
                                        step += 1
 ```
 
-The new boxes — `get_lm_batch` (multi-position targets), `lm_cross_entropy` (mean over `B×T` positions), `cosine_with_warmup` (the schedule), `clip_grad_norm_` (global gradient clipping) — are this module's deliverables. Once they fit together inside `Trainer.train_step`, you have a real pretraining loop.
+The language-modeling boxes — `get_lm_batch` (multi-position targets) and `lm_cross_entropy` (mean over `B×T` positions) — are new here. The training-dynamics boxes — `cosine_with_warmup`, `clip_grad_norm_`, and AdamW — come from Module 03B. Once they fit together inside `Trainer.train_step`, you have a real pretraining loop.
 
 ## The big idea
 
@@ -101,7 +102,7 @@ Eight steps, in this order, every step:
 4. **`backward`** — populate `.grad` on every parameter via reverse-mode autodiff.
 5. **`clip_grad_norm_`** — rescale every gradient by the same factor if the global norm exceeds `max_norm`. No-op when below threshold.
 6. **`optimizer.lr = cosine_with_warmup(step, ...)`** — overwrite the optimizer's lr with the schedule's prescription for this step.
-7. **`optimizer.step()`** — apply the SGD update.
+7. **`optimizer.step()`** — apply the optimizer update, usually AdamW for the serious run.
 8. **`step += 1`** — advance the schedule counter.
 
 Two reorderings that *look* equivalent but aren't:
@@ -125,7 +126,7 @@ Two reorderings that *look* equivalent but aren't:
       disagree. Logging is then misleading.
 ```
 
-![The eight-step training loop drawn in order: (1) zero_grad clears stale gradients; (2) forward runs the model to logits; (3) lm_cross_entropy averages per-position CE; (4) backward populates parameter .grad; (5) clip_grad_norm_ rescales if the global norm is too large; (6) set the learning rate from cosine_with_warmup; (7) optimizer.step applies the SGD update; (8) increment the step counter. A side panel pins the two most common reorderings — clipping after step (clip becomes a no-op on this step) and advancing the counter before optimizer.step (the lr you log isn't the lr you applied) — and labels both as silent-bug territory.](10-pretraining/Module10-TrainingSteps.png)
+![The eight-step training loop drawn in order: (1) zero_grad clears stale gradients; (2) forward runs the model to logits; (3) lm_cross_entropy averages per-position CE; (4) backward populates parameter .grad; (5) clip_grad_norm_ rescales if the global norm is too large; (6) set the learning rate from cosine_with_warmup; (7) optimizer.step applies the optimizer update; (8) increment the step counter. A side panel pins the two most common reorderings — clipping after step (clip becomes a no-op on this step) and advancing the counter before optimizer.step (the lr you log isn't the lr you applied) — and labels both as silent-bug territory.](10-pretraining/Module10-TrainingSteps.png)
 
 *The order is the lesson. Most miswirings of this loop produce code that *looks* like it's training: loss goes down, no exceptions, training history fills in normally — but the schedule, regularization, or clip is happening to the wrong gradients or at the wrong time. `Trainer.train_step`'s docstring spells the order out one more time, and the headline test `test_trainer_smoke_train_decreases_val_loss` is the end-to-end check that all eight steps are wired correctly.*
 
@@ -187,7 +188,7 @@ The clip is also a **no-op below the threshold**: if `‖g‖ ≤ max_norm`, not
 
 ### What we don't cover
 
-- **Adam / AdamW.** Real LM pretraining uses adaptive optimizers (Adam, AdamW). We stick with `SGD` from Module 03 — adaptive optimizers are a separate topic and they don't change anything conceptual about pretraining. The exercises sweep a few base lrs; with a tuned lr, SGD reaches recognizable text on TinyShakespeare.
+- **Optimizer internals.** Module 03B covered AdamW, schedules, clipping, and curve diagnosis. This module uses those tools rather than re-teaching them. The pretraining concept is how tokenizer + TransformerLM + LM loss + trainer compose.
 - **Mixed precision (fp16, bf16).** Mentioned in the syllabus as a Module 10 concept but a poor fit on M-series MPS today (occasional ops fall back to fp32, sometimes silently). Train in fp32 throughout this module. We discuss the pitfalls in *M-series notes* but the deliverable model is fp32.
 - **Distributed training.** Single-device only. DDP, FSDP, ZeRO, pipeline parallelism — these are orthogonal to the pretraining recipe and out of scope for a course running on one Mac.
 - **Checkpointing.** The `Trainer` doesn't ship a `save`/`load` — pickling `model.parameters()` via `torch.save({...})` is two lines with no learning content; we don't scaffold it. The exercises build a checkpointing helper if you want one.
@@ -237,7 +238,8 @@ class Trainer:
     eval_iters: int
     log_every: int
     device: torch.device
-    optimizer: SGD
+    optimizer_name: str
+    optimizer: SGD | AdamW
     step: int
 
     def __init__(
@@ -247,7 +249,7 @@ class Trainer:
         batch_size, context_length, max_steps, max_lr,
         min_lr=0.0, warmup_steps=0, weight_decay=0.0, grad_clip=None,
         eval_every=100, eval_iters=20, log_every=10,
-        generator=None, device="auto",
+        generator=None, device="auto", optimizer="sgd",
     ): ...                                                       # implemented
     def lr(self, step=None) -> float: ...                        # implemented
     def train_step(self, train_ids) -> dict[str, float]: ...     # SCAFFOLDED
@@ -290,7 +292,7 @@ pytest tests/test_training.py -v          # verbose
 
 ## Exercises
 
-1. **Train on TinyShakespeare.** Pick a small TinyShakespeare slice (say 200 KB), tokenize with your Module 04 BPE (or character-level if you prefer), build a `TransformerLM(vocab_size, embedding_dim=128, num_layers=4, num_heads=4, max_seq_len=128)` (~1M params), and train for 2000–5000 steps with `max_lr=3e-3, warmup_steps=100, grad_clip=1.0, batch_size=32, context_length=64`. Sample text every 500 steps. You should see:
+1. **Train on TinyShakespeare.** Pick a small TinyShakespeare slice (say 200 KB), tokenize with your Module 04 BPE, build a `TransformerLM(vocab_size, embedding_dim=128, num_layers=4, num_heads=4, max_seq_len=128)` (~1M params), and train for 2000–5000 steps with `optimizer="adamw"`, `max_lr=3e-4`, `min_lr=3e-5`, `warmup_steps=100`, `weight_decay=0.01`, `grad_clip=1.0`, `batch_size=32`, `context_length=64`. Sample text every 500 steps. You should see:
 
      - Steps 0–100: random characters; loss ≈ `log(V)`.
      - Steps 100–500: locally-correct subword fragments emerging; loss starts dropping.
@@ -299,7 +301,7 @@ pytest tests/test_training.py -v          # verbose
 
    The headline qualitative observation: the model learns *form* long before *content*. Punctuation, capitalization patterns, line lengths emerge first; coherent meaning never quite does at this scale.
 
-2. **Sweep `max_lr`.** Same model and dataset; train at `max_lr ∈ {3e-4, 1e-3, 3e-3, 1e-2, 3e-2}`. Plot final val loss vs `max_lr` on log-log axes. Identify the U-shape: too-low lr underfits in the budget; too-high lr destabilizes. The sweet spot for SGD without adaptive optimizers is typically `1e-3` to `1e-2`. With Adam (out of scope) the sweet spot is one to two orders of magnitude lower.
+2. **Sweep `max_lr`.** Same model and dataset; train with AdamW at `max_lr ∈ {1e-4, 3e-4, 1e-3, 3e-3}`. Plot final val loss vs `max_lr` on log-log axes. Identify the U-shape: too-low lr underfits in the budget; too-high lr destabilizes. The sweet spot should now feel like a Module 03B diagnostic, not a mystery constant.
 
 3. **Visualize the LR and loss curves.** During the run from exercise 1, log `step, lr, loss, grad_norm` every 10 steps via the trainer's history. Plot:
 
@@ -369,7 +371,7 @@ This is the first module where compute starts to matter in earnest.
 Primary:
 
 - **Karpathy, "Let's reproduce GPT-2 (124M)"** (YouTube). The best end-to-end walk-through of a real pretraining loop — data loading, batch shape, lr schedule, clipping, mixed precision, checkpointing. Worth watching once start to finish.
-- **Karpathy, nanoGPT** (GitHub repo, ~300 lines of Python). The reference small implementation. The training loop is structurally identical to ours; the differences are AdamW (not SGD), bf16, checkpointing, multi-GPU. Reading the loop after you've written yours is illuminating.
+- **Karpathy, nanoGPT** (GitHub repo, ~300 lines of Python). The reference small implementation. The training loop is structurally identical to ours; the differences are bf16, checkpointing, multi-GPU, and production-grade optimizer grouping. Reading the loop after you've written yours is illuminating.
 
 Secondary:
 

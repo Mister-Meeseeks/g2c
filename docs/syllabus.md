@@ -2,7 +2,7 @@
 
 ![Cover illustration: a circus-themed map of the course. Numbered booths under a big top represent each of the twenty modules — pretraining, tokenization, embeddings, gradient descent, self-attention, multi-head attention, the transformer (a central tower of "Add & Norm / Feed Forward / Multi-Head Attention" floors), sampling, SFT, DPO, RAG, tools, the agent, the eval inspector, and an "inference booth" robot at the bottom. Banners read "A tiny LLM stack from first principles," "Data. Compute. Curiosity. That's all you need," and "Built step by step under the big top."](CourseCover.png)
 
-A 20-week self-study course, preceded by a fast prerequisite review, building a tiny LLM stack from scalar autograd up through a working chat assistant. Each week builds on the previous one. The codebase grows in `g2c/` as a single Python package; later modules import earlier ones.
+A 20-week self-study course, preceded by a fast prerequisite review, building a tiny LLM stack from scalar autograd up through a working chat assistant. Each week builds on the previous one. The codebase grows in `g2c/` as a single Python package; later modules import earlier ones. Module 03B is currently a draft insertion being evaluated before the downstream modules are renumbered.
 
 ## How to read this syllabus
 
@@ -52,7 +52,7 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 | Phase | Weeks | Theme |
 |---|---|---|
 | 0 — Review | 0 | Fast prerequisite refresh |
-| I — Foundations | 1–3 | Scalar autograd → tensors → first neural net |
+| I — Foundations | 1–3 + draft 03B | Scalar autograd → tensors → first neural net → training dynamics |
 | II — Language gets in | 4–6 | Tokenization → embeddings/positions → next-token prediction |
 | III — The transformer | 7–10 | Attention → multi-head → block → pretrain a tiny GPT |
 | IV — Behavior shaping | 11–15 | Sampling → scaling → SFT → DPO → eval |
@@ -119,6 +119,23 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 - **Deliverable.** MNIST MLP at ≥95% test accuracy, with the run logged in `notebooks/03-mlp-mnist.ipynb`.
 - **Reading.** 3Blue1Brown "Neural Networks" series; Goodfellow ch. 6; Karpathy lecture 4.
 - **M-series notes.** MNIST trains in minutes on MPS.
+
+### Draft Week 3B — Training neural networks well — [module ↗](modules/03b-training-neural-networks.md)
+
+- **Question.** Why does the same network sometimes learn, stall, or explode?
+- **Goal.** Make learning rate, optimizer choice, gradient clipping, schedules, and train/validation diagnostics feel like understandable tools rather than magic knobs.
+- **Concepts.** Learning-rate scale; SGD vs AdamW; first and second optimizer moments; bias correction; decoupled weight decay; global gradient clipping; warmup/cosine decay; reading train/validation curves.
+- **Build.** `g2c.nn.AdamW`; `g2c.training.clip_grad_norm_`; `g2c.training.cosine_with_warmup`; trainer optimizer selection for later pretraining runs.
+- **Exercises.**
+  - Sweep learning rates on the same tiny MLP.
+  - Compute the first AdamW update by hand.
+  - Implement `AdamW.step`.
+  - Compare SGD and AdamW on identical data/model/seed.
+  - Demonstrate global-norm gradient clipping.
+  - Plot warmup + cosine decay and diagnose train/validation curves.
+- **Deliverable.** A notebook showing the optimizer and schedule comparisons, plus passing focused tests for AdamW, clipping, and cosine warmup.
+- **Reading.** Kingma and Ba, "Adam"; Loshchilov and Hutter, "Decoupled Weight Decay Regularization"; Karpathy nanoGPT optimizer setup.
+- **M-series notes.** CPU is enough; MPS is optional for larger sweeps.
 
 ---
 

@@ -3,7 +3,7 @@
 Once you have a `TransformerLM` (Module 09), pretraining is a tight
 loop: sample a batch, forward, loss, backward, clip, step, log. The
 ingredients you've built in Modules 03 and 09 — `Linear`,
-`CrossEntropyLoss`, `SGD`, `TransformerLM` — drop straight in. The
+`CrossEntropyLoss`, `SGD` / `AdamW`, `TransformerLM` — drop straight in. The
 only new pieces in this module are:
 
   * **`get_lm_batch`** — multi-position targets (every position
@@ -11,14 +11,16 @@ only new pieces in this module are:
   * **`lm_cross_entropy`** — average CE across every (B, T)
     position, in `loss.py`.
   * **`cosine_with_warmup`** — linear warmup followed by cosine
-    decay, in `schedule.py`.
-  * **`clip_grad_norm_`** — global gradient clipping, in `clip.py`.
+    decay, from Module 03B, in `schedule.py`.
+  * **`clip_grad_norm_`** — global gradient clipping, from Module 03B,
+    in `clip.py`.
   * **`Trainer.train_step`** — the per-step composition of all the
     pieces above.
 
-`Trainer.__init__`, `Trainer.lr`, `Trainer.evaluate`, and
-`Trainer.train` are implemented for you. `Trainer.train_step` — the
-one method that names the order of operations — is scaffolded.
+`Trainer.__init__`, including optimizer selection, `Trainer.lr`,
+`Trainer.evaluate`, and `Trainer.train` are implemented for you.
+`Trainer.train_step` — the one method that names the order of operations —
+is scaffolded.
 `device="auto"` is also implemented: the model is moved before the
 optimizer is constructed, and sampled batches should be moved before
 the forward pass.
@@ -33,7 +35,7 @@ get wrong:
     4. backward      —  populate .grad on every parameter
     5. clip          —  rescale grads if their global norm is too big
     6. lr update     —  set optimizer.lr from the schedule
-    7. step          —  apply the SGD update
+    7. step          —  apply the optimizer update
     8. step += 1     —  advance the schedule counter
 
 Reordering a few of these (clipping AFTER step, advancing the counter
@@ -45,7 +47,7 @@ from __future__ import annotations
 
 import torch
 
-from g2c.nn import SGD, Module, resolve_device
+from g2c.nn import AdamW, SGD, Module, resolve_device
 
 from .clip import clip_grad_norm_
 from .data import get_lm_batch
@@ -69,7 +71,7 @@ class Trainer:
         max_lr: peak learning rate at the end of warmup.
         min_lr: floor learning rate at the end of cosine decay.
         warmup_steps: linear-warmup steps. `0` disables warmup.
-        weight_decay: L2 regularization (forwarded to `SGD`).
+        weight_decay: regularization strength forwarded to the optimizer.
         grad_clip: optional global gradient-norm threshold. `None`
             disables clipping.
         eval_every: run a validation pass every N steps.
@@ -78,9 +80,12 @@ class Trainer:
         generator: optional `torch.Generator` for batch reproducibility.
         device: `"auto"` moves the model and sampled batches to MPS when
             available, otherwise CPU. Pass `"cpu"` to force a CPU run.
+        optimizer: `"sgd"` for the visible baseline update or `"adamw"` for
+            the adaptive optimizer introduced in Module 03B.
 
     Attributes:
-        optimizer: the inner `SGD` instance. The trainer mutates
+        optimizer_name: `"sgd"` or `"adamw"`.
+        optimizer: the inner optimizer instance. The trainer mutates
             `optimizer.lr` once per step from the cosine schedule.
         step: the current step counter (0-indexed). Advanced by 1 at
             the end of each `train_step`.
@@ -100,7 +105,8 @@ class Trainer:
     log_every: int
     generator: torch.Generator | None
     device: torch.device
-    optimizer: SGD
+    optimizer_name: str
+    optimizer: SGD | AdamW
     step: int
 
     def __init__(
@@ -120,6 +126,7 @@ class Trainer:
         log_every: int = 10,
         generator: torch.Generator | None = None,
         device: str | torch.device | None = "auto",
+        optimizer: str = "sgd",
     ) -> None:
         self.device = resolve_device(device)
         self.model = model.to(self.device)
@@ -135,11 +142,19 @@ class Trainer:
         self.eval_iters = eval_iters
         self.log_every = log_every
         self.generator = generator
+        self.optimizer_name = optimizer.lower()
         # Optimizer is constructed once — its lr will be overwritten
         # each step from the cosine schedule.
-        self.optimizer = SGD(
-            self.model.parameters(), lr=max_lr, weight_decay=weight_decay
-        )
+        if self.optimizer_name == "sgd":
+            self.optimizer = SGD(
+                self.model.parameters(), lr=max_lr, weight_decay=weight_decay
+            )
+        elif self.optimizer_name == "adamw":
+            self.optimizer = AdamW(
+                self.model.parameters(), lr=max_lr, weight_decay=weight_decay
+            )
+        else:
+            raise ValueError("optimizer must be 'sgd' or 'adamw'")
         self.step = 0
 
     def lr(self, step: int | None = None) -> float:
