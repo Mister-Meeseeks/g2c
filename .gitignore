@@ -20,6 +20,7 @@ env/
 .ruff_cache/
 .mypy_cache/
 .ipynb_checkpoints/
+.jupyter/
 notebooks/solutions/revisions/
 
 # OS
