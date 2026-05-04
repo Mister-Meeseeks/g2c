@@ -25,8 +25,8 @@ Start with the [syllabus](docs/syllabus.md) for the full 20-week arc plus the fa
 | 07 | [Self-attention](docs/modules/07-attention.md)                  | III — The transformer |
 | 08 | [Multi-head attention](docs/modules/08-multi-head-attention.md) | III — The transformer |
 | 09 | [The transformer block](docs/modules/09-transformer-block.md)   | III — The transformer |
-| 09B | [Pretraining setup](docs/modules/09b-pretraining-setup.md) | III — The transformer |
-| 10 | [First LLM](docs/modules/10-pretraining.md)                    | III — The transformer |
+| 09B | [Pretraining](docs/modules/09b-pretraining.md)              | III — The transformer |
+| 10 | [Milestone: Your First LLM](docs/modules/10-your-first-llm.md) | III — The transformer |
 | 11 | [Sampling and decoding](docs/modules/11-sampling.md)            | IV — Behavior shaping |
 | 12 | [Scaling experiments](docs/modules/12-scaling.md)               | IV — Behavior shaping |
 | 13 | [Instruction tuning (SFT)](docs/modules/13-sft.md)              | IV — Behavior shaping |

@@ -1,8 +1,8 @@
-# Module 09B — Pretraining Setup
+# Module 09B — Pretraining
 
 > **Question this module answers:** *How do we turn a text corpus and a TransformerLM into supervised training data?*
 
-![Multi-position targets in three steps: sample a (B, T) window from the token stream with the target window shifted left by one; run one TransformerLM forward pass to produce (B, T, V) logits; compute per-position cross-entropy at every (b, t) pair and average across all B * T positions.](09b-pretraining-setup/Module09B-Hero.png)
+![Multi-position targets in three steps: sample a (B, T) window from the token stream with the target window shifted left by one; run one TransformerLM forward pass to produce (B, T, V) logits; compute per-position cross-entropy at every (b, t) pair and average across all B * T positions.](09b-pretraining/Module09B-Hero.png)
 
 *This is what causal masking earned us. Because position `t` can never see token `t+1`, position `t`'s logits are a valid prediction for token `t+1`, for every position in the window at once. Module 10 will use this setup inside the full training loop.*
 
@@ -225,7 +225,7 @@ Enter questions or answers in [answers/module-09b.md](../../answers/module-09b.m
 ## Deliverable Checklist
 
 - [ ] `pytest tests/test_pretraining_setup.py` passes.
-- [ ] Notebook: `notebooks/clean/09b-pretraining-setup.ipynb`.
+- [ ] Notebook: `notebooks/clean/09b-pretraining.ipynb`.
 - [ ] You can explain why one `(B, T)` batch contains `B * T` next-token prediction examples.
 - [ ] You can implement `lm_cross_entropy` from the shape contract alone.
 - [ ] You can use `log(V)` as a step-0 sanity check before a Module 10 training run.

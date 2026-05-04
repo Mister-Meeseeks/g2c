@@ -54,7 +54,7 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 | 0 — Review         | 0               | Fast prerequisite refresh                                        |
 | I — Learning       | 1–3 + draft 03B | Scalar autograd → tensors → first neural net → training dynamics |
 | II — Language      | 4–6             | Tokenization → embeddings/positions → next-token prediction      |
-| III — Transformers | 7–10 + draft 09B | Attention → multi-head → block → pretraining setup → first LLM   |
+| III — Transformers | 7–10 + draft 09B | Attention → multi-head → block → pretraining → first LLM milestone |
 | IV — Behavior      | 11–15           | Sampling → scaling → SFT → DPO → eval                            |
 | V — Assistants     | 16–20           | Pretrained inference → RAG → tools → agents → capstone           |
 
@@ -228,7 +228,7 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 - **Reading.** Vaswani §3; Xiong et al., "On Layer Normalization in the Transformer Architecture"; Anthropic Transformer Circuits Thread (intro post).
 - **M-series notes.** Still tiny.
 
-### Draft Week 9B — Pretraining setup — [module ↗](modules/09b-pretraining-setup.md)
+### Draft Week 9B — Pretraining — [module ↗](modules/09b-pretraining.md)
 
 - **Question.** How do we turn a text corpus and a TransformerLM into supervised training data?
 - **Goal.** Make corpus splitting, `(B, T)` language-model batches, multi-position targets, LM cross-entropy, and the `log(V)` baseline explicit before the first full pretraining run.
@@ -243,7 +243,7 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 - **Reading.** Karpathy nanoGPT data loader and loss computation; "Let's reproduce GPT-2" data-loading sections.
 - **M-series notes.** CPU-light. This is setup, not a serious training run.
 
-### Week 10 — First LLM — [module ↗](modules/10-pretraining.md)
+### Milestone Week 10 — Your First LLM — [module ↗](modules/10-your-first-llm.md)
 
 - **Question.** What changes when the transformer block becomes a trained language model?
 - **Goal.** Pretrain a small transformer LM on a real corpus.
