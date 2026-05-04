@@ -4,11 +4,12 @@
 
 ![Multi-head attention end-to-end: input X (B, T, D); three big linear projections produce Q, K, V each of shape (B, T, D); a reshape + transpose splits the channel dim into H heads, each of size d_h = D/H, so every tensor becomes (B, H, T, d_h); H independent attention computations run in parallel (each with its own scaling factor √d_h); concatenation merges the heads back to (B, T, D); a final output projection W_O lands the result. A side panel emphasizes the headline fact: same total parameter count as a single big attention, but H different "ways of looking" at the same sequence.](08-multi-head-attention/Module08-Hero.png)
 
-*The whole module on one page. The two ideas to internalize from this diagram: (1) the projections Q = X · W_Q etc. are ONE big matrix multiply each, not H of them — the heads are a reshape, not separate Linears. (2) After the reshape, each head's attention is structurally identical to Module 07's single-head attention, just with `d_h = D/H` channels instead of D. Multi-head attention is single-head attention, run H times in parallel, with H ways of asking "who matters here?" combined at the end.*
+The two ideas to internalize: (1) the projections Q = X · W_Q etc. are ONE big matrix multiply each, not H of them — the heads are a reshape, not separate Linears. (2) After the reshape, each head's attention is structurally identical to Module 07's single-head attention, just with `d_h = D/H` channels instead of D. Multi-head attention is single-head attention, run H times in parallel, with H ways of asking "who matters here?" combined at the end.*
 
+---
 ## Prerequisites
 
-The math, CS, and programming concepts this module uses. Module 08 is a short module by content — almost everything is already in place from Module 07. The conceptual move is "split D into H slots and run H copies of attention in parallel"; the engineering move is "do that with one matmul, not H of them."
+Module 08 is a short module by content — almost everything is already in place from Module 07. The conceptual move is "split D into H slots and run H copies of attention in parallel"; the engineering move is "do that with one matmul, not H of them."
 
 ### Math
 
@@ -27,11 +28,7 @@ The math, CS, and programming concepts this module uses. Module 08 is a short mo
 - **`tensor.contiguous()`.** Forces a memory-contiguous copy. Required after `transpose()` but before the next `view()` — `view` cannot reshape across non-contiguous strides.
 - **`tensor.reshape()` as a shortcut.** Equivalent to `.contiguous().view(...)` in one call; either form works for the re-concatenation step.
 
-### What you can skip
 
-- Multi-query / grouped-query attention (one K/V head shared across many Q heads — the optimization that makes long-context inference cheap). Out of scope.
-- FlashAttention's IO-aware tiling. The math is the same; only the memory access pattern changes.
-- Cross-attention (Q from one source, K/V from another — used in encoder-decoder transformers). The course is decoder-only.
 
 ## Why we start here
 
@@ -156,6 +153,12 @@ You won't see these in your tiny model from Module 10 with high fidelity — you
 - **Heads specialize empirically.** Different heads learn different attention patterns — the structural reason multi-head outperforms single-head with the same parameter budget.
 - **Total parameter count is independent of `H`.** Splitting D into 8 heads instead of 1 doesn't change the parameter count one bit; it changes only the structure of the computation.
 
+### What we didn't cover
+
+- Multi-query / grouped-query attention (one K/V head shared across many Q heads — the optimization that makes long-context inference cheap). Out of scope.
+- FlashAttention's IO-aware tiling. The math is the same; only the memory access pattern changes.
+- Cross-attention (Q from one source, K/V from another — used in encoder-decoder transformers). The course is decoder-only.
+
 ## Scaffolding and how to run the tests
 
 This module ships one scaffolded file:
@@ -178,6 +181,7 @@ The docstring at the top of `tests/test_multi_head_attention.py` gives the imple
 - **`test_attention_weights_consistent_with_forward`** — pins down that your two scaffolded methods agree about projections, reshape, scaling, mask, and concat.
 - **`test_attention_weights_heads_are_distinct`** — pins down that the reshape actually splits D into H independent subspaces. A wrong implementation that uses the same q/k for every head would produce H identical weight matrices.
 
+---
 ## What you'll build
 
 Package: `g2c/attention/`
@@ -237,15 +241,24 @@ Roughly 20 lines of real code split across the two scaffolded methods. The conce
 
 ## Pitfalls to expect
 
-- **Scaling by √D instead of √head_dim.** The single most common multi-head bug. Training is sluggish; attention weights are too flat; gradients propagate weakly. Crashes nothing, fails subtly. `test_attention_weights_use_sqrt_head_dim_scaling` catches this.
+- **Scaling by √D instead of √head_dim.** The single most common multi-head bug. Training sluggish; attention weights are too flat; gradients propagate weakly. Crashes nothing, fails subtly. 
 - **Reshape order: `(B, T, head_dim, H)` instead of `(B, T, H, head_dim)`.** The shape is the same after view, but heads end up "seeing" interleaved slices of the embedding (positions 0, H, 2H, ... instead of 0..head_dim-1). Will silently produce a different model.
 - **Forgetting `.transpose(1, 2)` after the reshape.** Without it, `T` is in the leading batch-like position and `H` is in the position-adjacent position, so the next matmul will mix queries from different heads.
-- **Forgetting `.contiguous()` before the final `view` to concatenate heads.** PyTorch will raise: `RuntimeError: view size is not compatible with input tensor's size and stride...`. Insert `.contiguous()` or use `.reshape(...)` instead.
+- **Forgetting `.contiguous()` before the final `view` to concatenate heads.** PyTorch will raise an exception. Insert `.contiguous()` or use `.reshape(...)`.
 - **Mask polarity backwards (same as Module 07).** `causal_mask` returns True ABOVE the diagonal — the positions to BLOCK. The `(T, T)` mask broadcasts naturally over `(B, H, T, T)` scores.
-- **Implementing per-head with `H` independent linear layers.** Works mathematically, but is `H × `slower (H matmuls instead of 1) AND strictly less expressive (block-diagonal projections instead of full ones). The standard idiom is one `(D, D)` projection plus reshape.
-- **Returning `attention_weights` of shape `(B, T, T)` instead of `(B, H, T, T)`.** The "averaged over heads" version drops the per-head visualization that motivates exposing this method at all. Keep the H dim. `test_attention_weights_shape` catches this.
+- **Implementing per-head with `H` independent linear layers.** Works mathematically, but is `H × `slower (H matmuls instead of 1) and strictly less expressive (block-diagonal projections instead of full ones). The standard idiom is one `(D, D)` projection plus reshape.
+- **Returning `attention_weights` of shape `(B, T, T)` instead of `(B, H, T, T)`.** The "averaged over heads" version drops the per-head visualization that motivates exposing this method at all. Keep the H dim. 
 - **`embedding_dim` not divisible by `num_heads`.** The constructor raises `ValueError` for this, but if you bypass it (or compute `head_dim` with integer division and silently lose dims), shapes will mismatch downstream. Don't silence the check.
 
+## M-series notes
+
+This module is light on compute — the same regime as Module 07.
+
+- All tests run in well under a second on CPU.
+- Exercise 3's training comparison (3 runs at fixed `D = 64`) is a few hundred steps each on a small corpus; under a couple minutes total on CPU.
+- Exercise 4's per-head visualization is a single forward pass on one sentence — milliseconds.
+
+---
 ## Reading
 
 Primary:
@@ -265,17 +278,7 @@ Optional:
 ## Deliverable checklist
 
 - [ ] All tests in `tests/test_multi_head_attention.py` pass.
-- [ ] Notebook: `notebooks/08-multi-head-comparison.ipynb`. Train tiny LMs at `num_heads = 1, 4, 8` with fixed `embedding_dim = 64` and matched training budgets; plot validation loss curves on the same axes.
+- [ ] Notebook: `notebooks/clean/08-multi-head-attention.ipynb`. Train tiny LMs at `num_heads = 1, 4, 8` with fixed `embedding_dim = 64` and matched training budgets; plot validation loss curves on the same axes.
 - [ ] Notebook: per-head attention visualization on a chosen sentence using one of the trained models — `H` heatmaps in a grid.
 - [ ] You can explain — out loud, without notes — why the scaling factor is `√head_dim` rather than `√D`, and what specifically goes wrong if you use `√D`.
 - [ ] You can explain — out loud, without notes — why the reshape `view(B, T, H, head_dim).transpose(1, 2)` is the right operation, and what would go wrong with `view(B, T, head_dim, H)`.
-
-## M-series notes
-
-This module is light on compute — the same regime as Module 07.
-
-- All tests run in well under a second on CPU.
-- Exercise 3's training comparison (3 runs at fixed `D = 64`) is a few hundred steps each on a small corpus; under a couple minutes total on CPU.
-- Exercise 4's per-head visualization is a single forward pass on one sentence — milliseconds.
-
-Module 09 (the transformer block) and Module 10 (pretraining) are where MPS starts to pay off; for Module 08, CPU is fine and the device-transfer overhead would dominate.

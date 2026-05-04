@@ -4,11 +4,12 @@
 
 ![One transformer block, drawn as two pre-norm sublayers wrapped in residual connections. The residual stream (the (B, T, D) tensor at the top) flows forward unchanged by default; each sublayer reads it through a LayerNorm, computes an update, and adds the update back. Sublayer 1 is multi-head attention; sublayer 2 is the position-wise feed-forward network. Side panels label the two structural ideas (LayerNorm normalizes per token, residual connections add a small update) and pin the recipe `x = x + attn(ln1(x)); x = x + ffn(ln2(x))`.](09-transformer-block/Module09-Hero.png)
 
-*The whole module on one page. Once you have this block, scaling up is just "stack N of these and add embeddings + a final unembedding head." Three new architectural ideas wrap around the attention you built in Module 08 — LayerNorm (numerical stability), residual connections (gradient flow + a "communication bus" interpretation), and the position-wise FFN (per-token compute) — and the rest of the lesson page is unpacking why each one is where it is.*
+Once you have this block, scaling up is just "stack N of these and add embeddings + a final unembedding head." Three new architectural ideas wrap around the attention you built in Module 08: LayerNorm (numerical stability), residual connections, and the position-wise FFN. The rest of the lesson page is unpacking why each one is where it is.
 
+---
 ## Prerequisites
 
-The math, CS, and programming concepts this module uses. Module 09 is where the transformer finally takes shape — every piece you've built in Modules 03–08 gets composed here into the unit that gets stacked `N` times to make a real model.
+Module 09 is where the transformer finally takes shape — every piece you've built in Modules 03–08 gets composed here into the unit that gets stacked `N` times to make a real model.
 
 ### Math
 
@@ -33,7 +34,7 @@ The math, CS, and programming concepts this module uses. Module 09 is where the 
 - **RMSNorm** (used by Llama and other modern transformers). A simplified LayerNorm without the mean-subtraction step. Equivalent in practice but conceptually a small variation; we use vanilla LN.
 - **Mixed precision, gradient checkpointing, fused ops.** Module 10 pretraining concerns, not architecture concerns.
 
-## Why we start here
+## Where this fits in
 
 After Module 08, you have multi-head attention as a standalone mechanism — a learnable mixing operation that lets every position consult every other. But attention alone isn't a transformer. A transformer is attention *embedded inside* a specific architectural sandwich that makes it trainable at depth:
 
@@ -232,40 +233,7 @@ Three details worth pinning down:
 - **Stacking blocks is straightforward.** `for block in self.blocks: x = block(x)`. The architecture has no positional encoding *between* blocks, no cross-block coupling, no per-block parameters that depend on layer index. Each block is a self-contained refinement step.
 - **TransformerLM outputs (B, T, V) logits.** One next-token prediction per position, computed in parallel during training.
 
-## Scaffolding and how to run the tests
-
-This module ships four scaffolded files in `g2c/transformer/`:
-
-- **`layer_norm.py`** — `LayerNorm` class. `__init__` (with `gamma=1`, `beta=0` init) and `parameters()` are implemented. `forward` is scaffolded.
-- **`ffn.py`** — `FeedForward` class. `__init__` (with default `hidden_dim = 4 * embedding_dim`) and `parameters()` are implemented. `forward` is scaffolded.
-- **`block.py`** — `Block` class. `__init__` (constructs `ln1`, `attn`, `ln2`, `ffn`) and `parameters()` are implemented. `forward` is scaffolded.
-- **`transformer_lm.py`** — `TransformerLM` class. `__init__` (constructs token embedding, positional embedding, `N` blocks, final LN, unembedding head) and `parameters()` are implemented. `forward` is scaffolded.
-
-Tests live in `tests/test_transformer.py`. Initial state: 22 passed (all the construction, parameter-count, and init-value checks), 22 failed.
-
-```bash
-pytest tests/test_transformer.py             # run all module-09 tests
-pytest tests/test_transformer.py -x          # stop at first failure (recommended)
-pytest tests/test_transformer.py -k layer_norm   # only LayerNorm tests
-pytest tests/test_transformer.py -k block    # only Block tests
-pytest tests/test_transformer.py -v          # verbose
-```
-
-The implementation order is mechanical — earlier methods unblock later ones:
-
-  1. **`LayerNorm.forward`** → unblocks the 7 LayerNorm forward tests.
-  2. **`FeedForward.forward`** → unblocks the 4 FFN forward tests.
-  3. **`Block.forward`** → unblocks the 6 Block forward tests. (This step also depends on `MultiHeadAttention.forward` from Module 08 — if you skipped that, finish it first.)
-  4. **`TransformerLM.forward`** → unblocks the 5 TransformerLM tests. (This step also depends on `TokenEmbedding.forward` and `LearnedPositionalEmbedding.forward` from Module 05 — both one-liners.)
-
-The headline tests to watch:
-
-- **`test_layer_norm_normalizes_last_dim`** — pins down that LN normalizes over the channel dim, not over batch or sequence. Failure mode: normalizing over the wrong dim produces a much weaker training signal that won't crash but will train slowly.
-- **`test_block_residual_identity_when_sublayers_zeroed`** — pins down the residual structure. Zero out `attn.out_proj` and `ffn.fc2` weights; the block must reduce to the identity. Without residuals, the test fails — the output would be `attn(...) + ffn(...)`, not `x + attn(...) + ffn(...)`.
-- **`test_block_pre_norm_structure`** — pins down the exact composition order: `x + attn(ln1(x))`, then `x + ffn(ln2(x))`. Distinguishes pre-norm from post-norm and from no-residual.
-- **`test_block_causality`** and **`test_transformer_lm_causality`** — causality propagates through the whole stack. If any sublayer or composition step accidentally let the future leak in, these fail.
-- **`test_transformer_lm_smoke_train`** — a few SGD steps should reduce loss on a fixed batch. End-to-end sanity check on the full forward + backward + optimizer pipeline.
-
+---
 ## What you'll build
 
 Package: `g2c/transformer/`
@@ -325,9 +293,28 @@ class TransformerLM(Module):
 
 Total scaffolded code: roughly 20 lines split across four `forward` methods. Most of the lesson is in *which* lines and *in what order* — the math is unsubtle once you've internalized the structure.
 
+The implementation order is mechanical — earlier methods unblock later ones:
+
+  1. **`LayerNorm.forward`** → unblocks the 7 LayerNorm forward tests.
+  2. **`FeedForward.forward`** → unblocks the 4 FFN forward tests.
+  3. **`Block.forward`** → unblocks the 6 Block forward tests. (This step also depends on `MultiHeadAttention.forward` from Module 08 — if you skipped that, finish it first.)
+  4. **`TransformerLM.forward`** → unblocks the 5 TransformerLM tests. (This step also depends on `TokenEmbedding.forward` and `LearnedPositionalEmbedding.forward` from Module 05 — both one-liners.)
+
+## How to run the tests
+
+Tests live in `tests/test_transformer.py`. Initial state: 22 passed (all the construction, parameter-count, and init-value checks), 22 failed.
+
+```bash
+pytest tests/test_transformer.py             # run all module-09 tests
+pytest tests/test_transformer.py -x          # stop at first failure (recommended)
+pytest tests/test_transformer.py -k layer_norm   # only LayerNorm tests
+pytest tests/test_transformer.py -k block    # only Block tests
+pytest tests/test_transformer.py -v          # verbose
+```
+
 ## Exercises
 
-1. **Implement post-norm and watch it (mis)train.** In a notebook, define a `PostNormBlock` by editing your `Block.forward` to use the post-norm formula:
+1. **Implement post-norm and watch it (mis)train.**  In a notebook, define a `PostNormBlock` by editing your `Block.forward` to use the post-norm formula:
 
    ```python
    x = self.ln1(x + self.attn(x))
@@ -387,6 +374,17 @@ Total scaffolded code: roughly 20 lines split across four `forward` methods. Mos
 
 - **`for block in self.blocks: x = block(x)` is sequential — do NOT parallelize it.** Block `i` reads block `i-1`'s output. Trying to run them concurrently misunderstands the architecture (this is a recurring beginner instinct; the transformer is parallel WITHIN a block, sequential ACROSS blocks).
 
+## M-series notes
+
+This module is still light on compute — building and unit-testing the block is fast.
+
+- Exercise 1's pre-norm vs post-norm comparison at `num_layers = 6, D = 64, T = 32` is a few minutes per run on CPU; comfortable on MPS.
+- Exercise 2's strip-residuals study at `num_layers = 8` is the first configuration big enough that MPS starts paying off — about 2× over CPU at this size.
+- Exercise 4's parameter-budget comparison is also CPU-comfortable but a good place to start using MPS as practice for Module 10.
+
+For Module 09, MPS is a "feel free to try it for fun" affordance, not a requirement.
+
+---
 ## Reading
 
 Primary:
@@ -415,13 +413,4 @@ Optional:
 - [ ] You can explain — out loud, without notes — what LayerNorm normalizes over, and why batch size doesn't affect its output.
 - [ ] You can explain — out loud, without notes — the difference between pre-norm and post-norm, and why pre-norm is the modern default.
 
-## M-series notes
 
-This module is still light on compute — building and unit-testing the block is fast.
-
-- All tests run in well under a second on CPU.
-- Exercise 1's pre-norm vs post-norm comparison at `num_layers = 6, D = 64, T = 32` is a few minutes per run on CPU; comfortable on MPS.
-- Exercise 2's strip-residuals study at `num_layers = 8` is the first configuration big enough that MPS starts paying off — about 2× over CPU at this size.
-- Exercise 4's parameter-budget comparison is also CPU-comfortable but a good place to start using MPS as practice for Module 10.
-
-Module 10 (pretraining at scale) is where MPS becomes essential. For Module 09, MPS is a "feel free to try it for fun" affordance, not a requirement.

@@ -137,7 +137,7 @@ The score matrix is `(T, T)` and grows with the square of the sequence length. F
 ---
 ## What you'll build
 
-Package: `g2c/attention/`
+Package: `g2c/attention/`     (`self_attention.py` only)
 
 ```python
 class SelfAttention(Module):
@@ -177,9 +177,9 @@ pytest tests/test_attention.py -v          # verbose
 
 1. **Implement and verify on a hand-computed 3-token toy.** Build a `SelfAttention(embedding_dim=2, causal=False)`. With `torch.manual_seed(0)` for reproducibility, feed it `x = torch.tensor([[[1., 0.], [0., 1.], [1., 1.]]])` (shape `(1, 3, 2)`). Pull out `q`, `k`, `v` by calling the projections directly, compute `Q @ K.T / sqrt(2)` by hand on a piece of paper, apply softmax row-wise, multiply by `V`, apply `out_proj`. Verify your by-hand result matches `attn(x)` to within `1e-5`. The point is to convince yourself there's no magic happening — every step is linear algebra you can do on paper.
 
-2. **Visualize the attention pattern on a real sentence.** In `notebooks/07-attention-viz.ipynb`: tokenize the canonical sentence with the Module 04 BPE. Embed with a small `TokenEmbedding` plus a `LearnedPositionalEmbedding` (both untrained — random init is fine for visualization). Pass through a `SelfAttention(causal=False)`. Pull out `attn.attention_weights(x)` and plot it as a heatmap (`matplotlib.imshow`) with token labels on the axes. The pattern will be near-uniform random because nothing is trained — but the plumbing is exactly what you'll use to visualize a TRAINED model's attention later in the course. Re-run with the second sentence *"the animal didn't cross the street because it was too wide"* — same token "it" referring to a different antecedent. After Module 10's pretraining, you'd hope a trained head would put more mass on "animal" in the first sentence and "street" in the second. (You won't see this yet — that's a teaser for the trained-attention visualization in Module 10.)
+2. **Visualize the attention pattern on a real sentence.** In `notebooks/clean/07-attention.ipynb`: tokenize the canonical sentence with the Module 04 BPE. Embed with a small `TokenEmbedding` plus a `LearnedPositionalEmbedding` (both untrained — random init is fine for visualization). Pass through a `SelfAttention(causal=False)`. Pull out `attn.attention_weights(x)` and plot it as a heatmap (`matplotlib.imshow`) with token labels on the axes. The pattern will be near-uniform random because nothing is trained — but the plumbing is exactly what you'll use to visualize a TRAINED model's attention later in the course. Re-run with the second sentence *"the animal didn't cross the street because it was too wide"* — same token "it" referring to a different antecedent. After Module 10's pretraining, you'd hope a trained head would put more mass on "animal" in the first sentence and "street" in the second. (You won't see this yet — that's a teaser for the trained-attention visualization in Module 10.)
 
-3. **The strip-mask experiment — feel the cheat.** Build a tiny attention-only language model: `TokenEmbedding`, additive positional encoding, one `SelfAttention`, then an output `Linear` to vocab logits. Train it on a short tokenized corpus with `train_lm` from Module 06 (model your `forward` to take `(B, T)` token ids and return `(B, V)` logits at the LAST position, so it conforms to the `train_lm` interface). Run two configurations:
+3. **The strip-mask experiment — feel the cheat.** Build a tiny attention-only language model: `TokenEmbedding`, additive positional encoding, one `SelfAttention`, then an output `Linear` to vocab logits. Train it with a sequence-wide language-modeling objective where input positions `0..T-1` predict targets `1..T`. This is the standard transformer LM shape: logits are `(B, T, V)`, targets are `(B, T)`, and each row predicts the next token. In the notebook, ignore the final row of each window so the comparison isolates positions whose next-token target is present as the following input token. Run two configurations:
    - `SelfAttention(causal=True)` — train loss decreases gradually.
    - `SelfAttention(causal=False)` — train loss collapses to ~0 within a handful of steps because the model can copy the answer directly through attention.
 
@@ -232,8 +232,7 @@ Optional:
 ## Deliverable checklist
 
 - [ ] All tests in `tests/test_attention.py` pass.
-- [ ] `notebooks/07-attention-viz.ipynb`: attention heatmaps for the two "the animal didn't cross the street..." sentences using your `attention_weights` method.
+- [ ] `notebooks/clean/07-attention.ipynb`: attention heatmaps for the two "the animal didn't cross the street..." sentences using your `attention_weights` method.
 - [ ] Strip-mask experiment: side-by-side training runs of a tiny attention-only LM with `causal=True` and `causal=False`. Loss curves saved; the catastrophic collapse with `causal=False` is visible.
 - [ ] You can explain — out loud, without notes — why dividing by `sqrt(D)` is necessary and what specifically goes wrong without it.
 - [ ] You can explain — out loud, without notes — what a "permutation- equivariant layer" means and why self-attention is one.
-
