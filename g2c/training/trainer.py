@@ -224,8 +224,36 @@ class Trainer:
             sees a wildly large effective gradient, and training
             diverges immediately.
         """
-        # TODO
-        raise NotImplementedError
+        x, y = get_lm_batch(
+            train_ids,
+            self.batch_size,
+            self.context_length,
+            generator=self.generator,
+        )
+
+        lr = self.lr()
+        self.optimizer.lr = lr
+        self.optimizer.zero_grad()
+
+        logits = self.model(x)
+        loss = lm_cross_entropy(logits, y)
+        loss.backward()
+
+        if self.grad_clip is not None:
+            grad_norm = clip_grad_norm_(
+                self.model.parameters(), self.grad_clip
+            )
+        else:
+            grad_norm = 0.0
+        
+        self.optimizer.step()
+        self.step += 1
+        
+        return {
+            "loss": loss.item(),
+            "lr": lr,
+            "grad_norm": grad_norm,
+        }
 
     def evaluate(self, eval_ids: torch.Tensor) -> float:
         """Average `lm_cross_entropy` over `eval_iters` random batches.

@@ -102,5 +102,11 @@ def cosine_with_warmup(
         - step=110:  0.0   (end of cosine; cos(π) = -1, so coeff = 0)
         - step=999:  0.0   (past max_steps, held at min_lr)
     """
-    # TODO
-    raise NotImplementedError
+    if warmup_steps > 0 and step < warmup_steps:
+        return max_lr * (step + 1) / warmup_steps
+    elif step >= max_steps:
+        return min_lr
+    else:
+        progress = (step - warmup_steps) / (max_steps - warmup_steps)
+        coeff = 0.5 * (1.0 + math.cos(math.pi * progress))
+        return min_lr + coeff * (max_lr - min_lr)

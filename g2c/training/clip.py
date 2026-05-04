@@ -90,5 +90,16 @@ def clip_grad_norm_(
       - `(p.grad ** 2).sum()` is fine; `p.grad.norm()` is also fine.
         Either is two ops.
     """
-    # TODO
-    raise NotImplementedError
+    params = [p for p in params if p.grad is not None]
+    if not params:
+        return 0.0
+    
+    with torch.no_grad():
+        total_norm_sq = sum((p.grad ** 2).sum() for p in params)
+        total_norm = torch.sqrt(total_norm_sq).item()
+        if total_norm > max_norm:
+            scale = max_norm / (total_norm + 1e-6)
+            for p in params:
+                p.grad.mul_(scale)
+                
+    return total_norm

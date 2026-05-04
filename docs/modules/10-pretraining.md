@@ -4,37 +4,23 @@
 
 ![Pretraining the tiny GPT end-to-end: a raw token stream is sliced into (B, T) windows; each window goes through TransformerLM to produce (B, T, V) logits; lm_cross_entropy averages per-position cross-entropy across all B × T positions; loss.backward populates parameter gradients; clip_grad_norm rescales them if their global norm is too large; cosine_with_warmup picks the lr for this step; optimizer.step applies the SGD update; the step counter advances. A side panel shows sample text quality progressing through training: random characters at step 0, locally-correct subwords at step 500, locally-coherent sentences by step 2000+.](10-pretraining/Module10-Hero.png)
 
-*The whole module on one page. The architecture from Module 09 doesn't change — pretraining is the loop that calls it. Three new utilities (`lm_cross_entropy`, `cosine_with_warmup`, `clip_grad_norm_`) plus the per-step composition `Trainer.train_step` are the entire deliverable. Internalizing the eight-step order of operations on the right side of this diagram — and the multi-position loss on the left — is the conceptual content of the module.*
+The architecture from Module 09 doesn't change, pretraining is the loop that calls it. Internalizing the eight-step order of operations on this diagram is the conceptual content of the module.
 
+---
 ## Prerequisites
 
-Module 10 closes Phase III by training the architecture you built in Module 09. Almost everything you need is already in `g2c/`; this module adds four small utilities and the loop that calls them in the right order.
-
+Module 10 closes Phase III by training the architecture you built in Module 09. Almost everything you need is already in `g2c/`
 ### Math
 
-- **Cross-entropy across (B, T) positions.** The transformer outputs `(B, T, V)` logits — every position is a classification example. The pretraining loss is the *mean* per-position cross-entropy across all `B × T` (input prefix, target token) pairs. Same loss function you've used since Module 03; the only new thing is the reshape.
-- **Cosine learning-rate schedule.** During cosine decay, `lr(t) = min_lr + (max_lr − min_lr) · ½ (1 + cos(π · progress))`, where `progress ∈ [0, 1]` walks from the end of warmup to the end of training. The cosine starts off slow, accelerates, then slows down again at the bottom — empirically a better balance than linear or step decay.
-- **Global gradient norm.** `‖g‖ = sqrt(∑_p ‖∇p‖²)` where the sum is over every parameter. Clipping rescales every gradient by the same factor so this norm equals `max_norm` exactly, preserving direction while shortening the step.
+- **Cross-entropy.** Same loss function you've used since Module 03; the only new thing is the reshape.
+- **Global gradient norm.** `‖g‖ = sqrt(∑_p ‖∇p‖²)` where the sum is over every parameter.
 
-### Computer science
+### PyTorch
 
-- **The training loop's order of operations.** `zero_grad → forward → loss → backward → clip → step → advance counter` is decisive. Reordering a few of these (clip after step, increment before step, forgetting `zero_grad`) all silently produce a "trains-but-wrong" loop where the metric still goes down but the schedule or regularization isn't being applied as you think it is.
-- **Random-window batching.** A long token sequence becomes batches by sampling random length-`T` windows. Same trick as Module 06's `get_batch`, generalized to multi-position targets.
+- **`with torch.no_grad():`** for evaluation, disables autograd graph construction, freeing memory and time on inference passes.
+- **`grad.mul_(scale)`** for in-place gradient rescaling. 
 
-### Programming
-
-- **`tensor.reshape`** to fold the time dim into the batch dim: `(B, T, V).reshape(B*T, V)`. The transformer's per-position predictions all become independent rows for the cross-entropy computation.
-- **`with torch.no_grad():`** for evaluation — disables autograd graph construction, freeing memory and time on inference passes.
-- **`grad.mul_(scale)`** for in-place gradient rescaling. The underscore suffix is PyTorch's convention for in-place ops.
-
-### What you can skip
-
-- **Adam / AdamW.** Real LM pretraining uses adaptive optimizers (Adam, AdamW). We stick with `SGD` from Module 03 — adaptive optimizers are a separate topic and they don't change anything conceptual about pretraining. The exercises sweep a few base lrs; with a tuned lr, SGD reaches recognizable text on TinyShakespeare.
-- **Mixed precision (fp16, bf16).** Mentioned in the syllabus as a Module 10 concept but a poor fit on M-series MPS today (occasional ops fall back to fp32, sometimes silently). Train in fp32 throughout this module. We discuss the pitfalls in *M-series notes* but the deliverable model is fp32.
-- **Distributed training.** Single-device only. DDP, FSDP, ZeRO, pipeline parallelism — these are orthogonal to the pretraining recipe and out of scope for a course running on one Mac.
-- **Checkpointing.** The `Trainer` doesn't ship a `save`/`load` — pickling `model.parameters()` via `torch.save({...})` is two lines with no learning content; we don't scaffold it. The exercises build a checkpointing helper if you want one.
-- **Dropout, label smoothing, fancy LR schedules.** All used in production training; none teach what's already taught here.
-
+---
 ## Why we start here
 
 After Module 09 you have a `TransformerLM` that can do a forward pass. You don't yet have a model that has been trained on a corpus. The full pretraining recipe is short — sample a batch, forward, loss, backward, clip, step — but every line of it has a particular order that matters, and three new utilities pretraining cares about that the Module 06 trainer didn't:
@@ -199,49 +185,15 @@ The clip is also a **no-op below the threshold**: if `‖g‖ ≤ max_norm`, not
 - **Gradient clipping is insurance, not a control.** It exists to catch outlier batches. If clipping fires on every step, your `lr` is too high and you're training on the clipped gradient direction instead of the true one — loss goes down but slowly.
 - **Validation loss and perplexity are the same thing.** `perplexity = exp(val_loss)`. Reporting one or the other is a stylistic choice; they carry the same information.
 
-## Scaffolding and how to run the tests
+### What we don't cover
 
-This module ships five files in `g2c/training/`:
+- **Adam / AdamW.** Real LM pretraining uses adaptive optimizers (Adam, AdamW). We stick with `SGD` from Module 03 — adaptive optimizers are a separate topic and they don't change anything conceptual about pretraining. The exercises sweep a few base lrs; with a tuned lr, SGD reaches recognizable text on TinyShakespeare.
+- **Mixed precision (fp16, bf16).** Mentioned in the syllabus as a Module 10 concept but a poor fit on M-series MPS today (occasional ops fall back to fp32, sometimes silently). Train in fp32 throughout this module. We discuss the pitfalls in *M-series notes* but the deliverable model is fp32.
+- **Distributed training.** Single-device only. DDP, FSDP, ZeRO, pipeline parallelism — these are orthogonal to the pretraining recipe and out of scope for a course running on one Mac.
+- **Checkpointing.** The `Trainer` doesn't ship a `save`/`load` — pickling `model.parameters()` via `torch.save({...})` is two lines with no learning content; we don't scaffold it. The exercises build a checkpointing helper if you want one.
+- **Dropout, label smoothing, fancy LR schedules.** All used in production training; none teach what's already taught here.
 
-- **`data.py`** — `get_lm_batch(ids, batch_size, context_length, *, generator=None)`. Implemented for you. Same idea as Module 06's `get_batch`, with multi-position (`(B, T)`) targets.
-- **`loss.py`** — `lm_cross_entropy(logits, targets)`. Scaffolded.
-- **`schedule.py`** — `cosine_with_warmup(step, *, warmup_steps, max_steps, max_lr, min_lr=0.0)`. Scaffolded.
-- **`clip.py`** — `clip_grad_norm_(params, max_norm)`. Scaffolded.
-- **`trainer.py`** — `Trainer` class. `__init__`, `lr`, `evaluate`, `train` are implemented. `train_step` — the per-step composition of the four pieces above — is scaffolded.
-
-Tests live in `tests/test_training.py`. Initial state: 10 passed (boilerplate: `get_lm_batch`, Trainer construction, defaults, attribute checks), 33 failed.
-
-```bash
-pytest tests/test_training.py             # all module-10 tests
-pytest tests/test_training.py -x          # stop at first failure
-pytest tests/test_training.py -k loss     # just lm_cross_entropy tests
-pytest tests/test_training.py -k schedule # just cosine_with_warmup tests
-pytest tests/test_training.py -k clip     # just clipping tests
-pytest tests/test_training.py -k trainer  # just Trainer tests
-pytest tests/test_training.py -v          # verbose
-```
-
-Implementation order — earlier scaffolds unblock later tests:
-
-  1. **`lm_cross_entropy`** → unblocks the 5 loss tests.
-  2. **`cosine_with_warmup`** → unblocks the 8 schedule tests plus the 2 `Trainer.lr` tests.
-  3. **`clip_grad_norm_`** → unblocks the 6 clip tests.
-  4. **`Trainer.train_step`** → unblocks the remaining `train_step`, `evaluate`, and `train` tests.
-
-Steps 1–3 are independent — you can do them in any order. Step 4 composes all three into the eight-line training loop and unlocks the headline smoke-train test.
-
-The Trainer tests pull in your full Module 03/05/08/09 stack — if those scaffolds aren't filled in (in particular, `TransformerLM.forward` from Module 09), the Trainer tests will fail with `NotImplementedError` from the prerequisite layer. The Module 09 deliverable test (`test_transformer_lm_smoke_train`) is a good gate — if that's passing, your prerequisites are in order.
-
-The headline tests to watch:
-
-- **`test_lm_cross_entropy_uniform_logits_equals_log_vocab`** — pins down the conceptual reference value. With random-init logits, your loss should be ≈ `log(V)`. Anything much lower than that hints at a shape bug aligning the loss against the wrong rows.
-- **`test_lm_cross_entropy_per_position_average`** — pins down that EVERY position contributes to the loss, not just the last. A miswired version ("predict only the last token") would silently pass shape and uniform-baseline tests.
-- **`test_cosine_with_warmup_at_max_steps`** — `cos(π) = −1`, so the coefficient bottoms out at 0 and `lr = min_lr` exactly. A common off-by-one bug puts the bottom at `max_steps + 1` or never.
-- **`test_clip_grad_norm_global_across_params`** — pins down that the norm is global (one factor for the whole vector), not per-param. A per-param clip silently changes the descent direction.
-- **`test_trainer_train_step_writes_lr_to_optimizer`** — pins down that the schedule actually *takes effect* on the optimizer each step. Computing the lr but never applying it is a silent bug.
-- **`test_trainer_train_step_clips_grads`** — pins down that the clip actually fires when the threshold is exceeded.
-- **`test_trainer_smoke_train_decreases_val_loss`** — the end-to-end test. If any piece is misordered, val loss doesn't drop.
-
+---
 ## What you'll build
 
 Package: `g2c/training/`
@@ -303,6 +255,37 @@ class Trainer:
 ```
 
 Total scaffolded code: roughly 25 lines across four functions / methods. Most of the lesson is in *which* lines and *in what order* — the math is unsubtle once you've internalized the structure of a training step.
+
+Implementation order — earlier scaffolds unblock later tests:
+
+  1. **`lm_cross_entropy`** → unblocks the 5 loss tests.
+  2. **`cosine_with_warmup`** → unblocks the 8 schedule tests plus the 2 `Trainer.lr` tests.
+  3. **`clip_grad_norm_`** → unblocks the 6 clip tests.
+  4. **`Trainer.train_step`** → unblocks the remaining `train_step`, `evaluate`, and `train` tests.
+
+Steps 1–3 are independent — you can do them in any order. Step 4 composes all three into the eight-line training loop and unlocks the headline smoke-train test.
+
+## How to run the tests
+
+This module ships five files in `g2c/training/`:
+
+- **`data.py`** — `get_lm_batch(ids, batch_size, context_length, *, generator=None)`. Implemented for you. Same idea as Module 06's `get_batch`, with multi-position (`(B, T)`) targets.
+- **`loss.py`** — `lm_cross_entropy(logits, targets)`. Scaffolded.
+- **`schedule.py`** — `cosine_with_warmup(step, *, warmup_steps, max_steps, max_lr, min_lr=0.0)`. Scaffolded.
+- **`clip.py`** — `clip_grad_norm_(params, max_norm)`. Scaffolded.
+- **`trainer.py`** — `Trainer` class. `__init__`, `lr`, `evaluate`, `train` are implemented. `train_step` — the per-step composition of the four pieces above — is scaffolded.
+
+Tests live in `tests/test_training.py`. Initial state: 10 passed (boilerplate: `get_lm_batch`, Trainer construction, defaults, attribute checks), 33 failed.
+
+```bash
+pytest tests/test_training.py             # all module-10 tests
+pytest tests/test_training.py -x          # stop at first failure
+pytest tests/test_training.py -k loss     # just lm_cross_entropy tests
+pytest tests/test_training.py -k schedule # just cosine_with_warmup tests
+pytest tests/test_training.py -k clip     # just clipping tests
+pytest tests/test_training.py -k trainer  # just Trainer tests
+pytest tests/test_training.py -v          # verbose
+```
 
 ## Exercises
 
@@ -368,6 +351,18 @@ Total scaffolded code: roughly 25 lines across four functions / methods. Most of
 
 - **MPS fp32 fallbacks.** Some PyTorch ops on MPS silently fall back to CPU at fp32 — typically the same per-step cost as CPU. If your training is suspiciously CPU-pinned despite specifying MPS, it's likely one specific op in the forward pass falling back. `PYTORCH_ENABLE_MPS_FALLBACK=1` makes the fallback explicit; removing the fallback means moving that op to a supported variant.
 
+## M-series notes
+
+This is the first module where compute starts to matter in earnest.
+
+- **Exercise 1 (TinyShakespeare, 1M params, 2000 steps)** runs in roughly 5–15 minutes on CPU and 1–3 minutes on MPS, depending on your specific Mac. MPS is a real win at this scale.
+- **Exercise 2 (LR sweep, 5 runs)** is 5× exercise 1 — plan for a half-hour run with a coffee break.
+- **A 10M-param model on a ~5 MB Gutenberg slice (exercise 6 + 8)** is the first config where MPS is essential rather than nice — on CPU it's a multi-hour run, on MPS it's 30–60 minutes.
+- **Mixed precision is officially supported on MPS via `torch.amp.autocast(device_type='mps', dtype=torch.float16)`** but has more silent op-fallback edges than CUDA's. We don't use it in this module; revisit in Module 12 if you want to push to 30M+ params.
+- **Memory:** the `(B, T, V)` logits tensor is the dominant activation cost. For `B=32, T=64, V=8192`, that's `32 · 64 · 8192 · 4 bytes ≈ 64 MB` per training step (×2 if you hold both forward activations and gradients — autograd typically holds them). Budget accordingly; if you OOM, halve `batch_size` before halving `T`. The model only sees `(B, T)` worth of data per step, so doubling `B` and halving `T` is not a free trade — smaller `T` means shorter dependencies the model can learn.
+- **`torch.set_default_device('mps')`** at the top of a notebook saves you `.to('mps')` calls everywhere. Just remember that `torch.tensor([1, 2, 3])` then constructs on MPS, not CPU.
+
+---
 ## Reading
 
 Primary:
@@ -395,14 +390,4 @@ Optional:
 - [ ] You can explain — out loud, without notes — what warmup is for, what cosine decay is for, and what gradient clipping is for.
 - [ ] You can explain — out loud, without notes — the eight-step training-step recipe and what breaks if you reorder it.
 
-## M-series notes
 
-This is the first module where compute starts to matter in earnest.
-
-- **Tests run in well under a second on CPU** — the trainer test suite uses tiny models (1 layer, embedding_dim=8, vocab=12). MPS is unnecessary for testing.
-- **Exercise 1 (TinyShakespeare, 1M params, 2000 steps)** runs in roughly 5–15 minutes on CPU and 1–3 minutes on MPS, depending on your specific Mac. MPS is a real win at this scale.
-- **Exercise 2 (LR sweep, 5 runs)** is 5× exercise 1 — plan for a half-hour run with a coffee break.
-- **A 10M-param model on a ~5 MB Gutenberg slice (exercise 6 + 8)** is the first config where MPS is essential rather than nice — on CPU it's a multi-hour run, on MPS it's 30–60 minutes.
-- **Mixed precision is officially supported on MPS via `torch.amp.autocast(device_type='mps', dtype=torch.float16)`** but has more silent op-fallback edges than CUDA's. We don't use it in this module; revisit in Module 12 if you want to push to 30M+ params.
-- **Memory:** the `(B, T, V)` logits tensor is the dominant activation cost. For `B=32, T=64, V=8192`, that's `32 · 64 · 8192 · 4 bytes ≈ 64 MB` per training step (×2 if you hold both forward activations and gradients — autograd typically holds them). Budget accordingly; if you OOM, halve `batch_size` before halving `T`. The model only sees `(B, T)` worth of data per step, so doubling `B` and halving `T` is not a free trade — smaller `T` means shorter dependencies the model can learn.
-- **`torch.set_default_device('mps')`** at the top of a notebook saves you `.to('mps')` calls everywhere. Just remember that `torch.tensor([1, 2, 3])` then constructs on MPS, not CPU.
