@@ -35,10 +35,11 @@ modern open LM, has two phases:
 
 Two design choices to internalize:
 
-  * **The warmup goes from 0, not from `min_lr`.** Some
-    implementations ramp from a small nonzero value, but going from 0
-    is the standard. At step 0 the lr is exactly 0 — the optimizer
-    takes a "no-op" first step.
+  * **The warmup starts near 0, not from `min_lr`.** Some
+    implementations make step 0 exactly 0. This course uses the
+    common `(step + 1) / warmup_steps` convention: the first optimizer
+    update uses `max_lr / warmup_steps`, and the last warmup step
+    reaches exactly `max_lr`.
 
   * **`step > max_steps` keeps `lr = min_lr`.** Don't crash, don't
     grow — if training continues past the schedule horizon, the lr

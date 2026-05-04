@@ -130,60 +130,22 @@ Two reorderings that *look* equivalent but aren't:
 
 *The order is the lesson. Most miswirings of this loop produce code that *looks* like it's training: loss goes down, no exceptions, training history fills in normally — but the schedule, regularization, or clip is happening to the wrong gradients or at the wrong time. `Trainer.train_step`'s docstring spells the order out one more time, and the headline test `test_trainer_smoke_train_decreases_val_loss` is the end-to-end check that all eight steps are wired correctly.*
 
-### Linear warmup + cosine decay
+### What Module 10 Adds
 
-```
-  lr
-   ▲
-   │              ╮
-   │           ╱   ╰─╮
-   │         ╱        ╰─╮
-   │       ╱             ╰─╮
-   │     ╱                  ╰─╮
-   │   ╱                      ╰─╮___
-   │ ╱
-   └─────────────┬────────────────────► step
-   0    warmup_steps               max_steps
-```
+Module 03B gave you AdamW, learning-rate schedules, gradient clipping, and the habit of reading curves. This module uses those pieces as existing tools. The new ideas here are:
 
-**Warmup** ramps the lr linearly from `0` (or near it) up to `max_lr` over the first `warmup_steps` updates. Without warmup, the very first updates — taken with random-init weights and large gradients — can knock the model into a region from which it doesn't recover. The warmup gives the model a chance to find a sane local geometry before being pushed.
+- **`get_lm_batch`** samples many fixed-length token windows from one corpus tensor.
+- **`lm_cross_entropy`** folds `(B, T, V)` logits into `(B*T, V)` and `(B, T)` targets into `(B*T,)`, then applies cross-entropy once.
+- **`Trainer.train_step`** wires tokenizer output, TransformerLM, language-model loss, clipping, schedule, and optimizer into one repeatable pretraining step.
 
-**Cosine decay** follows. From the end of warmup to `max_steps`, the lr traces the right half of a cosine curve from `max_lr` down to `min_lr` (typically `0` or a small fraction of `max_lr`). The cosine shape spends more time at high lr at the start of decay (rapid progress) and at low lr at the end (polishing) than a linear schedule would.
-
-The whole schedule is pure arithmetic on `step` — no internal state, no PyTorch dependence. Three to five lines of code.
-
-### Gradient clipping
-
-```
-  global norm:      ‖g‖² = ∑_p ‖p.grad‖²
-
-  if ‖g‖ > max_norm:
-      scale = max_norm / ‖g‖
-      for p in params:
-          p.grad ← p.grad · scale
-      # afterwards: ‖g‖ = max_norm exactly
-```
-
-The clip is **global**, not per-parameter — every parameter's gradient is rescaled by the same factor. This preserves the relative direction of the gradient vector and only shortens the step. Per-parameter clipping (rescaling each parameter's grad to its own threshold) is *not* what's typically meant by "gradient clipping" in transformer training and would change the descent direction.
-
-The clip is also a **no-op below the threshold**: if `‖g‖ ≤ max_norm`, nothing happens. A typical pretraining run clips on maybe 1–10% of steps depending on `max_norm` — usually you set it generously (`1.0` is a common default) and it only kicks in on the pathological steps.
-
-### Why these three new pieces specifically
-
-- **`lm_cross_entropy`** doesn't add new math — it's a reshape + Module-03 `CrossEntropyLoss`. It earns its own function because the *recipe* of "fold time into batch, then CE-loss" is the right abstraction to name. A bug-class — averaging across the batch dim but not the time dim, or vice versa — is what naming this away prevents.
-
-- **`cosine_with_warmup`** is decisive at scale. At toy scale you can train with constant lr and not notice; at modest scale (a few million params, a few thousand steps) you start losing accuracy without warmup; at real scale you can't train without it. We add it now because once it's there, you don't have to revisit it.
-
-- **`clip_grad_norm_`** comes from the same place: occasional pathological batches that, without clipping, can ruin a long run with one bad step.
+That is the whole payoff: the architecture from Modules 07-09 becomes a model that improves by reading text.
 
 ## Concepts to internalize
 
 - **Pretraining is the architecture in motion.** The transformer block from Module 09 didn't change; you wrap it in a loop, give it text, and the loop does the learning.
 - **Every position contributes a gradient.** A single (B, T) batch yields `B × T` per-position cross-entropy examples. Don't inadvertently average over only one of those dims.
 - **The order of operations in a training step is load-bearing.** zero_grad → forward → loss → backward → clip → step. Most miswirings produce a loop that *looks* like it's training.
-- **Warmup matters more than you'd think.** Even at modest scale, the first few hundred steps benefit visibly from ramping `lr` from 0.
-- **Cosine decay matters less than you'd think at toy scale.** Don't obsess over the schedule — picking ANY decay over flat is the bigger gain than picking cosine over linear.
-- **Gradient clipping is insurance, not a control.** It exists to catch outlier batches. If clipping fires on every step, your `lr` is too high and you're training on the clipped gradient direction instead of the true one — loss goes down but slowly.
+- **Training controls are now reusable parts.** AdamW, warmup/cosine decay, and clipping come from Module 03B. Here you are checking that they sit in the right place in the loop.
 - **Validation loss and perplexity are the same thing.** `perplexity = exp(val_loss)`. Reporting one or the other is a stylistic choice; they carry the same information.
 
 ### What we don't cover
@@ -217,12 +179,12 @@ def cosine_with_warmup(
     max_steps: int,
     max_lr: float,
     min_lr: float = 0.0,
-) -> float:                                                       # SCAFFOLDED
+) -> float:                                                       # from 03B
 
 def clip_grad_norm_(
     params: Iterable[Tensor],
     max_norm: float,
-) -> float:                                                       # SCAFFOLDED
+) -> float:                                                       # from 03B
 
 class Trainer:
     model: Module
@@ -257,35 +219,33 @@ class Trainer:
     def train(self, train_ids, val_ids=None) -> dict: ...        # implemented
 ```
 
-Total scaffolded code: roughly 25 lines across four functions / methods. Most of the lesson is in *which* lines and *in what order* — the math is unsubtle once you've internalized the structure of a training step.
+Total new scaffolded code: roughly 15 lines across `lm_cross_entropy` and `Trainer.train_step`. Most of the lesson is in *which* lines and *in what order* — the math is unsubtle once you've internalized the structure of a training step.
 
 Implementation order — earlier scaffolds unblock later tests:
 
   1. **`lm_cross_entropy`** → unblocks the 5 loss tests.
-  2. **`cosine_with_warmup`** → unblocks the 8 schedule tests plus the 2 `Trainer.lr` tests.
-  3. **`clip_grad_norm_`** → unblocks the 6 clip tests.
-  4. **`Trainer.train_step`** → unblocks the remaining `train_step`, `evaluate`, and `train` tests.
+  2. **Confirm Module 03B training dynamics** → `pytest tests/test_training_dynamics.py`.
+  3. **`Trainer.train_step`** → unblocks the remaining `train_step`, `evaluate`, and `train` tests.
 
-Steps 1–3 are independent — you can do them in any order. Step 4 composes all three into the eight-line training loop and unlocks the headline smoke-train test.
+Step 3 composes the Module 03B tools with the language-modeling loss into the eight-line training loop and unlocks the headline smoke-train test.
 
 ## How to run the tests
 
-This module ships five files in `g2c/training/`:
+This module uses five files in `g2c/training/`:
 
 - **`data.py`** — `get_lm_batch(ids, batch_size, context_length, *, generator=None)`. Implemented for you. Same idea as Module 06's `get_batch`, with multi-position (`(B, T)`) targets.
 - **`loss.py`** — `lm_cross_entropy(logits, targets)`. Scaffolded.
-- **`schedule.py`** — `cosine_with_warmup(step, *, warmup_steps, max_steps, max_lr, min_lr=0.0)`. Scaffolded.
-- **`clip.py`** — `clip_grad_norm_(params, max_norm)`. Scaffolded.
+- **`schedule.py`** — `cosine_with_warmup(step, *, warmup_steps, max_steps, max_lr, min_lr=0.0)`. Implemented in Module 03B.
+- **`clip.py`** — `clip_grad_norm_(params, max_norm)`. Implemented in Module 03B.
 - **`trainer.py`** — `Trainer` class. `__init__`, `lr`, `evaluate`, `train` are implemented. `train_step` — the per-step composition of the four pieces above — is scaffolded. `device="auto"` moves the model and sampled batches to MPS when available, otherwise CPU.
 
-Tests live in `tests/test_training.py`. Initial state: 12 passed (boilerplate: `get_lm_batch`, Trainer construction, defaults, device handling, attribute checks), 33 failed, and the MPS-specific device test is skipped unless MPS is available.
+Module 10 tests live in `tests/test_training.py`. The Module 03B training-dynamics tests live in `tests/test_training_dynamics.py`. Run those first if `Trainer.lr` or clipping-related trainer tests fail.
 
 ```bash
+pytest tests/test_training_dynamics.py    # Module 03B prerequisite
 pytest tests/test_training.py             # all module-10 tests
 pytest tests/test_training.py -x          # stop at first failure
 pytest tests/test_training.py -k loss     # just lm_cross_entropy tests
-pytest tests/test_training.py -k schedule # just cosine_with_warmup tests
-pytest tests/test_training.py -k clip     # just clipping tests
 pytest tests/test_training.py -k trainer  # just Trainer tests
 pytest tests/test_training.py -v          # verbose
 ```
@@ -336,13 +296,7 @@ pytest tests/test_training.py -v          # verbose
 
 - **Reshape misalignment.** Computing `lm_cross_entropy(logits.reshape(B*T, V), targets.reshape(T*B))` silently aligns the wrong logits to the wrong targets. Both reshapes must use the same dim ordering (`(B, T)` flattened to `(B*T,)` and `(B, T, V)` flattened to `(B*T, V)`). The `test_lm_cross_entropy_per_position_average` test catches this.
 
-- **Off-by-one in warmup.** `step / warmup_steps` (no `+1`) gives an lr of 0 at step 0; that's fine. `(step + 1) / warmup_steps` gives `max_lr` at step `warmup_steps - 1`. We use the second convention (matches nanoGPT). Either works; stay consistent. Don't write `(step + 1) / (warmup_steps + 1)` — that ramps up to `max_lr * warmup_steps / (warmup_steps + 1)`, which is *almost* right and much harder to debug than a clearly-wrong formula.
-
-- **`step >= max_steps` not handled.** A common bug: `progress = (step
-  - warmup_steps) / (max_steps - warmup_steps)` evaluates fine for
-  `step > max_steps` but produces `progress > 1`, and `cos(π · 1.5) = 0`, which gives a NEGATIVE coefficient, which gives an `lr` BELOW `min_lr`. Test `test_cosine_with_warmup_after_max_steps_held_at_min_lr` catches this.
-
-- **Per-parameter clipping by accident.** Looping over params and clipping each one against `max_norm / sqrt(n_params)` (or against `max_norm` itself per-param) silently changes the descent direction. The clip must compute ONE global norm and apply ONE scalar to every param's grad. Test `test_clip_grad_norm_global_across_params` catches this.
+- **Module 03B gaps surfacing here.** If `Trainer.lr` or clipping tests fail before `Trainer.train_step` is implemented, go back to `pytest tests/test_training_dynamics.py`. Module 10 assumes the schedule and clipping primitives are already correct.
 
 - **Stepping the counter before the optimizer.** If `self.step` is incremented before `self.optimizer.step()`, the lr you wrote onto `self.optimizer.lr` was for the OLD step but applied at the NEW step. The schedule is offset by 1; usually harmless, but means logged lr ≠ applied lr.
 
@@ -390,5 +344,5 @@ Optional:
 - [ ] All tests in `tests/test_training.py` pass.
 - [ ] Notebook: `notebooks/clean/10-pretraining.ipynb`. Work through TinyShakespeare pretraining, sampling, the LR sweep, and warmup/clipping ablations.
 - [ ] You can explain — out loud, without notes — why every position in the (B, T) batch contributes a separate cross-entropy example, and why this is a `T`-fold speedup over Module 06.
-- [ ] You can explain — out loud, without notes — what warmup is for, what cosine decay is for, and what gradient clipping is for.
+- [ ] You can point to where AdamW, warmup/cosine decay, and clipping sit inside the trainer loop.
 - [ ] You can explain — out loud, without notes — the eight-step training-step recipe and what breaks if you reorder it.

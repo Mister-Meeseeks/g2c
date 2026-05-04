@@ -83,6 +83,77 @@ param <- param - lr * m_hat / (sqrt(v_hat) + eps)
 
 The result is still gradient descent. AdamW does not change the model or the objective. It changes how the update is scaled.
 
+### Learning Rates
+
+The learning rate is the knob that turns gradient direction into parameter motion. In the plain SGD case, the relationship is visible:
+
+```text
+update = -lr * grad
+```
+
+If `lr` is too small, the loss may be moving in the right direction but too slowly for your compute budget. If `lr` is too large, the update jumps past useful regions of parameter space and loss can spike or become `nan`. Most "what learning rate should I use?" questions are really asking: *what update scale is reasonable for this model, optimizer, batch size, and data?*
+
+There is no universal answer, so the practical move is a small sweep. Try a few values spaced by powers of 3 or 10, plot the curves, and keep the largest learning rate that trains smoothly. That habit matters more than memorizing one magic constant.
+
+### AdamW's Effective Step Size
+
+AdamW still has a global `lr`, but the actual update is adapted per tensor element:
+
+```text
+param <- param - lr * m_hat / (sqrt(v_hat) + eps)
+```
+
+The denominator is why AdamW can tolerate transformer training better than raw SGD. If one parameter has historically large gradients, `sqrt(v_hat)` is large and the effective step for that parameter shrinks. If another parameter has small gradients, it is not forced to share the exact same raw scale. The global `lr` still matters, but AdamW makes it less brittle.
+
+Weight decay is separate:
+
+```text
+param <- param * (1 - lr * weight_decay)
+```
+
+That direct shrink is the "W" in AdamW. Do not fold it into the gradient update.
+
+### Gradient Clipping
+
+Gradient clipping handles rare bad steps. First compute the global norm across every parameter gradient:
+
+```text
+total_norm = sqrt(sum(||p.grad||^2 for every parameter))
+```
+
+If `total_norm` exceeds `max_norm`, multiply every gradient by the same scalar:
+
+```text
+scale = max_norm / total_norm
+p.grad <- p.grad * scale
+```
+
+This preserves the overall gradient direction and only shortens the step. It is not the same as clipping each parameter independently, and it is not a replacement for a reasonable learning rate. If clipping fires constantly, your run is telling you the requested updates are too aggressive.
+
+### Warmup And Cosine Decay
+
+A schedule changes the learning rate over training. The standard small-LM recipe has two phases:
+
+```text
+warmup:        lr rises linearly to max_lr
+cosine decay:  lr falls smoothly from max_lr to min_lr
+```
+
+Warmup protects the first steps, when the model is random and gradients can be poorly scaled. Cosine decay then lets the run take larger steps early and smaller steps late. In this repo's convention, if `warmup_steps > 0`, step 0 uses `max_lr / warmup_steps`, and the last warmup step reaches exactly `max_lr`.
+
+This is not deep magic. It is arithmetic on the step counter. But once it is named and implemented, Module 10 can focus on the language-modeling loop instead of reintroducing schedules during the payoff week.
+
+### Reading Curves
+
+Training curves are your feedback loop:
+
+- **Train and validation both fall smoothly.** The run is healthy.
+- **Train falls, validation rises.** The model is overfitting or the validation split is too small/noisy.
+- **Both stay high and flat.** The model is under-optimized, the learning rate is wrong, or the model/data pair is too weak.
+- **Loss spikes or becomes `nan`.** Lower the learning rate, check gradient norms, and make sure clipping is wired before `optimizer.step`.
+
+Curve reading is the bridge from "I know the mechanics" to "I can debug a training run."
+
 ## Concepts To Internalize
 
 - **Learning rate controls update scale.** If loss explodes, lower it. If loss crawls and gradients are finite, raise it.
@@ -97,7 +168,7 @@ The result is still gradient descent. AdamW does not change the model or the obj
 
 ## Scaffolding And How To Run The Tests
 
-This draft module touches two packages:
+This module touches two packages:
 
 - `g2c/nn/optim.py` — `AdamW` lives beside `SGD`.
 - `g2c/training/clip.py` and `g2c/training/schedule.py` — gradient clipping and warmup/cosine scheduling are still in `g2c/training` because Module 10's trainer imports them there.
@@ -108,7 +179,7 @@ Run the focused tests:
 source .venv/bin/activate
 
 pytest tests/test_optim.py -x
-pytest tests/test_training.py -k "clip_grad_norm or cosine_with_warmup" -x
+pytest tests/test_training_dynamics.py -x
 ```
 
 Suggested implementation order:
@@ -185,9 +256,9 @@ Set up or resume the working notebook:
 
 4. **SGD vs AdamW on the same model.** Train the same MLP with SGD and AdamW. Keep model, data, seed, and number of steps fixed. Plot both loss curves. Which optimizer is less sensitive to the initial LR choice?
 
-5. **Gradient clipping demo.** Create two fake parameters with gradients `[3]` and `[4]`. Clip to `max_norm=1.0`. Explain why both gradients are multiplied by `1/5`, not clipped independently.
+5. **Gradient clipping demo.** Create two fake parameters with gradients `[3]` and `[4]`. Clip to `max_norm=1.0`. Explain why both gradients are multiplied by `1/5`, not clipped independently. Run `pytest tests/test_training_dynamics.py -k clip_grad_norm -x`.
 
-6. **Warmup/cosine schedule.** Plot `cosine_with_warmup` for `warmup_steps=100`, `max_steps=1000`, `max_lr=3e-4`, `min_lr=3e-5`. Explain what happens at step 0, step 99, step 100, halfway through decay, and at the end.
+6. **Warmup/cosine schedule.** Plot `cosine_with_warmup` for `warmup_steps=100`, `max_steps=1000`, `max_lr=3e-4`, `min_lr=3e-5`. Explain what happens at step 0, step 99, step 100, halfway through decay, and at the end. Run `pytest tests/test_training_dynamics.py -k cosine_with_warmup -x`.
 
 7. **Curve diagnosis.** Given three train/validation plots — both high and flat, train low / val high, and both decreasing smoothly — write what you would try next for each.
 
@@ -217,7 +288,7 @@ Secondary:
 ## Deliverable Checklist
 
 - [ ] `AdamW.step` passes `pytest tests/test_optim.py`.
-- [ ] `clip_grad_norm_` and `cosine_with_warmup` pass their focused tests.
+- [ ] `clip_grad_norm_` and `cosine_with_warmup` pass `pytest tests/test_training_dynamics.py`.
 - [ ] The notebook includes an LR sweep plot.
 - [ ] The notebook includes an SGD vs AdamW comparison on the same model.
 - [ ] The notebook includes a gradient clipping demonstration.
