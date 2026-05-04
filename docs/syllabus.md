@@ -49,14 +49,14 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 
 ## Phase overview
 
-| Phase | Weeks | Theme |
-|---|---|---|
-| 0 — Review | 0 | Fast prerequisite refresh |
-| I — Foundations | 1–3 + draft 03B | Scalar autograd → tensors → first neural net → training dynamics |
-| II — Language gets in | 4–6 | Tokenization → embeddings/positions → next-token prediction |
-| III — The transformer | 7–10 | Attention → multi-head → block → pretrain a tiny GPT |
-| IV — Behavior shaping | 11–15 | Sampling → scaling → SFT → DPO → eval |
-| V — Assistant systems | 16–20 | Pretrained inference → RAG → tools → agents → capstone |
+| Phase              | Weeks           | Theme                                                            |
+| ------------------ | --------------- | ---------------------------------------------------------------- |
+| 0 — Review         | 0               | Fast prerequisite refresh                                        |
+| I — Learning       | 1–3 + draft 03B | Scalar autograd → tensors → first neural net → training dynamics |
+| II — Language      | 4–6             | Tokenization → embeddings/positions → next-token prediction      |
+| III — Transformers | 7–10            | Attention → multi-head → block → pretrain a tiny GPT             |
+| IV — Behavior      | 11–15           | Sampling → scaling → SFT → DPO → eval                            |
+| V — Assistants     | 16–20           | Pretrained inference → RAG → tools → agents → capstone           |
 
 ---
 
@@ -76,7 +76,7 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 - **Reading.** 3Blue1Brown linear algebra and backprop refreshers; PyTorch "Tensors" tutorial; Karpathy's micrograd lecture as the bridge into Module 1.
 - **M-series notes.** Environment setup only. MPS becomes operationally relevant in Module 2.
 
-## Phase I — Foundations
+## Phase I — Learning
 
 ### Week 1 — Scalar autodiff — [module ↗](modules/01-autodiff.md)
 
@@ -139,7 +139,7 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 
 ---
 
-## Phase II — Language gets in
+## Phase II — Language
 
 ### Week 4 — Tokenization — [module ↗](modules/04-tokenizer.md)
 
@@ -185,7 +185,7 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 
 ---
 
-## Phase III — The transformer
+## Phase III — Transformers
 
 ### Week 7 — Self-attention — [module ↗](modules/07-attention.md)
 
@@ -244,7 +244,7 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 
 ---
 
-## Phase IV — Behavior shaping
+## Phase IV — Behavior
 
 ### Week 11 — Sampling and decoding — [module ↗](modules/11-sampling.md)
 
@@ -318,7 +318,7 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 
 ---
 
-## Phase V — Assistant systems
+## Phase V — Assistants
 
 ### Week 16 — Local pretrained models and inference — [module ↗](modules/16-inference.md)
 
