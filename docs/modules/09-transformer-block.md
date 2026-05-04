@@ -407,10 +407,8 @@ Optional:
 ## Deliverable checklist
 
 - [ ] All tests in `tests/test_transformer.py` pass.
-- [ ] Notebook: `notebooks/09-pre-vs-post-norm.ipynb`. Train a small pre-norm and a post-norm transformer LM at depth = 6 with the same hyperparameters; loss curves on the same axes.
-- [ ] Notebook: `notebooks/09-strip-residuals.ipynb`. Train at `num_layers = 1, 2, 4, 8` with residuals stripped; show training collapses past 2-3 layers.
+- [ ] Notebook: `notebooks/clean/09-transformer-block.ipynb`. Work through pre-vs-post norm, residual ablations, shape checks, and parameter-budget sanity checks.
 - [ ] You can explain — out loud, without notes — why residual connections make deep transformers trainable, in both the gradient-flow and residual-stream framings.
 - [ ] You can explain — out loud, without notes — what LayerNorm normalizes over, and why batch size doesn't affect its output.
 - [ ] You can explain — out loud, without notes — the difference between pre-norm and post-norm, and why pre-norm is the modern default.
-
 

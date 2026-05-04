@@ -390,8 +390,7 @@ Optional:
 ## Deliverable checklist
 
 - [ ] All tests in `tests/test_training.py` pass.
-- [ ] Notebook: `notebooks/10-pretrain-tinyshakespeare.ipynb`. Train a ~1M-param `TransformerLM` on TinyShakespeare for 2000+ steps. Sample text every 500 steps. Save the run history.
-- [ ] Notebook: `notebooks/10-lr-sweep.ipynb`. The exercise 2 sweep (`max_lr ∈ {3e-4, 1e-3, 3e-3, 1e-2, 3e-2}`). Plot final val loss vs `max_lr` on log-log axes; identify the sweet spot.
+- [ ] Notebook: `notebooks/clean/10-pretraining.ipynb`. Work through TinyShakespeare pretraining, sampling, the LR sweep, and warmup/clipping ablations.
 - [ ] You can explain — out loud, without notes — why every position in the (B, T) batch contributes a separate cross-entropy example, and why this is a `T`-fold speedup over Module 06.
 - [ ] You can explain — out loud, without notes — what warmup is for, what cosine decay is for, and what gradient clipping is for.
 - [ ] You can explain — out loud, without notes — the eight-step training-step recipe and what breaks if you reorder it.

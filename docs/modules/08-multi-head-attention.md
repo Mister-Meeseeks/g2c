@@ -4,43 +4,29 @@
 
 ![Multi-head attention end-to-end: input X (B, T, D); three big linear projections produce Q, K, V each of shape (B, T, D); a reshape + transpose splits the channel dim into H heads, each of size d_h = D/H, so every tensor becomes (B, H, T, d_h); H independent attention computations run in parallel (each with its own scaling factor √d_h); concatenation merges the heads back to (B, T, D); a final output projection W_O lands the result. A side panel emphasizes the headline fact: same total parameter count as a single big attention, but H different "ways of looking" at the same sequence.](08-multi-head-attention/Module08-Hero.png)
 
-The two ideas to internalize: (1) the projections Q = X · W_Q etc. are ONE big matrix multiply each, not H of them — the heads are a reshape, not separate Linears. (2) After the reshape, each head's attention is structurally identical to Module 07's single-head attention, just with `d_h = D/H` channels instead of D. Multi-head attention is single-head attention, run H times in parallel, with H ways of asking "who matters here?" combined at the end.*
+The two ideas to internalize. First, the projections are one big matrix multiply each. The heads are a reshape, not separate matrices. Second, each head's attention is structurally identical to single-head attention, just with fewer channels. Multi-head attention is single-head attention.
 
 ---
 ## Prerequisites
 
-Module 08 is a short module by content — almost everything is already in place from Module 07. The conceptual move is "split D into H slots and run H copies of attention in parallel"; the engineering move is "do that with one matmul, not H of them."
+Module 08 is short in terms of content. Almost everything is already in place from Module 07. Review the scaled dot-product and softmax machinery from Module 07. The conceptual move is "split D into H slots and run H copies of attention in parallel"; the engineering move is "do that with one matmul, not H of them."
 
-### Math
+### PyTorch
 
-- **Module 07's scaled dot-product attention.** Q, K, V projections, `softmax(Q @ K.T / sqrt(d_k))`, weighted value mixing. We keep the whole pipeline; we just run it H times in parallel in disjoint subspaces.
-- **Block-diagonal interpretation of multi-head.** A linear layer that treats the embedding `D` as `H` independent slots of size `d_h = D/H` is equivalent to `H` independent `d_h → d_h` linear layers — when the off-block parameters are zero. Multi-head attention starts from the full block-diagonal-or-not `(D, D)` matrix and lets training decide how much cross-block mixing happens. This is the conceptual reason one `(D, D)` projection followed by reshape is *not* a strict subset of "H independent `(d_h, d_h)` projections" — it's a strict superset.
-- **Same softmax / sqrt(d_h) machinery as Module 07.** The √ scaling factor is now `sqrt(head_dim)`, not `sqrt(D)` — see "The √ scaling changes" below.
+- Re-familiarize with `view()`, `transpose()` and `reshape()` functions. Keep in mind that reshaping is computationally free. This is why multi-head reshape is almost as cheap as single-head.  
 
-### Computer science
-
-- **Tensor reshaping is free.** `tensor.view()` and `tensor.transpose()` produce new shape views over the same underlying memory; no data is copied. (`.contiguous()` does copy, but only when needed to satisfy a later `view`.) This is why doing multi-head via reshape is almost as cheap as single-head — the matmul is the bulk of the cost regardless.
-
-### Programming
-
-- **`tensor.view(B, T, H, head_dim)`.** Splits the last dim into two. Requires the tensor to be contiguous, which fresh tensors and the output of a `Linear` already are.
-- **`tensor.transpose(1, 2)`.** Swaps two dims. Used to move the head dim into the batch-like leading position so the next matmul applies per-head.
-- **`tensor.contiguous()`.** Forces a memory-contiguous copy. Required after `transpose()` but before the next `view()` — `view` cannot reshape across non-contiguous strides.
-- **`tensor.reshape()` as a shortcut.** Equivalent to `.contiguous().view(...)` in one call; either form works for the re-concatenation step.
-
-
-
-## Why we start here
+--- 
+## Where this fits
 
 Module 07's single-head attention works, but it has a structural limitation: the Q/K/V projections compress everything one query wants to ask about into a single `D`-dimensional vector. If the model wants to attend differently for different reasons — e.g., one query direction for syntactic dependencies, another for coreference, another for adjacency — a single head must overload all of those onto the same `D` channels.
 
-Multi-head attention gives the model `H` parallel attention channels, each operating in its own `head_dim = D/H` subspace. Each head computes its own Q, K, V, scores, softmax, and weighted value mix INDEPENDENTLY. The H per-head outputs are concatenated and passed through a final output projection that mixes the heads' findings back into a coherent `D`-dim representation.
+We address this limitation by introducing multiple heads into a single attention model. The headline empirical result, due to Vaswani et al. and substantially deepened by Anthropic's transformer-circuits work, is that *different heads spontaneously specialize* during training. Some heads learn to attend to the previous token. Some learn to attend to syntactic dependencies. Some implement *induction* — copying a previous occurrence of the current token's predecessor. The mechanism doesn't prescribe specialization. Specialization falls out of the training dynamics when you give the model multiple independent attention slots.
 
-The headline empirical result, due to Vaswani et al. and substantially deepened by Anthropic's transformer-circuits work, is that *different heads spontaneously specialize* during training. Some heads learn to attend to the previous token. Some learn to attend to syntactic dependencies. Some implement *induction* — copying a previous occurrence of the current token's predecessor. The mechanism doesn't prescribe specialization; specialization falls out of the training dynamics when you give the model multiple independent attention slots.
+## The big idea
 
 The whole module is one structural change — splitting `D` into `H` slots — and one matching detail change — `√head_dim` instead of `√D`.
 
-## The big idea
+Multi-head attention gives the model `H` parallel attention channels, each operating in its own `head_dim = D/H` subspace. Each head computes its own Q, K, V, scores, softmax, and weighted value mix independently. The H per-head outputs are concatenated and passed through a final output projection that mixes the heads' findings back into a coherent `D`-dim representation.
 
 ```
   Single-head (Module 07)              Multi-head (Module 08)
@@ -56,7 +42,7 @@ The whole module is one structural change — splitting `D` into `H` slots — a
       out = Wo(mixed)    (T, D)           out = Wo(concat)          (T, D)
 ```
 
-Same operations on both sides; multi-head just adds an `H` axis to everything in the middle. Crucially, the parameter shapes of the projections — `Wq`, `Wk`, `Wv`, `Wo` — are all `(D, D)` in BOTH versions. The split into heads is structural, not parametric.
+Same operations on both sides. Multi-head just adds an `H` axis to everything in the middle. Crucially, the parameter shapes of the projections — `Wq`, `Wk`, `Wv`, `Wo` — are all `(D, D)` in both versions. The split into heads is structural, not parametric.
 
 ### The reshape, in detail
 
@@ -100,7 +86,7 @@ q_per_head = [Linear(D, head_dim) for _ in range(H)]
 qs = [q_per_head[h](x) for h in range(H)]   # H independent matmuls
 ```
 
-The implementation in this module uses ONE `Linear(D, D)` followed by a reshape:
+The implementation in this module uses one `Linear(D, D)` followed by a reshape:
 
 ```python
 # RIGHT (and standard):
@@ -110,15 +96,13 @@ q = q.view(B, T, H, head_dim).transpose(1, 2)
 
 These are *not* equivalent. The `(D, D)` projection has a full set of cross-head parameters — entries `W[i, j]` where the row `i` belongs to input dim `i` and the column `j` lands in some head's `d_h` slot. The H-independent version only has `H × (d_h × d_h)` parameters arranged on a block-diagonal; the cross-block parameters are zero.
 
-Practically speaking the single `(D, D)` projection is *strictly more expressive* (it can learn the block-diagonal structure if it wants to) AND *strictly cheaper* (one big matmul beats H small ones on modern hardware). It's the better choice on both axes — which is why the literature has converged on it. The "multi-head" part is in how the OUTPUT of the projection is interpreted, not in how the projection itself is parameterized.
+Practically speaking the single `(D, D)` projection is *strictly more expressive* (it can learn the block-diagonal structure if it wants to) and *strictly cheaper* (one big matmul beats H small ones on modern hardware). It's the better choice on both axes, which is why the literature has converged on it. The "multi-head" part is in how the output of the projection is interpreted, not in how the projection itself is parameterized.
 
 ### The √ scaling changes: √head_dim, not √D
 
 In Module 07, the scaling factor was `1/sqrt(D)` because each dot product was over a `D`-dimensional vector pair. In multi-head attention, each per-head dot product is over a `head_dim`-dimensional pair, so the scaling factor is `1/sqrt(head_dim)`.
 
 This is the single most common multi-head bug. Symptom: training is slower than expected, attention weights are flatter than expected, gradients are sluggish — but nothing crashes. The scores are under-scaled by a factor of `sqrt(H)`, so the softmax stays in a high-temperature regime where attention is nearly uniform.
-
-`test_attention_weights_use_sqrt_head_dim_scaling` pins this down by forcing Q and K projections to the identity and comparing against an explicit per-head softmax.
 
 ### The output projection becomes load-bearing
 
@@ -159,28 +143,6 @@ You won't see these in your tiny model from Module 10 with high fidelity — you
 - FlashAttention's IO-aware tiling. The math is the same; only the memory access pattern changes.
 - Cross-attention (Q from one source, K/V from another — used in encoder-decoder transformers). The course is decoder-only.
 
-## Scaffolding and how to run the tests
-
-This module ships one scaffolded file:
-
-- **`g2c/attention/multi_head.py`** — `MultiHeadAttention` class. `__init__`, `parameters()`, and the `causal_mask` static method are implemented. The two scaffolded methods — `forward` and `attention_weights` — are the lesson, and both share most of their logic so implementing one makes the other essentially mechanical.
-
-Tests live in `tests/test_multi_head_attention.py`. Initial state: 11 passed (construction + `causal_mask` + parameter counts), 16 failed.
-
-```bash
-pytest tests/test_multi_head_attention.py             # run all module-08 tests
-pytest tests/test_multi_head_attention.py -x          # stop at first failure (recommended)
-pytest tests/test_multi_head_attention.py -k forward  # only the forward tests
-pytest tests/test_multi_head_attention.py -v          # verbose
-```
-
-The docstring at the top of `tests/test_multi_head_attention.py` gives the implementation order. The headline tests to watch:
-
-- **`test_forward_causality`** — the same property as Module 07. With multiple heads, every head must respect the causal mask independently — so this test is even stricter than Module 07's.
-- **`test_attention_weights_use_sqrt_head_dim_scaling`** — pins down that the scaling factor is `√head_dim`, not `√D`. Forgetting to change the scaling when generalizing to multi-head is the single most common multi-head bug.
-- **`test_attention_weights_consistent_with_forward`** — pins down that your two scaffolded methods agree about projections, reshape, scaling, mask, and concat.
-- **`test_attention_weights_heads_are_distinct`** — pins down that the reshape actually splits D into H independent subspaces. A wrong implementation that uses the same q/k for every head would produce H identical weight matrices.
-
 ---
 ## What you'll build
 
@@ -208,6 +170,17 @@ class MultiHeadAttention(Module):
 ```
 
 Roughly 20 lines of real code split across the two scaffolded methods. The conceptual delta from Module 07 is small — most of the lesson is in the reshape and the `√head_dim` change.
+
+## Scaffolding and how to run the tests
+
+Tests live in `tests/test_multi_head_attention.py`. Initial state: 11 passed (construction + `causal_mask` + parameter counts), 16 failed.
+
+```bash
+pytest tests/test_multi_head_attention.py             # run all module-08 tests
+pytest tests/test_multi_head_attention.py -x          # stop at first failure (recommended)
+pytest tests/test_multi_head_attention.py -k forward  # only the forward tests
+pytest tests/test_multi_head_attention.py -v          # verbose
+```
 
 ## Exercises
 
@@ -242,12 +215,19 @@ Roughly 20 lines of real code split across the two scaffolded methods. The conce
 ## Pitfalls to expect
 
 - **Scaling by √D instead of √head_dim.** The single most common multi-head bug. Training sluggish; attention weights are too flat; gradients propagate weakly. Crashes nothing, fails subtly. 
+
 - **Reshape order: `(B, T, head_dim, H)` instead of `(B, T, H, head_dim)`.** The shape is the same after view, but heads end up "seeing" interleaved slices of the embedding (positions 0, H, 2H, ... instead of 0..head_dim-1). Will silently produce a different model.
+
 - **Forgetting `.transpose(1, 2)` after the reshape.** Without it, `T` is in the leading batch-like position and `H` is in the position-adjacent position, so the next matmul will mix queries from different heads.
+
 - **Forgetting `.contiguous()` before the final `view` to concatenate heads.** PyTorch will raise an exception. Insert `.contiguous()` or use `.reshape(...)`.
+
 - **Mask polarity backwards (same as Module 07).** `causal_mask` returns True ABOVE the diagonal — the positions to BLOCK. The `(T, T)` mask broadcasts naturally over `(B, H, T, T)` scores.
+
 - **Implementing per-head with `H` independent linear layers.** Works mathematically, but is `H × `slower (H matmuls instead of 1) and strictly less expressive (block-diagonal projections instead of full ones). The standard idiom is one `(D, D)` projection plus reshape.
+
 - **Returning `attention_weights` of shape `(B, T, T)` instead of `(B, H, T, T)`.** The "averaged over heads" version drops the per-head visualization that motivates exposing this method at all. Keep the H dim. 
+
 - **`embedding_dim` not divisible by `num_heads`.** The constructor raises `ValueError` for this, but if you bypass it (or compute `head_dim` with integer division and silently lose dims), shapes will mismatch downstream. Don't silence the check.
 
 ## M-series notes

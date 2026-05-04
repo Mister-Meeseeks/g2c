@@ -10,18 +10,14 @@ The same six-step pipeline runs at every position in parallel, with the only per
 ## Prerequisites
 
 Module 07 is the hinge of the course — everything from here through the transformer block (Module 09) is variations on what you build this week.
-
 ### Math
 
 - **Dot products as similarity.** `q · k = |q| |k| cos θ`. When `q` and `k` point in the same direction the dot product is large; when they're orthogonal it's zero. The whole attention mechanism is built on "treat dot products as a learnable similarity score."
 - **Softmax over a vector.** Already used in Modules 02–06.
 - **Matrix multiplication, batched.** matmul is the same op you've used for ages, just with a batch dim carried along. PyTorch's `@` operator handles this — be comfortable with it.
+### PyTorch
 
-### Programming
-
-- **`tensor.transpose(-2, -1)`.** Swaps the LAST TWO dims of a tensor, preserving the batch dim. Used to compute `Q @ K^T` while keeping `B` along.
-- **`tensor.masked_fill(mask, value)`.** Overwrites entries where `mask` is True with `value`. We use it to set above-diagonal scores to `-inf` so the softmax assigns them probability 0.
-
+* Re-familiarize with `transpose()`  and `masked_flow()` functions.
 ---
 ## Where this fits in
 
