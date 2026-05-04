@@ -13,8 +13,6 @@ Module 10 closes Phase III by training the architecture you built in Module 09. 
 ### Math
 
 - **Cross-entropy.** Same loss function you've used since Module 03; the only new thing is the reshape.
-- **Global gradient norm.** `‖g‖ = sqrt(∑_p ‖∇p‖²)` where the sum is over every parameter.
-- **Training dynamics from Module 03B.** AdamW, warmup/cosine schedules, gradient clipping, and train/validation curve diagnosis should already be familiar.
 
 ### PyTorch
 
@@ -138,7 +136,7 @@ Module 03B gave you AdamW, learning-rate schedules, gradient clipping, and the h
 - **`lm_cross_entropy`** folds `(B, T, V)` logits into `(B*T, V)` and `(B, T)` targets into `(B*T,)`, then applies cross-entropy once.
 - **`Trainer.train_step`** wires tokenizer output, TransformerLM, language-model loss, clipping, schedule, and optimizer into one repeatable pretraining step.
 
-That is the whole payoff: the architecture from Modules 07-09 becomes a model that improves by reading text.
+That is the whole payoff. The architecture we build in Modules 07-09 becomes a model that improves by reading text.
 
 ## Concepts to internalize
 
