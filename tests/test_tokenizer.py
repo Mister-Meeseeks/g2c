@@ -139,6 +139,26 @@ def test_train_vocab_bytes_concatenation():
         assert tok.vocab[new_id] == tok.vocab[a] + tok.vocab[b]
 
 
+def test_train_progress_callback_reports_start_and_finish():
+    tok = BPETokenizer()
+    reports = []
+
+    tok.train(
+        "hello world " * 10,
+        vocab_size=260,
+        on_progress=reports.append,
+        progress_every=2,
+    )
+
+    assert reports[0]["vocab_size"] == 256
+    assert reports[0]["target_vocab_size"] == 260
+    assert reports[0]["num_merges"] == 0
+    assert reports[-1]["vocab_size"] == 260
+    assert reports[-1]["num_merges"] == 4
+    assert reports[-1]["token_count"] > 0
+    assert reports[-1]["last_pair_count"] > 0
+
+
 # ----------------------------------------------------------------------
 # encode
 # ----------------------------------------------------------------------
