@@ -4,34 +4,28 @@
 
 ![Self-attention as six steps from tokens to refined representations: input embeddings (T, D); query/key/value projections via three Linear layers; pairwise compatibility scores from Q · Kᵀ / √D; softmax to row-normalized attention weights; mixed value vectors; an output projection. The bottom strip restates the same recipe as a one-position view ("ask, compare, pass, gather, update") and pins the headline takeaway: every token looks at every token, decides who is relevant, and mixes their information.](07-attention/Module07-Hero.png)
 
-*The whole module on one page. The same six-step pipeline runs at every position in parallel, with the only per-position difference being which Q vector poses the question — every other piece of machinery (the K/V tables, the scaling factor, the softmax, the output projection) is shared. Most of the rest of this lesson page is unpacking the "why" behind each of these six boxes; everything you'll implement in `SelfAttention.forward` is encoded here.*
+The same six-step pipeline runs at every position in parallel, with the only per-position difference being which Q vector poses the question — every other piece of machinery (the K/V tables, the scaling factor, the softmax, the output projection) is shared. Most of the rest of this lesson page is unpacking the "why" behind each of these six boxes.
 
+---
 ## Prerequisites
 
-The math, CS, and programming concepts this module uses. Module 07 is the hinge of the course — everything from here through the transformer block (Module 09) is variations on what you build this week.
+Module 07 is the hinge of the course — everything from here through the transformer block (Module 09) is variations on what you build this week.
 
 ### Math
 
 - **Dot products as similarity.** `q · k = |q| |k| cos θ`. When `q` and `k` point in the same direction the dot product is large; when they're orthogonal it's zero. The whole attention mechanism is built on "treat dot products as a learnable similarity score."
-- **Softmax over a vector.** Already used in Modules 02–06. Here it's applied row-wise to the `(T, T)` score matrix to convert raw scores into a probability distribution per query.
-- **Matrix multiplication, batched.** A `(B, T, D) @ (B, D, T) → (B, T, T)` matmul is the same op you've used for ages, just with a batch dim carried along. PyTorch's `@` operator handles this — be comfortable with it.
-
-### Computer science
-
-- **Nothing new.** This module is mostly tensor reshaping and linear algebra; the algorithmic content is the math, not the data structures.
+- **Softmax over a vector.** Already used in Modules 02–06.
+- **Matrix multiplication, batched.** matmul is the same op you've used for ages, just with a batch dim carried along. PyTorch's `@` operator handles this — be comfortable with it.
 
 ### Programming
 
 - **`tensor.transpose(-2, -1)`.** Swaps the LAST TWO dims of a tensor, preserving the batch dim. Used to compute `Q @ K^T` while keeping `B` along.
 - **`tensor.masked_fill(mask, value)`.** Overwrites entries where `mask` is True with `value`. We use it to set above-diagonal scores to `-inf` so the softmax assigns them probability 0.
 
-### What you can skip
+---
+## Where this fits in
 
-- You don't need multi-head attention, layer norm, residual connections, or the FFN block — those land in Modules 08 and 09. This module is *one head, no block, no normalization*. That isolation is deliberate: attention itself is a small, self-contained idea, and conflating it with the rest of the transformer is the most common confusion in the literature.
-
-## Why we start here
-
-By the end of Module 06 you have a Bengio-style MLP language model that predicts a next token from a fixed-length window of preceding tokens. It works — but it has two ceilings that don't go away:
+With Module 06 you have a MLP language model that predicts next token from a fixed-length window of preceding tokens. It works, but has two ceilings that don't go away:
 
 1. **Fixed context.** The MLP has one set of weights per position in its concat. To extend the context length you have to grow the weight matrix. Doubling the context doubles the parameter count.
 2. **No inter-token communication.** The MLP can attend to "what's at each position" but it can't attend to "the relationship between this position and that position." Embeddings are pooled by concatenation and never get to look at each other.
@@ -140,27 +134,7 @@ The score matrix is `(T, T)` and grows with the square of the sequence length. F
 - **Cost is `O(T²)` in time and memory.** Felt as soon as `T` exceeds a few thousand. Worth feeling now so the efficient-attention literature later makes sense.
 - **Self-attention is permutation-equivariant on its own.** Position must be injected externally (Module 05's job, wired up in Module 09).
 
-## Scaffolding and how to run the tests
-
-This module ships one scaffolded file:
-
-- **`g2c/attention/self_attention.py`** — `SelfAttention` class. `__init__`, `parameters()`, and the `causal_mask` static method are implemented. The two scaffolded methods — `forward` and `attention_weights` — are the lesson, and both share most of their logic so implementing one makes the other essentially mechanical.
-
-Tests live in `tests/test_attention.py`. Initial state: 9 passed (construction + `causal_mask`), 14 failed.
-
-```bash
-pytest tests/test_attention.py             # run all module-07 tests
-pytest tests/test_attention.py -x          # stop at first failure (recommended)
-pytest tests/test_attention.py -k forward  # only the forward tests
-pytest tests/test_attention.py -v          # verbose
-```
-
-The docstring at the top of `tests/test_attention.py` gives the implementation order. The headline tests to watch:
-
-- **`test_forward_causality`** — the property that makes attention safe for language modeling. Mutate the input at position 3 and verify output positions 0–2 don't change.
-- **`test_attention_weights_use_sqrt_d_scaling`** — pins down the `√D` divisor against an identity-projection reference. Forgetting the scaling will fail this test loudly.
-- **`test_attention_weights_consistent_with_forward`** — pins down that your two scaffolded methods agree about what the attention weights are.
-
+---
 ## What you'll build
 
 Package: `g2c/attention/`
@@ -186,15 +160,24 @@ class SelfAttention(Module):
 
 Roughly 15 lines of real code split across the two scaffolded methods. The smallest module-by-LOC of the course so far — and arguably the most important one. Every transformer ever trained uses this exact mechanism.
 
+## How to run the tests
+
+Tests live in `tests/test_attention.py`. Initial state: 9 passed (construction + `causal_mask`), 14 failed.
+
+```bash
+source .venv/bin/activate
+
+pytest tests/test_attention.py             # run all module-07 tests
+pytest tests/test_attention.py -x          # stop at first failure (recommended)
+pytest tests/test_attention.py -k forward  # only the forward tests
+pytest tests/test_attention.py -v          # verbose
+```
+
 ## Exercises
 
 1. **Implement and verify on a hand-computed 3-token toy.** Build a `SelfAttention(embedding_dim=2, causal=False)`. With `torch.manual_seed(0)` for reproducibility, feed it `x = torch.tensor([[[1., 0.], [0., 1.], [1., 1.]]])` (shape `(1, 3, 2)`). Pull out `q`, `k`, `v` by calling the projections directly, compute `Q @ K.T / sqrt(2)` by hand on a piece of paper, apply softmax row-wise, multiply by `V`, apply `out_proj`. Verify your by-hand result matches `attn(x)` to within `1e-5`. The point is to convince yourself there's no magic happening — every step is linear algebra you can do on paper.
 
-2. **Visualize the attention pattern on a real sentence.** In `notebooks/07-attention-viz.ipynb`: tokenize the canonical sentence
-
-   ![A T×T attention-weight heatmap for "the cat sat on the mat", with each row a query token and each column a key token. Darker blue = higher weight. Each row sums to 1 (post-softmax), and the upper triangle is exactly white because the causal mask zeroed those positions. Side panels label "what's happening" (queries on rows, keys on columns, softmax row-normalizes to a probability) and "key properties" (each row sums to 1, lower triangle only, different patterns per head).](07-attention/Module07-Heatmap.png)
-
-   *The kind of plot this exercise produces. Untrained attention has near-uniform rows (no token has learned to prefer any other), but the structural properties — row-stochastic, lower-triangular under causal masking — are visible from step 0. Module 10 will revisit this same heatmap on a trained model and show specialized rows: the "it" token putting most of its weight on its antecedent, copy-heads putting most weight on the previous token, etc.* *"the animal didn't cross the street because it was too tired"* with the Module 04 BPE. Embed with a small `TokenEmbedding` plus a `LearnedPositionalEmbedding` (both untrained — random init is fine for visualization). Pass through a `SelfAttention(causal=False)`. Pull out `attn.attention_weights(x)` and plot it as a heatmap (`matplotlib.imshow`) with token labels on the axes. The pattern will be near-uniform random because nothing is trained — but the plumbing is exactly what you'll use to visualize a TRAINED model's attention later in the course. Re-run with the second sentence *"the animal didn't cross the street because it was too wide"* — same token "it" referring to a different antecedent. After Module 10's pretraining, you'd hope a trained head would put more mass on "animal" in the first sentence and "street" in the second. (You won't see this yet — that's a teaser for the trained-attention visualization in Module 10.)
+2. **Visualize the attention pattern on a real sentence.** In `notebooks/07-attention-viz.ipynb`: tokenize the canonical sentence with the Module 04 BPE. Embed with a small `TokenEmbedding` plus a `LearnedPositionalEmbedding` (both untrained — random init is fine for visualization). Pass through a `SelfAttention(causal=False)`. Pull out `attn.attention_weights(x)` and plot it as a heatmap (`matplotlib.imshow`) with token labels on the axes. The pattern will be near-uniform random because nothing is trained — but the plumbing is exactly what you'll use to visualize a TRAINED model's attention later in the course. Re-run with the second sentence *"the animal didn't cross the street because it was too wide"* — same token "it" referring to a different antecedent. After Module 10's pretraining, you'd hope a trained head would put more mass on "animal" in the first sentence and "street" in the second. (You won't see this yet — that's a teaser for the trained-attention visualization in Module 10.)
 
 3. **The strip-mask experiment — feel the cheat.** Build a tiny attention-only language model: `TokenEmbedding`, additive positional encoding, one `SelfAttention`, then an output `Linear` to vocab logits. Train it on a short tokenized corpus with `train_lm` from Module 06 (model your `forward` to take `(B, T)` token ids and return `(B, V)` logits at the LAST position, so it conforms to the `train_lm` interface). Run two configurations:
    - `SelfAttention(causal=True)` — train loss decreases gradually.
@@ -217,6 +200,18 @@ Roughly 15 lines of real code split across the two scaffolded methods. The small
 - **Using `attention_weights` and `forward` with different code paths.** If you compute scores or apply the mask differently in the two methods, the visualization no longer reflects the actual attention pattern used by `forward`. `test_attention_weights_consistent_with_forward` catches this.
 - **Running attention on un-positioned embeddings and expecting it to learn order.** Self-attention is permutation-equivariant — without positional information, "dog bites man" and "man bites dog" produce the same set of output vectors (just permuted). For exercise 2 this is fine; for exercise 3 you must add positional encoding.
 
+## M-series notes
+
+This module is light on compute.
+
+- All tests run in well under a second on CPU.
+- The viz exercise (exercise 2) is forward-pass-only on a single short sentence — milliseconds.
+- Exercise 3's strip-mask experiment is a few hundred training steps on a small corpus with a single attention layer — under a minute on CPU.
+- Exercise 5's `O(T²)` timing demo at `T = 4096, D = 128` allocates a 16M-entry `(T, T)` score tensor — comfortable on a 16GB machine. If you push to `T = 16384` it's a 256M-entry tensor (`~1GB` at fp32); manageable but you'll feel it.
+
+There's no need to use MPS for this module; CPU is fast enough that the device-transfer overhead would dominate. Module 10's pretraining run is the first place MPS pays off.
+
+---
 ## Reading
 
 Primary:
@@ -242,13 +237,3 @@ Optional:
 - [ ] You can explain — out loud, without notes — why dividing by `sqrt(D)` is necessary and what specifically goes wrong without it.
 - [ ] You can explain — out loud, without notes — what a "permutation- equivariant layer" means and why self-attention is one.
 
-## M-series notes
-
-This module is light on compute.
-
-- All tests run in well under a second on CPU.
-- The viz exercise (exercise 2) is forward-pass-only on a single short sentence — milliseconds.
-- Exercise 3's strip-mask experiment is a few hundred training steps on a small corpus with a single attention layer — under a minute on CPU.
-- Exercise 5's `O(T²)` timing demo at `T = 4096, D = 128` allocates a 16M-entry `(T, T)` score tensor — comfortable on a 16GB machine. If you push to `T = 16384` it's a 256M-entry tensor (`~1GB` at fp32); manageable but you'll feel it.
-
-There's no need to use MPS for this module; CPU is fast enough that the device-transfer overhead would dominate. Module 10's pretraining run is the first place MPS pays off.
