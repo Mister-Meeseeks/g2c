@@ -12,13 +12,11 @@ Module 11 opens Phase IV. You're done building from-scratch architecture — the
 
 ### Math
 
-- **Softmax over logits.** Already used in Modules 03–10. Here it's the last step of every sampling iteration: turning warped logits into a probability distribution.
-- **Temperature scaling.** Dividing logits by `T` and softmaxing produces a distribution with controllable sharpness. `softmax(z / T)` peaks more sharply at `argmax(z)` as `T → 0`, and flattens toward uniform as `T → ∞`. Mathematically `T` is just a monotone reweighting — it never reorders which token is most likely.
-- **Cumulative distribution functions.** Top-p sorts probabilities descending and cumulatively sums them; the sampling nucleus is the smallest prefix of that CDF that reaches `p`.
+- **Softmax over logits.** Already used in Modules 03–10. Here it's the last step of every sampling iteration.
+- **Cumulative distribution functions.** Cumulatively sum probabilities in descending order.
 
 ### Computer science
 
-- **The autoregressive decode loop.** Generation is `for _ in range(max_new_tokens): forward → slice last logit → warp → sample → append`. The order is decisive: cropping the context, slicing the last position only, warping in the right order, and stopping early on `eos_id` are all things that affect correctness or output quality.
 - **Stateful vs stateless code.** The four warpers are pure functions of `(logits, args)`. The decode loop is the only stateful piece (the running token sequence). Keeping warpers stateless is what lets them compose freely.
 
 ### Programming
@@ -30,15 +28,8 @@ Module 11 opens Phase IV. You're done building from-scratch architecture — the
 - **`torch.multinomial(probs, num_samples, generator=...)`** — sample indices proportional to `probs`. The standard way to do categorical sampling in PyTorch.
 - **`@torch.no_grad()`** — decorator that disables autograd for the whole function. Generation never needs gradients; skipping the graph build saves both memory and time.
 
-### What you can skip
-
-- **Beam search.** A breadth-first decode that keeps the top-`k` candidate sequences at every step. Important historically (machine translation), nearly absent from modern LLMs because the diversity-vs-quality tradeoff that beam search optimizes badly maps onto open-ended generation. Skim the Wikipedia entry once; we don't implement it.
-- **Speculative decoding.** A small "draft" model proposes tokens, a large "target" model accepts or rejects. A real production inference-time speedup, completely orthogonal to the sampling controls in this module. Module 16 returns to it briefly.
-- **KV caching.** The transformer recomputes attention for the entire context at every decode step — `O(T²)` work for `T` tokens of history at every new token. Caching the K and V tensors at each layer turns this into `O(T)`. Big win at inference time, but it's an optimization, not a sampling concept. Skipped here; revisited in Module 16.
-- **Typical sampling, mirostat, η-sampling.** Variants on top-p with somewhat different cutoff rules. Marginal real-world differences; not worth implementing four versions of "rank tokens, draw a cutoff, sample."
-- **Logit biasing / forced decoding.** Sometimes you want to *forbid* certain tokens (filtering profanity, requiring JSON), or *force* certain tokens (constrained decoding, JSON-mode). Both are simple extensions of the warper interface — set chosen logits to `-inf` or `+inf` before softmax — and we don't build them; the exercises do.
-
-## Why we start here
+---
+## Where this fits in
 
 After Module 10 you have a checkpoint: a `TransformerLM` whose parameters have been trained against next-token cross-entropy. Calling `model(token_ids)` returns `(B, T, V)` logits — but logits aren't text. The transformation from a distribution over tokens to actual sampled output is what this module is about.
 
@@ -58,9 +49,11 @@ Pure random sampling (multinomial draw from the native softmax) is the other ext
   random: → " mat. Suddenly inflation electricity quartz... ..."
 ```
 
-The native softmax has nonzero mass on every token, including thousands of long-tail tokens that are essentially unrelated to the prefix. Once in a while one of them gets sampled, and the output derails.
+The native softmax has nonzero mass on every token, including thousands of long-tail tokens that are essentially unrelated to the prefix. Once in a while one of them gets sampled, and the output derails. Both naive approaches are brittle when it comes to generating text, especially at long-range. 
 
-The standard fix is a small pipeline of **logit warpers** that reshape the distribution before sampling — the model's native distribution gets sharpened (temperature), the long tail gets cut off (top-k or top-p), and tokens that already appeared get nudged down (repetition penalty). After the warpers, multinomial sampling produces text that is neither stuck on argmax nor scattered across the vocabulary.
+## The big idea
+
+The fix is a small pipeline of **logit warpers** that reshape the distribution before sampling — the model's native distribution gets sharpened (temperature), the long tail gets cut off (top-k or top-p), and tokens that already appeared get nudged down (repetition penalty). After the warpers, multinomial sampling produces text that is neither stuck on argmax nor scattered across the vocabulary.
 
 ```
               ┌────────────────────────────────────────────────┐
@@ -101,8 +94,6 @@ The standard fix is a small pipeline of **logit warpers** that reshape the distr
 ```
 
 The four boxes — `apply_repetition_penalty`, `apply_temperature`, `top_k_filter`, `top_p_filter` — are this module's deliverable warpers. The composition of all four inside a `for` loop is the `generate` function. Once they're wired together you can finally read your model's output as text.
-
-## The big idea
 
 ### Logit warpers as a pipeline
 
@@ -299,51 +290,15 @@ The exercises sweep these knobs against your trained TinyShakespeare model so yo
 - **The decode loop is `O(max_new_tokens × T_ctx²)` without KV cache.** Every step recomputes attention over the entire running context. The cost grows quadratically with context length. KV caching cuts this to linear, but that's a Module 16 concern.
 - **The diversity-quality tradeoff has no free lunch.** Lower temperature → more confident → more repetitive. Higher temperature → more creative → more derailed. Pick a setting per task and don't expect one knob to fit everything.
 
-## Scaffolding and how to run the tests
+### What we didn't cover
 
-This module ships five files in `g2c/sampling/`:
+- **Beam search.** A breadth-first decode that keeps the top-`k` candidate sequences at every step. Important historically (machine translation), nearly absent from modern LLMs because the diversity-vs-quality tradeoff that beam search optimizes badly maps onto open-ended generation. Skim the Wikipedia entry once; we don't implement it.
+- **Speculative decoding.** A small "draft" model proposes tokens, a large "target" model accepts or rejects. A real production inference-time speedup, completely orthogonal to the sampling controls in this module. Module 16 returns to it briefly.
+- **KV caching.** The transformer recomputes attention for the entire context at every decode step — `O(T²)` work for `T` tokens of history at every new token. Caching the K and V tensors at each layer turns this into `O(T)`. Big win at inference time, but it's an optimization, not a sampling concept. Skipped here; revisited in Module 16.
+- **Typical sampling, mirostat, η-sampling.** Variants on top-p with somewhat different cutoff rules. Marginal real-world differences; not worth implementing four versions of "rank tokens, draw a cutoff, sample."
+- **Logit biasing / forced decoding.** Sometimes you want to *forbid* certain tokens (filtering profanity, requiring JSON), or *force* certain tokens (constrained decoding, JSON-mode). Both are simple extensions of the warper interface — set chosen logits to `-inf` or `+inf` before softmax — and we don't build them; the exercises do.
 
-- **`temperature.py`** — `apply_temperature(logits, temperature)`. Scaffolded.
-- **`top_k.py`** — `top_k_filter(logits, k)`. Scaffolded.
-- **`top_p.py`** — `top_p_filter(logits, p)`. Scaffolded.
-- **`repetition_penalty.py`** — `apply_repetition_penalty(logits, token_ids, penalty)`. Scaffolded.
-- **`generate.py`** — `generate(model, prompt_ids, max_new_tokens, *, temperature, top_k, top_p, repetition_penalty, eos_id, generator)`. The `@torch.no_grad()` decorator and the import wiring are pre-set; the loop body is scaffolded.
-
-Tests live in `tests/test_sampling.py`. Initial state: 0 passed, 43 failed (all warpers and `generate` raise `NotImplementedError`). There is no boilerplate to pass from the start — sampling is all algorithmic content, no construction step.
-
-```bash
-pytest tests/test_sampling.py                  # all module-11 tests
-pytest tests/test_sampling.py -x               # stop at first failure
-pytest tests/test_sampling.py -k temperature   # just temperature tests
-pytest tests/test_sampling.py -k top_k         # just top-k tests
-pytest tests/test_sampling.py -k top_p         # just top-p tests
-pytest tests/test_sampling.py -k repetition    # just repetition-penalty tests
-pytest tests/test_sampling.py -k generate      # just generate tests
-pytest tests/test_sampling.py -v               # verbose
-```
-
-Implementation order — earlier scaffolds unblock later tests:
-
-  1. **`apply_temperature`** → unblocks the 7 temperature tests.
-  2. **`top_k_filter`** → unblocks the 8 top-k tests.
-  3. **`top_p_filter`** → unblocks the 7 top-p tests.
-  4. **`apply_repetition_penalty`** → unblocks the 8 repetition tests.
-  5. **`generate`** → unblocks the remaining 13 generate tests.
-
-Steps 1–4 are independent — you can do them in any order. Step 5 composes all four warpers into the autoregressive loop and unlocks the headline end-to-end tests.
-
-The `generate` tests pull in your full Module 03 / 05 / 07 / 08 / 09 stack — if those scaffolds aren't filled in (in particular, `TransformerLM.forward` from Module 09), the generate tests will fail with `NotImplementedError` from the prerequisite layer. The Module 09 deliverable test (`test_transformer_lm_smoke_train`) is a good gate — if that's passing, your prerequisites are in order.
-
-The headline tests to watch:
-
-- **`test_apply_temperature_preserves_argmax`** — pins down that temperature is monotone, regardless of `T`. A buggy warper that multiplies instead of divides (or applies the rescaling in probability space) would silently fail this.
-- **`test_top_k_filter_softmax_sums_to_one_over_survivors`** — pins down that masked entries are exactly 0 after softmax. A warper that uses `-1e9` instead of `-inf` would fail this on tight thresholds.
-- **`test_top_p_filter_argmax_always_survives`** — pins down the off-by-one. The argmax may have probability `> p` all by itself; if the warper masks it, output collapses.
-- **`test_apply_repetition_penalty_lowers_probability`** — the sign test. Ensures the penalty is an actual penalty, not a bonus.
-- **`test_generate_top_k_one_matches_greedy`** — end-to-end pin that warpers compose with multinomial sampling correctly. Top-k=1 leaves only the argmax with nonzero mass, so multinomial must match the greedy path exactly.
-- **`test_generate_eos_stops_early`** — the early-stopping contract. With a forced argmax of `eos_id`, generation must halt at the first eos and return a shorter sequence.
-- **`test_generate_respects_max_seq_len_via_cropping`** — pins down that cropping is in place. Without it, a sufficiently long generation would crash on the positional embedding's bound check.
-
+---
 ## What you'll build
 
 Package: `g2c/sampling/`
@@ -386,6 +341,33 @@ def generate(
 ```
 
 Total scaffolded code: roughly 30 lines across five functions. The math is light; the lesson is the order, the masking convention (`-inf`), and the composition.
+
+Implementation order — earlier scaffolds unblock later tests:
+
+  1. **`apply_temperature`** → unblocks the 7 temperature tests.
+  2. **`top_k_filter`** → unblocks the 8 top-k tests.
+  3. **`top_p_filter`** → unblocks the 7 top-p tests.
+  4. **`apply_repetition_penalty`** → unblocks the 8 repetition tests.
+  5. **`generate`** → unblocks the remaining 13 generate tests.
+
+Steps 1–4 are independent — you can do them in any order. Step 5 composes all four warpers into the autoregressive loop and unlocks the headline end-to-end tests.
+
+### How to run the tests
+
+Tests live in `tests/test_sampling.py`. Initial state: 0 passed, 43 failed.
+
+```bash
+pytest tests/test_sampling.py                  # all module-11 tests
+pytest tests/test_sampling.py -x               # stop at first failure
+pytest tests/test_sampling.py -k temperature   # just temperature tests
+pytest tests/test_sampling.py -k top_k         # just top-k tests
+pytest tests/test_sampling.py -k top_p         # just top-p tests
+pytest tests/test_sampling.py -k repetition    # just repetition-penalty tests
+pytest tests/test_sampling.py -k generate      # just generate tests
+pytest tests/test_sampling.py -v               # verbose
+```
+
+
 
 ## Exercises
 
