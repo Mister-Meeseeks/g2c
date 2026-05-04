@@ -1,334 +1,229 @@
-# Module 10 — Pretraining a tiny GPT
+# Module 10 — First LLM
 
-> **Question this module answers:** *How does the model absorb language patterns from raw text?*
+> **Question this module answers:** *What changes when the transformer block becomes a trained language model?*
 
-![Pretraining the tiny GPT end-to-end: a raw token stream is sliced into (B, T) windows; each window goes through TransformerLM to produce (B, T, V) logits; lm_cross_entropy averages per-position cross-entropy across all B × T positions; loss.backward populates parameter gradients; clip_grad_norm rescales them if their global norm is too large; cosine_with_warmup picks the lr for this step; optimizer.step applies the optimizer update; the step counter advances. A side panel shows sample text quality progressing through training: random characters at step 0, locally-correct subwords at step 500, locally-coherent sentences by step 2000+.](10-pretraining/Module10-Hero.png)
+![Pretraining the tiny GPT end-to-end: a raw token stream is sliced into (B, T) windows; each window goes through TransformerLM to produce (B, T, V) logits; lm_cross_entropy averages per-position cross-entropy across all B * T positions; loss.backward populates parameter gradients; clip_grad_norm rescales them if their global norm is too large; cosine_with_warmup picks the lr for this step; optimizer.step applies the optimizer update; the step counter advances. A side panel shows sample text quality progressing through training: random characters at step 0, locally-correct subwords at step 500, locally-coherent sentences by step 2000+.](10-pretraining/Module10-Hero.png)
 
-The architecture from Module 09 doesn't change, pretraining is the loop that calls it. Internalizing the eight-step order of operations on this diagram is the conceptual content of the module.
+*This is the payoff week for Phase III. Module 09 built the architecture. Module 09B turned a token stream into a supervised objective. Module 03B made the training controls legible. Module 10 wires those pieces together and produces the first trained checkpoint.*
 
 ---
 ## Prerequisites
 
-Module 10 closes Phase III by training the architecture you built in Module 09. Almost everything you need is already in `g2c/`
 ### Math
 
-- **Cross-entropy.** Same loss function you've used since Module 03; the only new thing is the reshape.
+- **Cross-entropy and perplexity.** Module 09B introduced `lm_cross_entropy` and the `log(V)` baseline.
+- **Learning-rate schedules and gradient norms.** Module 03B introduced warmup, cosine decay, and global-norm clipping.
 
-### PyTorch
+### Computer science
 
-- **`with torch.no_grad():`** for evaluation, disables autograd graph construction, freeing memory and time on inference passes.
-- **`grad.mul_(scale)`** for in-place gradient rescaling. 
+- **Stateful loops.** A trainer owns a model, optimizer, step counter, random generator, and history.
+- **Train/validation workflow.** Validation loss is the main signal that the run is improving rather than merely memorizing.
 
----
-## Why we start here
+### Programming
 
-After Module 09 you have a `TransformerLM` that can do a forward pass. You don't yet have a model that has been trained on a corpus. The full pretraining recipe is short — sample a batch, forward, loss, backward, clip, step — but every line of it has a particular order that matters:
+- **`torch.no_grad()`.** Evaluation should not build an autograd graph.
+- **Device movement.** The trainer moves model parameters and sampled batches to MPS when available.
 
-```
-              ┌─────────────────────────────────────────────┐
-              │              ONE TRAINING STEP              │
-              └─────────────────────────────────────────────┘
+### What you can skip
 
-   train_ids ──► get_lm_batch ─► (B,T) input, (B,T) target
-                                              │
-                                              ▼
-                             optimizer.zero_grad()
-                                              │
-                                              ▼
-                                        model(x) ─────► logits (B,T,V)
-                                              │
-                                              ▼
-                          lm_cross_entropy(logits, y) ─► loss (scalar)
-                                              │
-                                              ▼
-                                       loss.backward()
-                                              │
-                                              ▼
-                          clip_grad_norm_(params, max_norm)
-                                              │
-                                              ▼
-              optimizer.lr ← cosine_with_warmup(step, ...)
-                                              │
-                                              ▼
-                                      optimizer.step()
-                                              │
-                                              ▼
-                                       step += 1
-```
-
-The language-modeling boxes — `get_lm_batch` (multi-position targets) and `lm_cross_entropy` (mean over `B×T` positions) — are new here. The training-dynamics boxes — `cosine_with_warmup`, `clip_grad_norm_`, and AdamW — come from Module 03B. Once they fit together inside `Trainer.train_step`, you have a real pretraining loop.
-
-## The big idea
-
-### Multi-position targets
-
-The Module 06 trainer gave the model a context of length `N` and a single target — the very next token. That used roughly `1/N` of the gradient signal available per window: there were `N` predictable positions in each window, but you trained on only one.
-
-A causal transformer can compute predictions at *every* position in parallel — `logits[:, t, :]` is the model's guess for `token_ids[:, t+1]`, computed as part of the same forward pass that produces every other position's prediction. So the right batch shape for pretraining is:
-
-```
-  Token IDs:   [4, 7, 1, 3, 9, 2, 6, 5, 0, ...]
-
-  Window starting at index 2, T = 4:
-
-    x:  [1, 3, 9, 2]
-        │  │  │  │
-        ▼  ▼  ▼  ▼
-    y:  [3, 9, 2, 6]
-        ▲  ▲  ▲  ▲
-        │  │  │  │
-        each is the NEXT token of the corresponding x position
-
-  At every position t in {0, 1, 2, 3}, the model sees x[:t+1] and
-  must predict y[t]. All four predictions are computed in ONE forward
-  pass, and the loss averages over all four.
-```
-
-The total gradient signal per window grew from 1 prediction to `T` predictions — at typical pretraining context lengths (256, 1024, 2048, 8192), this is a factor-of-thousands speedup. It's a big part of what makes transformer pretraining tractable.
-
-![Multi-position targets in three steps: (1) sample a (B, T) window from the token stream, with the target window y being x shifted left by one; (2) one forward pass through TransformerLM produces (B, T, V) logits — every position's next-token prediction in parallel, courtesy of the causal mask; (3) per-position cross-entropy is computed at every (b, t) pair and averaged across all B × T positions to produce the scalar loss. A side comparison contrasts the Module 06 setup (1 window → 1 training signal) against pretraining (1 window → T training signals).](10-pretraining/Module10-MultiPosition.png)
-
-*This is what causal masking earned us. Because position t can never see token t+1, you can use position t's logits as a prediction for token t+1 — for every t in the window, simultaneously, in one forward pass. The loss then averages B × T per-position cross-entropies. Test `test_lm_cross_entropy_per_position_average` pins down that EVERY position contributes; a miswiring that only counted the last position would silently train at 1/T efficiency.*
-
-### The training-step recipe
-
-Eight steps, in this order, every step:
-
-1. **`zero_grad()`** — clear the previous step's gradients. Forgetting this is the single most common bug; PyTorch ACCUMULATES into `.grad` rather than overwriting, so without `zero_grad` the "gradient" the optimizer sees grows without bound.
-2. **`forward`** — compute `(B, T, V)` logits from the model.
-3. **`lm_cross_entropy`** — mean per-position cross-entropy.
-4. **`backward`** — populate `.grad` on every parameter via reverse-mode autodiff.
-5. **`clip_grad_norm_`** — rescale every gradient by the same factor if the global norm exceeds `max_norm`. No-op when below threshold.
-6. **`optimizer.lr = cosine_with_warmup(step, ...)`** — overwrite the optimizer's lr with the schedule's prescription for this step.
-7. **`optimizer.step()`** — apply the optimizer update, usually AdamW for the serious run.
-8. **`step += 1`** — advance the schedule counter.
-
-Two reorderings that *look* equivalent but aren't:
-
-```
-  WRONG (clip after step):
-
-      backward()
-      optimizer.step()         ← grads consumed
-      clip_grad_norm_(...)     ← clips next step's stale grads,
-                                 not this step's
-
-  WRONG (advance before step):
-
-      step += 1
-      optimizer.lr = lr_for(self.step)
-      optimizer.step()         ← lr is for step+1, not step
-
-      The schedule is offset by 1 — typically harmless, but means
-      "the lr at step k" and "the lr the optimizer applied at step k"
-      disagree. Logging is then misleading.
-```
-
-![The eight-step training loop drawn in order: (1) zero_grad clears stale gradients; (2) forward runs the model to logits; (3) lm_cross_entropy averages per-position CE; (4) backward populates parameter .grad; (5) clip_grad_norm_ rescales if the global norm is too large; (6) set the learning rate from cosine_with_warmup; (7) optimizer.step applies the optimizer update; (8) increment the step counter. A side panel pins the two most common reorderings — clipping after step (clip becomes a no-op on this step) and advancing the counter before optimizer.step (the lr you log isn't the lr you applied) — and labels both as silent-bug territory.](10-pretraining/Module10-TrainingSteps.png)
-
-*The order is the lesson. Most miswirings of this loop produce code that *looks* like it's training: loss goes down, no exceptions, training history fills in normally — but the schedule, regularization, or clip is happening to the wrong gradients or at the wrong time. `Trainer.train_step`'s docstring spells the order out one more time, and the headline test `test_trainer_smoke_train_decreases_val_loss` is the end-to-end check that all eight steps are wired correctly.*
-
-### What Module 10 Adds
-
-Module 03B gave you AdamW, learning-rate schedules, gradient clipping, and the habit of reading curves. This module uses those pieces as existing tools. The new ideas here are:
-
-- **`get_lm_batch`** samples many fixed-length token windows from one corpus tensor.
-- **`lm_cross_entropy`** folds `(B, T, V)` logits into `(B*T, V)` and `(B, T)` targets into `(B*T,)`, then applies cross-entropy once.
-- **`Trainer.train_step`** wires tokenizer output, TransformerLM, language-model loss, clipping, schedule, and optimizer into one repeatable pretraining step.
-
-That is the whole payoff. The architecture we build in Modules 07-09 becomes a model that improves by reading text.
-
-## Concepts to internalize
-
-- **Pretraining is the architecture in motion.** The transformer block from Module 09 didn't change; you wrap it in a loop, give it text, and the loop does the learning.
-- **Every position contributes a gradient.** A single (B, T) batch yields `B × T` per-position cross-entropy examples. Don't inadvertently average over only one of those dims.
-- **The order of operations in a training step is load-bearing.** zero_grad → forward → loss → backward → clip → step. Most miswirings produce a loop that *looks* like it's training.
-- **Training controls are now reusable parts.** AdamW, warmup/cosine decay, and clipping come from Module 03B. Here you are checking that they sit in the right place in the loop.
-- **Validation loss and perplexity are the same thing.** `perplexity = exp(val_loss)`. Reporting one or the other is a stylistic choice; they carry the same information.
-
-### What we don't cover
-
-- **Optimizer internals.** Module 03B covered AdamW, schedules, clipping, and curve diagnosis. This module uses those tools rather than re-teaching them. The pretraining concept is how tokenizer + TransformerLM + LM loss + trainer compose.
-- **Mixed precision (fp16, bf16).** Mentioned in the syllabus as a Module 10 concept but a poor fit on M-series MPS today (occasional ops fall back to fp32, sometimes silently). Train in fp32 throughout this module. We discuss the pitfalls in *M-series notes* but the deliverable model is fp32.
-- **Distributed training.** Single-device only. DDP, FSDP, ZeRO, pipeline parallelism — these are orthogonal to the pretraining recipe and out of scope for a course running on one Mac.
-- **Checkpointing.** The `Trainer` doesn't ship a `save`/`load` — pickling `model.parameters()` via `torch.save({...})` is two lines with no learning content; we don't scaffold it. The exercises build a checkpointing helper if you want one.
-- **Dropout, label smoothing, fancy LR schedules.** All used in production training; none teach what's already taught here.
+- **Re-deriving the language-model objective.** That was Module 09B.
+- **Optimizer internals.** AdamW, clipping, and schedules were Module 03B.
+- **Production training systems.** No distributed training, mixed precision, packed datasets, or checkpoint managers yet.
 
 ---
-## What you'll build
+## Why We Start Here
+
+The transformer is finally complete, but an untrained transformer is just a random function. Module 10 makes it a language model by repeating one training step thousands of times:
+
+```text
+train_ids
+  -> get_lm_batch              # Module 09B
+  -> model(x)                  # Module 09
+  -> lm_cross_entropy          # Module 09B
+  -> backward                  # PyTorch autograd over your modules
+  -> clip_grad_norm_           # Module 03B
+  -> cosine_with_warmup        # Module 03B
+  -> optimizer.step            # Module 03 or 03B
+  -> history + validation
+```
+
+The new concept is not a new layer. It is orchestration. The course stack now has enough pieces that the core engineering problem is putting them in the right order, tracking the run, and using the resulting curve and samples to decide whether training is healthy.
+
+## The Big Idea
+
+### The trainer is glue, but load-bearing glue
+
+`Trainer.train_step` is short, but the order is part of the contract:
+
+1. `optimizer.zero_grad()`
+2. sample `(x, y)` with `get_lm_batch`
+3. move `x` and `y` to the trainer device
+4. `logits = model(x)`
+5. `loss = lm_cross_entropy(logits, y)`
+6. `loss.backward()`
+7. clip gradients if requested
+8. set the scheduled learning rate
+9. `optimizer.step()`
+10. increment `self.step`
+
+Two lines are easy to swap accidentally:
+
+```text
+WRONG: optimizer.step() before clipping
+WRONG: incrementing self.step before computing/logging the lr for this step
+```
+
+Those bugs often produce a run that still appears to train. The tests pin down the step counter, learning-rate assignment, clipping behavior, evaluation mode, and end-to-end loss decrease.
+
+![The eight-step training loop drawn in order: zero_grad clears stale gradients; forward runs the model to logits; lm_cross_entropy averages per-position CE; backward populates parameter .grad; clip_grad_norm rescales if the global norm is too large; set the learning rate from cosine_with_warmup; optimizer.step applies the optimizer update; increment the step counter.](10-pretraining/Module10-TrainingSteps.png)
+
+*The order is the lesson. Most miswirings produce normal-looking Python and sometimes even a falling loss curve. The trainer tests are designed to catch the quiet versions of those mistakes.*
+
+### The artifact matters
+
+Module 10 should feel different from earlier modules because it produces something you can inspect qualitatively:
+
+- a checkpoint,
+- a training history,
+- a validation curve,
+- and sampled text from the model.
+
+The first samples will be rough. That is expected. The milestone is not "a useful assistant." The milestone is "a model with a visible learning curve and output that moved from random tokens toward language-like structure because of code you wrote."
+
+### Validation is part of the loop
+
+Training loss alone can lie. The trainer periodically evaluates on held-out `val_ids`:
+
+```text
+train loss down, val loss down     -> healthy
+train loss down, val loss flat/up  -> memorization or data mismatch
+both flat near log(V)              -> training is not really moving
+loss spikes / NaNs                 -> lr too high, clipping missing, bug
+```
+
+The Module 03B curve-reading habits now apply to a real transformer.
+
+## Concepts to Internalize
+
+- **Pretraining is repeated next-token prediction over a corpus.**
+- **The trainer composes earlier modules.** It should feel like assembly, not new math.
+- **Ordering matters.** The training step has a contract.
+- **Validation loss is the primary health metric.** Samples are useful, but noisy.
+- **`log(V)` is a step-0 sanity check, not a goal.** The run needs to fall below it.
+- **Tiny models learn form before meaning.** Punctuation, word fragments, and local phrase shape appear before global coherence.
+
+## Scaffolding and How to Run the Tests
+
+Module 10 uses prior modules and adds the top-level trainer:
+
+- **`g2c/pretraining/data.py`** from Module 09B: `split_token_stream`, `get_lm_batch`.
+- **`g2c/pretraining/loss.py`** from Module 09B: `lm_cross_entropy`.
+- **`g2c/training/`** from Module 03B: `AdamW`, `clip_grad_norm_`, `cosine_with_warmup`.
+- **`g2c/pretraining/trainer.py`** for Module 10: `Trainer`.
+- **`answers/module-10.md`** is the student workspace for written answers, hint requests, and run notes.
+- **`docs/rubrics/module-10.md`** is the grading contract agents should use when reviewing written answers.
+
+Run prerequisite tests first when debugging:
+
+```bash
+pytest tests/test_training.py -x
+pytest tests/test_pretraining_setup.py -x
+pytest tests/test_transformer.py -x
+```
+
+Then run Module 10:
+
+```bash
+pytest tests/test_pretraining.py -x
+pytest tests/test_pretraining.py -k trainer -v
+```
+
+The only scaffolded Module 10 method is `Trainer.train_step`. Construction, `lr`, `evaluate`, and `train` are implemented so the student can focus on the one load-bearing step.
+
+## What You'll Build
 
 Package: `g2c/pretraining/`
 
-Uses Module 03B helpers from `g2c/training/`: `AdamW`, `clip_grad_norm_`, and `cosine_with_warmup`.
-
 ```python
-def get_lm_batch(
-    ids: Tensor,
-    batch_size: int,
-    context_length: int,
-    *,
-    generator: torch.Generator | None = None,
-) -> tuple[Tensor, Tensor]:                                     # implemented
-
-def lm_cross_entropy(logits: Tensor, targets: Tensor) -> Tensor:  # SCAFFOLDED
-
 class Trainer:
-    model: Module
-    batch_size: int
-    context_length: int
-    max_steps: int
-    max_lr: float
-    min_lr: float
-    warmup_steps: int
-    weight_decay: float
-    grad_clip: float | None
-    eval_every: int
-    eval_iters: int
-    log_every: int
-    device: torch.device
-    optimizer_name: str
-    optimizer: SGD | AdamW
-    step: int
-
     def __init__(
         self,
         model,
         *,
-        batch_size, context_length, max_steps, max_lr,
-        min_lr=0.0, warmup_steps=0, weight_decay=0.0, grad_clip=None,
-        eval_every=100, eval_iters=20, log_every=10,
-        generator=None, device="auto", optimizer="sgd",
+        batch_size: int,
+        context_length: int,
+        max_steps: int,
+        max_lr: float,
+        min_lr: float = 0.0,
+        warmup_steps: int = 0,
+        weight_decay: float = 0.0,
+        grad_clip: float | None = None,
+        eval_every: int = 100,
+        eval_iters: int = 20,
+        log_every: int = 10,
+        generator: torch.Generator | None = None,
+        device: str | torch.device = "auto",
+        optimizer: str = "sgd",
     ): ...                                                       # implemented
-    def lr(self, step=None) -> float: ...                        # implemented
-    def train_step(self, train_ids) -> dict[str, float]: ...     # SCAFFOLDED
-    def evaluate(self, eval_ids) -> float: ...                   # implemented
+
+    def lr(self, step: int | None = None) -> float: ...          # implemented
+    def train_step(self, train_ids: torch.Tensor) -> dict: ...   # SCAFFOLDED
+    def evaluate(self, eval_ids: torch.Tensor) -> float: ...     # implemented
     def train(self, train_ids, val_ids=None) -> dict: ...        # implemented
-```
-
-Total new scaffolded code: roughly 15 lines across `lm_cross_entropy` and `Trainer.train_step`. Most of the lesson is in *which* lines and *in what order* — the math is unsubtle once you've internalized the structure of a training step.
-
-Implementation order — earlier scaffolds unblock later tests:
-
-  1. **`lm_cross_entropy`** → unblocks the 5 loss tests.
-  2. **Confirm Module 03B training dynamics** → `pytest tests/test_training.py`.
-  3. **`Trainer.train_step`** → unblocks the remaining `train_step`, `evaluate`, and `train` tests.
-
-Step 3 composes the Module 03B tools with the language-modeling loss into the eight-line training loop and unlocks the headline smoke-train test.
-
-## How to run the tests
-
-This module uses three files in `g2c/pretraining/` and two Module 03B helpers from `g2c/training/`:
-
-- **`data.py`** — `get_lm_batch(ids, batch_size, context_length, *, generator=None)`. Implemented for you. Same idea as Module 06's `get_batch`, with multi-position (`(B, T)`) targets.
-- **`loss.py`** — `lm_cross_entropy(logits, targets)`. Scaffolded.
-- **`trainer.py`** — `Trainer` class. `__init__`, `lr`, `evaluate`, `train` are implemented. `train_step` — the per-step composition of the four pieces above — is scaffolded. `device="auto"` moves the model and sampled batches to MPS when available, otherwise CPU.
-- **`g2c/training/schedule.py`** — `cosine_with_warmup(step, *, warmup_steps, max_steps, max_lr, min_lr=0.0)`. Implemented in Module 03B.
-- **`g2c/training/clip.py`** — `clip_grad_norm_(params, max_norm)`. Implemented in Module 03B.
-
-Module 10 tests live in `tests/test_pretraining.py`. Module 03B training-dynamics tests live in `tests/test_training.py`. Run those first if `Trainer.lr` or clipping-related trainer tests fail.
-
-```bash
-pytest tests/test_training.py             # Module 03B prerequisite
-pytest tests/test_pretraining.py          # all module-10 tests
-pytest tests/test_pretraining.py -x       # stop at first failure
-pytest tests/test_pretraining.py -k loss  # just lm_cross_entropy tests
-pytest tests/test_pretraining.py -k trainer  # just Trainer tests
-pytest tests/test_pretraining.py -v       # verbose
 ```
 
 ## Exercises
 
-1. **Train on TinyShakespeare.** Pick a small TinyShakespeare slice (say 200 KB), tokenize with your Module 04 BPE, build a `TransformerLM(vocab_size, embedding_dim=128, num_layers=4, num_heads=4, max_seq_len=128)` (~1M params), and train for 2000–5000 steps with `optimizer="adamw"`, `max_lr=3e-4`, `min_lr=3e-5`, `warmup_steps=100`, `weight_decay=0.01`, `grad_clip=1.0`, `batch_size=32`, `context_length=64`. Sample text every 500 steps. You should see:
+Enter questions or answers in [answers/module-10.md](../../answers/module-10.md) for agent help and grading. You can ask for a hint, answer one question, answer a subset, or answer all of them; blank answer sections are skipped rather than counted wrong.
 
-     - Steps 0–100: random characters; loss ≈ `log(V)`.
-     - Steps 100–500: locally-correct subword fragments emerging; loss starts dropping.
-     - Steps 500–2000: locally-correct words and short phrases.
-     - Steps 2000+: locally-coherent dialogue-like text. Globally still nonsense.
+1. **Implement `Trainer.train_step`.** Follow the method docstring exactly. Run `pytest tests/test_pretraining.py -k train_step -x`, then the full `tests/test_pretraining.py`.
 
-   The headline qualitative observation: the model learns *form* long before *content*. Punctuation, capitalization patterns, line lengths emerge first; coherent meaning never quite does at this scale.
+2. **Prepare the first corpus.** Tokenize a TinyShakespeare slice, split it with `split_token_stream`, print token counts, print `log(V)`, and verify one random batch shape. This should be quick and boring. If it is confusing, go back to Module 09B.
 
-2. **Sweep `max_lr`.** Same model and dataset; train with AdamW at `max_lr ∈ {1e-4, 3e-4, 1e-3, 3e-3}`. Plot final val loss vs `max_lr` on log-log axes. Identify the U-shape: too-low lr underfits in the budget; too-high lr destabilizes. The sweet spot should now feel like a Module 03B diagnostic, not a mystery constant.
+3. **Train a tiny TransformerLM.** Start small: `embedding_dim=128`, `num_layers=4`, `num_heads=4`, `max_seq_len=128`, `batch_size=32`, `context_length=64`, `optimizer="adamw"`, `max_lr=3e-4`, `min_lr=3e-5`, `warmup_steps=100`, `weight_decay=0.01`, `grad_clip=1.0`, `max_steps=2000`. Plot train and validation loss.
 
-3. **Visualize the LR and loss curves.** During the run from exercise 1, log `step, lr, loss, grad_norm` every 10 steps via the trainer's history. Plot:
+4. **Sample from checkpoints or training milestones.** Generate text from the initial model and the trained model using the Module 11-style local sampler in the notebook. Record what improves first: character legality, word fragments, punctuation, line breaks, local phrases, or longer coherence.
 
-     - lr vs step — should show the warmup ramp + cosine decay.
-     - loss vs step — should show a fast initial drop then a slow grind.
-     - grad_norm vs step — should be largest at the start (when the model is far from a good fit) and shrink as training progresses. With `grad_clip=1.0`, you'll see clipping fire on the early steps and progressively less often.
+5. **Run one controlled scale-up.** Change one meaningful knob, such as more steps, larger vocab, larger embedding dimension, longer context, or more data. Keep the rest stable. Compare validation loss and samples against exercise 3.
 
-4. **No warmup.** Take exercise 1's setup and set `warmup_steps=0`, leaving `max_lr` unchanged. Train. Compare the loss curve for the first ~200 steps against the warmup version on the same axes. Three patterns are common:
+6. **Diagnose the run.** Write a short post-run note: final train loss, final validation loss, final validation perplexity, whether validation tracked training, whether the learning rate looked sane, and one next experiment you would run.
 
-     - Best case: loss takes ~50 extra steps to start falling.
-     - Typical case: loss spikes within the first 10–20 steps, grad_norm spikes too, training recovers.
-     - Worst case (with high `max_lr`): training never recovers — the model lands in a bad region and stays there.
+## Pitfalls to Expect
 
-5. **No clipping.** Same setup as exercise 1, but `grad_clip=None`. Inspect the `grad_norm` log. Without clipping you'll occasionally see a step where the natural gradient norm spikes by 100× the median; the model takes a giant step that takes many subsequent steps to recover from. Clipping at `1.0` would have prevented this. Quantify the clipping benefit: median val loss across 3 seeds with vs without clipping.
+- **Forgetting `zero_grad`.** PyTorch accumulates gradients. Without clearing them, training quickly becomes unstable.
+- **Clipping after `optimizer.step`.** The optimizer already consumed the unclipped gradients.
+- **Not moving batches to the model device.** The corpus can stay on CPU, but sampled `x` and `y` must be on the same device as the model.
+- **Evaluation with grads enabled.** It wastes memory and can make long validation passes fail.
+- **Treating samples as the only metric.** Samples are high-variance. Use validation loss to judge training health.
+- **Scaling too many knobs at once.** If a larger run improves or regresses, you need to know which change caused it.
 
-6. **Dataset preparation at "scale."** Tokenize a larger Project Gutenberg slice (~5 MB) with your BPE tokenizer. Save the token IDs to a `.pt` file or a memmapped `.bin` file. Build a tiny helper:
-
-   ```python
-   def load_corpus(path: str) -> torch.Tensor:
-       return torch.load(path, weights_only=True)
-   ```
-
-   Train on this larger corpus. Observe that with the same parameter count, the model now sees more *distinct* contexts per epoch — perplexity should drop visibly compared to TinyShakespeare with the same step budget.
-
-7. **Add a checkpoint helper.** Add `Trainer.save_checkpoint(path)` and `Trainer.load_checkpoint(path)` that pickle / unpickle `model.parameters()` (and `self.step`, `self.optimizer.lr`) via `torch.save` / `torch.load`. Use it to resume a long run after interrupting it. Two-line diff for each method; the lesson is in *what to store*: parameter tensors, the step counter, and any schedule state (`max_lr`, `max_steps`). Don't re-pickle the model architecture itself — store just the weights and reconstruct the model from code.
-
-8. **Compare to the Module 06 MLP.** Train your `MLPLanguageModel` from Module 06 with `context_length = 8` on the same corpus for the same step budget. Compare final val perplexity. The transformer should beat it cleanly — for the same parameter count and step budget, attention's variable-window mixing is just strictly more powerful than the MLP's fixed-window concat. This is the first quantitative payoff for everything in Phase III.
-
-## Pitfalls to expect
-
-- **Forgetting `zero_grad`.** PyTorch ACCUMULATES grads. Without `zero_grad`, this step's grad is added to the previous step's, the optimizer sees a wildly-large effective grad, and training diverges immediately. You'll see your first-step loss is normal, but every subsequent step has loss spiking upward.
-
-- **Reshape misalignment.** Computing `lm_cross_entropy(logits.reshape(B*T, V), targets.reshape(T*B))` silently aligns the wrong logits to the wrong targets. Both reshapes must use the same dim ordering (`(B, T)` flattened to `(B*T,)` and `(B, T, V)` flattened to `(B*T, V)`). The `test_lm_cross_entropy_per_position_average` test catches this.
-
-- **Module 03B gaps surfacing here.** If `Trainer.lr` or clipping tests fail before `Trainer.train_step` is implemented, go back to `pytest tests/test_training.py`. Module 10 assumes the schedule and clipping primitives are already correct.
-
-- **Stepping the counter before the optimizer.** If `self.step` is incremented before `self.optimizer.step()`, the lr you wrote onto `self.optimizer.lr` was for the OLD step but applied at the NEW step. The schedule is offset by 1; usually harmless, but means logged lr ≠ applied lr.
-
-- **Clipping after `optimizer.step()`.** The optimizer has already consumed the unclipped grads — clipping after is a no-op on this step and (without `zero_grad` first) clips the next step's stale grads.
-
-- **Eval grads leaking into training.** Forgetting `torch.no_grad()` in `evaluate` doesn't break correctness but builds an autograd graph for every eval forward pass. On a long-running validation pass, the per-step memory cost climbs; on big models, you'll OOM. We've implemented `evaluate` with `torch.no_grad()` for you, but if you write your own eval loop in a notebook, remember.
-
-- **`log(V)` baseline drift.** A loss curve that starts well below `log(vocab_size)` at step 0 means your model isn't actually random-init at step 0 (maybe you're loading a checkpoint), or your loss is being computed on too-few positions, or the targets are somehow easier than uniform (e.g. the same token at every position).
-
-- **MPS fp32 fallbacks.** Some PyTorch ops on MPS silently fall back to CPU at fp32 — typically the same per-step cost as CPU. If your training is suspiciously CPU-pinned despite specifying MPS, it's likely one specific op in the forward pass falling back. `PYTORCH_ENABLE_MPS_FALLBACK=1` makes the fallback explicit; removing the fallback means moving that op to a supported variant.
-
-## M-series notes
-
-This is the first module where compute starts to matter in earnest.
-
-- **Exercise 1 (TinyShakespeare, 1M params, 2000 steps)** runs in roughly 5–15 minutes on CPU and 1–3 minutes on MPS, depending on your specific Mac. MPS is a real win at this scale.
-- **Exercise 2 (LR sweep, 5 runs)** is 5× exercise 1 — plan for a half-hour run with a coffee break.
-- **A 10M-param model on a ~5 MB Gutenberg slice (exercise 6 + 8)** is the first config where MPS is essential rather than nice — on CPU it's a multi-hour run, on MPS it's 30–60 minutes.
-- **Mixed precision is officially supported on MPS via `torch.amp.autocast(device_type='mps', dtype=torch.float16)`** but has more silent op-fallback edges than CUDA's. We don't use it in this module; revisit in Module 12 if you want to push to 30M+ params.
-- **Memory:** the `(B, T, V)` logits tensor is the dominant activation cost. For `B=32, T=64, V=8192`, that's `32 · 64 · 8192 · 4 bytes ≈ 64 MB` per training step (×2 if you hold both forward activations and gradients — autograd typically holds them). Budget accordingly; if you OOM, halve `batch_size` before halving `T`. The model only sees `(B, T)` worth of data per step, so doubling `B` and halving `T` is not a free trade — smaller `T` means shorter dependencies the model can learn.
-- **`Trainer(..., device="auto")`** is the intended path. It moves this course's raw tensor parameters and each sampled batch to MPS when available. Use `device="cpu"` if you want a reproducible CPU-only run.
-
----
 ## Reading
 
 Primary:
 
-- **Karpathy, "Let's reproduce GPT-2 (124M)"** (YouTube). The best end-to-end walk-through of a real pretraining loop — data loading, batch shape, lr schedule, clipping, mixed precision, checkpointing. Worth watching once start to finish.
-- **Karpathy, nanoGPT** (GitHub repo, ~300 lines of Python). The reference small implementation. The training loop is structurally identical to ours; the differences are bf16, checkpointing, multi-GPU, and production-grade optimizer grouping. Reading the loop after you've written yours is illuminating.
+- Karpathy, *nanoGPT*, especially the `Trainer`-equivalent training loop.
+- Karpathy, "Let's reproduce GPT-2 (124M)", the end-to-end pretraining sections.
 
 Secondary:
 
-- **Loshchilov & Hutter, "SGDR: Stochastic Gradient Descent with Warm Restarts" (2017).** The paper that introduced cosine annealing schedules to the deep-learning community. Section 3 has the formula we use; the warm-restarts variant is out of scope.
-- **Pascanu, Mikolov, Bengio, "On the difficulty of training recurrent neural networks" (2013).** The paper that introduced gradient clipping by global norm. Same recipe we use, derived in the context of RNN exploding gradients — the argument transfers cleanly to transformers.
-- **Kaplan et al., "Scaling Laws for Neural Language Models" (2020).** The empirical scaling laws — how loss falls as a power function of model size, dataset size, compute budget. Doesn't affect this module's deliverable but sets the conceptual frame for Module 12 (scaling experiments).
-- **Hoffmann et al., "Training Compute-Optimal Large Language Models" (2022, Chinchilla).** The follow-up to Kaplan: roughly, Kaplan's recommended models were over-parameterized for their training budget. Chinchilla's "20 tokens per parameter" rule of thumb is a useful Phase IV mental model.
+- Kaplan et al., "Scaling Laws for Neural Language Models" (2020).
+- Hoffmann et al., "Training Compute-Optimal Large Language Models" (2022).
 
-Optional:
-
-- **Goyal et al., "Accurate, Large Minibatch SGD" (2017).** The paper that established the linear scaling rule and, critically, the necessity of warmup for large-batch training. The argument for warmup that applies to transformer pretraining originates here.
-- **Dettmers, "LLM.int8()" (2022)** and the bitsandbytes library. Quantization-aware training is out of scope but Phase V will return to int8 / int4 inference.
-
-## Deliverable checklist
+## Deliverable Checklist
 
 - [ ] All tests in `tests/test_pretraining.py` pass.
-- [ ] Notebook: `notebooks/clean/10-pretraining.ipynb`. Work through TinyShakespeare pretraining, sampling, the LR sweep, and warmup/clipping ablations.
-- [ ] You can explain — out loud, without notes — why every position in the (B, T) batch contributes a separate cross-entropy example, and why this is a `T`-fold speedup over Module 06.
-- [ ] You can point to where AdamW, warmup/cosine decay, and clipping sit inside the trainer loop.
-- [ ] You can explain — out loud, without notes — the eight-step training-step recipe and what breaks if you reorder it.
+- [ ] Notebook: `notebooks/clean/10-pretraining.ipynb`.
+- [ ] A tiny trained checkpoint is saved locally.
+- [ ] Training history includes train loss, validation loss, learning rate, and gradient norm.
+- [ ] You can explain the full trainer step order without notes.
+- [ ] You can compare the initial sample and trained sample and identify what improved.
+
+## M-Series Notes
+
+This is the first module where MPS should be the default. `Trainer(..., device="auto")` moves the model and sampled batches to MPS when available. Use CPU only for debugging tiny tests.
+
+Practical starting points:
+
+- **1M-ish params, 2000 steps, TinyShakespeare:** minutes on MPS.
+- **5M to 10M params:** tens of minutes to a few hours depending on model, context length, and Mac.
+- **If memory fails:** halve `batch_size` first, then `context_length`. The `(B, T, V)` logits tensor is often the largest activation.

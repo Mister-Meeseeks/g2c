@@ -2,14 +2,13 @@
 
 Once you have a `TransformerLM` (Module 09), pretraining is a tight
 loop: sample a batch, forward, loss, backward, clip, step, log. The
-ingredients you've built in Modules 03 and 09 — `Linear`,
-`CrossEntropyLoss`, `SGD` / `AdamW`, `TransformerLM` — drop straight in. The
-only new pieces in this module are:
+ingredients you've built in Modules 03, 03B, 09, and 09B — `Linear`,
+`CrossEntropyLoss`, `SGD` / `AdamW`, `TransformerLM`, `get_lm_batch`,
+and `lm_cross_entropy` — drop straight in. Module 10's new piece is
+the trainer that composes them:
 
-  * **`get_lm_batch`** — multi-position targets (every position
-    predicts the next token), in `data.py`.
-  * **`lm_cross_entropy`** — average CE across every (B, T)
-    position, in `loss.py`.
+  * **`get_lm_batch`** — multi-position targets from Module 09B.
+  * **`lm_cross_entropy`** — per-position CE from Module 09B.
   * **`cosine_with_warmup`** — linear warmup followed by cosine
     decay, from Module 03B, in `g2c.training.schedule`.
   * **`clip_grad_norm_`** — global gradient clipping, from Module 03B,

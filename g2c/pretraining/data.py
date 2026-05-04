@@ -1,4 +1,4 @@
-"""Batch sampling for transformer language-model pretraining.
+"""Token-stream helpers for transformer language-model pretraining.
 
 Module 06 trained one prediction per window: a context of length `N`
 predicted ONE next token. That worked when the model could only look
@@ -30,6 +30,33 @@ by-one is the conceptual core; everything else is index arithmetic.
 from __future__ import annotations
 
 import torch
+
+
+def split_token_stream(
+    ids: torch.Tensor,
+    train_fraction: float = 0.9,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Split one contiguous token stream into train and validation streams.
+
+    Args:
+        ids: 1-D tensor of token IDs.
+        train_fraction: fraction of tokens to place in the train split.
+
+    Returns:
+        `(train_ids, val_ids)`, both views into the original token stream.
+
+    Language-model corpora are usually split contiguously, not by randomly
+    shuffling individual tokens. Shuffling tokens would destroy the local
+    next-token structure that `get_lm_batch` depends on.
+    """
+    if ids.ndim != 1:
+        raise ValueError("ids must be a 1-D token stream")
+    if not 0.0 < train_fraction < 1.0:
+        raise ValueError("train_fraction must be between 0 and 1")
+    split = int(len(ids) * train_fraction)
+    if split == 0 or split == len(ids):
+        raise ValueError("split would produce an empty train or validation set")
+    return ids[:split], ids[split:]
 
 
 def get_lm_batch(
