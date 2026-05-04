@@ -90,9 +90,18 @@ Then bootstrap the project environment:
 ./setup.sh
 ```
 
-The script is idempotent. It creates a project-local venv at `./.venv`, installs `g2c` (editable) plus dev dependencies, prepares course data assets, and runs a smoke test that verifies PyTorch's MPS backend works on your machine. Re-run it any time to re-verify.
+The script is idempotent. It creates a project-local venv at `./.venv`, installs `g2c` (editable) plus dev dependencies, prepares the small TinyShakespeare corpus, and runs a smoke test that verifies PyTorch's MPS backend works on your machine. Re-run it any time to re-verify.
 
-The first run may download `data/tinyshakespeare.txt` for language-model training and Stanford's GloVe 6B archive (~822MB) to extract `data/glove.6B.50d.txt` for Module 05. Later runs skip these steps when the files already exist.
+The first run may download `data/tinyshakespeare.txt` for language-model training. Larger optional datasets live behind `datasets.sh` so the normal setup stays fast. You can wait until a module asks for one, or preload all optional course data up front:
+
+```bash
+./datasets.sh              # preload all optional course datasets
+./datasets.sh glove        # Module 05 pretrained vectors (~822MB download)
+./datasets.sh tinystories  # Module 10 scale-up corpus (~1.94GB text)
+./datasets.sh all          # both large datasets
+```
+
+The script is idempotent: later runs skip files that already exist and resume partial downloads when possible.
 
 After setup:
 
