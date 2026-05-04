@@ -96,7 +96,8 @@ After setup:
 
 ```bash
 source .venv/bin/activate
-python -m pytest                # run tests
+python scripts/test_clean.py    # tests that should pass on the pristine scaffold
+python -m pytest                # full suite; many tests intentionally fail until implemented
 python scripts/smoke_test.py    # re-run env health check
 ```
 
