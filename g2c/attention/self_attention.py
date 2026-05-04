@@ -156,8 +156,19 @@ class SelfAttention(Module):
         1-4. Feel free to factor the shared work into a helper if you
         like — the lesson is in the math, not the code structure.
         """
-        # TODO
-        raise NotImplementedError
+        q = self.q_proj(x)  # (B, T, D)
+        k = self.k_proj(x)  # (B, T, D)
+        v = self.v_proj(x)  # (B, T, D)
+        scores = q @ k.transpose(-2, -1) / math.sqrt(self.embedding_dim )  # (B, T, T)
+        if self.causal:
+            T = x.shape[-2]
+            mask = self.causal_mask(T, device=scores.device)
+            scores = scores.masked_fill(mask, float("-inf"))
+
+        weights = scores.softmax(dim=-1)  # (B, T, T)
+        mixed = weights @ v  # (B, T, D)
+        return self.out_proj(mixed)  # (B, T, D)
+                                                     
 
     def attention_weights(self, x: torch.Tensor) -> torch.Tensor:
         """Return the attention weight matrix for visualization.
@@ -183,5 +194,11 @@ class SelfAttention(Module):
             4. apply causal mask if self.causal
             5. return scores.softmax(dim=-1)
         """
-        # TODO
-        raise NotImplementedError
+        q = self.q_proj(x)
+        k = self.k_proj(x)
+        scores = q @ k.transpose(-2, -1) / math.sqrt(self.embedding_dim)
+        if self.causal:
+            T = x.shape[-2]
+            mask = self.causal_mask(T, device=scores.device)
+            scores = scores.masked_fill(mask, float("-inf"))
+        return scores.softmax(dim=-1)
