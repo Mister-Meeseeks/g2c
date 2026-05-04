@@ -11,9 +11,9 @@ only new pieces in this module are:
   * **`lm_cross_entropy`** — average CE across every (B, T)
     position, in `loss.py`.
   * **`cosine_with_warmup`** — linear warmup followed by cosine
-    decay, from Module 03B, in `schedule.py`.
+    decay, from Module 03B, in `g2c.training.schedule`.
   * **`clip_grad_norm_`** — global gradient clipping, from Module 03B,
-    in `clip.py`.
+    in `g2c.training.clip`.
   * **`Trainer.train_step`** — the per-step composition of all the
     pieces above.
 
@@ -47,12 +47,11 @@ from __future__ import annotations
 
 import torch
 
-from g2c.nn import AdamW, SGD, Module, resolve_device
+from g2c.nn import SGD, Module, resolve_device
+from g2c.training import AdamW, clip_grad_norm_, cosine_with_warmup
 
-from .clip import clip_grad_norm_
 from .data import get_lm_batch
 from .loss import lm_cross_entropy
-from .schedule import cosine_with_warmup
 
 
 class Trainer:

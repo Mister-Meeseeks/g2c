@@ -224,7 +224,7 @@ These configs are calibrated for ~1M, ~5M, ~20M params at vocab size 2048 (your 
 
 ```python
 from g2c.transformer import TransformerLM
-from g2c.training import Trainer
+from g2c.pretraining import Trainer
 
 CONFIGS = {
     "1M":  dict(embedding_dim=128, num_layers=4,  num_heads=4),

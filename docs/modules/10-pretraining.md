@@ -157,7 +157,9 @@ That is the whole payoff. The architecture we build in Modules 07-09 becomes a m
 ---
 ## What you'll build
 
-Package: `g2c/training/`
+Package: `g2c/pretraining/`
+
+Uses Module 03B helpers from `g2c/training/`: `AdamW`, `clip_grad_norm_`, and `cosine_with_warmup`.
 
 ```python
 def get_lm_batch(
@@ -169,20 +171,6 @@ def get_lm_batch(
 ) -> tuple[Tensor, Tensor]:                                     # implemented
 
 def lm_cross_entropy(logits: Tensor, targets: Tensor) -> Tensor:  # SCAFFOLDED
-
-def cosine_with_warmup(
-    step: int,
-    *,
-    warmup_steps: int,
-    max_steps: int,
-    max_lr: float,
-    min_lr: float = 0.0,
-) -> float:                                                       # from 03B
-
-def clip_grad_norm_(
-    params: Iterable[Tensor],
-    max_norm: float,
-) -> float:                                                       # from 03B
 
 class Trainer:
     model: Module
@@ -222,30 +210,30 @@ Total new scaffolded code: roughly 15 lines across `lm_cross_entropy` and `Train
 Implementation order — earlier scaffolds unblock later tests:
 
   1. **`lm_cross_entropy`** → unblocks the 5 loss tests.
-  2. **Confirm Module 03B training dynamics** → `pytest tests/test_training_dynamics.py`.
+  2. **Confirm Module 03B training dynamics** → `pytest tests/test_training.py`.
   3. **`Trainer.train_step`** → unblocks the remaining `train_step`, `evaluate`, and `train` tests.
 
 Step 3 composes the Module 03B tools with the language-modeling loss into the eight-line training loop and unlocks the headline smoke-train test.
 
 ## How to run the tests
 
-This module uses five files in `g2c/training/`:
+This module uses three files in `g2c/pretraining/` and two Module 03B helpers from `g2c/training/`:
 
 - **`data.py`** — `get_lm_batch(ids, batch_size, context_length, *, generator=None)`. Implemented for you. Same idea as Module 06's `get_batch`, with multi-position (`(B, T)`) targets.
 - **`loss.py`** — `lm_cross_entropy(logits, targets)`. Scaffolded.
-- **`schedule.py`** — `cosine_with_warmup(step, *, warmup_steps, max_steps, max_lr, min_lr=0.0)`. Implemented in Module 03B.
-- **`clip.py`** — `clip_grad_norm_(params, max_norm)`. Implemented in Module 03B.
 - **`trainer.py`** — `Trainer` class. `__init__`, `lr`, `evaluate`, `train` are implemented. `train_step` — the per-step composition of the four pieces above — is scaffolded. `device="auto"` moves the model and sampled batches to MPS when available, otherwise CPU.
+- **`g2c/training/schedule.py`** — `cosine_with_warmup(step, *, warmup_steps, max_steps, max_lr, min_lr=0.0)`. Implemented in Module 03B.
+- **`g2c/training/clip.py`** — `clip_grad_norm_(params, max_norm)`. Implemented in Module 03B.
 
-Module 10 tests live in `tests/test_training.py`. The Module 03B training-dynamics tests live in `tests/test_training_dynamics.py`. Run those first if `Trainer.lr` or clipping-related trainer tests fail.
+Module 10 tests live in `tests/test_pretraining.py`. Module 03B training-dynamics tests live in `tests/test_training.py`. Run those first if `Trainer.lr` or clipping-related trainer tests fail.
 
 ```bash
-pytest tests/test_training_dynamics.py    # Module 03B prerequisite
-pytest tests/test_training.py             # all module-10 tests
-pytest tests/test_training.py -x          # stop at first failure
-pytest tests/test_training.py -k loss     # just lm_cross_entropy tests
-pytest tests/test_training.py -k trainer  # just Trainer tests
-pytest tests/test_training.py -v          # verbose
+pytest tests/test_training.py             # Module 03B prerequisite
+pytest tests/test_pretraining.py          # all module-10 tests
+pytest tests/test_pretraining.py -x       # stop at first failure
+pytest tests/test_pretraining.py -k loss  # just lm_cross_entropy tests
+pytest tests/test_pretraining.py -k trainer  # just Trainer tests
+pytest tests/test_pretraining.py -v       # verbose
 ```
 
 ## Exercises
@@ -294,7 +282,7 @@ pytest tests/test_training.py -v          # verbose
 
 - **Reshape misalignment.** Computing `lm_cross_entropy(logits.reshape(B*T, V), targets.reshape(T*B))` silently aligns the wrong logits to the wrong targets. Both reshapes must use the same dim ordering (`(B, T)` flattened to `(B*T,)` and `(B, T, V)` flattened to `(B*T, V)`). The `test_lm_cross_entropy_per_position_average` test catches this.
 
-- **Module 03B gaps surfacing here.** If `Trainer.lr` or clipping tests fail before `Trainer.train_step` is implemented, go back to `pytest tests/test_training_dynamics.py`. Module 10 assumes the schedule and clipping primitives are already correct.
+- **Module 03B gaps surfacing here.** If `Trainer.lr` or clipping tests fail before `Trainer.train_step` is implemented, go back to `pytest tests/test_training.py`. Module 10 assumes the schedule and clipping primitives are already correct.
 
 - **Stepping the counter before the optimizer.** If `self.step` is incremented before `self.optimizer.step()`, the lr you wrote onto `self.optimizer.lr` was for the OLD step but applied at the NEW step. The schedule is offset by 1; usually harmless, but means logged lr ≠ applied lr.
 
@@ -339,7 +327,7 @@ Optional:
 
 ## Deliverable checklist
 
-- [ ] All tests in `tests/test_training.py` pass.
+- [ ] All tests in `tests/test_pretraining.py` pass.
 - [ ] Notebook: `notebooks/clean/10-pretraining.ipynb`. Work through TinyShakespeare pretraining, sampling, the LR sweep, and warmup/clipping ablations.
 - [ ] You can explain — out loud, without notes — why every position in the (B, T) batch contributes a separate cross-entropy example, and why this is a `T`-fold speedup over Module 06.
 - [ ] You can point to where AdamW, warmup/cosine decay, and clipping sit inside the trainer loop.

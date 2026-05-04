@@ -37,7 +37,7 @@ Common issues:
 
 A correct answer should include:
 
-- `pytest tests/test_optim.py` passes.
+- `pytest tests/test_training.py -k adamw` passes.
 - `step_count` increments once per optimizer step.
 - `m` and `v` update in place and stay aligned with `params`.
 - Parameters with `grad is None` are skipped.

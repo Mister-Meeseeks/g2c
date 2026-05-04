@@ -22,7 +22,7 @@
 ### Programming
 
 - **PyTorch autograd.** You still use `.backward()` to populate gradients.
-- **No high-level optimizer imports for the implementation.** Do not use `torch.optim.AdamW` to implement `g2c.nn.AdamW`. Comparing against it in an experiment is fine after your own version works.
+- **No high-level optimizer imports for the implementation.** Do not use `torch.optim.AdamW` to implement `g2c.training.AdamW`. Comparing against it in an experiment is fine after your own version works.
 
 ### What You Can Skip
 
@@ -181,21 +181,20 @@ We are not implementing dropout in this course path because it is not the bottle
 
 This module touches two packages:
 
-- `g2c/nn/optim.py` — `AdamW` lives beside `SGD`.
-- `g2c/training/clip.py` and `g2c/training/schedule.py` — gradient clipping and warmup/cosine scheduling are still in `g2c/training` because Module 10's trainer imports them there.
+- `g2c/training/optim.py` — `AdamW` lives here because Module 03B owns adaptive optimization.
+- `g2c/training/clip.py` and `g2c/training/schedule.py` — gradient clipping and warmup/cosine scheduling live beside `AdamW`.
 
 Run the focused tests:
 
 ```bash
 source .venv/bin/activate
 
-pytest tests/test_optim.py -x
-pytest tests/test_training_dynamics.py -x
+pytest tests/test_training.py -x
 ```
 
 Suggested implementation order:
 
-1. **`AdamW.step`** in `g2c/nn/optim.py`.
+1. **`AdamW.step`** in `g2c/training/optim.py`.
 2. **`clip_grad_norm_`** in `g2c/training/clip.py`.
 3. **`cosine_with_warmup`** in `g2c/training/schedule.py`.
 4. **Notebook experiments** comparing bad LR, good LR, SGD, AdamW, clipping, and schedules.
@@ -263,13 +262,13 @@ Set up or resume the working notebook:
 
 2. **AdamW by hand.** For a scalar parameter `p = 1.0`, gradient `g = 0.1`, `lr = 0.001`, `betas = (0.9, 0.999)`, `eps = 1e-8`, and no weight decay, compute the first AdamW update by hand. Explain why bias correction makes the first update roughly `0.001`.
 
-3. **Implement `AdamW.step`.** Run `pytest tests/test_optim.py -x` until the AdamW tests pass.
+3. **Implement `AdamW.step`.** Run `pytest tests/test_training.py -k adamw -x` until the AdamW tests pass.
 
 4. **SGD vs AdamW on the same model.** Train the same MLP with SGD and AdamW. Keep model, data, seed, and number of steps fixed. Plot both loss curves. Which optimizer is less sensitive to the initial LR choice?
 
-5. **Gradient clipping demo.** Create two fake parameters with gradients `[3]` and `[4]`. Clip to `max_norm=1.0`. Explain why both gradients are multiplied by `1/5`, not clipped independently. Run `pytest tests/test_training_dynamics.py -k clip_grad_norm -x`.
+5. **Gradient clipping demo.** Create two fake parameters with gradients `[3]` and `[4]`. Clip to `max_norm=1.0`. Explain why both gradients are multiplied by `1/5`, not clipped independently. Run `pytest tests/test_training.py -k clip_grad_norm -x`.
 
-6. **Warmup/cosine schedule.** Plot `cosine_with_warmup` for `warmup_steps=100`, `max_steps=1000`, `max_lr=3e-4`, `min_lr=3e-5`. Explain what happens at step 0, step 99, step 100, halfway through decay, and at the end. Run `pytest tests/test_training_dynamics.py -k cosine_with_warmup -x`.
+6. **Warmup/cosine schedule.** Plot `cosine_with_warmup` for `warmup_steps=100`, `max_steps=1000`, `max_lr=3e-4`, `min_lr=3e-5`. Explain what happens at step 0, step 99, step 100, halfway through decay, and at the end. Run `pytest tests/test_training.py -k cosine_with_warmup -x`.
 
 7. **Curve diagnosis.** Given three train/validation plots — both high and flat, train low / val high, and both decreasing smoothly — write what you would try next for each.
 
@@ -298,8 +297,8 @@ Secondary:
 
 ## Deliverable Checklist
 
-- [ ] `AdamW.step` passes `pytest tests/test_optim.py`.
-- [ ] `clip_grad_norm_` and `cosine_with_warmup` pass `pytest tests/test_training_dynamics.py`.
+- [ ] `AdamW.step` passes `pytest tests/test_training.py -k adamw`.
+- [ ] `clip_grad_norm_` and `cosine_with_warmup` pass `pytest tests/test_training.py`.
 - [ ] The notebook includes an LR sweep plot.
 - [ ] The notebook includes an SGD vs AdamW comparison on the same model.
 - [ ] The notebook includes a gradient clipping demonstration.

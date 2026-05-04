@@ -125,7 +125,7 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 - **Question.** Why does the same network sometimes learn, stall, or explode?
 - **Goal.** Make learning rate, optimizer choice, gradient clipping, schedules, and train/validation diagnostics feel like understandable tools rather than magic knobs.
 - **Concepts.** Learning-rate scale; SGD vs AdamW; first and second optimizer moments; bias correction; decoupled weight decay; global gradient clipping; warmup/cosine decay; reading train/validation curves.
-- **Build.** `g2c.nn.AdamW`; `g2c.training.clip_grad_norm_`; `g2c.training.cosine_with_warmup`; trainer optimizer selection for later pretraining runs.
+- **Build.** `g2c.training.AdamW`; `g2c.training.clip_grad_norm_`; `g2c.training.cosine_with_warmup`; trainer optimizer selection for later pretraining runs.
 - **Exercises.**
   - Sweep learning rates on the same tiny MLP.
   - Compute the first AdamW update by hand.
@@ -233,7 +233,7 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 - **Question.** How does the model absorb language patterns from raw text?
 - **Goal.** Pretrain a small transformer LM on a real corpus.
 - **Concepts.** Dataset preparation and tokenization-at-scale; batching with context length; learning-rate warmup + cosine decay; gradient clipping; mixed precision on MPS (caveats); loss/perplexity tracking; checkpointing.
-- **Build.** `g2c/training/` — `Trainer` with the full loop, plus a data loader for tokenized corpora.
+- **Build.** `g2c/pretraining/` — `Trainer` with the full loop, plus a data loader for tokenized corpora.
 - **Exercises.**
   - Train a ~1M-param model on TinyShakespeare; sample text every N steps and watch it learn.
   - Train a ~10M-param model on TinyStories; observe the quality jump.
