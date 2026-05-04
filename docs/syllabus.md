@@ -120,7 +120,7 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 - **Reading.** 3Blue1Brown "Neural Networks" series; Goodfellow ch. 6; Karpathy lecture 4.
 - **M-series notes.** MNIST trains in minutes on MPS.
 
-### Draft Week 3B — Training neural networks well — [module ↗](modules/03b-training-neural-networks.md)
+### Draft Week 3B — Training — [module ↗](modules/03b-training.md)
 
 - **Question.** Why does the same network sometimes learn, stall, or explode?
 - **Goal.** Make learning rate, optimizer choice, gradient clipping, schedules, and train/validation diagnostics feel like understandable tools rather than magic knobs.

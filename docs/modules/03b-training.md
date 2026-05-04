@@ -1,8 +1,8 @@
-# Module 03B — Training neural networks well
+# Module 03B — Training
 
 > **Question this module answers:** *Why does the same network sometimes learn, stall, or explode?*
 
-![A training dashboard: learning rate controls step size, AdamW adapts that step per parameter, gradient clipping caps rare spikes, and train/validation curves diagnose whether the run is learning, overfitting, or stalled.](03b-training-neural-networks/Module03B-Hero.png)
+![A training dashboard: learning rate controls step size, AdamW adapts that step per parameter, gradient clipping caps rare spikes, and train/validation curves diagnose whether the run is learning, overfitting, or stalled.](03b-training/Module03B-Hero.png)
 
 *The model architecture is only half the story. The training recipe controls whether gradient descent turns that architecture into a useful function. This module names the knobs that otherwise feel like magic when they reappear in pretraining.*
 
