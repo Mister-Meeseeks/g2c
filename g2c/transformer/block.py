@@ -154,5 +154,6 @@ class Block(Module):
             add, then norm" and trains differently. See the lesson page
             for why pre-norm won.
         """
-        # TODO
-        raise NotImplementedError
+        x = x + self.attn(self.ln1(x))
+        x = x + self.ffn(self.ln2(x))
+        return x
