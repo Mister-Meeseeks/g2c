@@ -44,6 +44,9 @@ the lesson is the entire point.
 """
 from __future__ import annotations
 
+import time
+from collections.abc import Callable
+
 import torch
 
 from g2c.nn import SGD, Module, resolve_device
@@ -312,6 +315,8 @@ class Trainer:
         self,
         train_ids: torch.Tensor,
         val_ids: torch.Tensor | None = None,
+        *,
+        on_log: Callable[[dict[str, float | int | None]], None] | None = None,
     ) -> dict[str, list]:
         """Run the full training loop for `max_steps` steps.
 
@@ -323,6 +328,12 @@ class Trainer:
         Args:
             train_ids: 1-D LongTensor of training token IDs.
             val_ids: optional 1-D LongTensor for periodic validation.
+            on_log: optional callback called whenever training logs or
+                evaluates. The callback receives a small metrics dict with
+                `step`, `train_loss`, `val_loss`, `lr`, `grad_norm`,
+                `elapsed_s`, and `steps_per_s`. This is useful for live
+                notebook progress displays without baking print behavior into
+                the trainer.
 
         Returns:
             A dict with six lists, each indexed by logging
@@ -341,19 +352,45 @@ class Trainer:
             "val_step": [],
             "val_loss": [],
         }
+        start_time = time.perf_counter()
         for _ in range(self.max_steps):
             metrics = self.train_step(train_ids)
             # `self.step` was just incremented inside `train_step`; the
             # metrics correspond to the step that ran with self.step-1.
+            step_index = self.step - 1
             done = self.step == self.max_steps
-            if (self.step - 1) % self.log_every == 0 or done:
-                history["step"].append(self.step - 1)
+            log_event: dict[str, float | int | None] | None = None
+            if step_index % self.log_every == 0 or done:
+                history["step"].append(step_index)
                 history["train_loss"].append(metrics["loss"])
                 history["lr"].append(metrics["lr"])
                 history["grad_norm"].append(metrics["grad_norm"])
-            if val_ids is not None and (
-                (self.step - 1) % self.eval_every == 0 or done
-            ):
-                history["val_step"].append(self.step - 1)
-                history["val_loss"].append(self.evaluate(val_ids))
+                log_event = {
+                    "step": step_index,
+                    "train_loss": metrics["loss"],
+                    "val_loss": None,
+                    "lr": metrics["lr"],
+                    "grad_norm": metrics["grad_norm"],
+                }
+            if val_ids is not None and (step_index % self.eval_every == 0 or done):
+                val_loss = self.evaluate(val_ids)
+                history["val_step"].append(step_index)
+                history["val_loss"].append(val_loss)
+                if log_event is None:
+                    log_event = {
+                        "step": step_index,
+                        "train_loss": metrics["loss"],
+                        "val_loss": val_loss,
+                        "lr": metrics["lr"],
+                        "grad_norm": metrics["grad_norm"],
+                    }
+                else:
+                    log_event["val_loss"] = val_loss
+            if on_log is not None and log_event is not None:
+                elapsed_s = time.perf_counter() - start_time
+                log_event["elapsed_s"] = elapsed_s
+                log_event["steps_per_s"] = (
+                    (step_index + 1) / elapsed_s if elapsed_s > 0 else 0.0
+                )
+                on_log(log_event)
         return history
