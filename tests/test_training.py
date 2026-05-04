@@ -13,13 +13,13 @@ Suggested order to implement & turn green:
 `get_lm_batch` is implemented for you; its tests pass from the start
 as a sanity check on the boilerplate.
 
-Trainer construction tests, attribute defaults, and Trainer.lr tests
-(once step 2 is done) all pass without needing the model to forward
-correctly. The Trainer.train_step / evaluate / train tests are the
-only ones that exercise a full TransformerLM forward+backward pass —
-those depend on Modules 03 / 05 / 08 / 09 being implemented in
-addition to the four scaffolds in this module. If your full
-TransformerLM smoke test from Module 09 isn't passing yet, finish
+Trainer construction tests, attribute defaults, device-handling tests,
+and Trainer.lr tests (once step 2 is done) all pass without needing the
+model to forward correctly. The Trainer.train_step / evaluate / train
+tests are the only ones that exercise a full TransformerLM forward+
+backward pass — those depend on Modules 03 / 05 / 08 / 09 being
+implemented in addition to the four scaffolds in this module. If your
+full TransformerLM smoke test from Module 09 isn't passing yet, finish
 that first.
 
 Most tests use very small dimensions (`vocab_size=12`,
@@ -399,7 +399,9 @@ def test_trainer_construction_stores_args():
 
 
 def test_trainer_defaults():
-    """Defaults: min_lr=0, warmup_steps=0, weight_decay=0, grad_clip=None."""
+    """Defaults: min_lr=0, warmup_steps=0, weight_decay=0, grad_clip=None,
+    device=auto.
+    """
     t = Trainer(
         _tiny_model(),
         batch_size=4,
@@ -411,6 +413,50 @@ def test_trainer_defaults():
     assert t.warmup_steps == 0
     assert t.weight_decay == 0.0
     assert t.grad_clip is None
+    expected_device = torch.device(
+        "mps" if torch.backends.mps.is_available() else "cpu"
+    )
+    assert t.device == expected_device
+
+
+def test_trainer_explicit_cpu_device_moves_model_params():
+    m = _tiny_model()
+    t = Trainer(
+        m,
+        batch_size=4,
+        context_length=6,
+        max_steps=10,
+        max_lr=1e-3,
+        device="cpu",
+    )
+    assert t.device == torch.device("cpu")
+    for p in m.parameters():
+        assert p.device.type == "cpu"
+
+
+@pytest.mark.skipif(
+    not torch.backends.mps.is_available(),
+    reason="MPS is only available on supported Apple Silicon machines",
+)
+def test_trainer_explicit_mps_device_moves_model_params_and_batches():
+    torch.manual_seed(0)
+    m = _tiny_model()
+    t = Trainer(
+        m,
+        batch_size=4,
+        context_length=6,
+        max_steps=10,
+        max_lr=1e-3,
+        device="mps",
+    )
+    for p in m.parameters():
+        assert p.device.type == "mps"
+    ids = torch.randint(0, 12, (200,))  # corpus can stay on CPU
+    metrics = t.train_step(ids)
+    assert metrics["loss"] > 0
+    for p in m.parameters():
+        if p.grad is not None:
+            assert p.grad.device.type == "mps"
 
 
 def test_trainer_step_starts_at_zero():

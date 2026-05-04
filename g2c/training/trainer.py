@@ -50,6 +50,32 @@ from .loss import lm_cross_entropy
 from .schedule import cosine_with_warmup
 
 
+def _resolve_device(device: str | torch.device | None) -> torch.device:
+    """Resolve a trainer device spec.
+
+    `None` and "auto" mean "use MPS if this Mac exposes it, otherwise CPU."
+    CUDA is intentionally not selected automatically because the course target
+    is an M-series MacBook.
+    """
+    if device is None or device == "auto":
+        if torch.backends.mps.is_available():
+            return torch.device("mps")
+        return torch.device("cpu")
+    resolved = torch.device(device)
+    if resolved.type == "mps" and not torch.backends.mps.is_available():
+        raise ValueError("device='mps' was requested, but MPS is not available")
+    return resolved
+
+
+def _move_model_parameters_to_device(model: Module, device: torch.device) -> None:
+    """Move raw tensor parameters for this course's minimal Module objects."""
+    for p in model.parameters():
+        if p.device != device:
+            p.data = p.data.to(device)
+        if p.grad is not None and p.grad.device != device:
+            p.grad = p.grad.to(device)
+
+
 class Trainer:
     """Pretraining loop for a transformer language model.
 
@@ -73,8 +99,14 @@ class Trainer:
         eval_iters: how many random batches to average for validation.
         log_every: append metrics to history every N steps.
         generator: optional `torch.Generator` for batch reproducibility.
+        device: "auto", "cpu", "mps", a `torch.device`, or None. "auto"
+            uses MPS when available and CPU otherwise. The trainer moves
+            the model's raw tensor parameters and all sampled batches to
+            this device.
 
     Attributes:
+        device: resolved `torch.device` used for model parameters and
+            training/evaluation batches.
         optimizer: the inner `SGD` instance. The trainer mutates
             `optimizer.lr` once per step from the cosine schedule.
         step: the current step counter (0-indexed). Advanced by 1 at
@@ -94,6 +126,7 @@ class Trainer:
     eval_iters: int
     log_every: int
     generator: torch.Generator | None
+    device: torch.device
     optimizer: SGD
     step: int
 
@@ -113,6 +146,7 @@ class Trainer:
         eval_iters: int = 20,
         log_every: int = 10,
         generator: torch.Generator | None = None,
+        device: str | torch.device | None = "auto",
     ) -> None:
         self.model = model
         self.batch_size = batch_size
@@ -127,6 +161,8 @@ class Trainer:
         self.eval_iters = eval_iters
         self.log_every = log_every
         self.generator = generator
+        self.device = _resolve_device(device)
+        _move_model_parameters_to_device(model, self.device)
         # Optimizer is constructed once — its lr will be overwritten
         # each step from the cosine schedule.
         self.optimizer = SGD(
@@ -173,6 +209,8 @@ class Trainer:
                    self.context_length,
                    generator=self.generator,
                )
+               x = x.to(self.device)
+               y = y.to(self.device)
 
             2. # Pull the lr for THIS step (before incrementing the
                # counter) and write it onto the optimizer. The
@@ -230,6 +268,8 @@ class Trainer:
             self.context_length,
             generator=self.generator,
         )
+        x = x.to(self.device)
+        y = y.to(self.device)
 
         lr = self.lr()
         self.optimizer.lr = lr
@@ -245,10 +285,10 @@ class Trainer:
             )
         else:
             grad_norm = 0.0
-        
+
         self.optimizer.step()
         self.step += 1
-        
+
         return {
             "loss": loss.item(),
             "lr": lr,
@@ -275,6 +315,8 @@ class Trainer:
                     self.context_length,
                     generator=self.generator,
                 )
+                x = x.to(self.device)
+                y = y.to(self.device)
                 logits = self.model(x)
                 losses.append(lm_cross_entropy(logits, y).item())
         return sum(losses) / len(losses)

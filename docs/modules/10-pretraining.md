@@ -236,6 +236,7 @@ class Trainer:
     eval_every: int
     eval_iters: int
     log_every: int
+    device: torch.device
     optimizer: SGD
     step: int
 
@@ -246,7 +247,7 @@ class Trainer:
         batch_size, context_length, max_steps, max_lr,
         min_lr=0.0, warmup_steps=0, weight_decay=0.0, grad_clip=None,
         eval_every=100, eval_iters=20, log_every=10,
-        generator=None,
+        generator=None, device="auto",
     ): ...                                                       # implemented
     def lr(self, step=None) -> float: ...                        # implemented
     def train_step(self, train_ids) -> dict[str, float]: ...     # SCAFFOLDED
@@ -273,9 +274,9 @@ This module ships five files in `g2c/training/`:
 - **`loss.py`** — `lm_cross_entropy(logits, targets)`. Scaffolded.
 - **`schedule.py`** — `cosine_with_warmup(step, *, warmup_steps, max_steps, max_lr, min_lr=0.0)`. Scaffolded.
 - **`clip.py`** — `clip_grad_norm_(params, max_norm)`. Scaffolded.
-- **`trainer.py`** — `Trainer` class. `__init__`, `lr`, `evaluate`, `train` are implemented. `train_step` — the per-step composition of the four pieces above — is scaffolded.
+- **`trainer.py`** — `Trainer` class. `__init__`, `lr`, `evaluate`, `train` are implemented. `train_step` — the per-step composition of the four pieces above — is scaffolded. `device="auto"` moves the model and sampled batches to MPS when available, otherwise CPU.
 
-Tests live in `tests/test_training.py`. Initial state: 10 passed (boilerplate: `get_lm_batch`, Trainer construction, defaults, attribute checks), 33 failed.
+Tests live in `tests/test_training.py`. Initial state: 12 passed (boilerplate: `get_lm_batch`, Trainer construction, defaults, device handling, attribute checks), 33 failed, and the MPS-specific device test is skipped unless MPS is available.
 
 ```bash
 pytest tests/test_training.py             # all module-10 tests
@@ -360,7 +361,7 @@ This is the first module where compute starts to matter in earnest.
 - **A 10M-param model on a ~5 MB Gutenberg slice (exercise 6 + 8)** is the first config where MPS is essential rather than nice — on CPU it's a multi-hour run, on MPS it's 30–60 minutes.
 - **Mixed precision is officially supported on MPS via `torch.amp.autocast(device_type='mps', dtype=torch.float16)`** but has more silent op-fallback edges than CUDA's. We don't use it in this module; revisit in Module 12 if you want to push to 30M+ params.
 - **Memory:** the `(B, T, V)` logits tensor is the dominant activation cost. For `B=32, T=64, V=8192`, that's `32 · 64 · 8192 · 4 bytes ≈ 64 MB` per training step (×2 if you hold both forward activations and gradients — autograd typically holds them). Budget accordingly; if you OOM, halve `batch_size` before halving `T`. The model only sees `(B, T)` worth of data per step, so doubling `B` and halving `T` is not a free trade — smaller `T` means shorter dependencies the model can learn.
-- **`torch.set_default_device('mps')`** at the top of a notebook saves you `.to('mps')` calls everywhere. Just remember that `torch.tensor([1, 2, 3])` then constructs on MPS, not CPU.
+- **`Trainer(..., device="auto")`** is the intended path. It moves this course's raw tensor parameters and each sampled batch to MPS when available. Use `device="cpu"` if you want a reproducible CPU-only run.
 
 ---
 ## Reading
@@ -389,5 +390,3 @@ Optional:
 - [ ] You can explain — out loud, without notes — why every position in the (B, T) batch contributes a separate cross-entropy example, and why this is a `T`-fold speedup over Module 06.
 - [ ] You can explain — out loud, without notes — what warmup is for, what cosine decay is for, and what gradient clipping is for.
 - [ ] You can explain — out loud, without notes — the eight-step training-step recipe and what breaks if you reorder it.
-
-
