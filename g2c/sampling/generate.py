@@ -141,16 +141,20 @@ def generate(
            # sampled distribution; argmax doesn't sample).
            greedy = (temperature == 0.0)
 
-        3. full_ids = prompt_ids.clone()
+        3. full_ids = prompt_ids.detach().cpu().clone()
+           # Keep the running token IDs on CPU for easy decoding and
+           # reproducible sampling. Move only the per-step context to
+           # the model's device for the forward pass.
+           device = getattr(model, "device", torch.device("cpu"))
 
         4. for _ in range(max_new_tokens):
                # 4a. Crop context to the model's positional capacity.
                ctx = full_ids[-model.max_seq_len:]
-               ctx = ctx.unsqueeze(0)                      # (1, T_ctx)
+               ctx = ctx.to(device).unsqueeze(0)           # (1, T_ctx)
 
                # 4b. Forward pass; extract last position's logits.
                logits = model(ctx)                         # (1, T_ctx, V)
-               last_logits = logits[:, -1, :]              # (1, V)
+               last_logits = logits[:, -1, :].cpu()        # (1, V)
 
                if greedy:
                    # 4c-greedy. Argmax — no warpers, no sampling.
@@ -170,7 +174,7 @@ def generate(
                    probs = torch.softmax(last_logits, dim=-1)   # (1, V)
                    next_id = torch.multinomial(
                        probs, num_samples=1, generator=generator
-                   ).squeeze(-1)                                # (1,)
+                   ).squeeze(-1)                           # (1,)
 
                # 4d. Append the new token.
                full_ids = torch.cat([full_ids, next_id], dim=0)

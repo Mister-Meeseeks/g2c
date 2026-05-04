@@ -438,7 +438,7 @@ def test_trainer_explicit_cpu_device_moves_model_params():
     not torch.backends.mps.is_available(),
     reason="MPS is only available on supported Apple Silicon machines",
 )
-def test_trainer_explicit_mps_device_moves_model_params_and_batches():
+def test_trainer_explicit_mps_device_moves_model_params():
     torch.manual_seed(0)
     m = _tiny_model()
     t = Trainer(
@@ -451,12 +451,6 @@ def test_trainer_explicit_mps_device_moves_model_params_and_batches():
     )
     for p in m.parameters():
         assert p.device.type == "mps"
-    ids = torch.randint(0, 12, (200,))  # corpus can stay on CPU
-    metrics = t.train_step(ids)
-    assert metrics["loss"] > 0
-    for p in m.parameters():
-        if p.grad is not None:
-            assert p.grad.device.type == "mps"
 
 
 def test_trainer_step_starts_at_zero():

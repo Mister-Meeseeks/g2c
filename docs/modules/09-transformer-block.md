@@ -378,7 +378,7 @@ This module is still light on compute — building and unit-testing the block is
 - Exercise 2's strip-residuals study at `num_layers = 8` is the first configuration big enough that MPS starts paying off — about 2× over CPU at this size.
 - Exercise 4's parameter-budget comparison is also CPU-comfortable but a good place to start using MPS as practice for Module 10.
 
-For Module 09, MPS is a "feel free to try it for fun" affordance, not a requirement.
+The clean notebook's `train_tiny_transformer(..., device="auto")` helper moves the model and minibatches to MPS when available. Use `device="cpu"` if you want to compare CPU behavior explicitly.
 
 ---
 ## Reading
@@ -407,4 +407,3 @@ Optional:
 - [ ] You can explain — out loud, without notes — why residual connections make deep transformers trainable, in both the gradient-flow and residual-stream framings.
 - [ ] You can explain — out loud, without notes — what LayerNorm normalizes over, and why batch size doesn't affect its output.
 - [ ] You can explain — out loud, without notes — the difference between pre-norm and post-norm, and why pre-norm is the modern default.
-

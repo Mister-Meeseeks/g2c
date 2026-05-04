@@ -424,6 +424,7 @@ class SFTTrainer:
         eval_iters: int = 20,
         log_every: int = 10,
         generator: torch.Generator | None = None,
+        device: str | torch.device | None = "auto",
     ) -> None:                                                # implemented
 
     def lr(self, step: int | None = None) -> float:          # implemented
@@ -603,6 +604,8 @@ SFT is much less compute-hungry than the Module 12 scaling experiments — typic
   The 20M model's SFT comfortably fits in a coffee-break window. Run it on the largest checkpoint you have — quality scales with base-model size, and SFT is cheap enough that there's no reason to start small.
 
 - **Memory.** SFT memory cost is the same as Module 10 training at the same `(B, T)`. No new tensors of meaningful size. If you can train the model from scratch, you can SFT it.
+
+- **Device.** `SFTTrainer(..., device="auto")` mirrors Module 10: the model and collated batches move to MPS when available. Use `device="cpu"` for CPU-only debugging.
 
 - **Dataset size.** 50–500 hand-authored examples occupy KB to low MB on disk as JSON. The tokenized representation fits comfortably in memory; no disk-streaming or sharding considerations apply.
 

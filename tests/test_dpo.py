@@ -544,6 +544,32 @@ def test_dpo_trainer_construction_defaults():
     assert trainer.batch_size == 2
     assert trainer.step == 0
     assert trainer.optimizer is not None
+    expected_device = torch.device(
+        "mps" if torch.backends.mps.is_available() else "cpu"
+    )
+    assert trainer.device == expected_device
+
+
+def test_dpo_trainer_explicit_cpu_device_moves_model_params():
+    model = _make_tiny_model()
+    ref = _clone_model(model)
+    trainer = DPOTrainer(
+        model,
+        ref_model=ref,
+        examples=_make_tiny_dataset(),
+        max_seq_len=10,
+        pad_id=0,
+        beta=0.1,
+        batch_size=2,
+        max_steps=10,
+        max_lr=1e-4,
+        device="cpu",
+    )
+    assert trainer.device == torch.device("cpu")
+    for p in model.parameters():
+        assert p.device.type == "cpu"
+    for p in ref.parameters():
+        assert p.device.type == "cpu"
 
 
 def test_dpo_trainer_optimizer_only_on_policy():

@@ -417,7 +417,7 @@ This is the most compute-hungry week of the course.
 
 - **Plan around the 20M run.** It is the constraint. On an M1/M2 base machine, a 5000-step 20M run is a 2–3 hour commitment; on an M3 Max with 64GB it's well under an hour. If your 20M run is queued for "overnight" rather than "next coffee break," halve `max_steps` and *report this* — it's a real result that the comparison was constrained by available compute.
 
-- **MPS vs CPU.** The 1M model trains comfortably on either. The 5M and 20M models are MPS-essential — CPU runs at this size are an order of magnitude slower. Verify MPS is actually being used early; a model accidentally constructed on CPU and then trained "on MPS" via `.to(device)` only after the optimizer is wired up has been a real bug at this scale.
+- **MPS vs CPU.** The 1M model trains comfortably on either. The 5M and 20M models are MPS-essential — CPU runs at this size are an order of magnitude slower. `Trainer(..., device="auto")` is the default path; print `trainer.device` at the start of a run so you know whether you are actually on MPS.
 
 - **Memory headroom.** The 20M model with `(B=32, T=128, V=2048)` peaks at roughly 600 MB during backward. Running another model in another tab adds the same. If you OOM, halve `batch_size` to `16` before touching `T`. Watch Activity Monitor's "Memory pressure" graph during training — yellow is OK, red means you're swapping and your training is silently CPU-bound for memory reasons.
 

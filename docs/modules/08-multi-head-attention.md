@@ -237,6 +237,7 @@ This module is light on compute — the same regime as Module 07.
 - All tests run in well under a second on CPU.
 - Exercise 3's training comparison (3 runs at fixed `D = 64`) is a few hundred steps each on a small corpus; under a couple minutes total on CPU.
 - Exercise 4's per-head visualization is a single forward pass on one sentence — milliseconds.
+- The clean notebook uses `experiment_device = "auto"` for the training comparison. The plotted attention weights are moved back to CPU before Matplotlib sees them, because Matplotlib cannot plot MPS tensors directly.
 
 ---
 ## Reading

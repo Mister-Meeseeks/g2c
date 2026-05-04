@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import torch
 
-from g2c.nn import CrossEntropyLoss, SGD
+from g2c.nn import CrossEntropyLoss, SGD, resolve_device
 
 
 def get_batch(
@@ -65,6 +65,7 @@ def perplexity(
     ids: torch.Tensor,
     *,
     batch_size: int = 256,
+    device: str | torch.device | None = "auto",
 ) -> float:
     """Compute perplexity on a held-out corpus.
 
@@ -86,11 +87,20 @@ def perplexity(
         ids: 1-D LongTensor of token IDs to evaluate on.
         batch_size: number of windows to score per forward pass. Larger
             is faster but uses more memory.
+        device: `"auto"` uses MPS for neural `Module` models when available
+            and CPU otherwise. CountsBigramLM stays on CPU because it is a
+            plain counts table, not a trainable `Module`.
 
     Returns:
         Python float — perplexity.
 
     Recipe:
+        device = resolve_device(device)
+        if hasattr(model, "to"):
+            model.to(device)
+        else:
+            device = torch.device("cpu")
+
         ctx_len = model.context_length
         n_windows = len(ids) - ctx_len
         # Build all (context, target) pairs deterministically:
@@ -104,6 +114,8 @@ def perplexity(
         for start in range(0, n_windows, batch_size):
             cb = contexts[start : start + batch_size]
             tb = targets[start : start + batch_size]
+            cb = cb.to(device)
+            tb = tb.to(device)
             logits = model.logits(cb)          # (batch, vocab_size)
             # Per-window cross-entropy on the target token.
             # Use CrossEntropyLoss(reduction default = mean), or compute
@@ -134,6 +146,7 @@ def sample(
     *,
     temperature: float = 1.0,
     generator: torch.Generator | None = None,
+    device: str | torch.device | None = "auto",
 ) -> torch.Tensor:
     """Autoregressively sample `num_tokens` from a language model.
 
@@ -146,6 +159,9 @@ def sample(
             sampling; `t < 1.0` makes the model more deterministic;
             `t > 1.0` makes it more uniform. `t → 0` is greedy (argmax).
         generator: optional torch.Generator for reproducibility.
+        device: `"auto"` uses MPS for neural `Module` models when available
+            and CPU otherwise. The returned token IDs stay on CPU so they
+            are easy to decode and inspect.
 
     Returns:
         1-D LongTensor of length `len(prompt_ids) + num_tokens` — the prompt
@@ -155,11 +171,16 @@ def sample(
         ctx_len = model.context_length
         if prompt_ids.shape[0] < ctx_len:
             raise ValueError(...)
+        device = resolve_device(device)
+        if hasattr(model, "to"):
+            model.to(device)
+        else:
+            device = torch.device("cpu")
 
         out = list(prompt_ids.tolist())
         for _ in range(num_tokens):
-            ctx = torch.tensor(out[-ctx_len:]).unsqueeze(0)   # (1, ctx_len)
-            logits = model.logits(ctx)[0]                     # (vocab_size,)
+            ctx = torch.tensor(out[-ctx_len:], device=device).unsqueeze(0)
+            logits = model.logits(ctx)[0].detach().cpu()      # (vocab_size,)
             scaled = logits / temperature
             probs = torch.softmax(scaled, dim=-1)
             next_id = torch.multinomial(probs, num_samples=1, generator=generator).item()
@@ -190,6 +211,7 @@ def train_lm(
     weight_decay: float = 0.0,
     log_every: int = 100,
     generator: torch.Generator | None = None,
+    device: str | torch.device | None = "auto",
 ) -> dict:
     """Train a neural language model on next-token prediction with SGD.
 
@@ -206,6 +228,9 @@ def train_lm(
         log_every: record train loss (and val perplexity if val_ids given)
             every `log_every` steps.
         generator: optional torch.Generator for reproducibility.
+        device: `"auto"` moves trainable `Module` models and sampled
+            minibatches to MPS when available; pass `"cpu"` for a CPU-only
+            run.
 
     Returns:
         Dict with two keys:
@@ -215,6 +240,9 @@ def train_lm(
                 logging checkpoint. Empty if val_ids not given.
 
     Recipe:
+        device = resolve_device(device)
+        model.to(device)
+
         loss_fn = CrossEntropyLoss()
         optimizer = SGD(model.parameters(), lr=lr, weight_decay=weight_decay)
 
@@ -224,6 +252,8 @@ def train_lm(
 
         for step in range(num_steps):
             x, y = get_batch(train_ids, ctx_len, batch_size, generator=generator)
+            x = x.to(device)
+            y = y.to(device)
             logits = model.logits(x)             # (batch, vocab_size)
             loss = loss_fn(logits, y)
 
@@ -234,7 +264,7 @@ def train_lm(
             if step % log_every == 0 or step == num_steps - 1:
                 train_losses.append(loss.item())
                 if val_ids is not None:
-                    val_perplexities.append(perplexity(model, val_ids))
+                    val_perplexities.append(perplexity(model, val_ids, device=device))
 
         return {'train_losses': train_losses, 'val_perplexities': val_perplexities}
 

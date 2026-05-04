@@ -498,6 +498,7 @@ Sampling is inference-only. Every test in this module runs in well under a secon
 
 - **Test suite runs in <1s on CPU.** No need for MPS at test time.
 - **Exercise 1 (temperature sweep, 6 × 200 tokens):** roughly 10–30 seconds on MPS, 30–90 seconds on CPU with a 1M-param TinyShakespeare model. Trivial.
+- `generate` should run the model forward on `model.device` while keeping the growing token ID sequence on CPU. That keeps decoding and `torch.multinomial(..., generator=...)` simple, and avoids handing Matplotlib/tokenizer code MPS tensors later.
 - **Exercise 4 (interactive playground):** every prompt feels instantaneous. The `O(T_ctx²)` attention cost is negligible at context lengths up to a few hundred.
 - **At Module 16's scale (a 7–8B pretrained model, post-pivot)**, inference becomes the dominant cost and KV caching becomes essential — but that's three modules away. For Module 11, your Module 10 checkpoint is small enough that the unoptimized loop is fine.
 - **`@torch.no_grad()` on `generate` is a real win on long generations.** Without it, autograd graphs accumulate in memory per step and OOM at moderate `max_new_tokens × T_ctx` products. The decorator costs nothing on short generations and saves you on long ones — keep it on.

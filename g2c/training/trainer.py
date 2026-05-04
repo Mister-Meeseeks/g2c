@@ -19,6 +19,9 @@ only new pieces in this module are:
 `Trainer.__init__`, `Trainer.lr`, `Trainer.evaluate`, and
 `Trainer.train` are implemented for you. `Trainer.train_step` — the
 one method that names the order of operations — is scaffolded.
+`device="auto"` is also implemented: the model is moved before the
+optimizer is constructed, and sampled batches should be moved before
+the forward pass.
 
 Why such tight scaffolding for a class that's mostly plumbing? Because
 the *order of operations* in a training step is decisive and easy to
@@ -42,7 +45,7 @@ from __future__ import annotations
 
 import torch
 
-from g2c.nn import SGD, Module
+from g2c.nn import SGD, Module, resolve_device
 
 from .clip import clip_grad_norm_
 from .data import get_lm_batch
@@ -73,6 +76,8 @@ class Trainer:
         eval_iters: how many random batches to average for validation.
         log_every: append metrics to history every N steps.
         generator: optional `torch.Generator` for batch reproducibility.
+        device: `"auto"` moves the model and sampled batches to MPS when
+            available, otherwise CPU. Pass `"cpu"` to force a CPU run.
 
     Attributes:
         optimizer: the inner `SGD` instance. The trainer mutates
@@ -94,6 +99,7 @@ class Trainer:
     eval_iters: int
     log_every: int
     generator: torch.Generator | None
+    device: torch.device
     optimizer: SGD
     step: int
 
@@ -113,8 +119,10 @@ class Trainer:
         eval_iters: int = 20,
         log_every: int = 10,
         generator: torch.Generator | None = None,
+        device: str | torch.device | None = "auto",
     ) -> None:
-        self.model = model
+        self.device = resolve_device(device)
+        self.model = model.to(self.device)
         self.batch_size = batch_size
         self.context_length = context_length
         self.max_steps = max_steps
@@ -130,7 +138,7 @@ class Trainer:
         # Optimizer is constructed once — its lr will be overwritten
         # each step from the cosine schedule.
         self.optimizer = SGD(
-            model.parameters(), lr=max_lr, weight_decay=weight_decay
+            self.model.parameters(), lr=max_lr, weight_decay=weight_decay
         )
         self.step = 0
 
@@ -173,6 +181,8 @@ class Trainer:
                    self.context_length,
                    generator=self.generator,
                )
+               x = x.to(self.device)
+               y = y.to(self.device)
 
             2. # Pull the lr for THIS step (before incrementing the
                # counter) and write it onto the optimizer. The
@@ -247,6 +257,8 @@ class Trainer:
                     self.context_length,
                     generator=self.generator,
                 )
+                x = x.to(self.device)
+                y = y.to(self.device)
                 logits = self.model(x)
                 losses.append(lm_cross_entropy(logits, y).item())
         return sum(losses) / len(losses)

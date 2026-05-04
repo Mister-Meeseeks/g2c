@@ -33,6 +33,7 @@ from g2c.nn import (
     Sequential,
     Sigmoid,
     Tanh,
+    resolve_device,
 )
 
 
@@ -56,6 +57,33 @@ def test_module_call_dispatches_to_forward():
     m = Identity()
     x = torch.tensor([1.0, 2.0, 3.0])
     assert torch.allclose(m(x), torch.tensor([2.0, 4.0, 6.0]))
+
+
+def test_resolve_device_auto_is_real_device():
+    expected = torch.device(
+        "mps" if torch.backends.mps.is_available() else "cpu"
+    )
+    assert resolve_device("auto") == expected
+
+
+def test_module_to_cpu_moves_parameters():
+    layer = Linear(5, 3)
+    assert layer.to("cpu") is layer
+    assert layer.device == torch.device("cpu")
+    for p in layer.parameters():
+        assert p.device.type == "cpu"
+
+
+@pytest.mark.skipif(
+    not torch.backends.mps.is_available(),
+    reason="MPS is only available on supported Apple Silicon machines",
+)
+def test_module_to_mps_moves_parameters():
+    layer = Linear(5, 3)
+    layer.to("mps")
+    assert layer.device == torch.device("mps")
+    for p in layer.parameters():
+        assert p.device.type == "mps"
 
 
 # ----------------------------------------------------------------------

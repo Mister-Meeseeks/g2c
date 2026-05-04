@@ -464,6 +464,7 @@ class DPOTrainer:
         eval_iters: int = 20,
         log_every: int = 10,
         generator: torch.Generator | None = None,
+        device: str | torch.device | None = "auto",
     ) -> None:                                                # implemented
 
     def lr(self, step: int | None = None) -> float:           # implemented
@@ -630,6 +631,8 @@ DPO is more compute-hungry than SFT but still tractable on M-series:
   The 20M model's DPO comfortably fits in a long-coffee-break window. As with SFT, run on the largest checkpoint you have — quality scales with base-model size, and DPO on a 1M-param base is mostly a debugging exercise (the base capacity isn't there).
 
 - **Memory.** The 2× model footprint matters. On 8GB M1: a 20M model is fine; a 50M model would push the limits. On 32GB+: anything you can pretrain is comfortable.
+
+- **Device.** `DPOTrainer(..., device="auto")` moves both the policy and reference model to MPS when available, then moves each chosen/rejected batch to that same device. Use `device="cpu"` when debugging the two-model bookkeeping.
 
 - **Dataset size.** 100–500 hand-authored preference pairs occupy KB to low MB on disk. The tokenized representation fits comfortably in memory.
 
