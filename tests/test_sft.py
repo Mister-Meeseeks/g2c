@@ -39,7 +39,7 @@ from g2c.sft import (
     masked_cross_entropy,
     pad_and_collate,
 )
-from g2c.training import lm_cross_entropy
+from g2c.pretraining import lm_cross_entropy
 from g2c.transformer import TransformerLM
 
 

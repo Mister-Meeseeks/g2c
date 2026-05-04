@@ -1,7 +1,9 @@
-"""Stochastic gradient descent.
+"""Optimizers.
 
 The optimizer's job is to apply the update rule using the gradients PyTorch
-populated via `loss.backward()`. SGD is the simplest one:
+populated via `loss.backward()`.
+
+`SGD` is the simplest one:
 
     param ← param − learning_rate · gradient
 
@@ -12,8 +14,9 @@ With weight decay (L2 regularization), the update becomes:
 This is equivalent to adding `(weight_decay / 2) · ||param||²` to the loss
 and differentiating, but it's cheaper to apply at update time.
 
-`__init__` and `zero_grad` are implemented for you. `step` is scaffolded —
-the lesson is the update rule, not the bookkeeping.
+`__init__` and `zero_grad` are implemented for you. `step` is scaffolded;
+the lesson is the update rule, not the bookkeeping. AdamW is introduced
+later in Module 03B and lives in `g2c.training`.
 """
 from __future__ import annotations
 

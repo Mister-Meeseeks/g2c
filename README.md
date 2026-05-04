@@ -10,7 +10,7 @@ The hard constraint: **all tasks must be runnable on an M-series MacBook**, with
 
 ## Contents
 
-Start with the [syllabus](docs/syllabus.md) for the full 20-week arc plus the fast Module 00 review. Lessons published so far:
+Start with the [syllabus](docs/syllabus.md) for the full 20-week arc plus the fast Module 00 review. Modules 03B and 09B are draft insertions being tested before a possible full renumber after the full course is drafted. Lessons published so far:
 
 | #  | Module                                                          | Phase                |
 | -- | --------------------------------------------------------------- | -------------------- |
@@ -18,13 +18,15 @@ Start with the [syllabus](docs/syllabus.md) for the full 20-week arc plus the fa
 | 01 | [Scalar autodiff](docs/modules/01-autodiff.md)                  | I — Foundations      |
 | 02 | [Tensors and matmul](docs/modules/02-tensors.md)                | I — Foundations      |
 | 03 | [A first neural network](docs/modules/03-nn.md)                 | I — Foundations      |
+| 03B | [Training](docs/modules/03b-training.md) | I — Foundations |
 | 04 | [Tokenization](docs/modules/04-tokenizer.md)                    | II — Language        |
 | 05 | [Embeddings and positions](docs/modules/05-embeddings.md)       | II — Language        |
 | 06 | [Next-token prediction](docs/modules/06-language-models.md)     | II — Language        |
 | 07 | [Self-attention](docs/modules/07-attention.md)                  | III — The transformer |
 | 08 | [Multi-head attention](docs/modules/08-multi-head-attention.md) | III — The transformer |
 | 09 | [The transformer block](docs/modules/09-transformer-block.md)   | III — The transformer |
-| 10 | [Pretraining a tiny GPT](docs/modules/10-pretraining.md)        | III — The transformer |
+| 09B | [Pretraining](docs/modules/09b-pretraining.md)              | III — The transformer |
+| 10 | [Milestone: Your First LLM](docs/modules/10-your-first-llm.md) | III — The transformer |
 | 11 | [Sampling and decoding](docs/modules/11-sampling.md)            | IV — Behavior shaping |
 | 12 | [Scaling experiments](docs/modules/12-scaling.md)               | IV — Behavior shaping |
 | 13 | [Instruction tuning (SFT)](docs/modules/13-sft.md)              | IV — Behavior shaping |

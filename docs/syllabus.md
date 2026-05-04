@@ -2,7 +2,7 @@
 
 ![Cover illustration: a circus-themed map of the course. Numbered booths under a big top represent each of the twenty modules — pretraining, tokenization, embeddings, gradient descent, self-attention, multi-head attention, the transformer (a central tower of "Add & Norm / Feed Forward / Multi-Head Attention" floors), sampling, SFT, DPO, RAG, tools, the agent, the eval inspector, and an "inference booth" robot at the bottom. Banners read "A tiny LLM stack from first principles," "Data. Compute. Curiosity. That's all you need," and "Built step by step under the big top."](CourseCover.png)
 
-A 20-week self-study course, preceded by a fast prerequisite review, building a tiny LLM stack from scalar autograd up through a working chat assistant. Each week builds on the previous one. The codebase grows in `g2c/` as a single Python package; later modules import earlier ones.
+A 20-week self-study course, preceded by a fast prerequisite review, building a tiny LLM stack from scalar autograd up through a working chat assistant. Each week builds on the previous one. The codebase grows in `g2c/` as a single Python package; later modules import earlier ones. Modules 03B and 09B are currently draft insertions being evaluated before the downstream modules are renumbered.
 
 ## How to read this syllabus
 
@@ -49,14 +49,14 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 
 ## Phase overview
 
-| Phase | Weeks | Theme |
-|---|---|---|
-| 0 — Review | 0 | Fast prerequisite refresh |
-| I — Foundations | 1–3 | Scalar autograd → tensors → first neural net |
-| II — Language gets in | 4–6 | Tokenization → embeddings/positions → next-token prediction |
-| III — The transformer | 7–10 | Attention → multi-head → block → pretrain a tiny GPT |
-| IV — Behavior shaping | 11–15 | Sampling → scaling → SFT → DPO → eval |
-| V — Assistant systems | 16–20 | Pretrained inference → RAG → tools → agents → capstone |
+| Phase              | Weeks           | Theme                                                            |
+| ------------------ | --------------- | ---------------------------------------------------------------- |
+| 0 — Review         | 0               | Fast prerequisite refresh                                        |
+| I — Learning       | 1–3 + draft 03B | Scalar autograd → tensors → first neural net → training dynamics |
+| II — Language      | 4–6             | Tokenization → embeddings/positions → next-token prediction      |
+| III — Transformers | 7–10 + draft 09B | Attention → multi-head → block → pretraining → first LLM milestone |
+| IV — Behavior      | 11–15           | Sampling → scaling → SFT → DPO → eval                            |
+| V — Assistants     | 16–20           | Pretrained inference → RAG → tools → agents → capstone           |
 
 ---
 
@@ -76,7 +76,7 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 - **Reading.** 3Blue1Brown linear algebra and backprop refreshers; PyTorch "Tensors" tutorial; Karpathy's micrograd lecture as the bridge into Module 1.
 - **M-series notes.** Environment setup only. MPS becomes operationally relevant in Module 2.
 
-## Phase I — Foundations
+## Phase I — Learning
 
 ### Week 1 — Scalar autodiff — [module ↗](modules/01-autodiff.md)
 
@@ -120,9 +120,26 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 - **Reading.** 3Blue1Brown "Neural Networks" series; Goodfellow ch. 6; Karpathy lecture 4.
 - **M-series notes.** MNIST trains in minutes on MPS.
 
+### Draft Week 3B — Training — [module ↗](modules/03b-training.md)
+
+- **Question.** Why does the same network sometimes learn, stall, or explode?
+- **Goal.** Make learning rate, optimizer choice, gradient clipping, schedules, and train/validation diagnostics feel like understandable tools rather than magic knobs.
+- **Concepts.** Learning-rate scale; SGD vs AdamW; first and second optimizer moments; bias correction; decoupled weight decay; global gradient clipping; warmup/cosine decay; reading train/validation curves.
+- **Build.** `g2c.training.AdamW`; `g2c.training.clip_grad_norm_`; `g2c.training.cosine_with_warmup`; trainer optimizer selection for later pretraining runs.
+- **Exercises.**
+  - Sweep learning rates on the same tiny MLP.
+  - Compute the first AdamW update by hand.
+  - Implement `AdamW.step`.
+  - Compare SGD and AdamW on identical data/model/seed.
+  - Demonstrate global-norm gradient clipping.
+  - Plot warmup + cosine decay and diagnose train/validation curves.
+- **Deliverable.** A notebook showing the optimizer and schedule comparisons, plus passing focused tests for AdamW, clipping, and cosine warmup.
+- **Reading.** Kingma and Ba, "Adam"; Loshchilov and Hutter, "Decoupled Weight Decay Regularization"; Karpathy nanoGPT optimizer setup.
+- **M-series notes.** CPU is enough; MPS is optional for larger sweeps.
+
 ---
 
-## Phase II — Language gets in
+## Phase II — Language
 
 ### Week 4 — Tokenization — [module ↗](modules/04-tokenizer.md)
 
@@ -168,7 +185,7 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 
 ---
 
-## Phase III — The transformer
+## Phase III — Transformers
 
 ### Week 7 — Self-attention — [module ↗](modules/07-attention.md)
 
@@ -211,23 +228,39 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 - **Reading.** Vaswani §3; Xiong et al., "On Layer Normalization in the Transformer Architecture"; Anthropic Transformer Circuits Thread (intro post).
 - **M-series notes.** Still tiny.
 
-### Week 10 — Pretraining a tiny GPT — [module ↗](modules/10-pretraining.md)
+### Draft Week 9B — Pretraining — [module ↗](modules/09b-pretraining.md)
 
-- **Question.** How does the model absorb language patterns from raw text?
-- **Goal.** Pretrain a small transformer LM on a real corpus.
-- **Concepts.** Dataset preparation and tokenization-at-scale; batching with context length; learning-rate warmup + cosine decay; gradient clipping; mixed precision on MPS (caveats); loss/perplexity tracking; checkpointing.
-- **Build.** `g2c/training/` — `Trainer` with the full loop, plus a data loader for tokenized corpora.
+- **Question.** How do we turn a text corpus and a TransformerLM into supervised training data?
+- **Goal.** Make corpus splitting, `(B, T)` language-model batches, multi-position targets, LM cross-entropy, and the `log(V)` baseline explicit before the first full pretraining run.
+- **Concepts.** Contiguous token streams; train/validation split; shifted input/target windows; causal mask as the reason every position can be supervised; flattening `(B, T, V)` logits into ordinary cross-entropy; `log(V)` as a step-0 sanity baseline.
+- **Build.** `g2c/pretraining/data.py` with `split_token_stream` and `get_lm_batch`; `g2c/pretraining/loss.py` with `lm_cross_entropy`.
 - **Exercises.**
+  - Shift toy token streams by hand.
+  - Inspect sampled `(B, T)` batches from a known sequence.
+  - Implement `lm_cross_entropy` and verify every position contributes.
+  - Compare random model loss to `log(V)`.
+- **Deliverable.** Passing `tests/test_pretraining_setup.py` and a notebook that traces one corpus through token IDs, train/val split, batch sampling, logits, and scalar loss.
+- **Reading.** Karpathy nanoGPT data loader and loss computation; "Let's reproduce GPT-2" data-loading sections.
+- **M-series notes.** CPU-light. This is setup, not a serious training run.
+
+### Milestone Week 10 — Your First LLM — [module ↗](modules/10-your-first-llm.md)
+
+- **Question.** What changes when the transformer block becomes a trained language model?
+- **Goal.** Pretrain a small transformer LM on a real corpus.
+- **Concepts.** Trainer orchestration; the exact training-step order; validation history; learning-rate and gradient-norm logging; checkpoint/run artifacts; qualitative sampling as a noisy but useful inspection tool.
+- **Build.** `g2c/pretraining/trainer.py` — `Trainer` with the full loop using Module 09B's data/loss helpers and Module 03B's optimizer controls.
+- **Exercises.**
+  - Implement `Trainer.train_step`.
   - Train a ~1M-param model on TinyShakespeare; sample text every N steps and watch it learn.
-  - Train a ~10M-param model on TinyStories; observe the quality jump.
-  - Plot loss curves; identify any LR or overfitting issues.
+  - Plot train/validation loss, learning rate, and gradient norm.
+  - Run one controlled scale-up and compare loss and samples.
 - **Deliverable.** A trained tiny-GPT checkpoint that produces locally coherent text. Save weights + training logs.
 - **Reading.** Karpathy nanoGPT repo; "Let's reproduce GPT-2 (124M)"; Kaplan et al., "Scaling Laws for Neural Language Models"; Hoffmann et al., "Chinchilla" (skim for intuition).
 - **M-series notes.** 1M params trains in minutes; 10M in hours. 16GB unified memory is the floor; 32GB is more comfortable.
 
 ---
 
-## Phase IV — Behavior shaping
+## Phase IV — Behavior
 
 ### Week 11 — Sampling and decoding — [module ↗](modules/11-sampling.md)
 
@@ -301,7 +334,7 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 
 ---
 
-## Phase V — Assistant systems
+## Phase V — Assistants
 
 ### Week 16 — Local pretrained models and inference — [module ↗](modules/16-inference.md)
 

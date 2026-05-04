@@ -1,4 +1,4 @@
-"""The SFT training loop — parallel to `g2c.training.Trainer`.
+"""The SFT training loop — parallel to `g2c.pretraining.Trainer`.
 
 `SFTTrainer` mirrors the Module 10 `Trainer` shape almost exactly:
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -27,10 +28,12 @@ IPYTHON_DIR = JUPYTER_DIR / "ipython"
 
 
 def module_prefix(raw: str) -> str:
-    """Normalize module numbers like '1' and '01' to '01'."""
-    if not raw.isdigit():
-        raise argparse.ArgumentTypeError("module must be a number, e.g. 1 or 01")
-    return f"{int(raw):02d}"
+    """Normalize module ids like '1', '01', and '03b'."""
+    match = re.fullmatch(r"(\d+)([a-zA-Z]?)", raw)
+    if not match:
+        raise argparse.ArgumentTypeError("module must look like 1, 01, or 03b")
+    number, suffix = match.groups()
+    return f"{int(number):02d}{suffix.lower()}"
 
 
 def find_clean_notebook(prefix: str) -> Path:
@@ -116,7 +119,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Create or open a working notebook copy for a module.",
     )
-    parser.add_argument("module", type=module_prefix, help="module number, e.g. 1 or 01")
+    parser.add_argument("module", type=module_prefix, help="module id, e.g. 1, 01, or 03b")
     parser.add_argument(
         "--fresh",
         action="store_true",
