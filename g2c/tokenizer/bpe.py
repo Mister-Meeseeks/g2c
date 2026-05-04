@@ -14,6 +14,11 @@ Boilerplate (constructor, base vocab) is implemented for you. Search for `# TODO
 """
 from __future__ import annotations
 
+from collections.abc import Callable
+
+
+TokenizerProgressCallback = Callable[[dict[str, int]], None]
+
 
 class BPETokenizer:
     """A byte-pair encoding tokenizer.
@@ -89,7 +94,14 @@ class BPETokenizer:
     # The main API — STUDENT IMPLEMENTS
     # ------------------------------------------------------------------
 
-    def train(self, text: str, vocab_size: int) -> None:
+    def train(
+        self,
+        text: str,
+        vocab_size: int,
+        *,
+        on_progress: TokenizerProgressCallback | None = None,
+        progress_every: int = 50,
+    ) -> None:
         """Learn merges from `text` until the vocabulary reaches `vocab_size`.
 
         Algorithm:
@@ -109,28 +121,55 @@ class BPETokenizer:
             text: training corpus.
             vocab_size: target vocabulary size. Must be ≥ 256 (the byte base);
                         exactly 256 means "no merges, just the base vocab."
+            on_progress: optional callback called during training with integer
+                         metrics: vocab size, target vocab size, number of
+                         merges, current token count, and last merge count.
+            progress_every: call `on_progress` every N merges, plus at the
+                            start and final merge.
 
         Raises:
             ValueError: if `vocab_size < 256`.
+            ValueError: if `progress_every < 1`.
         """
         byte_text = list(text.encode("utf-8"))
         ids = list(byte_text)
 
         if vocab_size < 256:
             raise ValueError("vocab_size must be at least 256 to include all byte values")
-        
+        if progress_every < 1:
+            raise ValueError("progress_every must be at least 1")
+
+        def report(last_pair_count: int = 0) -> None:
+            if on_progress is None:
+                return
+            on_progress(
+                {
+                    "vocab_size": len(self.vocab),
+                    "target_vocab_size": vocab_size,
+                    "num_merges": len(self.merges),
+                    "token_count": len(ids),
+                    "last_pair_count": last_pair_count,
+                }
+            )
+
+        report()
+
         while len(self.vocab) < vocab_size:
             pair_counts = self._get_pair_counts(ids)
             if not pair_counts:
+                report()
                 break
 
             best_pair = max(pair_counts, key=pair_counts.get)
+            best_pair_count = pair_counts[best_pair]
             new_id = len(self.vocab)
             self.merges[best_pair] = new_id
             self.vocab[new_id] = self.vocab[best_pair[0]] + self.vocab[best_pair[1]]
 
             ids = self._merge(ids, best_pair, new_id)
 
+            if len(self.merges) % progress_every == 0 or len(self.vocab) == vocab_size:
+                report(best_pair_count)
 
     def encode(self, text: str) -> list[int]:
         """Encode `text` into a list of token IDs using the learned merges.
