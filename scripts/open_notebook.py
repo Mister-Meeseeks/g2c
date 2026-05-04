@@ -8,6 +8,7 @@ creates or resumes the matching notebook in notebooks/solutions/.
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import subprocess
 import sys
@@ -18,6 +19,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 CLEAN_DIR = REPO_ROOT / "notebooks" / "clean"
 SOLUTIONS_DIR = REPO_ROOT / "notebooks" / "solutions"
 REVISIONS_DIR = SOLUTIONS_DIR / "revisions"
+JUPYTER_DIR = REPO_ROOT / ".jupyter"
+JUPYTER_DATA_DIR = JUPYTER_DIR / "data"
+JUPYTER_RUNTIME_DIR = JUPYTER_DIR / "runtime"
+JUPYTER_CONFIG_DIR = JUPYTER_DIR / "config"
+IPYTHON_DIR = JUPYTER_DIR / "ipython"
 
 
 def module_prefix(raw: str) -> str:
@@ -68,6 +74,19 @@ def prepare_solution_notebook(clean_path: Path, fresh: bool) -> tuple[Path, Path
     return solution_path, revision_path, "fresh" if revision_path else "created"
 
 
+def notebook_env() -> dict[str, str]:
+    """Return an environment with project-local writable Jupyter state."""
+    for path in (JUPYTER_DATA_DIR, JUPYTER_RUNTIME_DIR, JUPYTER_CONFIG_DIR, IPYTHON_DIR):
+        path.mkdir(parents=True, exist_ok=True)
+
+    env = os.environ.copy()
+    env["JUPYTER_DATA_DIR"] = str(JUPYTER_DATA_DIR)
+    env["JUPYTER_RUNTIME_DIR"] = str(JUPYTER_RUNTIME_DIR)
+    env["JUPYTER_CONFIG_DIR"] = str(JUPYTER_CONFIG_DIR)
+    env["IPYTHONDIR"] = str(IPYTHON_DIR)
+    return env
+
+
 def launch_jupyter(notebook_path: Path) -> int:
     try:
         import jupyter  # noqa: F401
@@ -79,10 +98,18 @@ def launch_jupyter(notebook_path: Path) -> int:
         )
         return 1
 
-    return subprocess.run(
+    process = subprocess.Popen(
         [sys.executable, "-m", "jupyter", "notebook", str(notebook_path)],
-        check=False,
-    ).returncode
+        env=notebook_env(),
+    )
+
+    while True:
+        try:
+            return process.wait()
+        except KeyboardInterrupt:
+            # Jupyter handles Ctrl-C itself by asking whether to shut down.
+            # Keep the wrapper alive while the child process handles that prompt.
+            continue
 
 
 def parse_args() -> argparse.Namespace:

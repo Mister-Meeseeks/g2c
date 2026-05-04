@@ -90,7 +90,7 @@ Then bootstrap the project environment:
 
 The script is idempotent. It creates a project-local venv at `./.venv`, installs `g2c` (editable) plus dev dependencies, prepares course data assets, and runs a smoke test that verifies PyTorch's MPS backend works on your machine. Re-run it any time to re-verify.
 
-The first run may download Stanford's GloVe 6B archive (~822MB) and extract `data/glove.6B.50d.txt` for Module 05. Later runs skip this step if the extracted file already exists.
+The first run may download `data/tinyshakespeare.txt` for language-model training and Stanford's GloVe 6B archive (~822MB) to extract `data/glove.6B.50d.txt` for Module 05. Later runs skip these steps when the files already exist.
 
 After setup:
 

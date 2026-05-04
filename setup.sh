@@ -99,6 +99,24 @@ fi
 ok "deps installed"
 
 # ---- 5. Optional data assets -------------------------------------------------
+mkdir -p data
+
+if ! command -v curl >/dev/null 2>&1; then
+    fail "curl not found; needed to download course data assets"
+fi
+
+TINY_SHAKESPEARE_FILE="data/tinyshakespeare.txt"
+TINY_SHAKESPEARE_URL="https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt"
+
+info "Checking TinyShakespeare corpus"
+if [[ -f "$TINY_SHAKESPEARE_FILE" ]]; then
+    ok "$TINY_SHAKESPEARE_FILE exists"
+else
+    warn "$TINY_SHAKESPEARE_FILE not found; downloading TinyShakespeare"
+    curl --fail --location --output "$TINY_SHAKESPEARE_FILE" "$TINY_SHAKESPEARE_URL"
+    ok "$TINY_SHAKESPEARE_FILE ready"
+fi
+
 GLOVE_FILE="data/glove.6B.50d.txt"
 GLOVE_ZIP="data/glove.6B.zip"
 GLOVE_URL="https://downloads.cs.stanford.edu/nlp/data/glove.6B.zip"
@@ -107,11 +125,6 @@ info "Checking GloVe vectors"
 if [[ -f "$GLOVE_FILE" ]]; then
     ok "$GLOVE_FILE exists"
 else
-    mkdir -p data
-
-    if ! command -v curl >/dev/null 2>&1; then
-        fail "curl not found; needed to download $GLOVE_URL"
-    fi
     if ! command -v unzip >/dev/null 2>&1; then
         fail "unzip not found; needed to extract $GLOVE_FILE"
     fi
