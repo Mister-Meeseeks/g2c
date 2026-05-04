@@ -4,7 +4,7 @@
 
 ![One transformer block, drawn as two pre-norm sublayers wrapped in residual connections. The residual stream (the (B, T, D) tensor at the top) flows forward unchanged by default; each sublayer reads it through a LayerNorm, computes an update, and adds the update back. Sublayer 1 is multi-head attention; sublayer 2 is the position-wise feed-forward network. Side panels label the two structural ideas (LayerNorm normalizes per token, residual connections add a small update) and pin the recipe `x = x + attn(ln1(x)); x = x + ffn(ln2(x))`.](09-transformer-block/Module09-Hero.png)
 
-Once you have this block, scaling up is just "stack N of these and add embeddings + a final unembedding head." Three new architectural ideas wrap around the attention you built in Module 08: LayerNorm (numerical stability), residual connections, and the position-wise FFN. The rest of the lesson page is unpacking why each one is where it is.
+Transformers are layers of blocks. Each block is an attention sublayer and a normal neural network sublayer. Once you have this block, scaling up is just "stack N of these and add embeddings" + a final unembedding head. The rest of the lesson page is unpacking why each one is where it is.
 
 ---
 ## Prerequisites
@@ -13,30 +13,25 @@ Module 09 is where the transformer finally takes shape — every piece you've bu
 
 ### Math
 
-- **Layer normalization.** For each token vector `x ∈ R^D`, compute `(x - mean(x)) / sqrt(var(x) + ε)`, then apply a learned per-channel scale `γ` and shift `β`. The mean and variance are taken over the *channel* dim only (the last dim of the input), so each token is normalized independently. This is the structural difference from batch norm.
-- **Residual connections.** Each sublayer's output is *added* to its input rather than replacing it: `x = x + sublayer(x)`. The vector `x` flows forward through the network as a "residual stream" that every sublayer reads from and writes into. Mathematically trivial, architecturally decisive — this is why deep transformers train at all.
-- **Position-wise feed-forward.** A two-layer MLP applied independently to every position: `y = W_2 · GELU(W_1 · x + b_1) + b_2`. The hidden dim is conventionally `4 × embedding_dim`. Most of a transformer's parameters live here.
+* **Jacobians**. Equivalent to a gradient but extended from scalars to vectors. Jacobians are part of how the "norms" in this module avoid the problem of "vanishing gradients" or numerical instability that come with deep architectures.
+* **Spectral norms**. Linear algebra. It's enough to be familiar with the concept that large spectral norms mean a matrix is generally "stretching" its inputs; a small spectral norm is "shrinking" its inputs; and a spectral norm of 1.0 is neutral in this regards
 
 ### Computer science
 
-- **Module composition.** A `Block` holds four sub-modules (`ln1`, `attn`, `ln2`, `ffn`); a `TransformerLM` holds a list of `Block`s plus embeddings, a final LN, and an unembedding head. The `parameters()` method recursively chains through every level. Same pattern as Module 03's `Sequential`.
+- **Module composition.** The `Block` module we developer here uses the same python object-oriented pattern as Module 03's `Sequential`.
 
-### Programming
+### PyTorch
 
-- **`tensor.mean(dim=-1, keepdim=True)`** and **`tensor.var(dim=-1, unbiased=False, keepdim=True)`**. Reduce along the last dim, preserving its presence as a singleton so the result broadcasts back against the input. `unbiased=False` matches PyTorch's built-in `nn.LayerNorm` and is the correct choice for normalization.
-- **`torch.nn.functional.gelu`.** The activation. Same level of abstraction as `torch.softmax` in Module 07 — a function on tensors, not a high-level layer class.
-- **List of sub-modules.** `TransformerLM` stores `self.blocks` as a plain Python list and iterates with `for block in self.blocks`. We don't need `nn.ModuleList` — our minimal `Module` base class doesn't do parameter discovery via attribute walking, so an explicit `parameters()` method is what wires everything together.
+- Re-familiarize yourself with `mean()` and `var()` functions
 
-### What you can skip
-
-- **Tied embeddings** (sharing weights between `TokenEmbedding` and the unembedding `head`). Standard in most modern LMs; we keep them separate for clarity. Module 10 discusses the tradeoff.
-- **Dropout.** Used by Vaswani et al. and many follow-ups for regularization; not strictly necessary at the small scales we'll train, and it adds a `training`/`eval` mode distinction that our minimal `Module` base class doesn't model. Out of scope.
-- **RMSNorm** (used by Llama and other modern transformers). A simplified LayerNorm without the mean-subtraction step. Equivalent in practice but conceptually a small variation; we use vanilla LN.
-- **Mixed precision, gradient checkpointing, fused ops.** Module 10 pretraining concerns, not architecture concerns.
-
+---
 ## Where this fits in
 
-After Module 08, you have multi-head attention as a standalone mechanism — a learnable mixing operation that lets every position consult every other. But attention alone isn't a transformer. A transformer is attention *embedded inside* a specific architectural sandwich that makes it trainable at depth:
+After Module 08, you have multi-head attention as a standalone mechanism — a learnable mixing operation that lets every position consult every other. But attention alone doesn't support multiple layers, which is the core of deep learning. Attention alone is insufficient at scale. This module shows us an architecture that allows us to *stack* attention.
+
+## The big idea
+
+A transformer is attention *embedded inside* a specific architectural sandwich that makes it trainable at depth. The building block of the transformer is the block. Once you have it, scaling up is "use a larger `D`, larger `T`, more blocks." 
 
 ```
   ┌─ Multi-head attention sublayer ────┐
@@ -58,11 +53,7 @@ Three new ideas wrap around the attention you already have:
 2. **Residual connections** turn the network into a *refinement pipeline* rather than a transformation pipeline. Each sublayer reads the residual stream and adds a small update; the original information is preserved by default. Without residuals, deep transformers don't train.
 3. **The position-wise feed-forward network** gives the model a way to do non-attention computation per position — a per-token MLP applied to whatever attention pulled in. Vaswani et al. call this the "position-wise feed-forward network." It's where most of a transformer's parameters live and where most of its per-position reasoning happens.
 
-The block is the unit. Once you have it, scaling up is "use a larger `D`, larger `T`, more blocks." Module 10 will train a real one.
-
-## The big idea
-
-The full pipeline of one block, with all the reshape-free arithmetic written out:
+These mechanisms combine into the full pipeline of one block. With all the reshape-free arithmetic written out:
 
 ```
        (B, T, D)              ┌────────────────────┐
@@ -110,8 +101,6 @@ The headline empirical fact: without residual connections, transformers deeper t
                                                              └──── ...
 ```
 
-Test `test_block_residual_identity_when_sublayers_zeroed` pins this down concretely: zero out the final projections of `attn` and `ffn` and the block must reduce to the identity. Without the residual additions, the test fails.
-
 ![The residual stream as a horizontal "bus" that threads through every block. The embedding sum enters on the left; each block reads the stream, computes a small update Δᵢ via its sublayer (attention or FFN), and adds it back onto the stream. Δ₁ might do "communication across tokens" (attention), Δ₂ might do "per-token computation" (the FFN), Δ₃ might be "feature refinement" — each block specializes in what it adds. After N blocks, the stream is x_N = x + Σᵢ Δᵢ; the final layer norm and unembedding head consume that sum.](09-transformer-block/Module09-ResidualBus.png)
 
 *The "communication bus" framing made popular by Anthropic's transformer-circuits work. The structural property to internalize: information flows forward UNCHANGED by default. Sublayers make incremental edits, not replacements. This is the property that makes deep transformers trainable (gradient-flow view) AND the property that lets mechanistic-interpretability research decompose what each layer does (residual-stream view) — same fact, two ways to read it.*
@@ -138,7 +127,7 @@ LayerNorm is what keeps the residual stream's scale bounded. Without it, after a
 
 ![LayerNorm worked through on a single token vector x ∈ ℝ^D: compute mean μ and variance σ² across the D channels of THIS token only (no pooling across batch or sequence positions); subtract μ and divide by √(σ²+ε); apply the learned per-channel affine γ * x̂ + β. A side panel contrasts what LayerNorm does NOT do (pool across batch — that's BatchNorm; pool across sequence positions — that doesn't exist as a standard layer) and pins down the headline: every token in every position is normalized independently with the same γ, β.](09-transformer-block/Module09-LayerNorm.png)
 
-*The structural difference from BatchNorm is "pool over channels, not over the batch." Three consequences fall out: batch size doesn't affect the output (so batch_size=1 works), train and inference behavior are identical (no running statistics to track), and packed/variable-length batches don't need any special handling. Tests `test_layer_norm_normalizes_each_position_independently` and `test_layer_norm_normalizes_last_dim` are the formalization of the picture above.*
+*The structural difference from BatchNorm is "pool over channels, not over the batch." Three consequences fall out: batch size doesn't affect the output (so batch_size=1 works), train and inference behavior are identical (no running statistics to track), and packed/variable-length batches don't need any special handling. 
 
 ### Pre-norm vs post-norm
 
@@ -232,6 +221,13 @@ Three details worth pinning down:
 - **The FFN is per-position with a 4× hidden expansion.** Most of a transformer's parameters live here.
 - **Stacking blocks is straightforward.** `for block in self.blocks: x = block(x)`. The architecture has no positional encoding *between* blocks, no cross-block coupling, no per-block parameters that depend on layer index. Each block is a self-contained refinement step.
 - **TransformerLM outputs (B, T, V) logits.** One next-token prediction per position, computed in parallel during training.
+
+### What we don't cover
+
+- **Tied embeddings** (sharing weights between `TokenEmbedding` and the unembedding `head`). Standard in most modern LMs; we keep them separate for clarity. Module 10 discusses the tradeoff.
+- **Dropout.** Used by Vaswani et al. and many follow-ups for regularization; not strictly necessary at the small scales we'll train, and it adds a `training`/`eval` mode distinction that our minimal `Module` base class doesn't model. Out of scope.
+- **RMSNorm** (used by Llama and other modern transformers). A simplified LayerNorm without the mean-subtraction step. Equivalent in practice but conceptually a small variation; we use vanilla LN.
+- **Mixed precision, gradient checkpointing, fused ops.** Module 10 pretraining concerns, not architecture concerns.
 
 ---
 ## What you'll build
