@@ -69,11 +69,21 @@ class BPETokenizer:
         Hint: scan with an explicit index `i`, advancing by 2 on a match
         and by 1 otherwise.
         """
-        for i in range(len(ids)):
-            if i < len(ids) - 1 and (ids[i], ids[i + 1]) == pair:
-                ids[i] = new_id
-                del ids[i + 1]
-        return ids
+        left, right = pair
+        merged: list[int] = []
+        append = merged.append
+
+        i = 0
+        n = len(ids)
+        while i < n:
+            if i + 1 < n and ids[i] == left and ids[i + 1] == right:
+                append(new_id)
+                i += 2
+            else:
+                append(ids[i])
+                i += 1
+
+        return merged
 
     # ------------------------------------------------------------------
     # The main API — STUDENT IMPLEMENTS
