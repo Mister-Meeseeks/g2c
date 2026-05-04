@@ -28,7 +28,7 @@
 
 - Formal convergence proofs.
 - The optimizer zoo. We only need SGD and AdamW.
-- BatchNorm, dropout, and advanced regularization. They matter in deep learning generally, but LayerNorm and AdamW matter more for this LLM stack.
+- BatchNorm and advanced regularization. They matter in deep learning generally, but LayerNorm and AdamW matter more for this LLM stack. Dropout is introduced conceptually below, but you will not implement it in this module.
 
 ## Why This Module Exists
 
@@ -154,6 +154,16 @@ Training curves are your feedback loop:
 
 Curve reading is the bridge from "I know the mechanics" to "I can debug a training run."
 
+### Regularization And Dropout
+
+Optimization asks whether the model can lower the training loss. Regularization asks whether the model is learning something that transfers beyond the exact examples it saw. The classic warning sign is a widening train/validation gap: train loss keeps improving while validation loss stalls or gets worse.
+
+Regularization is a family of responses to that pattern. Weight decay gently prefers smaller weights. More data gives the model fewer chances to memorize quirks. Early stopping keeps the checkpoint from the best validation point instead of the final training step. Data cleaning and deduplication prevent the model from seeing the same examples so often that memorization becomes the easy path.
+
+Dropout is another regularizer. During training, it randomly zeros some activations, forcing the network not to rely too heavily on any one feature path. At evaluation time, dropout is disabled so predictions are deterministic. Correct dropout also has scaling details so the expected activation size stays comparable between train and eval.
+
+We are not implementing dropout in this course path because it is not the bottleneck for the tiny GPT stack. It adds a useful but separate concept cluster: stochastic forward passes, train/eval mode, RNG control, and activation scaling. For GPT-style decoder-only pretraining today, dropout is often small or zero, while AdamW, learning-rate schedules, clipping, data quality, and validation monitoring are more central. So dropout is worth knowing by name, but not worth spending a build week on here.
+
 ## Concepts To Internalize
 
 - **Learning rate controls update scale.** If loss explodes, lower it. If loss crawls and gradients are finite, raise it.
@@ -165,6 +175,7 @@ Curve reading is the bridge from "I know the mechanics" to "I can debug a traini
 - **Gradient clipping is a guardrail.** It rescales a too-large global gradient vector; it does not replace a reasonable learning rate.
 - **Schedules are part of the run.** Warmup avoids blasting random-initialized weights; cosine decay lowers the step size as the run settles.
 - **Curves are diagnostics.** Train/validation loss curves are how you decide what to change next.
+- **Regularization targets generalization.** Dropout is one regularizer, but this course leans on weight decay, data, and validation curves for the tiny LLM path.
 
 ## Scaffolding And How To Run The Tests
 
