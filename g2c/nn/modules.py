@@ -22,6 +22,8 @@ from collections.abc import Iterable
 
 import torch
 
+from .device import resolve_device
+
 
 class Module:
     """Base class for all neural-network modules.
@@ -44,6 +46,28 @@ class Module:
     def parameters(self) -> Iterable[torch.Tensor]:
         """Return all trainable parameters of this module. Override in subclasses."""
         return []
+
+    def to(self, device: str | torch.device | None = "auto") -> "Module":
+        """Move all trainable parameters to `device` and return self.
+
+        This mirrors the everyday `torch.nn.Module.to(...)` ergonomics,
+        but keeps the implementation visible: the course's modules expose
+        raw tensor parameters, so moving a model is just moving those
+        tensors and any existing gradients.
+        """
+        resolved = resolve_device(device)
+        for p in self.parameters():
+            p.data = p.data.to(resolved)
+            if p.grad is not None:
+                p.grad = p.grad.to(resolved)
+        return self
+
+    @property
+    def device(self) -> torch.device:
+        """Device of the first parameter, or CPU for parameter-free modules."""
+        for p in self.parameters():
+            return p.device
+        return torch.device("cpu")
 
 
 # ----------------------------------------------------------------------

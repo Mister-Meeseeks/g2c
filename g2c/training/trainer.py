@@ -19,6 +19,9 @@ only new pieces in this module are:
 `Trainer.__init__`, `Trainer.lr`, `Trainer.evaluate`, and
 `Trainer.train` are implemented for you. `Trainer.train_step` — the
 one method that names the order of operations — is scaffolded.
+`device="auto"` is also implemented: the model is moved before the
+optimizer is constructed, and sampled batches should be moved before
+the forward pass.
 
 Why such tight scaffolding for a class that's mostly plumbing? Because
 the *order of operations* in a training step is decisive and easy to
@@ -42,38 +45,12 @@ from __future__ import annotations
 
 import torch
 
-from g2c.nn import SGD, Module
+from g2c.nn import SGD, Module, resolve_device
 
 from .clip import clip_grad_norm_
 from .data import get_lm_batch
 from .loss import lm_cross_entropy
 from .schedule import cosine_with_warmup
-
-
-def _resolve_device(device: str | torch.device | None) -> torch.device:
-    """Resolve a trainer device spec.
-
-    `None` and "auto" mean "use MPS if this Mac exposes it, otherwise CPU."
-    CUDA is intentionally not selected automatically because the course target
-    is an M-series MacBook.
-    """
-    if device is None or device == "auto":
-        if torch.backends.mps.is_available():
-            return torch.device("mps")
-        return torch.device("cpu")
-    resolved = torch.device(device)
-    if resolved.type == "mps" and not torch.backends.mps.is_available():
-        raise ValueError("device='mps' was requested, but MPS is not available")
-    return resolved
-
-
-def _move_model_parameters_to_device(model: Module, device: torch.device) -> None:
-    """Move raw tensor parameters for this course's minimal Module objects."""
-    for p in model.parameters():
-        if p.device != device:
-            p.data = p.data.to(device)
-        if p.grad is not None and p.grad.device != device:
-            p.grad = p.grad.to(device)
 
 
 class Trainer:
@@ -99,10 +76,8 @@ class Trainer:
         eval_iters: how many random batches to average for validation.
         log_every: append metrics to history every N steps.
         generator: optional `torch.Generator` for batch reproducibility.
-        device: "auto", "cpu", "mps", a `torch.device`, or None. "auto"
-            uses MPS when available and CPU otherwise. The trainer moves
-            the model's raw tensor parameters and all sampled batches to
-            this device.
+        device: `"auto"` moves the model and sampled batches to MPS when
+            available, otherwise CPU. Pass `"cpu"` to force a CPU run.
 
     Attributes:
         device: resolved `torch.device` used for model parameters and
@@ -148,7 +123,8 @@ class Trainer:
         generator: torch.Generator | None = None,
         device: str | torch.device | None = "auto",
     ) -> None:
-        self.model = model
+        self.device = resolve_device(device)
+        self.model = model.to(self.device)
         self.batch_size = batch_size
         self.context_length = context_length
         self.max_steps = max_steps
@@ -161,12 +137,10 @@ class Trainer:
         self.eval_iters = eval_iters
         self.log_every = log_every
         self.generator = generator
-        self.device = _resolve_device(device)
-        _move_model_parameters_to_device(model, self.device)
         # Optimizer is constructed once — its lr will be overwritten
         # each step from the cosine schedule.
         self.optimizer = SGD(
-            model.parameters(), lr=max_lr, weight_decay=weight_decay
+            self.model.parameters(), lr=max_lr, weight_decay=weight_decay
         )
         self.step = 0
 

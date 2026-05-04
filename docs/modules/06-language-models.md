@@ -210,9 +210,9 @@ class MLPLanguageModel(Module):
 
 # Helpers in train.py — model-agnostic, use only `.context_length` and `.logits()`
 def get_batch(ids, context_length, batch_size): ...        # implemented
-def perplexity(model, ids, *, batch_size=256) -> float: ...
-def sample(model, prompt_ids, num_tokens, *, temperature=1.0) -> torch.Tensor: ...
-def train_lm(model, train_ids, *, val_ids=None, ...) -> dict: ...
+def perplexity(model, ids, *, batch_size=256, device="auto") -> float: ...
+def sample(model, prompt_ids, num_tokens, *, temperature=1.0, device="auto") -> torch.Tensor: ...
+def train_lm(model, train_ids, *, val_ids=None, device="auto", ...) -> dict: ...
 ```
 
 A typical training-and-evaluation flow looks like this (will land in your notebook):
@@ -225,12 +225,12 @@ print("counts perplexity:", perplexity(counts, val_ids))
 
 # Neural bigram — trained with SGD.
 neural = NeuralBigramLM(vocab_size=V, embedding_dim=64)
-train_lm(neural, train_ids, val_ids=val_ids, num_steps=2000)
+train_lm(neural, train_ids, val_ids=val_ids, num_steps=2000, device="auto")
 print("neural bigram perplexity:", perplexity(neural, val_ids))
 
 # Bengio-style MLP — more context.
 mlp = MLPLanguageModel(vocab_size=V, context_length=3, embedding_dim=64, hidden_dim=128)
-train_lm(mlp, train_ids, val_ids=val_ids, num_steps=2000)
+train_lm(mlp, train_ids, val_ids=val_ids, num_steps=2000, device="auto")
 print("MLP perplexity:", perplexity(mlp, val_ids))
 
 # Generate from each.
@@ -326,5 +326,6 @@ Secondary:
 This module is light on compute.
 
 - The counts table for `vocab_size = 1024` is 4MB (int64, `1024 × 1024`). At `vocab_size = 8192` it's 256MB — fine on a 16GB machine, getting heavy. This is a glimpse of why counts models don't scale.
-- The neural bigram and MLP at the sizes used in exercise 5 (`embedding_dim=64`, `hidden_dim=128`, `vocab_size=1024`) have well under 1M parameters — a few seconds per training step on CPU, fractions of a second on MPS.
-- Training all three for the recommended 2000 steps takes 2–5 minutes total. Sampling 500 tokens from each takes seconds. There is no need to think about MPS for this module — CPU is fast enough — but using MPS works and is a fine warm-up for Module 10.
+- The neural bigram and MLP at the sizes used in exercise 5 (`embedding_dim=64`, `hidden_dim=128`, `vocab_size=1024`) have well under 1M parameters — CPU is fine, but MPS starts to pay off when you push steps, hidden size, or vocab size upward.
+- `train_lm(..., device="auto")` moves trainable neural models and sampled minibatches to MPS when available. CountsBigramLM stays CPU-side because it is a plain counts table.
+- Sampling returns CPU token IDs for easy decoding, while neural model forwards can still run on MPS.

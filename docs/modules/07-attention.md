@@ -205,7 +205,7 @@ This module is light on compute.
 - Exercise 3's strip-mask experiment is a few hundred training steps on a small corpus with a single attention layer — under a minute on CPU.
 - Exercise 5's `O(T²)` timing demo at `T = 4096, D = 128` allocates a 16M-entry `(T, T)` score tensor — comfortable on a 16GB machine. If you push to `T = 16384` it's a 256M-entry tensor (`~1GB` at fp32); manageable but you'll feel it.
 
-There's no need to use MPS for this module; CPU is fast enough that the device-transfer overhead would dominate. Module 10's pretraining run is the first place MPS pays off.
+The clean notebook uses `experiment_device = "auto"` in the strip-mask training helper. CPU is still fine at the default size, but if you increase `steps`, `D`, or `T`, the helper will move the model and minibatches to MPS when available.
 
 ---
 ## Reading

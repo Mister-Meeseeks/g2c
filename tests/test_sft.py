@@ -585,6 +585,27 @@ def test_sft_trainer_construction_defaults():
     assert trainer.batch_size == 2
     assert trainer.step == 0
     assert trainer.optimizer is not None
+    expected_device = torch.device(
+        "mps" if torch.backends.mps.is_available() else "cpu"
+    )
+    assert trainer.device == expected_device
+
+
+def test_sft_trainer_explicit_cpu_device_moves_model_params():
+    model = _make_tiny_model()
+    trainer = SFTTrainer(
+        model,
+        examples=_make_tiny_dataset(),
+        max_seq_len=8,
+        pad_id=0,
+        batch_size=2,
+        max_steps=10,
+        max_lr=3e-4,
+        device="cpu",
+    )
+    assert trainer.device == torch.device("cpu")
+    for p in model.parameters():
+        assert p.device.type == "cpu"
 
 
 def test_sft_trainer_empty_examples_raises():

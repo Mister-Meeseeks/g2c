@@ -32,7 +32,7 @@ from __future__ import annotations
 
 import torch
 
-from g2c.nn import SGD, Module
+from g2c.nn import SGD, Module, resolve_device
 from g2c.training.clip import clip_grad_norm_
 from g2c.training.schedule import cosine_with_warmup
 
@@ -75,6 +75,9 @@ class SFTTrainer:
         log_every: append metrics to history every N steps.
         generator: optional `torch.Generator` for example-shuffling
             reproducibility.
+        device: `"auto"` moves the model and collated batches to MPS
+            when available, otherwise CPU. Pass `"cpu"` to force a CPU
+            run.
 
     Attributes:
         optimizer: the inner `SGD` instance. The trainer mutates
@@ -98,6 +101,7 @@ class SFTTrainer:
     eval_iters: int
     log_every: int
     generator: torch.Generator | None
+    device: torch.device
     optimizer: SGD
     step: int
 
@@ -119,6 +123,7 @@ class SFTTrainer:
         eval_iters: int = 20,
         log_every: int = 10,
         generator: torch.Generator | None = None,
+        device: str | torch.device | None = "auto",
     ) -> None:
         if len(examples) == 0:
             raise ValueError("SFTTrainer requires at least one example.")
@@ -129,7 +134,8 @@ class SFTTrainer:
                 f"max_seq_len must be > 1 to allow shift-by-one, "
                 f"got {max_seq_len}."
             )
-        self.model = model
+        self.device = resolve_device(device)
+        self.model = model.to(self.device)
         self.examples = examples
         self.max_seq_len = max_seq_len
         self.pad_id = pad_id
@@ -145,7 +151,7 @@ class SFTTrainer:
         self.log_every = log_every
         self.generator = generator
         self.optimizer = SGD(
-            model.parameters(), lr=max_lr, weight_decay=weight_decay
+            self.model.parameters(), lr=max_lr, weight_decay=weight_decay
         )
         self.step = 0
 
@@ -196,6 +202,9 @@ class SFTTrainer:
 
             1. # Sample a fresh batch from self.examples.
                x, y, loss_mask = self._sample_batch(self.examples)
+               x = x.to(self.device)
+               y = y.to(self.device)
+               loss_mask = loss_mask.to(self.device)
 
             2. # LR for THIS step (before incrementing the counter).
                lr = self.lr()
@@ -251,6 +260,9 @@ class SFTTrainer:
         with torch.no_grad():
             for _ in range(self.eval_iters):
                 x, y, loss_mask = self._sample_batch(eval_examples)
+                x = x.to(self.device)
+                y = y.to(self.device)
+                loss_mask = loss_mask.to(self.device)
                 logits = self.model(x)
                 losses.append(
                     masked_cross_entropy(logits, y, loss_mask).item()

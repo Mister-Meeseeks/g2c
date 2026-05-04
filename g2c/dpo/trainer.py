@@ -50,7 +50,7 @@ from __future__ import annotations
 
 import torch
 
-from g2c.nn import SGD, Module
+from g2c.nn import SGD, Module, resolve_device
 from g2c.training.clip import clip_grad_norm_
 from g2c.training.schedule import cosine_with_warmup
 
@@ -105,6 +105,9 @@ class DPOTrainer:
         log_every: append metrics to history every N steps.
         generator: optional `torch.Generator` for example-shuffling
             reproducibility.
+        device: `"auto"` moves the policy, reference model, and collated
+            batches to MPS when available, otherwise CPU. Pass `"cpu"` to
+            force a CPU run.
 
     Attributes:
         optimizer: the inner `SGD` instance, attached to `model`'s
@@ -129,6 +132,7 @@ class DPOTrainer:
     eval_iters: int
     log_every: int
     generator: torch.Generator | None
+    device: torch.device
     optimizer: SGD
     step: int
 
@@ -152,6 +156,7 @@ class DPOTrainer:
         eval_iters: int = 20,
         log_every: int = 10,
         generator: torch.Generator | None = None,
+        device: str | torch.device | None = "auto",
     ) -> None:
         if len(examples) == 0:
             raise ValueError("DPOTrainer requires at least one example.")
@@ -167,8 +172,9 @@ class DPOTrainer:
                 f"beta must be positive, got {beta}. (beta=0 makes the "
                 f"DPO loss constant log(2) with zero gradient.)"
             )
-        self.model = model
-        self.ref_model = ref_model
+        self.device = resolve_device(device)
+        self.model = model.to(self.device)
+        self.ref_model = ref_model.to(self.device)
         self.examples = examples
         self.max_seq_len = max_seq_len
         self.pad_id = pad_id
@@ -187,7 +193,7 @@ class DPOTrainer:
         # Optimizer is attached to the policy ONLY. The reference is
         # never updated.
         self.optimizer = SGD(
-            model.parameters(), lr=max_lr, weight_decay=weight_decay
+            self.model.parameters(), lr=max_lr, weight_decay=weight_decay
         )
         self.step = 0
 
@@ -261,6 +267,12 @@ class DPOTrainer:
 
             1. # Sample a fresh batch.
                (cx, cy, cm, rx, ry, rm) = self._sample_batch(self.examples)
+               cx = cx.to(self.device)
+               cy = cy.to(self.device)
+               cm = cm.to(self.device)
+               rx = rx.to(self.device)
+               ry = ry.to(self.device)
+               rm = rm.to(self.device)
 
             2. # LR for THIS step (before incrementing the counter).
                lr = self.lr()
@@ -351,6 +363,12 @@ class DPOTrainer:
         with torch.no_grad():
             for _ in range(self.eval_iters):
                 cx, cy, cm, rx, ry, rm = self._sample_batch(eval_examples)
+                cx = cx.to(self.device)
+                cy = cy.to(self.device)
+                cm = cm.to(self.device)
+                rx = rx.to(self.device)
+                ry = ry.to(self.device)
+                rm = rm.to(self.device)
                 policy_c = self._logp_under(self.model, cx, cy, cm)
                 policy_r = self._logp_under(self.model, rx, ry, rm)
                 ref_c = self._logp_under(self.ref_model, cx, cy, cm)
