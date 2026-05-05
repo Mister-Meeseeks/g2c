@@ -4,20 +4,20 @@ Suggested order to implement & turn green:
 
   1. _get_pair_counts        → test_pair_counts_*
   2. _merge                  → test_merge_*
-  3. train                   → test_train_*
+  3. train_step              → test_train_step_* and test_train_*
   4. encode                  → test_encode_*  (some need decode too for round-trip)
   5. decode                  → test_decode_*
   6. Round-trip + properties → test_round_trip_*
 
-Construction tests pass from the start because the boilerplate (base vocab
-of 256 bytes) is implemented.
+Construction, persistence, fast-path, and train-validation tests pass from
+the start because that boilerplate is implemented. The BPE algorithm tests fail
+with `NotImplementedError` until you fill in the TODOs.
 """
 from __future__ import annotations
 
 import pytest
 
 from g2c.tokenizer import BPETokenizer
-
 
 # ----------------------------------------------------------------------
 # Construction (boilerplate — passes from the start)
@@ -36,6 +36,83 @@ def test_initial_vocab_byte_identity():
     tok = BPETokenizer()
     for i in range(256):
         assert tok.vocab[i] == bytes([i])
+
+
+# ----------------------------------------------------------------------
+# Persistence (boilerplate — passes from the start)
+# ----------------------------------------------------------------------
+
+def test_to_dict_contains_ordered_merges():
+    tok = BPETokenizer()
+    tok.merges[(97, 98)] = 256
+    tok.vocab[256] = b"ab"
+    tok.merges[(256, 99)] = 257
+    tok.vocab[257] = b"abc"
+
+    payload = tok.to_dict()
+
+    assert payload["format"] == "g2c.bpe"
+    assert payload["version"] == 1
+    assert payload["merges"] == [[97, 98, 256], [256, 99, 257]]
+
+
+def test_save_load_round_trips_learned_merges(tmp_path):
+    tok = BPETokenizer()
+    tok.merges[(97, 98)] = 256
+    tok.vocab[256] = b"ab"
+    tok.merges[(256, 99)] = 257
+    tok.vocab[257] = b"abc"
+
+    path = tmp_path / "tokenizer.json"
+    tok.save(path)
+    loaded = BPETokenizer.load(path)
+
+    assert loaded.merges == tok.merges
+    assert loaded.vocab == tok.vocab
+
+
+def test_from_dict_rejects_wrong_format():
+    with pytest.raises(ValueError, match="BPE tokenizer"):
+        BPETokenizer.from_dict({"format": "other", "version": 1, "merges": []})
+
+
+# ----------------------------------------------------------------------
+# Fast path (infrastructure — passes from the start)
+# ----------------------------------------------------------------------
+
+def test_encode_fast_no_merges_is_utf8_bytes():
+    assert BPETokenizer().encode_fast("hi") == [104, 105]
+
+
+def test_encode_fast_applies_learned_merges_in_priority_order():
+    tok = BPETokenizer()
+    tok.merges[(97, 98)] = 256
+    tok.vocab[256] = b"ab"
+    tok.merges[(256, 99)] = 257
+    tok.vocab[257] = b"abc"
+
+    assert tok.encode_fast("abcabc") == [257, 257]
+
+
+def test_encode_fast_respects_non_overlapping_merges():
+    tok = BPETokenizer()
+    tok.merges[(97, 97)] = 256
+    tok.vocab[256] = b"aa"
+
+    assert tok.encode_fast("aaa") == [256, 97]
+
+
+def test_train_fast_populates_course_merge_tables():
+    text = "ababab abcabc " * 4
+    tok = BPETokenizer()
+
+    ids = tok.train_fast(text, vocab_size=270, show_progress=False)
+
+    assert len(tok.vocab) > 256
+    assert len(tok.vocab) == 256 + len(tok.merges)
+    assert ids == tok.encode_fast(text)
+    for (left_id, right_id), new_id in tok.merges.items():
+        assert tok.vocab[new_id] == tok.vocab[left_id] + tok.vocab[right_id]
 
 
 # ----------------------------------------------------------------------
@@ -99,6 +176,29 @@ def test_merge_empty():
 
 
 # ----------------------------------------------------------------------
+# train_step
+# ----------------------------------------------------------------------
+
+def test_train_step_no_pairs_returns_none():
+    tok = BPETokenizer()
+    assert tok.train_step([65], new_id=256) is None
+
+
+def test_train_step_learns_most_frequent_pair():
+    tok = BPETokenizer()
+    result = tok.train_step([1, 2, 1, 2, 3], new_id=256)
+    assert result == ([256, 256, 3], (1, 2), 2)
+    assert tok.merges[(1, 2)] == 256
+
+
+def test_train_step_updates_vocab_bytes():
+    tok = BPETokenizer()
+    result = tok.train_step([97, 98, 97, 98], new_id=256)
+    assert result == ([256, 256], (97, 98), 2)
+    assert tok.vocab[256] == b"ab"
+
+
+# ----------------------------------------------------------------------
 # train
 # ----------------------------------------------------------------------
 
@@ -139,34 +239,31 @@ def test_train_vocab_bytes_concatenation():
         assert tok.vocab[new_id] == tok.vocab[a] + tok.vocab[b]
 
 
-def test_train_progress_callback_reports_start_and_finish():
+def test_train_progress_callback_reports_final_state():
     tok = BPETokenizer()
     reports = []
 
-    ids = tok.train(
-        "hello world " * 10,
+    tok.train(
+        "the the the " * 5,
         vocab_size=260,
-        on_progress=reports.append,
+        progress_callback=reports.append,
         progress_every=2,
     )
 
-    assert reports[0]["vocab_size"] == 256
-    assert reports[0]["target_vocab_size"] == 260
-    assert reports[0]["num_merges"] == 0
-    assert reports[-1]["vocab_size"] == 260
-    assert reports[-1]["num_merges"] == 4
-    assert reports[-1]["token_count"] > 0
-    assert reports[-1]["last_pair_count"] > 0
-    assert ids == tok.encode("hello world " * 10)
-
-
-def test_train_returns_final_training_ids():
-    text = "ababab abcabc"
-    tok = BPETokenizer()
-    ids = tok.train(text, vocab_size=260)
-
-    assert ids == tok.encode(text)
-    assert tok.decode(ids) == text
+    assert reports
+    final = reports[-1]
+    assert final["done"] is True
+    assert final["vocab_size"] == 260
+    assert final["target_vocab_size"] == 260
+    assert final["merges"] == 4
+    assert final["target_merges"] == 4
+    assert final["steps"] == 4
+    assert final["tokens"] < len("the the the " * 5)
+    assert isinstance(final["last_token_id"], int)
+    assert isinstance(final["last_token_bytes"], bytes)
+    assert isinstance(final["last_token_text"], str)
+    assert isinstance(final["last_token_repr"], str)
+    assert isinstance(final["elapsed_seconds"], float)
 
 
 # ----------------------------------------------------------------------
@@ -187,7 +284,7 @@ def test_encode_uses_learned_merges():
     tok = BPETokenizer()
     tok.train("abcabcabc", vocab_size=260)
     encoded = tok.encode("abcabc")
-    raw = list("abcabc".encode("utf-8"))
+    raw = list(b"abcabc")
     assert len(encoded) < len(raw)
 
 

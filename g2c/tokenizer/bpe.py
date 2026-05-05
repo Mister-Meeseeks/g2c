@@ -15,9 +15,10 @@ Boilerplate (constructor, base vocab) is implemented for you. Search for `# TODO
 from __future__ import annotations
 
 from collections.abc import Callable
+from os import PathLike
+from time import perf_counter
 
-
-TokenizerProgressCallback = Callable[[dict[str, int]], None]
+ProgressCallback = Callable[[dict[str, object]], None]
 
 
 class BPETokenizer:
@@ -41,6 +42,58 @@ class BPETokenizer:
         self.vocab = {i: bytes([i]) for i in range(256)}
 
     # ------------------------------------------------------------------
+    # Persistence — implemented boilerplate
+    # ------------------------------------------------------------------
+
+    def to_dict(self) -> dict[str, object]:
+        """Return a JSON-serializable representation of the learned tokenizer."""
+        from .persistence import to_dict
+
+        return to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, object]) -> BPETokenizer:
+        """Construct a tokenizer from `to_dict()` output."""
+        from .persistence import from_dict
+
+        return from_dict(cls, payload)
+
+    def save(self, path: str | PathLike[str]) -> None:
+        """Save this tokenizer to a UTF-8 JSON file."""
+        from .persistence import save
+
+        save(self, path)
+
+    @classmethod
+    def load(cls, path: str | PathLike[str]) -> BPETokenizer:
+        """Load a tokenizer saved by `save`."""
+        from .persistence import load
+
+        return load(cls, path)
+
+    # ------------------------------------------------------------------
+    # Fast path — implemented infrastructure
+    # ------------------------------------------------------------------
+
+    def encode_fast(self, text: str) -> list[int]:
+        """Encode `text` with the Rust-backed BPE implementation."""
+        from .fast import encode_fast
+
+        return encode_fast(self, text)
+
+    def train_fast(
+        self,
+        text: str,
+        vocab_size: int,
+        *,
+        show_progress: bool = True,
+    ) -> list[int]:
+        """Train BPE with the Rust-backed implementation."""
+        from .fast import train_fast
+
+        return train_fast(self, text, vocab_size, show_progress=show_progress)
+
+    # ------------------------------------------------------------------
     # Algorithmic helpers — STUDENT IMPLEMENTS
     # ------------------------------------------------------------------
 
@@ -54,7 +107,7 @@ class BPETokenizer:
 
         Hint: a single pass with a sliding window of size 2.
         """
-        pair_counts = {} 
+        pair_counts = {}
         for i in range(len(ids) - 1):
             pair = (ids[i], ids[i + 1])
             pair_counts[pair] = pair_counts.get(pair, 0) + 1
@@ -91,7 +144,47 @@ class BPETokenizer:
         return merged
 
     # ------------------------------------------------------------------
-    # The main API — STUDENT IMPLEMENTS
+    # Main training step — STUDENT IMPLEMENTS
+    # ------------------------------------------------------------------
+
+    def train_step(
+        self,
+        ids: list[int],
+        new_id: int,
+    ) -> tuple[list[int], tuple[int, int], int] | None:
+        """Learn one BPE merge from the current token ID sequence.
+
+        Algorithm:
+          1. Count adjacent pair frequencies in `ids`.
+          2. If no pairs remain, return None.
+          3. Pick the most-frequent pair (ties broken arbitrarily — by
+             insertion order in the dict, which is fine).
+          4. Apply the merge to the ID list with `_merge`.
+          5. Record the merge in `self.merges`.
+          6. Record the new token bytes in `self.vocab`.
+
+        Args:
+            ids: current token ID sequence.
+            new_id: ID to assign to the selected pair.
+
+        Returns:
+            `(updated_ids, merged_pair, merge_count)`, or None if there are no
+            adjacent pairs left to merge.
+        """
+        pair_counts = self._get_pair_counts(ids)
+        if not pair_counts:
+            return None
+
+        best_pair = max(pair_counts, key=pair_counts.get)
+        best_pair_count = pair_counts[best_pair]
+
+        self.merges[best_pair] = new_id
+        self.vocab[new_id] = self.vocab[best_pair[0]] + self.vocab[best_pair[1]]
+
+        return self._merge(ids, best_pair, new_id), best_pair, best_pair_count
+
+    # ------------------------------------------------------------------
+    # The main training API — implemented scaffold
     # ------------------------------------------------------------------
 
     def train(
@@ -99,83 +192,105 @@ class BPETokenizer:
         text: str,
         vocab_size: int,
         *,
-        on_progress: TokenizerProgressCallback | None = None,
-        progress_every: int = 50,
+        progress_callback: ProgressCallback | None = None,
+        progress_every: int = 100,
+        on_progress: ProgressCallback | None = None,
     ) -> list[int]:
         """Learn merges from `text` until the vocabulary reaches `vocab_size`.
 
-        Algorithm:
-          1. Encode `text` to UTF-8 bytes; treat as a list of int IDs (0–255).
-          2. While the current vocab is smaller than `vocab_size`:
-               a. Count adjacent pair frequencies in the current ID list.
-               b. If no pairs remain (sequence too short), break.
-               c. Pick the most-frequent pair (ties broken arbitrarily — by
-                  insertion order in the dict, which is fine).
-               d. Assign it a new ID (the next integer ≥ 256 not yet used).
-               e. Apply the merge to the ID list (so subsequent counts are
-                  computed on the post-merge sequence).
-               f. Record the merge in `self.merges` and the corresponding
-                  byte sequence in `self.vocab`.
+        The outer training loop is implemented scaffold. `train_step` performs
+        the conceptual one-merge BPE operation.
 
         Args:
             text: training corpus.
             vocab_size: target vocabulary size. Must be ≥ 256 (the byte base);
                         exactly 256 means "no merges, just the base vocab."
-            on_progress: optional callback called during training with integer
-                         metrics: vocab size, target vocab size, number of
-                         merges, current token count, and last merge count.
-            progress_every: call `on_progress` every N merges, plus at the
-                            start and final merge.
+            progress_callback: optional function called with a progress dict
+                               every `progress_every` merge steps and at the
+                               end of training.
+            progress_every: callback cadence, in merge steps.
+            on_progress: backward-compatible alias for `progress_callback`.
 
         Returns:
             The final token IDs for `text` after all learned merges have been
-            applied. This is the same corpus state used internally during
-            training, so callers do not need to encode the training text again.
+            applied.
 
         Raises:
             ValueError: if `vocab_size < 256`.
             ValueError: if `progress_every < 1`.
         """
-        byte_text = list(text.encode("utf-8"))
-        ids = list(byte_text)
-
         if vocab_size < 256:
-            raise ValueError("vocab_size must be at least 256 to include all byte values")
+            raise ValueError("vocab_size must be at least 256")
         if progress_every < 1:
             raise ValueError("progress_every must be at least 1")
+        if progress_callback is not None and on_progress is not None:
+            raise ValueError("pass either progress_callback or on_progress, not both")
 
-        def report(last_pair_count: int = 0) -> None:
-            if on_progress is None:
+        callback = progress_callback if progress_callback is not None else on_progress
+        ids = list(text.encode("utf-8"))
+        target_vocab_size = vocab_size
+        target_merges = max(0, target_vocab_size - 256)
+        start = perf_counter()
+        steps = 0
+        last_pair: tuple[int, int] | None = None
+        last_merge_count: int | None = None
+        reported_done = False
+
+        def report(done: bool) -> None:
+            nonlocal reported_done
+            if callback is None:
                 return
-            on_progress(
+            if done:
+                reported_done = True
+            last_token_id = len(self.vocab) - 1 if last_pair is not None else None
+            last_token_bytes = (
+                self.vocab[last_token_id]
+                if last_token_id is not None and last_token_id in self.vocab
+                else None
+            )
+            last_token_text = (
+                last_token_bytes.decode("utf-8", errors="replace")
+                if last_token_bytes is not None
+                else None
+            )
+            callback(
                 {
                     "vocab_size": len(self.vocab),
-                    "target_vocab_size": vocab_size,
+                    "target_vocab_size": target_vocab_size,
+                    "merges": len(self.merges),
+                    "target_merges": target_merges,
+                    "steps": steps,
+                    "tokens": len(ids),
+                    "last_pair": last_pair,
+                    "last_token_id": last_token_id,
+                    "last_token_bytes": last_token_bytes,
+                    "last_token_text": last_token_text,
+                    "last_token_repr": repr(last_token_text)
+                    if last_token_text is not None
+                    else None,
+                    "last_merge_count": last_merge_count,
+                    "elapsed_seconds": perf_counter() - start,
+                    "done": done,
+                    # Legacy metric names used by earlier solutions notebooks.
                     "num_merges": len(self.merges),
                     "token_count": len(ids),
-                    "last_pair_count": last_pair_count,
+                    "last_pair_count": last_merge_count or 0,
                 }
             )
 
-        report()
-
-        while len(self.vocab) < vocab_size:
-            pair_counts = self._get_pair_counts(ids)
-            if not pair_counts:
-                report()
+        while len(self.vocab) < target_vocab_size:
+            result = self.train_step(ids, len(self.vocab))
+            if result is None:
                 break
 
-            best_pair = max(pair_counts, key=pair_counts.get)
-            best_pair_count = pair_counts[best_pair]
-            new_id = len(self.vocab)
-            self.merges[best_pair] = new_id
-            self.vocab[new_id] = self.vocab[best_pair[0]] + self.vocab[best_pair[1]]
+            ids, last_pair, last_merge_count = result
+            steps += 1
 
-            ids = self._merge(ids, best_pair, new_id)
+            if steps % progress_every == 0 or len(self.vocab) >= target_vocab_size:
+                report(done=len(self.vocab) >= target_vocab_size)
 
-            if len(self.merges) % progress_every == 0 or len(self.vocab) == vocab_size:
-                report(best_pair_count)
-
+        if not reported_done:
+            report(done=True)
         return ids
 
     def encode(self, text: str) -> list[int]:
@@ -197,8 +312,7 @@ class BPETokenizer:
           - `text` containing characters never seen in training → still works,
             because every UTF-8 byte is in the base vocab.
         """
-        byte_text = text.encode("utf-8")
-        ids = list(byte_text)
+        ids = list(text.encode("utf-8"))
 
         while True:
             pairs = []
@@ -212,7 +326,7 @@ class BPETokenizer:
             best_pair = min(merge_candidates, key=lambda pair: self.merges[pair])
             ids = self._merge(ids, best_pair, self.merges[best_pair])
 
-        return ids  
+        return ids
 
     def decode(self, ids: list[int]) -> str:
         """Reverse of `encode`: reconstruct the original text from IDs.

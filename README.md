@@ -115,13 +115,34 @@ The script is idempotent. It creates a project-local venv at `./.venv`, installs
 The first run may download `data/tinyshakespeare.txt` for language-model training. Larger optional datasets live behind `datasets.sh` so the normal setup stays fast. You can wait until a module asks for one, or preload all optional course data up front:
 
 ```bash
-./datasets.sh              # preload all optional course datasets
+./datasets.sh              # full preload: GloVe, TinyStories, full G2C Corpus v1
+./datasets.sh --small      # same, but build the ~1GB G2C corpus
+./datasets.sh --tiny       # only a 100MB TinyStories sample
 ./datasets.sh glove        # Module 05 pretrained vectors (~822MB download)
 ./datasets.sh tinystories  # Module 10 scale-up corpus (~1.94GB text)
-./datasets.sh all          # both large datasets
+./datasets.sh all          # same as ./datasets.sh
 ```
 
-The script is idempotent: later runs skip files that already exist and resume partial downloads when possible.
+The broader TinyLLM track uses **G2C Corpus v1**, a generated local raw-text
+corpus built from streamed upstream datasets:
+
+```bash
+./datasets.sh g2c-corpus-small  # ~1GB raw text under data/g2c-corpus-v1-small/
+./datasets.sh g2c-corpus-full   # ~9.5GB raw text under data/g2c-corpus-v1/
+./datasets.sh g2c-corpus-full --codesearchnet-js-ratio 0.2
+```
+
+By default, the CodeSearchNet slice is Python-only. The JavaScript ratio flag
+moves that fraction of the code quota to JavaScript while keeping the total code
+budget fixed.
+
+Raw corpora and downloaded datasets live under `data/`. Durable outputs produced
+from them, such as trained tokenizers, model checkpoints, eval reports, and
+post-training datasets, belong under `artifacts/`.
+
+The download targets are idempotent: later runs skip files that already exist
+and resume partial downloads when possible. The G2C corpus builder refuses to
+overwrite an existing non-empty output directory unless you pass `--force`.
 
 After setup:
 

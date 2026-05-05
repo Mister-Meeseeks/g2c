@@ -48,3 +48,4 @@ runs/
 logs/
 wandb/
 .obsidian
+artifacts/
