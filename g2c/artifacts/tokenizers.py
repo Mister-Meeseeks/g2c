@@ -7,11 +7,13 @@ here so later modules can reuse the same artifacts.
 """
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from time import perf_counter
+
+import torch
 
 from g2c.tokenizer import BPETokenizer
 from g2c.tokenizer.fast import MAX_FAST_TRAIN_CHUNK_CHARS
@@ -20,7 +22,12 @@ from g2c.tokenizer.persistence import (
     TOKEN_IDS_FILENAME,
     TOKENIZER_FILENAME,
     load_artifact,
+    load_manifest,
+    load_token_ids,
     save_artifact,
+)
+from g2c.tokenizer.persistence import (
+    load as load_tokenizer_file,
 )
 
 from .corpora import load_corpus_text
@@ -29,6 +36,8 @@ from .paths import find_repo_root, tokenizer_artifact_dir
 ArtifactProgressCallback = Callable[[dict[str, object]], None]
 ArtifactStatusCallback = Callable[[dict[str, object]], None]
 DEFAULT_ENCODED_SAMPLE_CHARS = 1_000_000
+DEFAULT_TOKENIZE_CHUNK_CHARS = 1_000_000
+TextChunkFn = Callable[[str], Iterable[str]]
 
 
 @dataclass(frozen=True)
@@ -90,6 +99,45 @@ def tokenizer_artifact_exists(
     )
 
 
+def load_tokenizer_artifact(
+    name: str,
+    *,
+    repo_root: str | Path | None = None,
+    load_ids: bool = False,
+    load_text: bool = False,
+) -> TokenizerArtifact:
+    """Load a tokenizer artifact without training it.
+
+    Module 10 and later modules use this path when the durable artifact is the
+    tokenizer table itself. Set `load_ids=True` only when you need the small
+    encoded inspection sample saved by Module 04.
+    """
+    root = find_repo_root(repo_root)
+    artifact_dir = tokenizer_artifact_dir(name, root)
+    tokenizer_path = artifact_dir / TOKENIZER_FILENAME
+    manifest_path = artifact_dir / MANIFEST_FILENAME
+    ids_path = artifact_dir / TOKEN_IDS_FILENAME
+    missing = [
+        path.relative_to(root)
+        for path in (tokenizer_path, manifest_path)
+        if not path.exists()
+    ]
+    if load_ids and not ids_path.exists():
+        missing.append(ids_path.relative_to(root))
+    if missing:
+        missing_text = ", ".join(str(path) for path in missing)
+        raise FileNotFoundError(f"missing tokenizer artifact {name!r}: {missing_text}")
+
+    tokenizer = load_tokenizer_file(BPETokenizer, tokenizer_path)
+    manifest = load_manifest(manifest_path)
+    ids = load_token_ids(ids_path) if load_ids else []
+    config = _config_from_manifest(name, manifest)
+    text = None
+    if load_text:
+        text = load_tokenizer_source_text(config.source, config.max_chars, repo_root=root)
+    return TokenizerArtifact(config, tokenizer, ids, manifest, artifact_dir, text)
+
+
 def load_tokenizer_source_text(
     source: str,
     max_chars: int,
@@ -134,6 +182,90 @@ def load_tinystories_text(
     if train_text is None or valid_text is None:
         return None
     return train_text, valid_text
+
+
+def default_text_chunks(
+    text: str,
+    *,
+    chunk_chars: int = DEFAULT_TOKENIZE_CHUNK_CHARS,
+) -> Iterable[str]:
+    """Yield fixed-size text chunks for bounded-memory tokenization."""
+    if chunk_chars < 1:
+        raise ValueError("chunk_chars must be at least 1")
+    for start in range(0, len(text), chunk_chars):
+        yield text[start : start + chunk_chars]
+
+
+def encode_text_to_tensor(
+    tokenizer: BPETokenizer,
+    text: str,
+    *,
+    chunk_fn: TextChunkFn | None = None,
+    dtype: torch.dtype = torch.long,
+    progress_callback: ArtifactProgressCallback | None = None,
+) -> torch.Tensor:
+    """Encode text into one preallocated tensor using a two-pass chunk scan.
+
+    This avoids materializing one giant Python `list[int]` before making the
+    tensor. By default it chunks every 1M characters. A future corpus-aware
+    caller can pass `chunk_fn` that yields story/document boundaries instead.
+    """
+    chunk_fn = chunk_fn or default_text_chunks
+    _emit(progress_callback, phase="encode_count_start", chars=len(text))
+    total_tokens = 0
+    chunks = 0
+    chars_seen = 0
+    for chunk in chunk_fn(text):
+        chunk_ids = tokenizer.encode_fast(chunk)
+        chunks += 1
+        chars_seen += len(chunk)
+        total_tokens += len(chunk_ids)
+        _emit(
+            progress_callback,
+            phase="encode_count_chunk",
+            chunk_index=chunks,
+            chars_seen=chars_seen,
+            chars=len(text),
+            tokens_seen=total_tokens,
+        )
+    _emit(
+        progress_callback,
+        phase="encode_count_done",
+        chunks=chunks,
+        chars=len(text),
+        token_count=total_tokens,
+    )
+
+    result = torch.empty(total_tokens, dtype=dtype)
+    offset = 0
+    _emit(
+        progress_callback,
+        phase="encode_write_start",
+        chunks=chunks,
+        token_count=total_tokens,
+    )
+    for chunk_index, chunk in enumerate(chunk_fn(text), start=1):
+        chunk_ids = tokenizer.encode_fast(chunk)
+        next_offset = offset + len(chunk_ids)
+        result[offset:next_offset] = torch.as_tensor(chunk_ids, dtype=dtype)
+        offset = next_offset
+        _emit(
+            progress_callback,
+            phase="encode_write_chunk",
+            chunk_index=chunk_index,
+            chunks=chunks,
+            tokens_written=offset,
+            token_count=total_tokens,
+        )
+    if offset != total_tokens:
+        raise ValueError("chunk_fn produced a different token count on the second pass")
+    _emit(
+        progress_callback,
+        phase="encode_done",
+        chunks=chunks,
+        token_count=total_tokens,
+    )
+    return result
 
 
 def train_or_load_tokenizer_artifact(
@@ -258,6 +390,26 @@ def _normalize_config(
     if isinstance(config, TokenizerArtifactConfig):
         return config
     return TokenizerArtifactConfig.from_mapping(config)
+
+
+def _config_from_manifest(name: str, manifest: Mapping[str, object]) -> TokenizerArtifactConfig:
+    return TokenizerArtifactConfig(
+        name=str(manifest.get("name", name)),
+        source=str(manifest.get("source", "")),
+        vocab_size=int(
+            manifest.get(
+                "requested_vocab_size",
+                manifest.get("actual_vocab_size", 256),
+            )
+        ),
+        max_chars=int(manifest.get("max_chars", manifest.get("actual_chars", 0))),
+        use_fast=str(manifest.get("trainer", "")) == "rust-tokenizers",
+        chunk_chars=int(manifest.get("chunk_chars") or MAX_FAST_TRAIN_CHUNK_CHARS),
+        encoded_sample_chars=int(
+            manifest.get("encoded_sample_chars") or DEFAULT_ENCODED_SAMPLE_CHARS
+        ),
+        notes=str(manifest.get("notes", "")),
+    )
 
 
 def _build_manifest(

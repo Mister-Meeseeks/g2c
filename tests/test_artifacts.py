@@ -4,16 +4,22 @@ import gzip
 import json
 from pathlib import Path
 
+import torch
+
 from g2c.artifacts import (
     TokenizerArtifactConfig,
+    default_text_chunks,
+    encode_text_to_tensor,
     find_repo_root,
     load_corpus_bytes,
     load_corpus_text,
     load_tinystories_text,
+    load_tokenizer_artifact,
     load_tokenizer_source_text,
     tokenizer_artifact_exists,
     train_or_load_tokenizer_artifact,
 )
+from g2c.tokenizer import BPETokenizer
 
 
 def make_repo(tmp_path: Path) -> Path:
@@ -54,6 +60,43 @@ def test_load_tokenizer_source_text_reads_tinyshakespeare(tmp_path):
     data_path.write_text("abcdef", encoding="utf-8")
 
     assert load_tokenizer_source_text("tinyshakespeare", 3, repo_root=repo) == "abc"
+
+
+def test_default_text_chunks_uses_fixed_size_chunks():
+    assert list(default_text_chunks("abcdef", chunk_chars=2)) == ["ab", "cd", "ef"]
+
+
+def test_encode_text_to_tensor_uses_two_pass_chunking():
+    tokenizer = BPETokenizer()
+    calls = 0
+
+    def chunk_fn(text: str):
+        nonlocal calls
+        calls += 1
+        return (text[index : index + 2] for index in range(0, len(text), 2))
+
+    events: list[dict[str, object]] = []
+    ids = encode_text_to_tensor(
+        tokenizer,
+        "abcdef",
+        chunk_fn=chunk_fn,
+        progress_callback=events.append,
+    )
+
+    assert calls == 2
+    assert torch.equal(ids, torch.tensor(list(b"abcdef"), dtype=torch.long))
+    assert [event["phase"] for event in events] == [
+        "encode_count_start",
+        "encode_count_chunk",
+        "encode_count_chunk",
+        "encode_count_chunk",
+        "encode_count_done",
+        "encode_write_start",
+        "encode_write_chunk",
+        "encode_write_chunk",
+        "encode_write_chunk",
+        "encode_done",
+    ]
 
 
 def test_load_tinystories_text_reads_compressed_shards(tmp_path):
@@ -169,6 +212,55 @@ def test_train_or_load_tokenizer_artifact_saves_and_reloads(tmp_path):
     assert loaded is not None
     assert loaded.ids == artifact.ids
     assert loaded.manifest == artifact.manifest
+
+
+def test_load_tokenizer_artifact_loads_without_source_text_or_ids(tmp_path):
+    repo = make_repo(tmp_path)
+    data_path = repo / "data" / "tinyshakespeare.txt"
+    data_path.parent.mkdir(parents=True)
+    data_path.write_text("hello artifact", encoding="utf-8")
+    config = TokenizerArtifactConfig(
+        name="LoadOnlyTokenizer",
+        source="tinyshakespeare",
+        vocab_size=256,
+        max_chars=20,
+    )
+    saved = train_or_load_tokenizer_artifact(config, repo_root=repo)
+
+    artifact = load_tokenizer_artifact("LoadOnlyTokenizer", repo_root=repo)
+
+    assert saved is not None
+    assert artifact.tokenizer.vocab == saved.tokenizer.vocab
+    assert artifact.ids == []
+    assert artifact.text is None
+    assert artifact.manifest["name"] == "LoadOnlyTokenizer"
+
+
+def test_load_tokenizer_artifact_can_load_sample_ids_and_text(tmp_path):
+    repo = make_repo(tmp_path)
+    data_path = repo / "data" / "tinyshakespeare.txt"
+    data_path.parent.mkdir(parents=True)
+    data_path.write_text("hello artifact", encoding="utf-8")
+    config = TokenizerArtifactConfig(
+        name="LoadFullTokenizer",
+        source="tinyshakespeare",
+        vocab_size=256,
+        max_chars=20,
+        encoded_sample_chars=5,
+    )
+    train_or_load_tokenizer_artifact(config, repo_root=repo)
+
+    artifact = load_tokenizer_artifact(
+        "LoadFullTokenizer",
+        repo_root=repo,
+        load_ids=True,
+        load_text=True,
+    )
+
+    assert artifact.ids == list(b"hello")
+    assert artifact.text == "hello artifacthello "
+    assert artifact.config.source == "tinyshakespeare"
+    assert artifact.config.encoded_sample_chars == 5
 
 
 def test_train_or_load_tokenizer_artifact_saves_sample_ids(tmp_path):

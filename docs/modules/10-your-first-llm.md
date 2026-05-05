@@ -140,19 +140,21 @@ pytest tests/test_pretraining.py -k trainer -v
 
 The only scaffolded Module 10 method is `Trainer.train_step`. Construction, `lr`, `evaluate`, and `train` are implemented so the student can focus on the one load-bearing step.
 
-The default notebook run uses `data/tinyshakespeare.txt`, which normal `./setup.sh` downloads because it is tiny. The optional scale-up runs use TinyStories; download it only when you want those longer experiments:
+The default notebook run uses `data/tinyshakespeare.txt`, which normal `./setup.sh` downloads because it is tiny. It loads the `ShakespeareTokenizer` artifact from Module 04 rather than training a tokenizer again. If the artifact is missing, run the Module 04 Mini Milestone tokenizer cell first.
+
+The optional scale-up runs use TinyStories; download it only when you want those longer experiments:
 
 ```bash
 ./datasets.sh tinystories
 ```
 
-If TinyStories is missing, the notebook prints a skip message and the TinyShakespeare run still works.
+If TinyStories or the Module 04 `StoryTokenizer` artifact is missing, the notebook prints a skip message and the TinyShakespeare run still works.
 
 TinyStories is stored under `data/tinystories/` as gzip-compressed shards split
 by 100MB of uncompressed text per shard. The notebook loaders read those shards
 directly; you do not need to decompress them by hand.
 
-The TinyStories scale-up defaults use byte-level tokenization (`target_vocab_size=256`) so corpus preparation stays fast with the from-scratch Module 04 tokenizer. Raising the TinyStories vocab size trains BPE on a much larger corpus and is intentionally a slower experiment.
+The TinyStories scale-up loads the `StoryTokenizer` artifact from Module 04 and only encodes the current train/validation slices here. This keeps Module 10 focused on training the model, not redoing BPE training.
 
 ## What You'll Build
 
@@ -192,13 +194,13 @@ Enter questions or answers in [answers/module-10.md](../../answers/module-10.md)
 
 1. **Implement `Trainer.train_step`.** Follow the method docstring exactly. Run `pytest tests/test_pretraining.py -k train_step -x`, then the full `tests/test_pretraining.py`.
 
-2. **Prepare the first corpus.** Tokenize a 1M-character TinyShakespeare slice, split it with `split_token_stream`, print token counts, print `log(V)`, and verify one random batch shape. This should be quick and boring. If it is confusing, go back to Module 09B.
+2. **Prepare the first corpus.** Load the Module 04 `ShakespeareTokenizer`, encode a 1M-character TinyShakespeare slice, split it with `split_token_stream`, print token counts, print `log(V)`, and verify one random batch shape. This should be quick and boring. If it is confusing, go back to Module 09B.
 
 3. **Train a tiny TransformerLM.** Start small: `embedding_dim=128`, `num_layers=4`, `num_heads=4`, `max_seq_len=128`, `batch_size=32`, `context_length=64`, `optimizer="adamw"`, `max_lr=3e-4`, `min_lr=3e-5`, `warmup_steps=100`, `weight_decay=0.01`, `grad_clip=1.0`, `max_steps=2000`. Plot train and validation loss.
 
 4. **Sample from checkpoints or training milestones.** Generate text from the initial model and the trained model using the Module 11-style local sampler in the notebook. Record what improves first: character legality, word fragments, punctuation, line breaks, local phrases, or longer coherence.
 
-5. **Run controlled TinyStories scale-ups.** After `./datasets.sh tinystories`, run the notebook's ~5M-parameter TinyStories experiment, then optionally the ~30M-parameter experiment. Compare validation loss and samples against the TinyShakespeare baseline. The notebook skips these cells gracefully if TinyStories is not available.
+5. **Run controlled TinyStories scale-ups.** After `./datasets.sh tinystories` and the Module 04 `StoryTokenizer` artifact, run the notebook's ~5M-parameter TinyStories experiment, then optionally the ~30M-parameter experiment. Compare validation loss and samples against the TinyShakespeare baseline. The notebook skips these cells gracefully if TinyStories or the tokenizer artifact is not available.
 
 6. **Diagnose the run.** Write a short post-run note: final train loss, final validation loss, final validation perplexity, whether validation tracked training, whether the learning rate looked sane, and one next experiment you would run.
 
