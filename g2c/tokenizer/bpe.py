@@ -64,7 +64,7 @@ class BPETokenizer:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, object]) -> "BPETokenizer":
+    def from_dict(cls, payload: dict[str, object]) -> BPETokenizer:
         """Construct a tokenizer from `to_dict()` output."""
         if payload.get("format") != TOKENIZER_FORMAT:
             raise ValueError("not a g2c BPE tokenizer payload")
@@ -102,7 +102,7 @@ class BPETokenizer:
         path.write_text(json.dumps(self.to_dict(), indent=2) + "\n", encoding="utf-8")
 
     @classmethod
-    def load(cls, path: str | Path) -> "BPETokenizer":
+    def load(cls, path: str | Path) -> BPETokenizer:
         """Load a tokenizer saved by `save`."""
         payload = json.loads(Path(path).read_text(encoding="utf-8"))
         if not isinstance(payload, dict):
