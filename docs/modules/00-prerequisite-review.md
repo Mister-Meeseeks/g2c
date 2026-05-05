@@ -291,6 +291,14 @@ Run the setup script once:
 ./setup.sh
 ```
 
+That prepares the Python environment, the small TinyShakespeare corpus, and the smoke test. Larger datasets are optional and are not part of normal setup. If you want to preload the larger local data files used later in the course, run:
+
+```bash
+./datasets.sh
+```
+
+You can also wait until a module asks for a dataset and download only that target, such as `./datasets.sh glove` for Module 05 or `./datasets.sh tinystories` for Module 10. The script is idempotent, so repeated runs skip files that are already present.
+
 If feedback shows a weak spot, ask the agent for a few focused practice problems in chat. You can answer one, some, or all of them, and the agent should grade only what you attempt.
 
 ## Exercises
@@ -355,4 +363,3 @@ Optional:
 - [ ] You can explain logits, softmax, cross-entropy, and perplexity.
 - [ ] `./setup.sh` runs successfully, including its smoke-test step.
 - [ ] You know to use `pytest -x` as the next directive while implementing.
-

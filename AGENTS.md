@@ -14,7 +14,7 @@ The student is the repo author. Both roles are live.
 ## Hard constraints
 
 - **Runs on an M-series MacBook.** No cloud GPUs, no paid compute. Code, datasets, and model sizes must stay within what an M1/M2/M3/M4 with 16–64GB unified memory can execute.
-- **From-scratch through the architecture.** Weeks 1–11 must not import a high-level abstraction for the concept under study. Don't use `torch.nn.MultiheadAttention` inside the attention module — the point is to build it. Using PyTorch tensor primitives, autograd (after week 1), and standard optimizers is fine when the concept under study is something else. Weeks 12–15 keep working with the self-trained model. Weeks 16–20 pivot to a pretrained open model.
+- **From-scratch through the architecture.** Weeks 1–11 must not import a high-level abstraction for the concept under study. Don't use `torch.nn.MultiheadAttention` inside the attention module — the point is to build it. Using PyTorch tensor primitives, autograd (after week 1), and standard optimizers is fine when the concept under study is something else. Weeks 12–15 keep working with the self-trained StoryLM/TinyLLM model tracks. Weeks 16–20 pivot to `ProdLLM`: a local pretrained instruct backend sized to the student's machine.
 - **Pedagogy over performance.** Code should be legible. Optimize for "every internal piece is understandable" over "this runs fastest." Performance work is its own later concern.
 
 ## Stack
@@ -34,12 +34,14 @@ The student is the repo author. Both roles are live.
 - `notebooks/solutions/NN-*.ipynb` — working or solved notebook copies; use `.venv/bin/python scripts/open_notebook.py NN` to create or resume, and `--fresh` to archive the existing copy before resetting from clean
 - `answers/module-NN.md` — student-owned written answers for that module's exercises
 - `docs/rubrics/module-NN.md` — course-owned grading rubric for written answers; use for review, not as a replacement for the student's work
+- `docs/design/model-artifacts-and-tracks.md` — durable model artifact, hardware track, and Modules 10-20 backend plan
 - `data/` — datasets; anything large is gitignored
 - `tests/test_<topic>.py` — tests for each module's public API
 
 ## When working on a module
 
 - Read `docs/modules/NN-name.md` first to understand intent.
+- For Modules 10-20, also read `docs/design/model-artifacts-and-tracks.md` before changing model artifacts, saved outputs, SFT/DPO/eval tracks, or production-model backend assumptions.
 - The deliverable goes in `g2c/<topic>/`.
 - Add tests under `tests/test_<topic>.py`.
 - Each module's public API should be minimal and stable — later modules will import it.

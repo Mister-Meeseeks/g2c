@@ -198,6 +198,14 @@ Open the working notebook copy with:
 
 The clean scaffold lives at `notebooks/clean/05-embeddings.ipynb`; do your work in the generated `notebooks/solutions/05-embeddings.ipynb` copy.
 
+Exercise 6 uses pretrained GloVe vectors. They are optional and larger than the normal setup assets:
+
+```bash
+./datasets.sh glove
+```
+
+The notebook skips the pretrained analogy section if `data/glove.6B.50d.txt` is missing.
+
 ## Exercises
 
 The implementation path is the test suite above. The notebook starts with an executable test gate, then turns the implemented pieces into prediction, inspection, and explanation exercises.
@@ -212,7 +220,7 @@ The implementation path is the test suite above. The notebook starts with an exe
 
 5. **Train tiny co-occurrence embeddings.** Use the notebook's skip-gram scaffold: tokenize a small corpus, generate center/context pairs, train a tiny model, and plot the learned embedding rows in 2D. Look for any visible structure, but be honest about what a tiny corpus can and cannot learn.
 
-6. **Try pretrained vector analogies.** `./setup.sh` prepares `data/glove.6B.50d.txt` for this exercise, downloading and extracting it if needed. Load a small subset, check analogies like `king - man + woman`, and plot a 2D projection of the selected pretrained vectors. Compare that result with your tiny trained embeddings and explain what corpus scale changes.
+6. **Try pretrained vector analogies.** `./datasets.sh glove` prepares `data/glove.6B.50d.txt` for this exercise, downloading and extracting it if needed. Load a small subset, check analogies like `king - man + woman`, and plot a 2D projection of the selected pretrained vectors. Compare that result with your tiny trained embeddings and explain what corpus scale changes.
 
 7. **Compare positional schemes side-by-side.** Plot learned, sinusoidal, and RoPE tables as heatmaps. Identify which table is learned, which ones are fixed, and what visual pattern sinusoidal and RoPE share.
 

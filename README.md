@@ -43,8 +43,28 @@ Start with the [syllabus](docs/syllabus.md) for the full 20-week arc plus the fa
 - **Pacing unit.** Each module is one "week" of effort at the level of a rigorous elite-college course. Calendar pace is whatever it ends up being.
 - **Framework.** PyTorch with the MPS backend (Apple Silicon GPU) is the primary framework throughout. MLX is used selectively for inference-heavy stages where Apple-native performance matters. Rationale: PyTorch has the deepest ecosystem and the broadest reference material; MLX is faster on M-series but is an optimization tool, not a pedagogical one.
 - **From-scratch boundary.** Weeks 1–11 (autodiff through pretraining + sampling) build the concept under study from scratch — no `torch.nn.MultiheadAttention` in the attention module, etc. Using PyTorch tensor primitives and autograd as substrate is fine once those layers are themselves established. Weeks 12–15 (scaling, SFT, DPO, eval) keep working with the model you trained yourself; quality is visibly toy and that's the point.
-- **Capstone pivot.** Weeks 16–20 (inference, RAG, tools, agents, capstone) pivot to a small pretrained open model (e.g. Llama 3 8B, Qwen 2.5) via Ollama or MLX, so the resulting assistant is actually usable.
+- **Capstone pivot.** Weeks 16–20 (inference, RAG, tools, agents, capstone) pivot to a local pretrained instruct model sized to your machine. The course calls this role `ProdLLM`: the point is the backend contract, not one fixed model name.
 - **Repo style.** One monorepo. The `g2c/` Python package grows over the course; each module's submodule is consumed by later modules.
+
+## Hardware tracks and saved artifacts
+
+The course is designed for M-series Macs, but not every student needs to run
+the same model sizes. The required path should work on smaller machines; larger
+runs are optional and mostly buy more satisfying local model artifacts.
+
+- **Small track:** smaller StoryLM/TinyLLM runs. This path teaches all core
+  mechanics, but samples and instruction following will be weak.
+- **Default track:** StoryLM-30M or similar local artifacts. This is the main
+  Module 10-15 experience when hardware and time allow.
+- **Stretch track:** larger local TinyLLM experiments. These are slower and
+  more satisfying, but never required for the core path.
+- **ProdLLM phase:** Modules 16-20 use a local pretrained instruct model chosen
+  to fit your machine. Smaller fallback models are acceptable; 7B-8B-class
+  models are the intended reference tier when they run comfortably.
+
+Large datasets and checkpoints live outside normal setup. See
+[Model Artifacts and Course Tracks](docs/design/model-artifacts-and-tracks.md)
+for the durable artifact names, model-family roles, and reuse expectations.
 
 ## Repository layout
 
@@ -90,9 +110,18 @@ Then bootstrap the project environment:
 ./setup.sh
 ```
 
-The script is idempotent. It creates a project-local venv at `./.venv`, installs `g2c` (editable) plus dev dependencies, prepares course data assets, and runs a smoke test that verifies PyTorch's MPS backend works on your machine. Re-run it any time to re-verify.
+The script is idempotent. It creates a project-local venv at `./.venv`, installs `g2c` (editable) plus dev dependencies, prepares the small TinyShakespeare corpus, and runs a smoke test that verifies PyTorch's MPS backend works on your machine. Re-run it any time to re-verify.
 
-The first run may download `data/tinyshakespeare.txt` for language-model training and Stanford's GloVe 6B archive (~822MB) to extract `data/glove.6B.50d.txt` for Module 05. Later runs skip these steps when the files already exist.
+The first run may download `data/tinyshakespeare.txt` for language-model training. Larger optional datasets live behind `datasets.sh` so the normal setup stays fast. You can wait until a module asks for one, or preload all optional course data up front:
+
+```bash
+./datasets.sh              # preload all optional course datasets
+./datasets.sh glove        # Module 05 pretrained vectors (~822MB download)
+./datasets.sh tinystories  # Module 10 scale-up corpus (~1.94GB text)
+./datasets.sh all          # both large datasets
+```
+
+The script is idempotent: later runs skip files that already exist and resume partial downloads when possible.
 
 After setup:
 

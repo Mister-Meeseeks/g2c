@@ -492,6 +492,33 @@ def test_trainer_train_records_val_loss():
         assert math.isfinite(v)
 
 
+def test_trainer_train_on_log_receives_progress_events():
+    torch.manual_seed(0)
+    t = Trainer(
+        _tiny_model(),
+        batch_size=4,
+        context_length=6,
+        max_steps=6,
+        max_lr=1e-3,
+        eval_every=3,
+        eval_iters=1,
+        log_every=2,
+    )
+    ids = torch.randint(0, 12, (200,))
+    events: list[dict[str, float | int | None]] = []
+
+    t.train(ids, val_ids=ids, on_log=events.append)
+
+    assert events
+    assert events[0]["step"] == 0
+    assert events[-1]["step"] == 5
+    assert any(event["val_loss"] is not None for event in events)
+    for event in events:
+        assert {"step", "train_loss", "val_loss", "lr", "grad_norm"} <= event.keys()
+        assert event["elapsed_s"] is not None
+        assert event["steps_per_s"] is not None
+
+
 def test_trainer_smoke_train_decreases_val_loss():
     """End-to-end: a real (tiny) pretraining run should make val loss
     go down. The headline test for Module 10 — if any piece of the
