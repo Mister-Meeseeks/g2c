@@ -15,6 +15,7 @@ learning the algorithm in `bpe.py`.
 """
 from __future__ import annotations
 
+import gc
 import json
 import os
 import tempfile
@@ -178,6 +179,8 @@ def train_fast(
             trainer=trainer,
             length=total_chunks,
         )
+    del iterator, native_reporter, trainer
+    gc.collect()
     _emit_progress(
         progress_callback,
         phase="fast_chunks_done",
@@ -188,26 +191,12 @@ def train_fast(
     with tempfile.TemporaryDirectory() as tmpdir:
         _vocab_path, merges_path = rust_tokenizer.model.save(tmpdir, prefix="bpe")
         merge_lines = Path(merges_path).read_text(encoding="utf-8").splitlines()
+    del rust_tokenizer
+    gc.collect()
 
-    new_id = 256
-    for line in merge_lines:
-        if not line or line.startswith("#"):
-            continue
-        left, right = line.split(" ", maxsplit=1)
-        left_bytes = token_string_to_bytes(left)
-        right_bytes = token_string_to_bytes(right)
-        left_id = _ensure_vocab_bytes(byte_to_id, left_bytes)
-        right_id = _ensure_vocab_bytes(byte_to_id, right_bytes)
-        pair = (left_id, right_id)
-        if pair in tokenizer.merges:
-            continue
-        tokenizer.merges[pair] = new_id
-        new_bytes = left_bytes + right_bytes
-        tokenizer.vocab[new_id] = new_bytes
-        byte_to_id[new_bytes] = new_id
-        new_id += 1
-        if new_id >= vocab_size:
-            break
+    _import_merge_lines(tokenizer, byte_to_id, merge_lines)
+    del merge_lines
+    gc.collect()
 
     _emit_progress(
         progress_callback,
@@ -226,11 +215,77 @@ def train_fast(
     return ids
 
 
-def _ensure_vocab_bytes(byte_to_id: dict[bytes, int], token_bytes: bytes) -> int:
-    token_id = byte_to_id.get(token_bytes)
-    if token_id is not None:
+def _import_merge_lines(
+    tokenizer: BPETokenizer,
+    byte_to_id: dict[bytes, int],
+    merge_lines: list[str],
+) -> None:
+    """Import Hugging Face merge lines into the course tokenizer tables.
+
+    Hugging Face merge files are usually topological, but large mixed corpora can
+    produce lines that reference a composite token before that token's own merge
+    has been imported into our course ID space. Build a byte-level dependency
+    map first, then materialize missing operands recursively.
+    """
+    merge_pairs: list[tuple[bytes, bytes]] = []
+    merge_by_output: dict[bytes, tuple[bytes, bytes]] = {}
+    for line in merge_lines:
+        if not line or line.startswith("#"):
+            continue
+        left, right = line.split(" ", maxsplit=1)
+        left_bytes = token_string_to_bytes(left)
+        right_bytes = token_string_to_bytes(right)
+        merge_pairs.append((left_bytes, right_bytes))
+        merge_by_output.setdefault(left_bytes + right_bytes, (left_bytes, right_bytes))
+
+    next_id = max(tokenizer.vocab) + 1
+
+    def ensure(token_bytes: bytes) -> int:
+        nonlocal next_id
+        token_id = byte_to_id.get(token_bytes)
+        if token_id is not None:
+            return token_id
+
+        left_bytes, right_bytes = merge_by_output.get(
+            token_bytes,
+            _fallback_split(token_bytes, byte_to_id),
+        )
+        left_id = ensure(left_bytes)
+        right_id = ensure(right_bytes)
+        pair = (left_id, right_id)
+
+        existing_id = byte_to_id.get(token_bytes)
+        if existing_id is not None:
+            return existing_id
+        if pair in tokenizer.merges:
+            token_id = tokenizer.merges[pair]
+            byte_to_id[token_bytes] = token_id
+            return token_id
+
+        token_id = next_id
+        next_id += 1
+        tokenizer.merges[pair] = token_id
+        tokenizer.vocab[token_id] = token_bytes
+        byte_to_id[token_bytes] = token_id
         return token_id
-    raise ValueError("fast BPE merge references token bytes not yet in vocab")
+
+    for left_bytes, right_bytes in merge_pairs:
+        ensure(left_bytes + right_bytes)
+
+
+def _fallback_split(
+    token_bytes: bytes,
+    byte_to_id: dict[bytes, int],
+) -> tuple[bytes, bytes]:
+    """Split an unexpected composite token into known byte-level pieces."""
+    if len(token_bytes) < 2:
+        raise ValueError("fast BPE merge references unknown byte token")
+    for split_at in range(len(token_bytes) - 1, 0, -1):
+        left = token_bytes[:split_at]
+        right = token_bytes[split_at:]
+        if left in byte_to_id:
+            return left, right
+    return token_bytes[:1], token_bytes[1:]
 
 
 def _make_bpe_trainer(

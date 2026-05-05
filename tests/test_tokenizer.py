@@ -18,6 +18,7 @@ from __future__ import annotations
 import pytest
 
 from g2c.tokenizer import BPETokenizer
+from g2c.tokenizer.fast import _import_merge_lines, bytes_to_token_string
 from g2c.tokenizer.persistence import (
     load_artifact,
     load_token_ids,
@@ -167,6 +168,21 @@ def test_train_fast_progress_callback_reports_chunks_and_encoding():
     assert "fast_chunks_done" in phases
     assert phases[-1] == "fast_encode_done"
     assert reports[-1]["token_count"] == len(tok.encode_fast(text))
+
+
+def test_fast_merge_import_handles_out_of_order_composite_operand():
+    tok = BPETokenizer()
+    byte_to_id = {bytes([i]): i for i in range(256)}
+    merge_lines = [
+        f"{bytes_to_token_string(b'ab')} {bytes_to_token_string(b'c')}",
+        f"{bytes_to_token_string(b'a')} {bytes_to_token_string(b'b')}",
+    ]
+
+    _import_merge_lines(tok, byte_to_id, merge_lines)
+
+    assert tok.decode(tok.encode_fast("abcabc")) == "abcabc"
+    assert b"ab" in tok.vocab.values()
+    assert b"abc" in tok.vocab.values()
 
 
 # ----------------------------------------------------------------------

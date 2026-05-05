@@ -345,6 +345,7 @@ tests/test_tokenizer.py::test_initial_vocab_size
 tests/test_tokenizer.py::test_encode_fast_applies_learned_merges_in_priority_order
 tests/test_tokenizer.py::test_encode_fast_no_merges_is_utf8_bytes
 tests/test_tokenizer.py::test_encode_fast_respects_non_overlapping_merges
+tests/test_tokenizer.py::test_fast_merge_import_handles_out_of_order_composite_operand
 tests/test_tokenizer.py::test_from_dict_rejects_wrong_format
 tests/test_tokenizer.py::test_save_load_round_trips_learned_merges
 tests/test_tokenizer.py::test_train_below_base_size_raises
