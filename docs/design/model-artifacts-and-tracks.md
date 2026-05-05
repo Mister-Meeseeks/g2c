@@ -132,6 +132,7 @@ The durable model artifacts are:
 The durable non-model artifacts are:
 
 - tokenizers;
+- raw corpora;
 - SFT datasets;
 - DPO preference datasets;
 - eval reports;
@@ -172,6 +173,16 @@ Training and eval data should be saved as data artifacts rather than hidden in
 notebook outputs:
 
 ```text
+data/g2c-corpus-v1/
+  manifest.json
+  raw/
+    fineweb-edu-dedup/
+      train-00000.txt.gz
+      val-00000.txt.gz
+    cosmopedia-v2/
+    tinystories/
+    codesearchnet-python/
+
 artifacts/datasets/<dataset-name>/
   train.jsonl
   val.jsonl
@@ -195,6 +206,46 @@ artifacts/evals/<eval-name>/
 - git commit if available;
 - creation date;
 - notes on intended use.
+
+## G2C Corpus v1
+
+G2C Corpus v1 is the broader raw-text corpus for the TinyLLM track. The corpus
+builder keeps subcorpora separate so later tokenizers and training scripts can
+sample different mixtures without rebuilding the raw text.
+
+The full target mix is:
+
+- FineWeb-Edu-Dedup: ~5GB
+- Cosmopedia v2: ~2.5GB
+- TinyStories: ~1GB
+- CodeSearchNet: ~1GB
+
+The small target uses the same ratios at about 1GB total. CodeSearchNet defaults
+to Python-only because the course code is Python and small models have limited
+capacity. The builder accepts `--codesearchnet-js-ratio` for experiments that
+shift part of the code quota to JavaScript while keeping the total code budget
+fixed.
+
+Build commands:
+
+```bash
+./datasets.sh              # full preload, including data/g2c-corpus-v1/
+./datasets.sh --small      # preload with data/g2c-corpus-v1-small/
+./datasets.sh --tiny       # only a 100MB TinyStories sample
+./datasets.sh g2c-corpus-small
+./datasets.sh g2c-corpus-full
+./datasets.sh g2c-corpus-full --codesearchnet-js-ratio 0.2
+```
+
+The small corpus is stored under `data/g2c-corpus-v1-small/`; the full corpus is
+stored under `data/g2c-corpus-v1/`. Both use compressed raw text shards. Quotas
+are measured in uncompressed normalized UTF-8 bytes, not compressed file size.
+Later tokenizer/training scripts should read `manifest.json` instead of assuming
+a fixed file list.
+
+Raw corpora are `data/` assets, not `artifacts/` outputs. Tokenizers, trained
+models, checkpoints, eval reports, and post-training datasets produced from the
+raw corpus should be saved under `artifacts/`.
 
 ## Module Map
 

@@ -18,6 +18,7 @@ dev = [
     "jupyter>=1.0",
     "matplotlib>=3.8",
     "torchvision>=0.19",
+    "datasets>=3.0",
 ]
 
 [build-system]
