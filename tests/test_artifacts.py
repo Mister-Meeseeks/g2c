@@ -44,6 +44,7 @@ def test_tokenizer_config_accepts_mapping_defaults():
     assert config.name == "Tiny"
     assert config.use_fast is True
     assert config.chunk_chars == 8_192
+    assert config.encoded_sample_chars == 1_000_000
 
 
 def test_load_tokenizer_source_text_reads_tinyshakespeare(tmp_path):
@@ -159,6 +160,8 @@ def test_train_or_load_tokenizer_artifact_saves_and_reloads(tmp_path):
     assert artifact is not None
     assert artifact.manifest["name"] == "TestTokenizer"
     assert artifact.ids == list(b"hello artifacthello ")
+    assert artifact.manifest["encoded_full_training_text"] is True
+    assert artifact.manifest["token_ids_kind"] == "encoded_sample"
     assert tokenizer_artifact_exists("TestTokenizer", repo_root=repo)
 
     loaded = train_or_load_tokenizer_artifact(config, repo_root=repo)
@@ -166,6 +169,62 @@ def test_train_or_load_tokenizer_artifact_saves_and_reloads(tmp_path):
     assert loaded is not None
     assert loaded.ids == artifact.ids
     assert loaded.manifest == artifact.manifest
+
+
+def test_train_or_load_tokenizer_artifact_saves_sample_ids(tmp_path):
+    repo = make_repo(tmp_path)
+    data_path = repo / "data" / "tinyshakespeare.txt"
+    data_path.parent.mkdir(parents=True)
+    data_path.write_text("abcdefghijklmnopqrstuvwxyz", encoding="utf-8")
+    config = TokenizerArtifactConfig(
+        name="SampleTokenizer",
+        source="tinyshakespeare",
+        vocab_size=256,
+        max_chars=26,
+        encoded_sample_chars=5,
+    )
+
+    artifact = train_or_load_tokenizer_artifact(config, repo_root=repo)
+
+    assert artifact is not None
+    assert artifact.ids == list(b"abcde")
+    assert artifact.manifest["actual_chars"] == 26
+    assert artifact.manifest["encoded_chars"] == 5
+    assert artifact.manifest["encoded_sample_chars"] == 5
+    assert artifact.manifest["encoded_full_training_text"] is False
+    assert artifact.manifest["token_count"] == 5
+
+
+def test_fast_tokenizer_artifact_skips_full_training_text_encode(tmp_path):
+    repo = make_repo(tmp_path)
+    text = "abab abcabc " * 20
+    data_path = repo / "data" / "tinyshakespeare.txt"
+    data_path.parent.mkdir(parents=True)
+    data_path.write_text(text, encoding="utf-8")
+    config = TokenizerArtifactConfig(
+        name="FastSampleTokenizer",
+        source="tinyshakespeare",
+        vocab_size=260,
+        max_chars=len(text),
+        encoded_sample_chars=10,
+        use_fast=True,
+    )
+    events: list[dict[str, object]] = []
+
+    artifact = train_or_load_tokenizer_artifact(
+        config,
+        repo_root=repo,
+        status_callback=events.append,
+    )
+
+    assert artifact is not None
+    assert artifact.ids == artifact.tokenizer.encode_fast(text[:10])
+    assert artifact.manifest["actual_chars"] == len(text)
+    assert artifact.manifest["encoded_chars"] == 10
+    phases = [event.get("phase") for event in events]
+    assert "fast_encode_skipped" in phases
+    assert "sample_encode_start" in phases
+    assert "fast_encode_start" not in phases
 
 
 def test_train_or_load_tokenizer_artifact_missing_source_returns_none(tmp_path):

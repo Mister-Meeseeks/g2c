@@ -170,7 +170,7 @@ The implementation path is the test suite above. The notebook exercises are for 
 
 6. **Optional: pre-tokenization.** Try a GPT-2-style pre-split before BPE so merges do not freely cross every boundary. Compare the learned vocab before and after. The useful question is not "which one is correct?" but "what kinds of tokens does each procedure encourage?"
 
-The notebook ends with a **Mini Milestone** section that turns your tokenizer into reusable artifacts. It uses `g2c.artifacts` to train or load configured tokenizers with progress updates, save each tokenizer plus its encoded token stream under `artifacts/tokenizers/`, and keep path/loading logic reusable outside the notebook. The notebook then prints inspection views: a pseudo-random text window tokenized as strings, frequent final tokens after encoding, frequent learned final tokens after encoding, greedy longest learned tokens that skip substring duplicates, and a frequency plot. `ShakespeareTokenizer` is enabled by default. `StoryTokenizer` and `G2CTokenizer` are configured but disabled until you choose to run the larger dataset path.
+The notebook ends with a **Mini Milestone** section that turns your tokenizer into reusable artifacts. It uses `g2c.artifacts` to train or load configured tokenizers with progress updates, save each tokenizer plus a small encoded inspection sample under `artifacts/tokenizers/`, and keep path/loading logic reusable outside the notebook. Full pre-tokenized corpora are separate later artifacts; the durable thing here is the learned tokenizer table. The notebook then prints inspection views: a pseudo-random text window tokenized as strings, frequent final tokens after encoding, frequent learned final tokens after encoding, greedy longest learned tokens that skip substring duplicates, and a frequency plot. `ShakespeareTokenizer` is enabled by default. `StoryTokenizer` and `G2CTokenizer` are configured but disabled until you choose to run the larger dataset path.
 
 ## Pitfalls to expect
 
@@ -210,7 +210,7 @@ Optional:
 
 - [ ] All tests in `tests/test_tokenizer.py` pass.
 - [ ] `notebooks/solutions/04-tokenizer.ipynb`: trained on a real corpus at three vocab sizes; token count + compression ratio table; printed top-20 / bottom-20 of learned vocab at the largest size.
-- [ ] `artifacts/tokenizers/ShakespeareTokenizer/`: saved `tokenizer.json`, `ids.uint32`, and `manifest.json`.
+- [ ] `artifacts/tokenizers/ShakespeareTokenizer/`: saved `tokenizer.json`, sample `ids.uint32`, and `manifest.json`.
 - [ ] Optional: after running `./datasets.sh --small` or `./datasets.sh tinystories`, enabled and saved `StoryTokenizer` and/or `G2CTokenizer`. The logical `g2c` source prefers the full corpus when present and falls back to the small corpus.
 - [ ] You've inspected the learned vocabulary and can point to a few subword tokens that are obviously frequent patterns (`"the"`, `"ing"`, `" of"`, etc.) and a few that are more specific to your corpus.
 - [ ] You can explain — out loud, without notes — why `[1, 1, 1]` merging `(1, 1)` produces `[99, 1]`, not `[99, 99]`.

@@ -187,7 +187,7 @@ def train_or_load_tokenizer_artifact(
             requested_chunk_chars=config.chunk_chars,
             chunks=chunks,
         )
-        ids = tokenizer.train_fast(
+        tokenizer.train_fast(
             text,
             vocab_size=config.vocab_size,
             show_progress=False,

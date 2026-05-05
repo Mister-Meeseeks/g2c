@@ -165,7 +165,7 @@ models:
 ```text
 artifacts/tokenizers/<tokenizer-name>/
   tokenizer.json
-  ids.uint32
+  ids.uint32      # small encoded inspection sample, not the full corpus
   manifest.json
 ```
 
