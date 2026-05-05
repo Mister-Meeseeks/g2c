@@ -297,7 +297,7 @@ That prepares the Python environment, the small TinyShakespeare corpus, and the 
 ./datasets.sh
 ```
 
-You can also wait until a module asks for a dataset and download only that target, such as `./datasets.sh glove` for Module 05 or `./datasets.sh tinystories` for Module 10. The script is idempotent, so repeated runs skip files that are already present.
+You can also wait until a module asks for a dataset and download only that target, such as `./datasets.sh glove` for Module 05 or `./datasets.sh tinystories` for Module 10. TinyStories is stored as compressed 100MB-uncompressed text shards. The script is idempotent, so repeated runs skip files that are already present.
 
 If feedback shows a weak spot, ask the agent for a few focused practice problems in chat. You can answer one, some, or all of them, and the agent should grade only what you attempt.
 

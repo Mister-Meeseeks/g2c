@@ -217,7 +217,7 @@ The full target mix is:
 
 - FineWeb-Edu-Dedup: ~5GB
 - Cosmopedia v2: ~2.5GB
-- TinyStories: ~1GB
+- TinyStories: ~1GB, stored as gzip-compressed 100MB-uncompressed text shards
 - CodeSearchNet: ~1GB
 
 The small target uses the same ratios at about 1GB total. CodeSearchNet defaults

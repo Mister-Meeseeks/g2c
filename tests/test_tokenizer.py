@@ -18,6 +18,12 @@ from __future__ import annotations
 import pytest
 
 from g2c.tokenizer import BPETokenizer
+from g2c.tokenizer.persistence import (
+    load_artifact,
+    load_token_ids,
+    save_artifact,
+    save_token_ids,
+)
 
 # ----------------------------------------------------------------------
 # Construction (boilerplate — passes from the start)
@@ -76,6 +82,31 @@ def test_from_dict_rejects_wrong_format():
         BPETokenizer.from_dict({"format": "other", "version": 1, "merges": []})
 
 
+def test_token_id_binary_persistence_round_trips(tmp_path):
+    ids = [0, 255, 256, 4096]
+    path = tmp_path / "ids.uint32"
+
+    save_token_ids(ids, path)
+
+    assert load_token_ids(path) == ids
+
+
+def test_artifact_persistence_round_trips(tmp_path):
+    tok = BPETokenizer()
+    tok.merges[(97, 98)] = 256
+    tok.vocab[256] = b"ab"
+    ids = [256, 97]
+    manifest = {"name": "ExampleTokenizer", "token_count": len(ids)}
+
+    save_artifact(tok, ids, manifest, tmp_path)
+    loaded_tok, loaded_ids, loaded_manifest = load_artifact(BPETokenizer, tmp_path)
+
+    assert loaded_tok.merges == tok.merges
+    assert loaded_tok.vocab == tok.vocab
+    assert loaded_ids == ids
+    assert loaded_manifest == manifest
+
+
 # ----------------------------------------------------------------------
 # Fast path (infrastructure — passes from the start)
 # ----------------------------------------------------------------------
@@ -106,7 +137,7 @@ def test_train_fast_populates_course_merge_tables():
     text = "ababab abcabc " * 4
     tok = BPETokenizer()
 
-    ids = tok.train_fast(text, vocab_size=270, show_progress=False)
+    ids = tok.train_fast(text, vocab_size=270, show_progress=False, chunk_chars=5)
 
     assert len(tok.vocab) > 256
     assert len(tok.vocab) == 256 + len(tok.merges)

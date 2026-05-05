@@ -110,21 +110,26 @@ def train_fast(
     vocab_size: int,
     *,
     show_progress: bool = True,
+    chunk_chars: int = 1_000_000,
 ) -> list[int]:
     """Train byte-level BPE with the Rust-backed trainer.
 
     The learned merge table is copied back onto `tokenizer`, preserving the
-    course `BPETokenizer` representation.
+    course `BPETokenizer` representation. The input text is passed to the Rust
+    trainer as a chunked iterator instead of one giant string, which is closer
+    to how the library is optimized to consume larger corpora.
     """
     if vocab_size < 256:
         raise ValueError("vocab_size must be at least 256")
+    if chunk_chars < 1:
+        raise ValueError("chunk_chars must be at least 1")
 
     Tokenizer, decoders, models, pre_tokenizers, trainers = _require_tokenizers()
     tokenizer.merges = {}
     tokenizer.vocab = {i: bytes([i]) for i in range(256)}
     byte_to_id = {bytes([i]): i for i in range(256)}
 
-    if vocab_size == 256:
+    if not text or vocab_size == 256:
         return list(text.encode("utf-8"))
 
     rust_tokenizer = Tokenizer(models.BPE(unk_token=None, fuse_unk=False))
@@ -140,7 +145,11 @@ def train_fast(
         show_progress=show_progress,
         special_tokens=[],
     )
-    rust_tokenizer.train_from_iterator([text], trainer=trainer, length=1)
+    rust_tokenizer.train_from_iterator(
+        _iter_text_chunks(text, chunk_chars),
+        trainer=trainer,
+        length=_num_text_chunks(text, chunk_chars),
+    )
 
     with tempfile.TemporaryDirectory() as tmpdir:
         _vocab_path, merges_path = rust_tokenizer.model.save(tmpdir, prefix="bpe")
@@ -174,3 +183,12 @@ def _ensure_vocab_bytes(byte_to_id: dict[bytes, int], token_bytes: bytes) -> int
     if token_id is not None:
         return token_id
     raise ValueError("fast BPE merge references token bytes not yet in vocab")
+
+
+def _iter_text_chunks(text: str, chunk_chars: int):
+    for start in range(0, len(text), chunk_chars):
+        yield text[start : start + chunk_chars]
+
+
+def _num_text_chunks(text: str, chunk_chars: int) -> int:
+    return max(1, (len(text) + chunk_chars - 1) // chunk_chars)

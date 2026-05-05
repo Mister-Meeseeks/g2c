@@ -87,11 +87,18 @@ class BPETokenizer:
         vocab_size: int,
         *,
         show_progress: bool = True,
+        chunk_chars: int = 1_000_000,
     ) -> list[int]:
         """Train BPE with the Rust-backed implementation."""
         from .fast import train_fast
 
-        return train_fast(self, text, vocab_size, show_progress=show_progress)
+        return train_fast(
+            self,
+            text,
+            vocab_size,
+            show_progress=show_progress,
+            chunk_chars=chunk_chars,
+        )
 
     # ------------------------------------------------------------------
     # Algorithmic helpers — STUDENT IMPLEMENTS

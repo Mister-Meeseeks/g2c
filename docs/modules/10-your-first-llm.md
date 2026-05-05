@@ -148,6 +148,10 @@ The default notebook run uses `data/tinyshakespeare.txt`, which normal `./setup.
 
 If TinyStories is missing, the notebook prints a skip message and the TinyShakespeare run still works.
 
+TinyStories is stored under `data/tinystories/` as gzip-compressed shards split
+by 100MB of uncompressed text per shard. The notebook loaders read those shards
+directly; you do not need to decompress them by hand.
+
 The TinyStories scale-up defaults use byte-level tokenization (`target_vocab_size=256`) so corpus preparation stays fast with the from-scratch Module 04 tokenizer. Raising the TinyStories vocab size trains BPE on a much larger corpus and is intentionally a slower experiment.
 
 ## What You'll Build

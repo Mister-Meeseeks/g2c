@@ -117,9 +117,9 @@ The first run may download `data/tinyshakespeare.txt` for language-model trainin
 ```bash
 ./datasets.sh              # full preload: GloVe, TinyStories, full G2C Corpus v1
 ./datasets.sh --small      # same, but build the ~1GB G2C corpus
-./datasets.sh --tiny       # only a 100MB TinyStories sample
+./datasets.sh --tiny       # only a compressed 100MB TinyStories sample shard
 ./datasets.sh glove        # Module 05 pretrained vectors (~822MB download)
-./datasets.sh tinystories  # Module 10 scale-up corpus (~1.94GB text)
+./datasets.sh tinystories  # Module 10 scale-up corpus as compressed 100MB text shards
 ./datasets.sh all          # same as ./datasets.sh
 ```
 
