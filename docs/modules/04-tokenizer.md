@@ -121,7 +121,7 @@ class BPETokenizer:
     @classmethod
     def load(cls, path: str | Path) -> "BPETokenizer": ... # implemented
     def encode_fast(self, text: str) -> list[int]: ...     # implemented
-    def train_fast(self, text: str, vocab_size: int, *, chunk_chars: int = 1_000_000) -> list[int]: ... # implemented
+    def train_fast(self, text: str, vocab_size: int, *, chunk_chars: int = 8_192) -> list[int]: ... # implemented
 
     @staticmethod
     def _get_pair_counts(ids: list[int]) -> dict[tuple[int, int], int]: ...
@@ -170,7 +170,7 @@ The implementation path is the test suite above. The notebook exercises are for 
 
 6. **Optional: pre-tokenization.** Try a GPT-2-style pre-split before BPE so merges do not freely cross every boundary. Compare the learned vocab before and after. The useful question is not "which one is correct?" but "what kinds of tokens does each procedure encourage?"
 
-The notebook ends with a **Mini Milestone** section that turns your tokenizer into reusable artifacts. It uses `g2c.artifacts` to train or load configured tokenizers with progress updates, save each tokenizer plus its encoded token stream under `artifacts/tokenizers/`, and keep path/loading logic reusable outside the notebook. The notebook then prints inspection views: a pseudo-random text window tokenized as strings, frequent learned tokens, longest learned tokens, and a frequency plot. `ShakespeareTokenizer` is enabled by default. `StoryTokenizer` and `G2CTokenizer` are configured but disabled until you choose to run the larger dataset path.
+The notebook ends with a **Mini Milestone** section that turns your tokenizer into reusable artifacts. It uses `g2c.artifacts` to train or load configured tokenizers with progress updates, save each tokenizer plus its encoded token stream under `artifacts/tokenizers/`, and keep path/loading logic reusable outside the notebook. The notebook then prints inspection views: a pseudo-random text window tokenized as strings, frequent final tokens after encoding, frequent learned final tokens after encoding, greedy longest learned tokens that skip substring duplicates, and a frequency plot. `ShakespeareTokenizer` is enabled by default. `StoryTokenizer` and `G2CTokenizer` are configured but disabled until you choose to run the larger dataset path.
 
 ## Pitfalls to expect
 

@@ -348,6 +348,8 @@ tests/test_tokenizer.py::test_encode_fast_respects_non_overlapping_merges
 tests/test_tokenizer.py::test_from_dict_rejects_wrong_format
 tests/test_tokenizer.py::test_save_load_round_trips_learned_merges
 tests/test_tokenizer.py::test_train_below_base_size_raises
+tests/test_tokenizer.py::test_train_fast_populates_course_merge_tables
+tests/test_tokenizer.py::test_train_fast_progress_callback_reports_chunks_and_encoding
 tests/test_tokenizer.py::test_train_no_merges_when_target_is_base_size
 tests/test_tokenizer.py::test_to_dict_contains_ordered_merges
 tests/test_tools.py::TestDispatchToolCall::test_unknown_tool_returns_error

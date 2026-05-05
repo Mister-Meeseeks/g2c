@@ -14,6 +14,7 @@ from pathlib import Path
 from time import perf_counter
 
 from g2c.tokenizer import BPETokenizer
+from g2c.tokenizer.fast import MAX_FAST_TRAIN_CHUNK_CHARS
 from g2c.tokenizer.persistence import (
     MANIFEST_FILENAME,
     TOKEN_IDS_FILENAME,
@@ -38,7 +39,7 @@ class TokenizerArtifactConfig:
     vocab_size: int
     max_chars: int
     use_fast: bool = True
-    chunk_chars: int = 1_000_000
+    chunk_chars: int = MAX_FAST_TRAIN_CHUNK_CHARS
     notes: str = ""
 
     @classmethod
@@ -50,7 +51,7 @@ class TokenizerArtifactConfig:
             vocab_size=int(values["vocab_size"]),
             max_chars=int(values["max_chars"]),
             use_fast=bool(values.get("use_fast", True)),
-            chunk_chars=int(values.get("chunk_chars", 1_000_000)),
+            chunk_chars=int(values.get("chunk_chars", MAX_FAST_TRAIN_CHUNK_CHARS)),
             notes=str(values.get("notes", "")),
         )
 
@@ -164,21 +165,28 @@ def train_or_load_tokenizer_artifact(
     if config.vocab_size == 256:
         ids = list(text.encode("utf-8"))
     elif config.use_fast:
-        chunks = _num_text_chunks(text, config.chunk_chars)
+        effective_chunk_chars = min(config.chunk_chars, MAX_FAST_TRAIN_CHUNK_CHARS)
+        chunks = _num_text_chunks(text, effective_chunk_chars)
         _emit(
             status_callback,
             phase="fast_start",
             name=config.name,
             target_vocab_size=config.vocab_size,
             chars=len(text),
-            chunk_chars=config.chunk_chars,
+            chunk_chars=effective_chunk_chars,
+            requested_chunk_chars=config.chunk_chars,
             chunks=chunks,
         )
         ids = tokenizer.train_fast(
             text,
             vocab_size=config.vocab_size,
-            show_progress=True,
-            chunk_chars=config.chunk_chars,
+            show_progress=False,
+            chunk_chars=effective_chunk_chars,
+            progress_callback=lambda info: _emit_fast_status(
+                status_callback,
+                name=config.name,
+                info=info,
+            ),
         )
         _emit(
             status_callback,
@@ -239,7 +247,10 @@ def _build_manifest(
         "token_ids_file": TOKEN_IDS_FILENAME,
         "token_ids_dtype": "uint32",
         "trainer": "rust-tokenizers" if config.use_fast else "python-scaffold",
-        "chunk_chars": config.chunk_chars if config.use_fast else None,
+        "chunk_chars": min(config.chunk_chars, MAX_FAST_TRAIN_CHUNK_CHARS)
+        if config.use_fast
+        else None,
+        "requested_chunk_chars": config.chunk_chars if config.use_fast else None,
         "elapsed_seconds": elapsed_seconds,
         "notes": config.notes,
     }
@@ -256,3 +267,18 @@ def _num_text_chunks(text: str, chunk_chars: int) -> int:
 def _emit(callback: ArtifactStatusCallback | None, **payload: object) -> None:
     if callback is not None:
         callback(payload)
+
+
+def _emit_fast_status(
+    callback: ArtifactStatusCallback | None,
+    *,
+    name: str,
+    info: dict[str, object],
+) -> None:
+    # `fast_start` already reports the same coarse setup information with
+    # artifact metadata attached. Keep the lower-level event available for
+    # direct BPETokenizer callers, but do not force notebook status handlers to
+    # understand both names.
+    if info.get("phase") == "fast_chunks_start":
+        return
+    _emit(callback, name=name, **info)

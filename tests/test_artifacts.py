@@ -43,7 +43,7 @@ def test_tokenizer_config_accepts_mapping_defaults():
 
     assert config.name == "Tiny"
     assert config.use_fast is True
-    assert config.chunk_chars == 1_000_000
+    assert config.chunk_chars == 8_192
 
 
 def test_load_tokenizer_source_text_reads_tinyshakespeare(tmp_path):

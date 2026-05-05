@@ -15,7 +15,12 @@ learning the algorithm in `bpe.py`.
 """
 from __future__ import annotations
 
+import json
+import os
 import tempfile
+import threading
+from collections.abc import Callable
+from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -56,6 +61,8 @@ def bytes_to_unicode() -> dict[int, str]:
 
 BYTE_TO_UNICODE = bytes_to_unicode()
 UNICODE_TO_BYTE = {char: byte for byte, char in BYTE_TO_UNICODE.items()}
+MAX_FAST_TRAIN_CHUNK_CHARS = 8_192
+FastProgressCallback = Callable[[dict[str, object]], None]
 
 
 def bytes_to_token_string(token_bytes: bytes) -> str:
@@ -110,19 +117,23 @@ def train_fast(
     vocab_size: int,
     *,
     show_progress: bool = True,
-    chunk_chars: int = 1_000_000,
+    chunk_chars: int = MAX_FAST_TRAIN_CHUNK_CHARS,
+    progress_callback: FastProgressCallback | None = None,
 ) -> list[int]:
     """Train byte-level BPE with the Rust-backed trainer.
 
     The learned merge table is copied back onto `tokenizer`, preserving the
     course `BPETokenizer` representation. The input text is passed to the Rust
-    trainer as a chunked iterator instead of one giant string, which is closer
-    to how the library is optimized to consume larger corpora.
+    trainer as a chunked iterator instead of one giant string. The Rust trainer
+    is fast, but very large iterator items can still become pathological, so
+    chunk size is capped to keep notebook artifact generation interactive.
     """
     if vocab_size < 256:
         raise ValueError("vocab_size must be at least 256")
     if chunk_chars < 1:
         raise ValueError("chunk_chars must be at least 1")
+    effective_chunk_chars = min(chunk_chars, MAX_FAST_TRAIN_CHUNK_CHARS)
+    total_chunks = _num_text_chunks(text, effective_chunk_chars)
 
     Tokenizer, decoders, models, pre_tokenizers, trainers = _require_tokenizers()
     tokenizer.merges = {}
@@ -138,17 +149,40 @@ def train_fast(
         use_regex=False,
     )
     rust_tokenizer.decoder = decoders.ByteLevel()
-    trainer = trainers.BpeTrainer(
+    capture_native_progress = progress_callback is not None
+    trainer = _make_bpe_trainer(
+        trainers,
+        pre_tokenizers,
         vocab_size=vocab_size,
-        min_frequency=1,
-        initial_alphabet=pre_tokenizers.ByteLevel.alphabet(),
-        show_progress=show_progress,
-        special_tokens=[],
+        show_progress=show_progress or capture_native_progress,
+        progress_format="json" if capture_native_progress else "indicatif",
     )
-    rust_tokenizer.train_from_iterator(
-        _iter_text_chunks(text, chunk_chars),
-        trainer=trainer,
-        length=_num_text_chunks(text, chunk_chars),
+    _emit_progress(
+        progress_callback,
+        phase="fast_chunks_start",
+        chars=len(text),
+        chunks=total_chunks,
+        chunk_chars=effective_chunk_chars,
+    )
+    iterator = _iter_text_chunks(
+        text,
+        effective_chunk_chars,
+        progress_callback=progress_callback,
+        total_chunks=total_chunks,
+        target_vocab_size=vocab_size,
+    )
+    native_reporter = _NativeProgressReporter(progress_callback)
+    with _maybe_capture_fd2_json(native_reporter, enabled=capture_native_progress):
+        rust_tokenizer.train_from_iterator(
+            iterator,
+            trainer=trainer,
+            length=total_chunks,
+        )
+    _emit_progress(
+        progress_callback,
+        phase="fast_chunks_done",
+        chunks=total_chunks,
+        chars=len(text),
     )
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -175,7 +209,21 @@ def train_fast(
         if new_id >= vocab_size:
             break
 
-    return encode_fast(tokenizer, text)
+    _emit_progress(
+        progress_callback,
+        phase="fast_encode_start",
+        vocab_size=len(tokenizer.vocab),
+        target_vocab_size=vocab_size,
+    )
+    ids = encode_fast(tokenizer, text)
+    _emit_progress(
+        progress_callback,
+        phase="fast_encode_done",
+        vocab_size=len(tokenizer.vocab),
+        target_vocab_size=vocab_size,
+        token_count=len(ids),
+    )
+    return ids
 
 
 def _ensure_vocab_bytes(byte_to_id: dict[bytes, int], token_bytes: bytes) -> int:
@@ -185,10 +233,139 @@ def _ensure_vocab_bytes(byte_to_id: dict[bytes, int], token_bytes: bytes) -> int
     raise ValueError("fast BPE merge references token bytes not yet in vocab")
 
 
-def _iter_text_chunks(text: str, chunk_chars: int):
-    for start in range(0, len(text), chunk_chars):
+def _make_bpe_trainer(
+    trainers,
+    pre_tokenizers,
+    *,
+    vocab_size: int,
+    show_progress: bool,
+    progress_format: str,
+):
+    kwargs = {
+        "vocab_size": vocab_size,
+        "min_frequency": 1,
+        "initial_alphabet": pre_tokenizers.ByteLevel.alphabet(),
+        "show_progress": show_progress,
+        "progress_format": progress_format,
+        "special_tokens": [],
+    }
+    try:
+        return trainers.BpeTrainer(**kwargs)
+    except TypeError:
+        # Older `tokenizers` versions do not expose `progress_format`. They
+        # still train correctly, but native JSON progress will be unavailable.
+        kwargs.pop("progress_format")
+        return trainers.BpeTrainer(**kwargs)
+
+
+def _iter_text_chunks(
+    text: str,
+    chunk_chars: int,
+    *,
+    progress_callback: FastProgressCallback | None,
+    total_chunks: int,
+    target_vocab_size: int,
+):
+    progress_every = max(1, total_chunks // 80)
+    for chunk_index, start in enumerate(range(0, len(text), chunk_chars), start=1):
+        if chunk_index == 1 or chunk_index == total_chunks or chunk_index % progress_every == 0:
+            _emit_progress(
+                progress_callback,
+                phase="fast_chunk",
+                chunk_index=chunk_index,
+                chunks=total_chunks,
+                chars_seen=min(len(text), start + chunk_chars),
+                chars=len(text),
+                chunk_chars=chunk_chars,
+            )
         yield text[start : start + chunk_chars]
+    _emit_progress(
+        progress_callback,
+        phase="fast_native_train_start",
+        chunks=total_chunks,
+        chars=len(text),
+        target_vocab_size=target_vocab_size,
+    )
+
+
+class _NativeProgressReporter:
+    """Throttle Rust tokenizer JSON progress before calling Python callbacks."""
+
+    def __init__(self, callback: FastProgressCallback | None, max_updates: int = 80) -> None:
+        self.callback = callback
+        self.max_updates = max_updates
+        self.last_bucket_by_stage: dict[str, int] = {}
+
+    def __call__(self, payload: dict[str, object]) -> None:
+        if self.callback is None:
+            return
+        stage = payload.get("stage")
+        current = payload.get("current")
+        total = payload.get("total")
+        if not isinstance(stage, str) or not isinstance(current, int) or not isinstance(total, int):
+            return
+        if total <= 0:
+            return
+
+        bucket = min(self.max_updates, int(current * self.max_updates / total))
+        should_emit = (
+            current == 0
+            or current >= total
+            or self.last_bucket_by_stage.get(stage) != bucket
+        )
+        if not should_emit:
+            return
+
+        self.last_bucket_by_stage[stage] = bucket
+        _emit_progress(
+            self.callback,
+            phase="fast_native_progress",
+            native_stage=stage,
+            current=current,
+            total=total,
+        )
+
+
+@contextmanager
+def _maybe_capture_fd2_json(callback: Callable[[dict[str, object]], None], *, enabled: bool):
+    """Capture native Rust JSON progress written directly to fd 2."""
+    if not enabled:
+        yield
+        return
+
+    old_fd2 = os.dup(2)
+    read_fd, write_fd = os.pipe()
+
+    def read_progress() -> None:
+        with os.fdopen(read_fd, "rb", closefd=True) as stream:
+            for raw_line in stream:
+                line = raw_line.strip()
+                if not line:
+                    continue
+                try:
+                    payload = json.loads(line.decode("utf-8"))
+                except (UnicodeDecodeError, json.JSONDecodeError):
+                    os.write(old_fd2, raw_line)
+                    continue
+                if isinstance(payload, dict):
+                    callback(payload)
+
+    reader = threading.Thread(target=read_progress, daemon=True)
+    reader.start()
+    os.dup2(write_fd, 2)
+    os.close(write_fd)
+    try:
+        yield
+    finally:
+        os.dup2(old_fd2, 2)
+        reader.join()
+        os.close(old_fd2)
 
 
 def _num_text_chunks(text: str, chunk_chars: int) -> int:
     return max(1, (len(text) + chunk_chars - 1) // chunk_chars)
+
+
+def _emit_progress(callback: FastProgressCallback | None, **payload: object) -> None:
+    if callback is not None:
+        callback(payload)

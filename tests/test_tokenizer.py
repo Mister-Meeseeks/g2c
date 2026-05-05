@@ -146,6 +146,29 @@ def test_train_fast_populates_course_merge_tables():
         assert tok.vocab[new_id] == tok.vocab[left_id] + tok.vocab[right_id]
 
 
+def test_train_fast_progress_callback_reports_chunks_and_encoding():
+    text = "ababab abcabc " * 20
+    tok = BPETokenizer()
+    reports: list[dict[str, object]] = []
+
+    tok.train_fast(
+        text,
+        vocab_size=270,
+        show_progress=False,
+        chunk_chars=5,
+        progress_callback=reports.append,
+    )
+
+    phases = [report["phase"] for report in reports]
+    assert phases[0] == "fast_chunks_start"
+    assert "fast_chunk" in phases
+    assert "fast_native_train_start" in phases
+    assert "fast_native_progress" in phases
+    assert "fast_chunks_done" in phases
+    assert phases[-1] == "fast_encode_done"
+    assert reports[-1]["token_count"] == len(tok.encode_fast(text))
+
+
 # ----------------------------------------------------------------------
 # _get_pair_counts
 # ----------------------------------------------------------------------
