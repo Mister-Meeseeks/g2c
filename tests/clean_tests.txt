@@ -332,6 +332,14 @@ tests/test_tensors.py::test_tinyarray_repr_runs
 tests/test_tokenizer.py::test_initial_merges_empty
 tests/test_tokenizer.py::test_initial_vocab_byte_identity
 tests/test_tokenizer.py::test_initial_vocab_size
+tests/test_tokenizer.py::test_encode_fast_applies_learned_merges_in_priority_order
+tests/test_tokenizer.py::test_encode_fast_no_merges_is_utf8_bytes
+tests/test_tokenizer.py::test_encode_fast_respects_non_overlapping_merges
+tests/test_tokenizer.py::test_from_dict_rejects_wrong_format
+tests/test_tokenizer.py::test_save_load_round_trips_learned_merges
+tests/test_tokenizer.py::test_train_below_base_size_raises
+tests/test_tokenizer.py::test_train_no_merges_when_target_is_base_size
+tests/test_tokenizer.py::test_to_dict_contains_ordered_merges
 tests/test_tools.py::TestDispatchToolCall::test_unknown_tool_returns_error
 tests/test_tools.py::TestFormatToolResults::test_empty
 tests/test_tools.py::TestFormatToolResults::test_multiple_results_separated
