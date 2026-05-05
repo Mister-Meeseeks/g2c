@@ -101,7 +101,7 @@ class BPETokenizer:
         *,
         on_progress: TokenizerProgressCallback | None = None,
         progress_every: int = 50,
-    ) -> None:
+    ) -> list[int]:
         """Learn merges from `text` until the vocabulary reaches `vocab_size`.
 
         Algorithm:
@@ -126,6 +126,11 @@ class BPETokenizer:
                          merges, current token count, and last merge count.
             progress_every: call `on_progress` every N merges, plus at the
                             start and final merge.
+
+        Returns:
+            The final token IDs for `text` after all learned merges have been
+            applied. This is the same corpus state used internally during
+            training, so callers do not need to encode the training text again.
 
         Raises:
             ValueError: if `vocab_size < 256`.
@@ -170,6 +175,8 @@ class BPETokenizer:
 
             if len(self.merges) % progress_every == 0 or len(self.vocab) == vocab_size:
                 report(best_pair_count)
+
+        return ids
 
     def encode(self, text: str) -> list[int]:
         """Encode `text` into a list of token IDs using the learned merges.
