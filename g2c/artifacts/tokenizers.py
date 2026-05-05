@@ -7,6 +7,8 @@ here so later modules can reuse the same artifacts.
 """
 from __future__ import annotations
 
+import hashlib
+import pickle
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -268,6 +270,105 @@ def encode_text_to_tensor(
     return result
 
 
+def load_required_tokenizer(
+    tokenizer_name: str,
+    *,
+    repo_root: str | Path | None = None,
+) -> BPETokenizer:
+    """Load a required tokenizer artifact and return its tokenizer."""
+    try:
+        artifact = load_tokenizer_artifact(tokenizer_name, repo_root=repo_root)
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(
+            f"Tokenizer artifact {tokenizer_name!r} is missing. "
+            "Run Module 04's Mini Milestone tokenizer artifact cells first. "
+            "For TinyStories, set RUN_TINYSTORIES_TOKENIZER = True in Module 04."
+        ) from exc
+    return artifact.tokenizer
+
+
+def load_or_encode_tokenized_corpus(
+    text: str,
+    tokenizer_name: str,
+    *,
+    label: str = "corpus",
+    repo_root: str | Path | None = None,
+    progress_callback: ArtifactProgressCallback | None = None,
+) -> tuple[BPETokenizer, torch.Tensor]:
+    """Load cached token IDs for `text`, or encode them with a tokenizer artifact."""
+    root = find_repo_root(repo_root)
+    tokenizer = load_required_tokenizer(tokenizer_name, repo_root=root)
+    cache_path = _token_id_cache_path(label, (text,), tokenizer_name, tokenizer, repo_root=root)
+    if cache_path.exists():
+        state = _load_pickle(cache_path)
+        return tokenizer, _as_long_tensor(state["ids"])
+
+    ids = encode_text_to_tensor(
+        tokenizer,
+        text,
+        progress_callback=progress_callback,
+    )
+    _save_pickle(
+        {
+            "ids": ids,
+            "tokenizer_name": tokenizer_name,
+            "kind": "tokenized-corpus",
+        },
+        cache_path,
+    )
+    return tokenizer, ids
+
+
+def load_or_encode_tokenized_pair(
+    train_text: str,
+    val_text: str,
+    tokenizer_name: str,
+    *,
+    label: str,
+    repo_root: str | Path | None = None,
+    train_progress_callback: ArtifactProgressCallback | None = None,
+    val_progress_callback: ArtifactProgressCallback | None = None,
+) -> tuple[BPETokenizer, torch.Tensor, torch.Tensor]:
+    """Load cached train/validation token IDs, or encode both text splits."""
+    root = find_repo_root(repo_root)
+    tokenizer = load_required_tokenizer(tokenizer_name, repo_root=root)
+    cache_path = _token_id_cache_path(
+        label,
+        (train_text, val_text),
+        tokenizer_name,
+        tokenizer,
+        repo_root=root,
+    )
+    if cache_path.exists():
+        state = _load_pickle(cache_path)
+        return (
+            tokenizer,
+            _as_long_tensor(state["train_ids"]),
+            _as_long_tensor(state["val_ids"]),
+        )
+
+    train_ids = encode_text_to_tensor(
+        tokenizer,
+        train_text,
+        progress_callback=train_progress_callback,
+    )
+    val_ids = encode_text_to_tensor(
+        tokenizer,
+        val_text,
+        progress_callback=val_progress_callback,
+    )
+    _save_pickle(
+        {
+            "tokenizer_name": tokenizer_name,
+            "kind": "tokenized-pair",
+            "train_ids": train_ids,
+            "val_ids": val_ids,
+        },
+        cache_path,
+    )
+    return tokenizer, train_ids, val_ids
+
+
 def train_or_load_tokenizer_artifact(
     config: TokenizerArtifactConfig | Mapping[str, object],
     *,
@@ -390,6 +491,59 @@ def _normalize_config(
     if isinstance(config, TokenizerArtifactConfig):
         return config
     return TokenizerArtifactConfig.from_mapping(config)
+
+
+def _token_id_cache_path(
+    label: str,
+    text_parts: tuple[str, ...],
+    tokenizer_name: str,
+    tokenizer: BPETokenizer,
+    *,
+    repo_root: str | Path | None = None,
+) -> Path:
+    root = find_repo_root(repo_root)
+    total_chars, text_digest = _text_parts_digest(text_parts)
+    safe_label = label.replace("/", "-")
+    safe_tokenizer = tokenizer_name.replace("/", "-")
+    return root / "data" / "tokenizer-cache" / (
+        f"{safe_label}-{safe_tokenizer}-{total_chars}-"
+        f"{text_digest}-{_tokenizer_digest(tokenizer)}.pkl"
+    )
+
+
+def _text_parts_digest(text_parts: tuple[str, ...]) -> tuple[int, str]:
+    h = hashlib.sha256()
+    total_chars = 0
+    for part in text_parts:
+        total_chars += len(part)
+        h.update(part.encode("utf-8"))
+        h.update(b"\0")
+    return total_chars, h.hexdigest()[:16]
+
+
+def _tokenizer_digest(tokenizer: BPETokenizer) -> str:
+    payload = repr(sorted(tokenizer.merges.items())).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()[:16]
+
+
+def _as_long_tensor(value) -> torch.Tensor:
+    if isinstance(value, torch.Tensor):
+        return value.to(dtype=torch.long)
+    return torch.as_tensor(value, dtype=torch.long)
+
+
+def _load_pickle(path: Path) -> dict[str, object]:
+    with path.open("rb") as f:
+        state = pickle.load(f)
+    if not isinstance(state, dict):
+        raise ValueError(f"token ID cache must contain a dict: {path}")
+    return state
+
+
+def _save_pickle(state: dict[str, object], path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("wb") as f:
+        pickle.dump(state, f)
 
 
 def _config_from_manifest(name: str, manifest: Mapping[str, object]) -> TokenizerArtifactConfig:

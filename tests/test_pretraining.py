@@ -32,10 +32,9 @@ import pytest
 import torch
 
 from g2c.nn import SGD
-from g2c.pretraining import Trainer
+from g2c.pretraining import Trainer, empty_training_history
 from g2c.training import AdamW, cosine_with_warmup
 from g2c.transformer import TransformerLM
-
 
 # ----------------------------------------------------------------------
 # Trainer — construction (boilerplate)
@@ -517,6 +516,114 @@ def test_trainer_train_on_log_receives_progress_events():
         assert {"step", "train_loss", "val_loss", "lr", "grad_norm"} <= event.keys()
         assert event["elapsed_s"] is not None
         assert event["steps_per_s"] is not None
+
+
+def test_empty_training_history_has_standard_keys():
+    history = empty_training_history()
+
+    assert history == {
+        "step": [],
+        "train_loss": [],
+        "lr": [],
+        "grad_norm": [],
+        "val_step": [],
+        "val_loss": [],
+    }
+
+
+def test_trainer_train_appends_to_existing_history():
+    torch.manual_seed(0)
+    t = Trainer(
+        _tiny_model(),
+        batch_size=4,
+        context_length=6,
+        max_steps=3,
+        max_lr=1e-3,
+        log_every=1,
+    )
+    ids = torch.randint(0, 12, (200,))
+    history = t.train(ids)
+
+    t.max_steps = 5
+    resumed = t.train(ids, history=history)
+
+    assert resumed is history
+    assert t.step == 5
+    assert resumed["step"] == [0, 1, 2, 3, 4]
+
+
+def test_trainer_checkpoint_round_trip_restores_adamw_state(tmp_path):
+    torch.manual_seed(0)
+    ids = torch.randint(0, 12, (200,))
+    first = Trainer(
+        _tiny_model(),
+        batch_size=4,
+        context_length=6,
+        max_steps=2,
+        max_lr=3e-4,
+        optimizer="adamw",
+        generator=torch.Generator().manual_seed(123),
+        log_every=1,
+    )
+    history = first.train(ids)
+    checkpoint_path = first.save_checkpoint(
+        tmp_path / "storylm.pt",
+        history=history,
+        extra={"name": "StoryLM test"},
+    )
+
+    second = Trainer(
+        _tiny_model(),
+        batch_size=4,
+        context_length=6,
+        max_steps=4,
+        max_lr=3e-4,
+        optimizer="adamw",
+        generator=torch.Generator().manual_seed(999),
+        log_every=1,
+    )
+    checkpoint = second.load_checkpoint(checkpoint_path)
+
+    assert second.step == first.step
+    assert checkpoint["history"] == history
+    assert checkpoint["extra"]["name"] == "StoryLM test"
+    assert second.optimizer.step_count == first.optimizer.step_count
+    for p1, p2 in zip(first.model.parameters(), second.model.parameters(), strict=True):
+        assert torch.allclose(p1, p2)
+    for m1, m2 in zip(first.optimizer.m, second.optimizer.m, strict=True):
+        assert torch.allclose(m1, m2)
+    for v1, v2 in zip(first.optimizer.v, second.optimizer.v, strict=True):
+        assert torch.allclose(v1, v2)
+
+    resumed_history = second.train(ids, history=checkpoint["history"])
+    assert second.step == 4
+    assert resumed_history["step"][-1] == 3
+
+
+def test_trainer_train_writes_rolling_checkpoint(tmp_path):
+    torch.manual_seed(0)
+    checkpoint_path = tmp_path / "rolling.pt"
+    t = Trainer(
+        _tiny_model(),
+        batch_size=4,
+        context_length=6,
+        max_steps=5,
+        max_lr=1e-3,
+        log_every=1,
+    )
+    ids = torch.randint(0, 12, (200,))
+    history = t.train(
+        ids,
+        checkpoint_path=checkpoint_path,
+        checkpoint_every=2,
+        checkpoint_extra={"kind": "rolling"},
+    )
+
+    assert checkpoint_path.exists()
+    checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+    assert checkpoint["trainer"]["step"] == 5
+    assert checkpoint["history"] == history
+    assert checkpoint["extra"]["kind"] == "rolling"
 
 
 def test_trainer_smoke_train_decreases_val_loss():

@@ -156,6 +156,11 @@ directly; you do not need to decompress them by hand.
 
 The TinyStories scale-up loads the `StoryTokenizer` artifact from Module 04 and only encodes the current train/validation slices here. This keeps Module 10 focused on training the model, not redoing BPE training.
 
+StoryLM scale-up runs save rolling checkpoints under `data/checkpoints/storylm/`
+every 100 steps by default. If you interrupt a long 5M or 30M run, the notebook
+keeps the current model in memory for sampling and writes a checkpoint; re-run
+the same training cell to continue from that point.
+
 ## What You'll Build
 
 Package: `g2c/pretraining/`
@@ -200,7 +205,7 @@ Enter questions or answers in [answers/module-10.md](../../answers/module-10.md)
 
 4. **Sample from checkpoints or training milestones.** Generate text from the initial model and the trained model using the Module 11-style local sampler in the notebook. Record what improves first: character legality, word fragments, punctuation, line breaks, local phrases, or longer coherence.
 
-5. **Run controlled TinyStories scale-ups.** After `./datasets.sh tinystories` and the Module 04 `StoryTokenizer` artifact, run the notebook's ~5M-parameter TinyStories experiment, then optionally the ~30M-parameter experiment. Compare validation loss and samples against the TinyShakespeare baseline. The notebook skips these cells gracefully if TinyStories or the tokenizer artifact is not available.
+5. **Run controlled TinyStories scale-ups.** After `./datasets.sh tinystories` and the Module 04 `StoryTokenizer` artifact, run the notebook's ~5M-parameter TinyStories experiment, then optionally the ~30M-parameter experiment. These longer runs checkpoint every 100 steps and can be resumed by re-running the training cell. Compare validation loss and samples against the TinyShakespeare baseline. The notebook skips these cells gracefully if TinyStories or the tokenizer artifact is not available.
 
 6. **Diagnose the run.** Write a short post-run note: final train loss, final validation loss, final validation perplexity, whether validation tracked training, whether the learning rate looked sane, and one next experiment you would run.
 
@@ -230,6 +235,7 @@ Secondary:
 - [ ] All tests in `tests/test_pretraining.py` pass.
 - [ ] Notebook: `notebooks/clean/10-your-first-llm.ipynb`.
 - [ ] A tiny trained checkpoint is saved locally.
+- [ ] StoryLM scale-up checkpoints can be interrupted, sampled, and resumed.
 - [ ] Training history includes train loss, validation loss, learning rate, and gradient norm.
 - [ ] You can explain the full trainer step order without notes.
 - [ ] You can compare the initial sample and trained sample and identify what improved.

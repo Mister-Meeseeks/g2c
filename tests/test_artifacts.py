@@ -13,6 +13,9 @@ from g2c.artifacts import (
     find_repo_root,
     load_corpus_bytes,
     load_corpus_text,
+    load_or_encode_tokenized_corpus,
+    load_or_encode_tokenized_pair,
+    load_required_tokenizer,
     load_tinystories_text,
     load_tokenizer_artifact,
     load_tokenizer_source_text,
@@ -261,6 +264,90 @@ def test_load_tokenizer_artifact_can_load_sample_ids_and_text(tmp_path):
     assert artifact.text == "hello artifacthello "
     assert artifact.config.source == "tinyshakespeare"
     assert artifact.config.encoded_sample_chars == 5
+
+
+def test_load_required_tokenizer_returns_saved_tokenizer(tmp_path):
+    repo = make_repo(tmp_path)
+    data_path = repo / "data" / "tinyshakespeare.txt"
+    data_path.parent.mkdir(parents=True)
+    data_path.write_text("hello artifact", encoding="utf-8")
+    config = TokenizerArtifactConfig(
+        name="RequiredTokenizer",
+        source="tinyshakespeare",
+        vocab_size=256,
+        max_chars=20,
+    )
+    train_or_load_tokenizer_artifact(config, repo_root=repo)
+
+    tokenizer = load_required_tokenizer("RequiredTokenizer", repo_root=repo)
+
+    assert tokenizer.encode_fast("abc") == list(b"abc")
+
+
+def test_load_or_encode_tokenized_corpus_uses_artifact_and_cache(tmp_path):
+    repo = make_repo(tmp_path)
+    data_path = repo / "data" / "tinyshakespeare.txt"
+    data_path.parent.mkdir(parents=True)
+    data_path.write_text("hello artifact", encoding="utf-8")
+    config = TokenizerArtifactConfig(
+        name="CorpusTokenizer",
+        source="tinyshakespeare",
+        vocab_size=256,
+        max_chars=20,
+    )
+    train_or_load_tokenizer_artifact(config, repo_root=repo)
+
+    tokenizer, ids = load_or_encode_tokenized_corpus(
+        "abcdef",
+        "CorpusTokenizer",
+        label="unit",
+        repo_root=repo,
+    )
+    cached_tokenizer, cached_ids = load_or_encode_tokenized_corpus(
+        "abcdef",
+        "CorpusTokenizer",
+        label="unit",
+        repo_root=repo,
+    )
+
+    assert tokenizer.vocab == cached_tokenizer.vocab
+    assert torch.equal(ids, torch.tensor(list(b"abcdef"), dtype=torch.long))
+    assert torch.equal(cached_ids, ids)
+
+
+def test_load_or_encode_tokenized_pair_uses_artifact_and_cache(tmp_path):
+    repo = make_repo(tmp_path)
+    data_path = repo / "data" / "tinyshakespeare.txt"
+    data_path.parent.mkdir(parents=True)
+    data_path.write_text("hello artifact", encoding="utf-8")
+    config = TokenizerArtifactConfig(
+        name="PairTokenizer",
+        source="tinyshakespeare",
+        vocab_size=256,
+        max_chars=20,
+    )
+    train_or_load_tokenizer_artifact(config, repo_root=repo)
+
+    tokenizer, train_ids, val_ids = load_or_encode_tokenized_pair(
+        "abcd",
+        "ef",
+        "PairTokenizer",
+        label="unit-pair",
+        repo_root=repo,
+    )
+    cached_tokenizer, cached_train_ids, cached_val_ids = load_or_encode_tokenized_pair(
+        "abcd",
+        "ef",
+        "PairTokenizer",
+        label="unit-pair",
+        repo_root=repo,
+    )
+
+    assert tokenizer.vocab == cached_tokenizer.vocab
+    assert torch.equal(train_ids, torch.tensor(list(b"abcd"), dtype=torch.long))
+    assert torch.equal(val_ids, torch.tensor(list(b"ef"), dtype=torch.long))
+    assert torch.equal(cached_train_ids, train_ids)
+    assert torch.equal(cached_val_ids, val_ids)
 
 
 def test_train_or_load_tokenizer_artifact_saves_sample_ids(tmp_path):
