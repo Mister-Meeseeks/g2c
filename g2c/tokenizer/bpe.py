@@ -88,6 +88,7 @@ class BPETokenizer:
         *,
         show_progress: bool = True,
         chunk_chars: int = 8_192,
+        encode_training_text: bool = True,
         progress_callback: ProgressCallback | None = None,
     ) -> list[int]:
         """Train BPE with the Rust-backed implementation."""
@@ -99,6 +100,7 @@ class BPETokenizer:
             vocab_size,
             show_progress=show_progress,
             chunk_chars=chunk_chars,
+            encode_training_text=encode_training_text,
             progress_callback=progress_callback,
         )
 

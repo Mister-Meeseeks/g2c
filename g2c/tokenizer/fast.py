@@ -109,7 +109,11 @@ def encode_fast(tokenizer: BPETokenizer, text: str) -> list[int]:
     if not tokenizer.merges:
         return list(text.encode("utf-8"))
     rust_tokenizer = _byte_level_tokenizer_from_bpe(tokenizer)
-    return rust_tokenizer.encode(text).ids
+    encoding = rust_tokenizer.encode(text)
+    ids = encoding.ids
+    del encoding, rust_tokenizer
+    gc.collect()
+    return ids
 
 
 def train_fast(
@@ -119,6 +123,7 @@ def train_fast(
     *,
     show_progress: bool = True,
     chunk_chars: int = MAX_FAST_TRAIN_CHUNK_CHARS,
+    encode_training_text: bool = True,
     progress_callback: FastProgressCallback | None = None,
 ) -> list[int]:
     """Train byte-level BPE with the Rust-backed trainer.
@@ -128,6 +133,8 @@ def train_fast(
     trainer as a chunked iterator instead of one giant string. The Rust trainer
     is fast, but very large iterator items can still become pathological, so
     chunk size is capped to keep notebook artifact generation interactive.
+    Artifact builders can set `encode_training_text=False` when they only need
+    the learned tokenizer tables and will encode a smaller inspection sample.
     """
     if vocab_size < 256:
         raise ValueError("vocab_size must be at least 256")
@@ -188,15 +195,48 @@ def train_fast(
         chars=len(text),
     )
 
+    _emit_progress(
+        progress_callback,
+        phase="fast_export_start",
+        chunks=total_chunks,
+        target_vocab_size=vocab_size,
+    )
     with tempfile.TemporaryDirectory() as tmpdir:
         _vocab_path, merges_path = rust_tokenizer.model.save(tmpdir, prefix="bpe")
         merge_lines = Path(merges_path).read_text(encoding="utf-8").splitlines()
+    _emit_progress(
+        progress_callback,
+        phase="fast_export_done",
+        merge_count=max(0, len(merge_lines) - 1),
+        target_vocab_size=vocab_size,
+    )
     del rust_tokenizer
     gc.collect()
 
+    _emit_progress(
+        progress_callback,
+        phase="fast_import_start",
+        merge_count=max(0, len(merge_lines) - 1),
+        target_vocab_size=vocab_size,
+    )
     _import_merge_lines(tokenizer, byte_to_id, merge_lines)
+    _emit_progress(
+        progress_callback,
+        phase="fast_import_done",
+        vocab_size=len(tokenizer.vocab),
+        target_vocab_size=vocab_size,
+    )
     del merge_lines
     gc.collect()
+
+    if not encode_training_text:
+        _emit_progress(
+            progress_callback,
+            phase="fast_encode_skipped",
+            vocab_size=len(tokenizer.vocab),
+            target_vocab_size=vocab_size,
+        )
+        return []
 
     _emit_progress(
         progress_callback,
@@ -246,10 +286,10 @@ def _import_merge_lines(
         if token_id is not None:
             return token_id
 
-        left_bytes, right_bytes = merge_by_output.get(
-            token_bytes,
-            _fallback_split(token_bytes, byte_to_id),
-        )
+        split = merge_by_output.get(token_bytes)
+        if split is None:
+            split = _fallback_split(token_bytes, byte_to_id)
+        left_bytes, right_bytes = split
         left_id = ensure(left_bytes)
         right_id = ensure(right_bytes)
         pair = (left_id, right_id)

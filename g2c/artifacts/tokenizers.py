@@ -28,6 +28,7 @@ from .paths import find_repo_root, tokenizer_artifact_dir
 
 ArtifactProgressCallback = Callable[[dict[str, object]], None]
 ArtifactStatusCallback = Callable[[dict[str, object]], None]
+DEFAULT_ENCODED_SAMPLE_CHARS = 1_000_000
 
 
 @dataclass(frozen=True)
@@ -40,6 +41,7 @@ class TokenizerArtifactConfig:
     max_chars: int
     use_fast: bool = True
     chunk_chars: int = MAX_FAST_TRAIN_CHUNK_CHARS
+    encoded_sample_chars: int = DEFAULT_ENCODED_SAMPLE_CHARS
     notes: str = ""
 
     @classmethod
@@ -52,13 +54,20 @@ class TokenizerArtifactConfig:
             max_chars=int(values["max_chars"]),
             use_fast=bool(values.get("use_fast", True)),
             chunk_chars=int(values.get("chunk_chars", MAX_FAST_TRAIN_CHUNK_CHARS)),
+            encoded_sample_chars=int(
+                values.get("encoded_sample_chars", DEFAULT_ENCODED_SAMPLE_CHARS)
+            ),
             notes=str(values.get("notes", "")),
         )
 
 
 @dataclass(frozen=True)
 class TokenizerArtifact:
-    """Loaded or newly trained tokenizer artifact plus optional source text."""
+    """Loaded or newly trained tokenizer artifact plus optional source text.
+
+    `ids` is an encoded sample for inspection, not necessarily the full
+    training corpus. Large tokenized corpora are separate artifacts.
+    """
 
     config: TokenizerArtifactConfig
     tokenizer: BPETokenizer
@@ -161,9 +170,10 @@ def train_or_load_tokenizer_artifact(
         return None
 
     tokenizer = BPETokenizer()
+    encoded_text = text[: min(len(text), config.encoded_sample_chars)]
     start = perf_counter()
     if config.vocab_size == 256:
-        ids = list(text.encode("utf-8"))
+        ids = list(encoded_text.encode("utf-8"))
     elif config.use_fast:
         effective_chunk_chars = min(config.chunk_chars, MAX_FAST_TRAIN_CHUNK_CHARS)
         chunks = _num_text_chunks(text, effective_chunk_chars)
@@ -182,11 +192,27 @@ def train_or_load_tokenizer_artifact(
             vocab_size=config.vocab_size,
             show_progress=False,
             chunk_chars=effective_chunk_chars,
+            encode_training_text=False,
             progress_callback=lambda info: _emit_fast_status(
                 status_callback,
                 name=config.name,
                 info=info,
             ),
+        )
+        _emit(
+            status_callback,
+            phase="sample_encode_start",
+            name=config.name,
+            chars=len(encoded_text),
+            training_chars=len(text),
+        )
+        ids = tokenizer.encode_fast(encoded_text)
+        _emit(
+            status_callback,
+            phase="sample_encode_done",
+            name=config.name,
+            chars=len(encoded_text),
+            token_count=len(ids),
         )
         _emit(
             status_callback,
@@ -199,14 +225,22 @@ def train_or_load_tokenizer_artifact(
             elapsed_seconds=perf_counter() - start,
         )
     else:
-        ids = tokenizer.train(
+        trained_ids = tokenizer.train(
             text,
             vocab_size=config.vocab_size,
             progress_callback=progress_callback,
             progress_every=_tokenizer_progress_every(config.vocab_size),
         )
+        ids = trained_ids if len(encoded_text) == len(text) else tokenizer.encode(encoded_text)
 
-    manifest = _build_manifest(config, text, ids, tokenizer, perf_counter() - start)
+    manifest = _build_manifest(
+        config,
+        text,
+        encoded_text,
+        ids,
+        tokenizer,
+        perf_counter() - start,
+    )
     save_artifact(tokenizer, ids, manifest, artifact_dir)
     _emit(
         status_callback,
@@ -229,6 +263,7 @@ def _normalize_config(
 def _build_manifest(
     config: TokenizerArtifactConfig,
     text: str,
+    encoded_text: str,
     ids: list[int],
     tokenizer: BPETokenizer,
     elapsed_seconds: float,
@@ -242,10 +277,14 @@ def _build_manifest(
         "actual_vocab_size": len(tokenizer.vocab),
         "max_chars": config.max_chars,
         "actual_chars": len(text),
+        "encoded_sample_chars": config.encoded_sample_chars,
+        "encoded_chars": len(encoded_text),
+        "encoded_full_training_text": len(encoded_text) == len(text),
         "token_count": len(ids),
-        "chars_per_token": len(text) / max(1, len(ids)),
+        "chars_per_token": len(encoded_text) / max(1, len(ids)),
         "token_ids_file": TOKEN_IDS_FILENAME,
         "token_ids_dtype": "uint32",
+        "token_ids_kind": "encoded_sample",
         "trainer": "rust-tokenizers" if config.use_fast else "python-scaffold",
         "chunk_chars": min(config.chunk_chars, MAX_FAST_TRAIN_CHUNK_CHARS)
         if config.use_fast
