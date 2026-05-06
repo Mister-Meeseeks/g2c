@@ -24,14 +24,7 @@ Module 09B sits between "the architecture exists" and "the model trains on a rea
 
 ### Programming
 
-- **PyTorch tensor indexing.** Slices like `ids[s : s + T]` and `ids[s + 1 : s + T + 1]`.
-- **`reshape`.** Used to flatten all token positions before calling cross-entropy.
-
-### What you can skip
-
-- **Optimizer mechanics.** AdamW, clipping, warmup, and cosine decay were Module 03B.
-- **The full trainer.** Module 10 owns the top-level loop.
-- **Sampling quality.** This module verifies setup, not generation.
+- **PyTorch tensor indexing.**  Used to flatten all token positions before calling cross-entropy.
 
 ---
 ## Why We Start Here

@@ -4,40 +4,26 @@
 
 ![Three tiny GPTs trained on the same TinyShakespeare corpus, side by side: 1M / 5M / 20M parameters. Each column shows the model's parameter count up top, its final validation perplexity in the middle (e.g. 6.5 → 4.8 → 4.0), and a 100-token continuation from the same prompt at the bottom. The 1M sample is locally-correct but largely nonsense; the 5M sample has short coherent phrases; the 20M sample has multi-line dialogue-like text. A panel below plots final loss vs parameter count on log-log axes — the three points fall close to a straight line whose negative slope is the empirical scaling exponent. A small caveat box on the right notes "iso-step, not iso-FLOP — the 20M model has consumed roughly 20× more compute per step." A second caveat box reminds the reader that "perplexity ≠ capability" — even at 20M, the model still confidently invents quotes, and several "emergent" tasks the larger model passes are actually still random chance.](12-scaling/Module12-Hero.png)
 
-*The whole module on one page. Three models, the same corpus, the same step budget. Read the three sample texts top-to-bottom: the structural pattern is the same one you saw in Module 10 ("form before content"), but at three different developmental stages within one image. The log-log plot below is the headline quantitative deliverable — fitting a power law to three points is loose, but the slope is the conceptual content of the Kaplan / Chinchilla scaling-laws line of work, recapitulated at MacBook scale.*
+Same corpus, same step budget, different parameter counts, *very* different outputs. Scaling laws tell us how model quality varies with more or fewer parameters (and compute).
 
 ## Prerequisites
 
-Module 12 is the first module without new package code. You're not implementing a new layer or training utility — you're running the trainer from Module 10 three times at three sizes and reading off the patterns. The conceptual content is **what scaling looks like and what it doesn't**. The technical content is parameter counting, FLOP estimation, and the discipline of holding everything except size constant.
+Module 12 is the first module without new package code. You're not implementing a new layer or training utility — you're running the trainer from Module 10 different sizes
 
 ### Math
 
-- **Power laws on log-log axes.** A relationship `y = A · x^α` plots as a straight line on log-log axes with slope `α`. Most published scaling laws are fits of this form: validation loss as a power function of parameter count, dataset size, or compute. At toy scale you'll fit one with three points and a ruler — a real fit needs many more — but the *shape* you should expect is unmistakable.
-- **Parameter counting for a transformer.** Most parameters live in the FFN (`8 · D²` per block) and the attention projections (`4 · D²` per block); embeddings contribute `2 · V · D` (token + unembedding). Per block the dominant term is `12 · D²`, so total `N ≈ 12 · L · D² + 2 · V · D` where `L` is layers and `D` is `embedding_dim`. This is rough — biases, layer norms, and positional tables add a few percent — but accurate enough for sizing.
-- **The compute / token / parameter triangle.** The standard FLOP-counting approximation for transformer training is `FLOPs ≈ 6 · N · T_total`, where `N` is non-embedding params and `T_total` is the total tokens trained on (i.e. `steps × batch_size × context_length`). The factor 6 is `2` for forward + `4` for backward, all of it from the matmuls. Iso-FLOP comparisons mean keeping `N · T_total` constant.
+- **Power laws on log-log axes.** A relationship `y = A · x^α` plots as a straight line on log-log axes with slope `α`. 
 
 ### Computer science
 
-- **Holding the experimental factor fixed.** A scaling experiment that varies model size *and* batch size *and* learning rate at the same time can't tell you what each variable did. The point of this module is to vary one knob — parameter count — and let everything else be a function of it (batch size and `max_lr` may need scaling, but in disciplined ways).
-- **The replication budget.** Single-seed results at toy scale can be noisy. Two or three seeds per configuration is the floor for any claim about "this size beats that size." Often you don't need this — the gap between 1M and 20M is usually larger than seed noise — but for the gap between 5M and 20M, seed noise can dominate.
-- **Logging.** Every run produces a loss curve, a final val loss, and a few sampled outputs. Save them as you go; re-running an 80-minute training run because you forgot to save is the most common scaling-week regret.
+- **FLOPS** - Floating point operations. A way to standardize the measure of total compute expended between different models and training runs. 
 
 ### Programming
 
-- **`sum(p.numel() for p in model.parameters())`** — the canonical one-liner for parameter counting. Returns total scalar count across all params; matches what the formula above predicts to within a percent or two.
-- **`torch.save({...}, path)` / `torch.load(path, weights_only=True)`** — for checkpointing. The training runs in this module are long enough that you'll want to save the final state and the loss history, not just print them.
-- **`%matplotlib inline`** plus **`plt.loglog(params, losses, 'o-')`** for the headline scaling plot. Log-log axes are non-negotiable for power-law fits — a linear plot with three orders-of-magnitude on x and a small range on y is unreadable.
+- **Matplotlib** Used in the exercise notebook for charting scaling laws.
 
-### What you can skip
 
-- **Mixed precision (fp16, bf16) on MPS.** Officially supported, occasionally fast, but introduces silent op-fallback edges and changes loss curves enough to confuse a scaling experiment. Stay in fp32 for this module. Module 16 returns to inference-time precision.
-- **Optimizer internals.** Use the AdamW-backed trainer path from Modules 03B and 10. The empirical scaling-laws literature also uses Adam-style optimizers, but exact `max_lr` values and final losses at toy scale will still differ from published runs. We're after the shape of the comparison, not the published exponent.
-- **Tied embeddings.** The Module 09 `TransformerLM` keeps `token_embed` and `head` as separate matrices. Tying them halves the embedding parameter cost; nothing else changes. Out of scope here.
-- **Theoretical derivations of the scaling exponents.** The Kaplan paper has them; Hoffmann's Chinchilla paper revisits them with cleaner methodology. They're worth reading, but the exponent itself is not a deep theoretical object — it's an empirical fit and the value at toy scale will not match published large-scale numbers.
-- **Inverse scaling (`Inverse Scaling Prize`, McKenzie et al.).** A small but real set of tasks where larger models do *worse*. Genuinely interesting, but our smallest model is too small for this to manifest. Skim later if curious.
-- **The full BIG-bench debate.** Wei et al. claimed several capabilities are "emergent" (sharp threshold-style improvements). Schaeffer et al. argued most "emergence" is an artifact of the metric (multiple choice with a hard-edge scoring rule). Both papers are listed in *Reading*; the debate is worth understanding qualitatively but you won't reproduce it at our scale.
-
-## Why we start here
+## Where this fits in
 
 After Module 10 you trained a single tiny GPT and sampled from it. After Module 11 you have decoding controls. Both modules let you study one model — but the *interesting* questions about LLMs are inherently comparative. Why is GPT-4 dramatically better than GPT-2? Is it just more parameters? Is it more parameters spent in a particular way? Is there a regime where adding parameters stops helping?
 
@@ -139,6 +125,10 @@ Two ways to compare three models, and they give different answers:
 
 The two comparisons answer different questions. **Iso-step** answers "more parameters = better, all else equal?" — the answer is yes, monotonically. **Iso-FLOP** answers "if I have a fixed compute budget, what size should I train?" — the answer at large scale is "a smaller model than you'd think, trained for longer."
 
+![Iso-step vs iso-FLOP side by side as two laps-around-the-track experiments. Panel A (iso-step): every model — 1M, 5M, 20M — runs the same 5000 steps; compute per step grows ~6·N·T_step, so the 20M model burns ~20× more compute total than the 1M one. Same dataset passes, more capacity wins, larger model lower loss. Panel B (iso-FLOP): every model gets the same total compute budget (~7.7e13 FLOPs in the example), so the 1M model gets 75,000 steps, the 5M model 15,000, and the 20M model only 1000. Tokens-seen totals shift accordingly (~30M / ~30M / ~3M). The smaller models do many laps; the 20M model does one short lap and is undertrained. A "When to use which" panel pins the choice: iso-step when comparing capacity at fixed dataset, iso-FLOP when comparing what size to train under a real compute constraint. The Chinchilla intuition — smaller-but-longer beats larger-but-shorter on a fixed budget — falls out of panel B.](12-scaling/Module12-IsoFlop.png)
+
+*Both comparisons appear in this module: exercise 1 is iso-step (the headline log-log plot), exercise 5 is iso-FLOP (the same plot, often with the slope reversed near the largest size). Reading the same three checkpoints under both lenses is the cleanest way to internalize that "scaling laws" is not one curve — it's at least two, and which one matters depends on whether your real-world constraint is dataset size or compute.*
+
 For this module's *primary* exercise, iso-step is the right comparison. It's simpler to reason about and is what Kaplan-style "loss vs N at fixed dataset" plots show. The iso-FLOP comparison appears as exercise 5 — and at toy scale, it tends to show iso-step's monotonicity *flip* near the largest size (the 20M model with too-few tokens is under-trained relative to the 5M model with sufficient tokens, exactly as Chinchilla predicts).
 
 ### Counting parameters and FLOPs
@@ -173,6 +163,10 @@ You'll need rough parameter and FLOP counts to plan runs. The exact formulas:
       D = 384, L = 10   →   ≈ 1.5M + 17.7M  ≈   19.2M
 ```
 
+![Anatomy of a transformer's parameter count. Inside one block: self-attention's four projections (Q, K, V, output) total 4·D²; the feedforward network with 4D inner width totals 8·D²; LayerNorms and biases are negligible — block total ≈ 12·D². Whole-model breakdown: 2·V·D for token + unembedding, max_seq_len·D for positional embeddings, L·12·D² for the stack, plus a final LayerNorm. A pie chart showing where the parameters actually live — for typical D and L, the FFN is ~65–75% of the total, attention projections are ~25–35%, and embeddings shrink to a few percent as the model grows because they scale linearly in D while the blocks scale quadratically. A "how parameters scale" panel pins the rules: doubling D quadruples per-block params (D² scaling), doubling L doubles total block params (linear scaling). Three example configurations (1M / 5M / 20M) show the formula evaluated end-to-end and matched against `sum(p.numel() for p in model.parameters())`.](12-scaling/Module12-ParamAnatomy.png)
+
+*The headline takeaway is the pie chart: parameters live in the FFN, mostly. This is why "make the FFN inner width 4·D" is treated as a design constant in almost every transformer paper — the FFN is already the bulk of the model. It's also why the depth-vs-width exercise (#4) is worth running: at fixed parameter budget, you're trading the number of refinement layers against the per-layer FFN width, and at our scale the depth direction wins by a few percent.*
+
 For FLOPs:
 
 ```
@@ -191,6 +185,10 @@ Some capabilities show up *suddenly* as a model scales: at one size the model ge
 Schaeffer et al. (2023, "Are Emergent Abilities of Large Language Models a Mirage?") replied that most published "emergence" plots were artifacts of the *metric*, not the model: tasks were scored exact-match (0 or 1) on outputs that the smaller model also gradually learned but never quite finished. Switch the metric to a continuous one (token-level edit distance, partial-credit on multi-step problems) and the curves smooth out into the same power-law shape as loss.
 
 The honest summary as of 2026: both papers are correct about different things. Many "emergent" tasks are smooth under better metrics — the Schaeffer critique landed. But some capabilities — like in-context learning of arbitrary new patterns — really do appear to show genuine threshold behavior even on smoothed metrics, with sharp transitions at scale. The community moved on from "emergence vs not" to "what fraction of progress is smooth and how should we measure each task."
+
+![Smooth improvement vs threshold metrics, side by side. Top panel: an underlying skill (the model's competence on a task) improves smoothly and continuously as model scale grows — the curve is the kind of thing cross-entropy / log-likelihood metrics actually measure. Middle panel: the SAME underlying smooth improvement, viewed through an exact-match accuracy metric, looks like a step function — flat near zero, sharp jump near the threshold, plateau near one. The smooth competence curve and the threshold curve are generated by the same underlying model behavior; only the scoring rule is different. Bottom panel: three regions explain why the threshold metric reads as "emergence." Below the threshold the model is improving but answers still look wrong — partial credit would catch this, exact-match scores zero. Near the threshold tiny smooth gains carry many examples across the line at once. Past the threshold further improvement is invisible because the score has saturated. A "key takeaway" pins the lesson: a sudden jump in a benchmark score does not necessarily mean the model learned something discontinuously — it often means the benchmark itself imposes a threshold.](12-scaling/Module12-Smooth.png)
+
+*This is the visual core of the Schaeffer-vs-Wei debate. Both authors are looking at the same underlying training dynamics; the disagreement is at the metric layer, not the model layer. At MacBook scale you can't reproduce the published threshold plots, but you can reproduce the principle in miniature — exercise 6's calibration check is a continuous metric you can run on all three sizes, and it improves smoothly even on tasks where greedy-argmax accuracy at exact-match scoring would jump.*
 
 At MacBook scale, you won't see clean threshold behavior. You'll see *qualitative* threshold behavior — exercise 3 has you find a task where the smallest model is hopeless and the largest is just barely able to do it. Treat this as the toy version of the Wei observation, not as a cleanly emergent capability.
 
@@ -214,6 +212,14 @@ Exercise 6 is a calibration check: how well-calibrated is each model's predicted
 - **At toy scale, expect the wrong slope.** Published scaling exponents (Kaplan: ≈ 0.076; Chinchilla: ≈ 0.336 for fixed-FLOP) come from fits over orders of magnitude in parameters using AdamW. Your three SGD-trained TinyShakespeare points won't match these numbers. The *direction* (down and to the right) will match.
 - **The qualitative gap between samples is the lesson.** Read the 1M, 5M, and 20M continuations of the same prompt out loud. The structural difference is what you're here to see; the perplexity plot is just the quantitative summary.
 
+### What we didn't cover
+
+- **Mixed precision (fp16, bf16) on MPS.** Introduces silent op-fallback edges and changes loss curves enough to confuse a scaling experiment. Stay in fp32 for this module. Module 16 returns to inference-time precision.
+- **Theoretical derivations of the scaling exponents.** The Kaplan paper has them; Hoffmann's Chinchilla paper revisits them with cleaner methodology. They're worth reading, but the exponent itself is not a deep theoretical object — it's an empirical fit and the value at toy scale will not match published large-scale numbers.
+- **Inverse scaling (`Inverse Scaling Prize`, McKenzie et al.).** A small but real set of tasks where larger models do *worse*. Genuinely interesting, but our smallest model is too small for this to manifest. Skim later if curious.
+- **The full BIG-bench debate.** Wei et al. claimed several capabilities are "emergent" (sharp threshold-style improvements). Schaeffer et al. argued most "emergence" is an artifact of the metric (multiple choice with a hard-edge scoring rule). Both papers are listed in *Reading*; the debate is worth understanding qualitatively but you won't reproduce it at our scale.
+
+---
 ## Setting up the experiments
 
 This module has **no new package code**. The deliverable is a notebook (or a small set of notebooks) that runs three TransformerLM trainings at different sizes against the Module 10 corpus and produces the headline plot.
@@ -381,6 +387,21 @@ Numbers are wide ballparks — context length, vocab, and Mac generation all mat
 
 - **Catastrophic seeds.** Occasionally a run lands on a bad initialization and never recovers — val loss plateaus 20–30% above where it should be. You'll see it as an outlier in your plot. Don't include it in the fit; rerun with a different seed and replace.
 
+## M-series notes
+
+This is the most compute-hungry week of the course.
+
+- **Plan around the 20M run.** It is the constraint. On an M1/M2 base machine, a 5000-step 20M run is a 2–3 hour commitment; on an M3 Max with 64GB it's well under an hour. If your 20M run is queued for "overnight" rather than "next coffee break," halve `max_steps` and *report this* — it's a real result that the comparison was constrained by available compute.
+
+- **MPS vs CPU.** The 1M model trains comfortably on either. The 5M and 20M models are MPS-essential — CPU runs at this size are an order of magnitude slower. `Trainer(..., device="auto")` is the default path; print `trainer.device` at the start of a run so you know whether you are actually on MPS.
+
+- **Memory headroom.** The 20M model with `(B=32, T=128, V=2048)` peaks at roughly 600 MB during backward. Running another model in another tab adds the same. If you OOM, halve `batch_size` to `16` before touching `T`. Watch Activity Monitor's "Memory pressure" graph during training — yellow is OK, red means you're swapping and your training is silently CPU-bound for memory reasons.
+
+- **Long runs and laptop sleep.** macOS aggressively sleeps the GPU when the laptop is on battery. Plug in for the 20M run. `caffeinate -di python train.py` at the command line prevents the system from sleeping during a notebook-launched script.
+
+- **Storage.** Three checkpoints at 1M / 5M / 20M parameters take roughly 4MB / 20MB / 80MB on disk in fp32. The tokenized corpus is in the tens of MB. The training-history JSONs are kilobytes. Total: under 200MB for the headline experiment. The 50M optional run (exercise 7) adds another ~200MB. Comfortable on any modern Mac SSD.
+
+---
 ## Reading
 
 Primary:
@@ -411,18 +432,3 @@ Optional:
 - [ ] You can explain — out loud, without notes — why "loss falls as a power of N" is a *different* claim from "capability X emerges at N", and which of the two you can or can't see at MacBook scale.
 - [ ] You can explain — out loud, without notes — what the irreducible loss `L∞` is and why no model — of any size — can fall below it.
 
-## M-series notes
-
-This is the most compute-hungry week of the course.
-
-- **Plan around the 20M run.** It is the constraint. On an M1/M2 base machine, a 5000-step 20M run is a 2–3 hour commitment; on an M3 Max with 64GB it's well under an hour. If your 20M run is queued for "overnight" rather than "next coffee break," halve `max_steps` and *report this* — it's a real result that the comparison was constrained by available compute.
-
-- **MPS vs CPU.** The 1M model trains comfortably on either. The 5M and 20M models are MPS-essential — CPU runs at this size are an order of magnitude slower. `Trainer(..., device="auto")` is the default path; print `trainer.device` at the start of a run so you know whether you are actually on MPS.
-
-- **Memory headroom.** The 20M model with `(B=32, T=128, V=2048)` peaks at roughly 600 MB during backward. Running another model in another tab adds the same. If you OOM, halve `batch_size` to `16` before touching `T`. Watch Activity Monitor's "Memory pressure" graph during training — yellow is OK, red means you're swapping and your training is silently CPU-bound for memory reasons.
-
-- **Mixed precision is *almost* a win on MPS, but not quite.** `torch.amp.autocast(device_type='mps', dtype=torch.float16)` works, sometimes gives a 1.3–1.6× speedup, and sometimes silently produces NaNs at scale because of fp16 overflow in the attention softmax. We don't use it in this module — the fp32 deliverable is the comparable result. Module 16 returns to inference-time precision, where the tradeoffs are clearer.
-
-- **Long runs and laptop sleep.** macOS aggressively sleeps the GPU when the laptop is on battery. Plug in for the 20M run. `caffeinate -di python train.py` at the command line prevents the system from sleeping during a notebook-launched script.
-
-- **Storage.** Three checkpoints at 1M / 5M / 20M parameters take roughly 4MB / 20MB / 80MB on disk in fp32. The tokenized corpus is in the tens of MB. The training-history JSONs are kilobytes. Total: under 200MB for the headline experiment. The 50M optional run (exercise 7) adds another ~200MB. Comfortable on any modern Mac SSD.
