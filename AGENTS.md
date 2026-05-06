@@ -30,6 +30,10 @@ The student is the repo author. Both roles are live.
 - `docs/modules/NN-name.md` — lesson + motivation + exercises + deliverable spec for module NN
 - `docs/modules/NN-name/` — assets for that module (images, diagrams, supplementary files). Reference from the lesson with relative paths, e.g. `![](NN-name/summary.png)`.
 - `g2c/<topic>/` — Python subpackage for that module's deliverable
+- `g2c/notebook_extras/<topic>.py` — non-pedagogical notebook helpers (progress bars, matplotlib glue, run-orchestration wrappers) used by notebooks but not implemented by students
+- `g2c/artifacts/models.py` — `save_model_artifact` / `load_model_artifact` implementing the durable model artifact convention from `docs/design/model-artifacts-and-tracks.md`. Use these rather than ad-hoc `torch.save` calls when persisting a trained model that downstream modules consume.
+- `artifacts/models/<name>/` — saved model artifacts (`model.pt`, `config.json`, `manifest.json`); tokenizer is referenced by name in the manifest, not duplicated.
+- `data/module*-*.ckpt` — rolling training checkpoints (model + optimizer + step + history). These are caches, not artifacts; safe to wipe to retrain.
 - `notebooks/clean/NN-*.ipynb` — canonical pristine notebooks tied to module NN
 - `notebooks/solutions/NN-*.ipynb` — working or solved notebook copies; use `.venv/bin/python scripts/open_notebook.py NN` to create or resume, and `--fresh` to archive the existing copy before resetting from clean
 - `answers/module-NN.md` — student-owned written answers for that module's exercises
@@ -138,6 +142,15 @@ The top of each test file should have a docstring with a numbered "Suggested ord
 ### Visual aids in lesson pages
 
 Use small ASCII diagrams to crack genuinely dense conceptual sections — particularly anything involving graph topology, shape arithmetic, alignment rules, or memory layout — where prose alone makes the structural relationship hard to see. The bar is "would a reader struggle to picture this without it?" Don't add diagrams for visual flair or because diagrams seem like a nice idea. Roughly a handful per module is the ceiling; some modules may have zero, which is fine. Reserve image assets in `docs/modules/NN-name/` for content that genuinely needs full graphics; for everything else, ASCII inside a fenced code block reads cleanly in every markdown viewer the student is likely to use.
+
+## Notebook style
+
+Student-facing notebooks should foreground the conceptual flow, not the plumbing. When authoring or cleaning a notebook:
+
+- **Configs live near consumption.** No global "Run Configuration" wall at the top. Corpus knobs go in the prep cell, model and trainer config dicts at the top of the cell that uses them, sample prompts inline with the sample cell. A small shared base is fine only if it materially cuts duplication.
+- **No user-controlled run gates.** Don't add `run_X = True/False` toggles to skip long-running cells. If a student doesn't want to run a cell, they don't run it; Jupyter handles "stop execution." Environment checks (e.g. "TinyStories not downloaded → skip with friendly message") are different and should stay.
+- **Extract notebook plumbing, not concepts.** IPython display helpers, matplotlib chart glue, and `Trainer` progress wrappers belong in `g2c/notebook_extras/<topic>.py`, not inline. Code that IS the experiment the student is meant to read (an LR sweep loop, an ablation set) stays inline. Code the lesson explicitly frames as transitional (e.g. "Module 11 will build the real generation utilities, here's a stand-in") also stays inline so the framing is visible.
+- **Never put student-implemented code in `g2c/notebook_extras/`.** That directory is the escape hatch for non-pedagogical helpers; pedagogical deliverables go in `g2c/<topic>/`.
 
 ## What not to do
 
