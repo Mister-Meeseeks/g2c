@@ -174,8 +174,6 @@ Set up or resume the working notebook for this exercise set by running:
 .venv/bin/python scripts/open_notebook.py 04
 ```
 
-The implementation path is the test suite above. The notebook exercises are for prediction, inspection, and explanation after you have the relevant pieces working.
-
 1. **Pair counts and merge behavior.** Predict the adjacent-pair counts for a tiny integer sequence before running your helper. Then predict the non-overlapping merge result for `[1, 1, 1]`. This is the easiest place to catch the overlap rule before it gets buried inside full BPE training.
 
 2. **Train BPE on a tiny corpus.** Use `"the the the"` or another very small repeated string and inspect the learned merges. The goal is to connect one `train_step()` call, then the full scaffolded `train()` loop, to concrete `merges` and `vocab` entries you can read by hand.

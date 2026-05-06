@@ -4,11 +4,12 @@
 
 ![Multi-head attention end-to-end: input X (B, T, D); three big linear projections produce Q, K, V each of shape (B, T, D); a reshape + transpose splits the channel dim into H heads, each of size d_h = D/H, so every tensor becomes (B, H, T, d_h); H independent attention computations run in parallel (each with its own scaling factor √d_h); concatenation merges the heads back to (B, T, D); a final output projection W_O lands the result. A side panel emphasizes the headline fact: same total parameter count as a single big attention, but H different "ways of looking" at the same sequence.](08-multi-head-attention/Module08-Hero.png)
 
-The two ideas to internalize. First, the projections are one big matrix multiply each. The heads are a reshape, not separate matrices. Second, each head's attention is structurally identical to single-head attention, just with fewer channels. Multi-head attention is single-head attention
-
 This week is short in terms of content. Almost everything is already in place from last lesson. Review the scaled dot-product and softmax machinery from the previous module. The conceptual move is "split D into H slots and run H copies of attention in parallel"; the engineering move is "do that with one matmul, not H of them."
 
 --- 
+## Before you start
+
+---
 ## Where this fits
 
 Module 07's single-head attention works, but it has a structural limitation: the Q/K/V projections compress everything one query wants to ask about into a single `D`-dimensional vector. If the model wants to attend differently for different reasons — e.g., one query direction for syntactic dependencies, another for coreference, another for adjacency — a single head must overload all of those onto the same `D` channels.
@@ -65,8 +66,7 @@ The `transpose(1, 2)` then swaps `T` and `H` so heads are the leading batch-like
 Why this order? Because the next operation is `q @ k.transpose(-2, -1)`, and PyTorch's batched matmul treats all dims except the last two as batch dims. With `H` in the leading batch slot, the matmul produces one `(T, T)` score matrix per head independently. With `H` *not* in the leading slot, the matmul would mix queries from different heads together — which is the wrong thing.
 
 ![A worked reshape: starting from Q of shape (B=2, T=5, D=8), `view(B, T, H=4, d_h=2)` reinterprets the channel dim as (H, d_h), then `transpose(1, 2)` swaps T and H to land at (B, H, T, d_h). Concrete numbers fill the cells so you can trace exactly which D-channels become which head's d_h slots; a "why this order?" panel explains that PyTorch's batched matmul treats every dim before the last two as batch dims, so heads MUST be in a leading batch-like position before scoring.](08-multi-head-attention/Module08-Reshape.png)
-
-*The two-line `view + transpose` is doing all the work that a Python loop over heads would otherwise do. Internalizing which dim ends up where, and why the matmul that follows treats H as just another batch dim, is the entire engineering content of multi-head attention. The Module 08 test `test_reshape_then_transpose_layout` pins this layout down by forcing Q to a known pattern and asserting the per-head slices match.*
+*The two-line `view + transpose` is doing all the work that a Python loop over heads would otherwise do. Internalizing which dim ends up where, and why the matmul that follows treats H as just another batch dim, is the entire engineering content of multi-head attention.*
 
 ### One projection plus reshape ≠ H independent projections
 
@@ -117,7 +117,6 @@ This is the empirical surprise: when you train a transformer with multi-head att
 You won't see these in your tiny model from Module 10 with high fidelity — you need many more parameters and training data — but the mechanism is set up here. The visualization exercise (exercise 4) will let you LOOK at attention patterns after training and see whether any heads have learned anything interpretable.
 
 ![Four canonical head-specialization patterns visualized as attention heatmaps over a sample sentence: (1) a previous-token head — all mass on the position immediately before the query, a clean sub-diagonal stripe; (2) a syntactic head — sparse off-diagonal links between grammatically related tokens (subject↔verb, modifier↔noun); (3) an induction head — for the pattern "...A B...A", weight concentrates on the token after the previous A; (4) a global / broadcast head — diffuse weight covering most of the sequence. A side caption emphasizes the headline: nothing in the architecture forces these patterns; they emerge during training.](08-multi-head-attention/Module08-DiffHeads.png)
-
 *Multi-head attention's empirical payoff isn't visible from the math — it shows up only when you train and look. With H heads available, the optimizer is free to use one for previous-token copying, another for syntactic dependencies, another for induction, etc., and it tends to do so. Single-head attention has to commit one set of weights to ALL of these jobs simultaneously; multi-head attention can specialize and recombine via W_O. 
 
 ## Concepts to internalize
@@ -169,6 +168,8 @@ Roughly 20 lines of real code split across the two scaffolded methods. The conce
 Tests live in `tests/test_multi_head_attention.py`. Initial state: 11 passed (construction + `causal_mask` + parameter counts), 16 failed.
 
 ```bash
+source .venv/bin/activate
+
 pytest tests/test_multi_head_attention.py             # run all module-08 tests
 pytest tests/test_multi_head_attention.py -x          # stop at first failure (recommended)
 pytest tests/test_multi_head_attention.py -k forward  # only the forward tests
@@ -205,7 +206,7 @@ pytest tests/test_multi_head_attention.py -v          # verbose
 
 5. **Parameter counts at varying H.** Verify analytically that `MultiHeadAttention(embedding_dim=D, num_heads=H)` has parameter count `4 * (D*D + D)`, independent of `H`. Compute it programmatically for a few `(D, H)` pairs by summing `p.numel()` over `attn.parameters()`. Convince yourself that "more heads" is a free structural change at fixed `D`.
 
-## Common pitfalls
+## Pitfalls to avoid
 
 - **Scaling by √D instead of √head_dim.** The single most common multi-head bug. Training sluggish; attention weights are too flat; gradients propagate weakly. Crashes nothing, fails subtly. 
 
@@ -227,7 +228,6 @@ pytest tests/test_multi_head_attention.py -v          # verbose
 
 This module is light on compute 
 
-- All tests run in well under a second on CPU.
 - Exercise 3's training comparison (3 runs at fixed `D = 64`) is a few hundred steps each on a small corpus; under a couple minutes total on CPU.
 - Exercise 4's per-head visualization is a single forward pass on one sentence — milliseconds.
 - The clean notebook uses `experiment_device = "auto"` for the training comparison. The plotted attention weights are moved back to CPU before Matplotlib sees them, because Matplotlib cannot plot MPS tensors directly.

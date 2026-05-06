@@ -97,6 +97,9 @@ The headline contract is simple:
 y[b, t] is the token immediately after x[b, t] in the corpus.
 ```
 
+![[Module09B-MultiPosition.png]]
+*The mechanics behind how one stream sample produces many data points for training*
+
 ### The loss flattens positions
 
 `TransformerLM(x)` returns:

@@ -207,42 +207,44 @@ We are not implementing dropout in this course path because it is not the bottle
 - Dropout was introduced conceptually, but you will not implement it in this module.
 
 ---
-## What You'll Build
+## What you'll build
 
-### `AdamW`
+Package: `g2c/training/`
 
-The constructor is implemented. It stores:
+### `optim.py` — optimizers
 
 ```python
-self.params
-self.lr
-self.beta1, self.beta2
-self.eps
-self.weight_decay
-self.m              # first moments, one tensor per param
-self.v              # second moments, one tensor per param
-self.step_count
+class AdamW:
+    def __init__(
+        self,
+        params: Iterable[torch.Tensor],
+        lr: float,
+        *,
+        betas: tuple[float, float] = (0.9, 0.999),
+        eps: float = 1e-8,
+        weight_decay: float = 0.0,
+    ): ...                                    # pre-implemented
+    def zero_grad(self) -> None: ...          # pre-implemented
+    def step(self) -> None: ...
 ```
 
-You implement `step()`.
+### `clip.py` — gradient clipping
 
-### `clip_grad_norm_`
-
-Compute the global L2 norm over all populated gradients:
-
-```text
-total_norm = sqrt(sum(||p.grad||^2 for every parameter))
+```python
+def clip_grad_norm_(params: Iterable[torch.Tensor], max_norm: float) -> float: ...
 ```
 
-If `total_norm > max_norm`, multiply every gradient by `max_norm / total_norm`.
+### `schedule.py` — learning-rate schedules
 
-### `cosine_with_warmup`
-
-Return the scheduled learning rate at a given step:
-
-```text
-warmup phase: lr ramps linearly up to max_lr
-cosine phase: lr decays smoothly down to min_lr
+```python
+def cosine_with_warmup(
+    step: int,
+    *,
+    warmup_steps: int,
+    max_steps: int,
+    max_lr: float,
+    min_lr: float = 0.0,
+) -> float: ...
 ```
 
 ## How to run the tests

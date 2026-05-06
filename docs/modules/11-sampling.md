@@ -337,6 +337,8 @@ Total scaffolded code: roughly 30 lines across five functions. The math is light
 Tests live in `tests/test_sampling.py`. Initial state: 0 passed, 43 failed.
 
 ```bash
+source .venv/bin/activate
+
 pytest tests/test_sampling.py                  # all module-11 tests
 pytest tests/test_sampling.py -x               # stop at first failure
 pytest tests/test_sampling.py -k temperature   # just temperature tests
