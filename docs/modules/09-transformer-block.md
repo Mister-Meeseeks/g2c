@@ -165,7 +165,7 @@ For Module 09 we use pre-norm. Exercise 1 will have you implement post-norm and 
 
 ![Pre-norm vs post-norm shown side by side as two block diagrams: pre-norm (used by GPT-2, Llama, PaLM, ...) — `x = x + sublayer(LN(x))` — has the residual stream flowing past LN, never normalized in place; post-norm (used by "Attention Is All You Need", 2017) — `x = LN(x + sublayer(x))` — has LN sitting ON the residual path so the stream IS normalized between blocks. A side caption explains the gradient-path difference: pre-norm's residual gradient is unobstructed by LN's Jacobian, so it propagates straight through deep stacks; post-norm's residual gradient gets attenuated layer by layer, which is why post-norm needs a learning-rate warmup hack to train at depth.](09-transformer-block/Module09-PrePostNorm.png)
 
-*Same code, different parenthesization, very different training dynamics. Exercise 1 has you train both at depth 6 and watch the post-norm version oscillate or diverge while pre-norm trains smoothly. The 2017 paper used post-norm with careful warmup and so it worked; modern wisdom (Xiong et al. 2020) is that pre-norm is structurally better and removes the need for warmup tricks. Every modern transformer you read about uses pre-norm.*
+*Same code, different parenthesization, very different training dynamics. The 2017 paper used post-norm with careful warmup and so it worked; modern wisdom (Xiong et al. 2020) is that pre-norm is structurally better and removes the need for warmup tricks. Every modern transformer you read about uses pre-norm.*
 
 ### The position-wise FFN
 
@@ -288,13 +288,6 @@ class TransformerLM(Module):
 ```
 
 Total scaffolded code: roughly 20 lines split across four `forward` methods. Most of the lesson is in *which* lines and *in what order* — the math is unsubtle once you've internalized the structure.
-
-The implementation order is mechanical — earlier methods unblock later ones:
-
-  1. **`LayerNorm.forward`** → unblocks the 7 LayerNorm forward tests.
-  2. **`FeedForward.forward`** → unblocks the 4 FFN forward tests.
-  3. **`Block.forward`** → unblocks the 6 Block forward tests. (This step also depends on `MultiHeadAttention.forward` from Module 08 — if you skipped that, finish it first.)
-  4. **`TransformerLM.forward`** → unblocks the 5 TransformerLM tests. (This step also depends on `TokenEmbedding.forward` and `LearnedPositionalEmbedding.forward` from Module 05 — both one-liners.)
 
 ## How to run the tests
 
