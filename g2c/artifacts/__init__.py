@@ -12,6 +12,12 @@ from .corpora import (
     load_corpus_text,
     resolve_corpus,
 )
+from .models import (
+    load_model_artifact,
+    model_artifact_dir,
+    model_artifact_exists,
+    save_model_artifact,
+)
 from .paths import artifacts_root, find_repo_root, tokenizer_artifact_dir, tokenizer_artifacts_root
 from .tokenizers import (
     ArtifactProgressCallback,
@@ -44,7 +50,11 @@ __all__ = [
     "find_repo_root",
     "load_corpus_bytes",
     "load_corpus_text",
+    "load_model_artifact",
     "load_tinystories_text",
+    "model_artifact_dir",
+    "model_artifact_exists",
+    "save_model_artifact",
     "load_or_encode_tokenized_corpus",
     "load_or_encode_tokenized_pair",
     "load_required_tokenizer",
