@@ -4,20 +4,19 @@
 
 ![Self-attention as six steps from tokens to refined representations: input embeddings (T, D); query/key/value projections via three Linear layers; pairwise compatibility scores from Q · Kᵀ / √D; softmax to row-normalized attention weights; mixed value vectors; an output projection. The bottom strip restates the same recipe as a one-position view ("ask, compare, pass, gather, update") and pins the headline takeaway: every token looks at every token, decides who is relevant, and mixes their information.](07-attention/Module07-Hero.png)
 
-The same six-step pipeline runs at every position in parallel, with the only per-position difference being which Q vector poses the question — every other piece of machinery (the K/V tables, the scaling factor, the softmax, the output projection) is shared. Most of the rest of this lesson page is unpacking the "why" behind each of these six boxes.
+The same six-step pipeline runs at every position in parallel, with the only per-position difference being which Q vector poses the question — every other piece of machinery (the K/V tables, the scaling factor, the softmax, the output projection) is shared. Most of the rest of this lesson page is unpacking the "why" behind each of these six boxes. 
+
+This week is the hinge of the course — everything from here through the transformer block (Module 09) is variations on what you build this week.
 
 ---
 ## Prerequisites
 
-Module 07 is the hinge of the course — everything from here through the transformer block (Module 09) is variations on what you build this week.
 ### Math
 
 - **Dot products as similarity.** `q · k = |q| |k| cos θ`. When `q` and `k` point in the same direction the dot product is large; when they're orthogonal it's zero. The whole attention mechanism is built on "treat dot products as a learnable similarity score."
 - **Softmax over a vector.** Already used in Modules 02–06.
 - **Matrix multiplication, batched.** matmul is the same op you've used for ages, just with a batch dim carried along. PyTorch's `@` operator handles this — be comfortable with it.
-### PyTorch
 
-* Re-familiarize with `transpose()`  and `masked_flow()` functions.
 ---
 ## Where this fits in
 

@@ -4,16 +4,9 @@
 
 ![Multi-head attention end-to-end: input X (B, T, D); three big linear projections produce Q, K, V each of shape (B, T, D); a reshape + transpose splits the channel dim into H heads, each of size d_h = D/H, so every tensor becomes (B, H, T, d_h); H independent attention computations run in parallel (each with its own scaling factor √d_h); concatenation merges the heads back to (B, T, D); a final output projection W_O lands the result. A side panel emphasizes the headline fact: same total parameter count as a single big attention, but H different "ways of looking" at the same sequence.](08-multi-head-attention/Module08-Hero.png)
 
-The two ideas to internalize. First, the projections are one big matrix multiply each. The heads are a reshape, not separate matrices. Second, each head's attention is structurally identical to single-head attention, just with fewer channels. Multi-head attention is single-head attention.
+The two ideas to internalize. First, the projections are one big matrix multiply each. The heads are a reshape, not separate matrices. Second, each head's attention is structurally identical to single-head attention, just with fewer channels. Multi-head attention is single-head attention
 
----
-## Prerequisites
-
-Module 08 is short in terms of content. Almost everything is already in place from Module 07. Review the scaled dot-product and softmax machinery from Module 07. The conceptual move is "split D into H slots and run H copies of attention in parallel"; the engineering move is "do that with one matmul, not H of them."
-
-### PyTorch
-
-- Re-familiarize with `view()`, `transpose()` and `reshape()` functions. Keep in mind that reshaping is computationally free. This is why multi-head reshape is almost as cheap as single-head.  
+This week is short in terms of content. Almost everything is already in place from last lesson. Review the scaled dot-product and softmax machinery from the previous module. The conceptual move is "split D into H slots and run H copies of attention in parallel"; the engineering move is "do that with one matmul, not H of them."
 
 --- 
 ## Where this fits

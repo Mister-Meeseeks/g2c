@@ -468,12 +468,12 @@ def test_generate_top_k_one_matches_greedy():
 def test_generate_eos_stops_early():
     """If `eos_id` is sampled, generation halts. Force this by making
     the model effectively always pick token 0: bias the unembedding
-    head to give token 0 a huge positive logit.
+    to give token 0 a huge positive logit.
     """
     m = _tiny_model()
     with torch.no_grad():
-        m.head.b.zero_()
-        m.head.b[0] = 100.0    # token 0 will dominate after softmax
+        m.head_bias.zero_()
+        m.head_bias[0] = 100.0    # token 0 will dominate after softmax
     prompt = torch.tensor([1, 2, 3], dtype=torch.long)
     # Greedy → first generated token is 0; eos_id=0 stops immediately.
     out = generate(
@@ -535,14 +535,14 @@ def test_generate_repetition_penalty_discourages_repeats():
     """With a strong bias toward emitting the same token over and over,
     a high `repetition_penalty` should reduce the rate of repetition.
 
-    Setup: bias the head to favor token 0. Without penalty, greedy
-    decoding emits 0 every step. With a large penalty, the bias
-    against repeating 0 should override the head's bias eventually.
+    Setup: bias the unembedding to favor token 0. Without penalty,
+    greedy decoding emits 0 every step. With a large penalty, the bias
+    against repeating 0 should override the unembedding bias eventually.
     """
     m = _tiny_model()
     with torch.no_grad():
-        m.head.b.zero_()
-        m.head.b[0] = 5.0   # mild bias toward token 0
+        m.head_bias.zero_()
+        m.head_bias[0] = 5.0   # mild bias toward token 0
     prompt = torch.tensor([0, 0, 0], dtype=torch.long)
 
     # No penalty: at temperature near 0 the model just keeps emitting 0.

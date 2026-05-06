@@ -193,7 +193,7 @@ Three things to internalize:
 
 ```
   token_ids  ──► TokenEmbedding   ──┐
-                                     ├──► +  ──► N × Block ──► LayerNorm ──► Linear(unembed) ──► logits
+                                     ├──► +  ──► N × Block ──► LayerNorm ──► unembed ──► logits
   positions  ──► PositionalEmbed  ──┘
 
   shapes:
@@ -208,9 +208,50 @@ Three details worth pinning down:
 
   * **One logit per position.** Output is `(B, T, V)`, not `(B, V)`. Position `t`'s logit is the prediction for what comes at position `t+1`. At training time, you compute cross-entropy at every position in parallel — vastly more efficient than the one-position-per-step training of the Module 06 MLP.
 
-  * **The final LayerNorm before unembedding.** Modern transformers add this; the original 2017 paper didn't. Without it, the residual stream's scale at the output is unbounded and the head's logits can drift arbitrarily large or small. A small, cheap correction.
+  * **The final LayerNorm before unembedding.** Modern transformers add this; the original 2017 paper didn't. Without it, the residual stream's scale at the output is unbounded and the unembedding's logits can drift arbitrarily large or small. A small, cheap correction.
 
   * **`max_seq_len` is enforced in `forward`.** The learned positional embedding table has a fixed size; sequences longer than that have no positional signal for the trailing positions. The constructor can't see the input length, so the bound check lives in `forward`.
+
+### Tied embeddings: one matrix at both ends
+
+The model has two natural `(V, D)`-sized matrices: the input
+`TokenEmbedding` that maps each token id to a vector, and the
+unembedding that maps the final residual stream back to `V` logits.
+We make them the *same matrix*.
+
+```
+  TokenEmbedding.weight    (V, D)   ◄── input end of the tie
+        │
+        ▼
+   + positional
+        │
+        ▼
+   N × Block
+        │
+        ▼
+   final LayerNorm
+        │
+        ▼
+   logits = x @ token_embed.weight.T + head_bias    ◄── output end
+```
+
+Two intuitions pull this together:
+
+  * **The two roles are already asking the same question.** Row `v` of the input table is "the vector that *represents* token `v`." Column `v` of the output projection is "the direction that *scores* token `v`." Those are nearly the same object — and in practice, training pulls them toward each other anyway. Tying just commits to the answer up front.
+
+  * **The geometric story is direct.** With tying, the logit for token `v` at position `t` becomes `x[t] · token_embed.weight[v] + head_bias[v]` — a dot product between the residual stream and the embedding row that originally *put* token `v` into the model. "Score the next token by how close the stream is to its embedding." That's the entire unembedding step.
+
+The accounting:
+
+```
+  Untied:   V*D (input) + V*D (output) + V (output bias)  =  2*V*D + V
+  Tied:     V*D (shared) + V (output bias)                =    V*D + V
+  Saving:   V*D parameters
+```
+
+For a small model with `V = 8000`, `D = 192`, that's ~1.5M parameters — often 25–50% of the total at this scale, because per-block params scale as `D²` and shrink relative to the linear-in-`V` embedding cost. As `D` grows the relative win narrows, but it's never negative: we get the parameter savings for free, and tying is standard in GPT-2, T5, Llama, Gemma, and most other modern LMs (Press & Wolf 2017).
+
+In code, `TransformerLM` holds *no* separate unembedding weight matrix — the unembedding is `x @ self.token_embed.weight.T + self.head_bias`, where `head_bias` is a learned `(V,)` vector. `parameters()` lists `token_embed.weight` once; autograd routes gradient back into it from BOTH the input lookup AND the unembedding's matmul on every step.
 
 ## Concepts to internalize
 
@@ -221,6 +262,7 @@ Three details worth pinning down:
 - **The FFN is per-position with a 4× hidden expansion.** Most of a transformer's parameters live here.
 - **Stacking blocks is straightforward.** `for block in self.blocks: x = block(x)`. The architecture has no positional encoding *between* blocks, no cross-block coupling, no per-block parameters that depend on layer index. Each block is a self-contained refinement step.
 - **TransformerLM outputs (B, T, V) logits.** One next-token prediction per position, computed in parallel during training.
+- **Tied embeddings: one matrix lives at both ends of the model.** The unembedding is `token_embed.weight.T` plus a per-token bias. Saves `V*D` parameters; reflects that "vector for token v" and "direction that scores token v" are nearly the same object.
 
 ### What we don't cover
 
@@ -384,7 +426,7 @@ Secondary:
 Optional:
 
 - **Zhang & Sennrich, "Root Mean Square Layer Normalization" (2019).** RMSNorm — a simplified LN that drops the mean-subtraction step. Used by Llama and many recent transformers; a few percent faster, no quality loss in practice.
-- **Press et al., "Using the Output Embedding to Improve Language Models" (2017).** The case for tied input/output embeddings — saves parameters at no quality cost. We don't tie weights in this course for clarity; this is the paper that establishes you can.
+- **Press et al., "Using the Output Embedding to Improve Language Models" (2017).** The case for tied input/output embeddings — saves parameters at no quality cost. Our `TransformerLM` uses tied embeddings; this is the paper that established the technique.
 
 ## Deliverable checklist
 

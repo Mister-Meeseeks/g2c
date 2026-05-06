@@ -14,6 +14,7 @@ The last module handed us integer IDs. This module turns them into vectors. The 
 - **Trigonometric basics.** `sin(0) = 0`, `cos(0) = 1`. Sin and cos are bounded in `[−1, 1]`. Sin and cos at multiple frequencies. Nothing more exotic than what's in a high school trig review.
 - **2D rotation matrices.** A rotation by angle θ takes `(x, y)` to `(x cos θ − y sin θ, x sin θ + y cos θ)`. Composing two rotations adds their angles: `R(α) · R(β) = R(α + β)`.
 - **Dot product as a measure of alignment.** `q · k` is large when q and k point the same direction; zero when orthogonal; negative when opposite. Attention scores are dot products.
+
 ### Programming
 
 - **PyTorch**  Tensor indexing, `torch.outer`, and broadcasting.

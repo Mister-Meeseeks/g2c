@@ -85,23 +85,3 @@ Can you review my module 09B answers?
 ### Notes / uncertainty
 
 
-## Exercise 09B.08 — Count the tying win
-
-### Help request / hint request
-
-
-### Student answer
-
-
-### Notes / uncertainty
-
-
-## Exercise 09B.09 — Sanity-check tied training
-
-### Help request / hint request
-
-
-### Student answer
-
-
-### Notes / uncertainty

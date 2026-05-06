@@ -17,8 +17,20 @@ from __future__ import annotations
 from collections.abc import Callable
 from os import PathLike
 from time import perf_counter
+from typing import Self
 
 ProgressCallback = Callable[[dict[str, object]], None]
+
+COURSE_SPECIAL_TOKENS: tuple[str, ...] = (
+    "<|endoftext|>",
+    "<|system|>",
+    "<|user|>",
+    "<|assistant|>",
+    "<|tool_call|>",
+    "<|tool_result|>",
+    "<|end|>",
+    "<|pad|>",
+)
 
 
 class BPETokenizer:
@@ -35,11 +47,57 @@ class BPETokenizer:
     merges: dict[tuple[int, int], int]
     vocab: dict[int, bytes]
 
-    def __init__(self) -> None:
-        # Base vocabulary: one ID for every possible byte value 0..255.
-        # No merges learned yet — `train` will populate them.
+    def __init__(self, special_tokens: tuple[str, ...] | list[str] = ()) -> None:
+        """Create a byte-level BPE tokenizer.
+
+        Args:
+            special_tokens: optional control-token strings that should encode as
+                single atomic IDs. Later course modules use these for document
+                boundaries, chat roles, and tool-call events. They are reserved
+                immediately after the byte IDs, and BPE training does not learn
+                merges that consume them.
+        """
+        self.special_tokens = tuple(special_tokens)
+        self.special_to_id: dict[str, int] = {}
+        self.id_to_special: dict[int, str] = {}
+        self.special_token_ids: set[int] = set()
+        self._special_tokens_by_length: tuple[str, ...] = ()
+        self._validate_special_tokens()
+        self._reset_to_base_vocab()
+
+    @property
+    def base_vocab_size(self) -> int:
+        """Return byte vocabulary size plus reserved special-token count."""
+        return 256 + len(self.special_tokens)
+
+    @classmethod
+    def with_course_special_tokens(cls) -> Self:
+        """Return a tokenizer with the course chat/tool control tokens reserved."""
+        return cls(special_tokens=COURSE_SPECIAL_TOKENS)
+
+    def _validate_special_tokens(self) -> None:
+        if len(set(self.special_tokens)) != len(self.special_tokens):
+            raise ValueError("special tokens must be unique")
+        for token in self.special_tokens:
+            if not token:
+                raise ValueError("special tokens must be non-empty")
+
+    def _reset_to_base_vocab(self) -> None:
+        """Reset learned merges while preserving byte IDs and special IDs."""
         self.merges = {}
         self.vocab = {i: bytes([i]) for i in range(256)}
+        self.special_to_id = {}
+        self.id_to_special = {}
+        self.special_token_ids = set()
+        for offset, token in enumerate(self.special_tokens):
+            token_id = 256 + offset
+            self.special_to_id[token] = token_id
+            self.id_to_special[token_id] = token
+            self.special_token_ids.add(token_id)
+            self.vocab[token_id] = token.encode("utf-8")
+        self._special_tokens_by_length = tuple(
+            sorted(self.special_tokens, key=len, reverse=True)
+        )
 
     # ------------------------------------------------------------------
     # Persistence — implemented boilerplate
@@ -109,18 +167,27 @@ class BPETokenizer:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _get_pair_counts(ids: list[int]) -> dict[tuple[int, int], int]:
+    def _get_pair_counts(
+        ids: list[int],
+        *,
+        barrier_ids: set[int] | None = None,
+    ) -> dict[tuple[int, int], int]:
         """Return the frequency of each adjacent pair in `ids`.
 
         Example:
             _get_pair_counts([1, 2, 1, 2, 3])
               -> {(1, 2): 2, (2, 1): 1, (2, 3): 1}
 
+        Optional `barrier_ids` are excluded from pair counting. This is how
+        reserved special tokens remain atomic during training.
+
         Hint: a single pass with a sliding window of size 2.
         """
         pair_counts = {}
         for i in range(len(ids) - 1):
             pair = (ids[i], ids[i + 1])
+            if barrier_ids and (pair[0] in barrier_ids or pair[1] in barrier_ids):
+                continue
             pair_counts[pair] = pair_counts.get(pair, 0) + 1
         return pair_counts
 
@@ -182,7 +249,7 @@ class BPETokenizer:
             `(updated_ids, merged_pair, merge_count)`, or None if there are no
             adjacent pairs left to merge.
         """
-        pair_counts = self._get_pair_counts(ids)
+        pair_counts = self._get_pair_counts(ids, barrier_ids=self.special_token_ids)
         if not pair_counts:
             return None
 
@@ -214,8 +281,10 @@ class BPETokenizer:
 
         Args:
             text: training corpus.
-            vocab_size: target vocabulary size. Must be ≥ 256 (the byte base);
-                        exactly 256 means "no merges, just the base vocab."
+            vocab_size: target vocabulary size. Must be at least
+                        `self.base_vocab_size` (the byte base plus any reserved
+                        special tokens). Exactly `self.base_vocab_size` means
+                        "no merges, just the base vocab."
             progress_callback: optional function called with a progress dict
                                every `progress_every` merge steps and at the
                                end of training.
@@ -227,20 +296,24 @@ class BPETokenizer:
             applied.
 
         Raises:
-            ValueError: if `vocab_size < 256`.
+            ValueError: if `vocab_size` is smaller than the byte + special-token
+                base vocabulary.
             ValueError: if `progress_every < 1`.
         """
-        if vocab_size < 256:
-            raise ValueError("vocab_size must be at least 256")
+        if vocab_size < self.base_vocab_size:
+            raise ValueError(
+                f"vocab_size must be at least {self.base_vocab_size} "
+                "for this tokenizer's byte + special-token base vocabulary"
+            )
         if progress_every < 1:
             raise ValueError("progress_every must be at least 1")
         if progress_callback is not None and on_progress is not None:
             raise ValueError("pass either progress_callback or on_progress, not both")
 
         callback = progress_callback if progress_callback is not None else on_progress
-        ids = list(text.encode("utf-8"))
+        ids = self._encode_initial_ids(text)
         target_vocab_size = vocab_size
-        target_merges = max(0, target_vocab_size - 256)
+        target_merges = max(0, target_vocab_size - self.base_vocab_size)
         start = perf_counter()
         steps = 0
         last_pair: tuple[int, int] | None = None
@@ -323,7 +396,7 @@ class BPETokenizer:
           - `text` containing characters never seen in training → still works,
             because every UTF-8 byte is in the base vocab.
         """
-        ids = list(text.encode("utf-8"))
+        ids = self._encode_initial_ids(text)
 
         while True:
             pairs = []
@@ -355,3 +428,45 @@ class BPETokenizer:
         """
         byte_text = b"".join(self.vocab[id] for id in ids)
         return byte_text.decode("utf-8", errors="replace")
+
+    # ------------------------------------------------------------------
+    # Special-token segmentation — implemented boilerplate
+    # ------------------------------------------------------------------
+
+    def _special_aware_segments(self, text: str):
+        """Yield text spans and special token IDs in left-to-right order."""
+        if not self.special_tokens:
+            if text:
+                yield text
+            return
+
+        span_start = 0
+        i = 0
+        while i < len(text):
+            matched = None
+            for token in self._special_tokens_by_length:
+                if text.startswith(token, i):
+                    matched = token
+                    break
+            if matched is None:
+                i += 1
+                continue
+
+            if span_start < i:
+                yield text[span_start:i]
+            yield self.special_to_id[matched]
+            i += len(matched)
+            span_start = i
+
+        if span_start < len(text):
+            yield text[span_start:]
+
+    def _encode_initial_ids(self, text: str) -> list[int]:
+        """Encode text to byte IDs while preserving atomic special tokens."""
+        ids: list[int] = []
+        for segment in self._special_aware_segments(text):
+            if isinstance(segment, int):
+                ids.append(segment)
+            else:
+                ids.extend(segment.encode("utf-8"))
+        return ids

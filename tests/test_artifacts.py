@@ -26,7 +26,7 @@ from g2c.artifacts import (
     tokenizer_artifact_exists,
     train_or_load_tokenizer_artifact,
 )
-from g2c.tokenizer import BPETokenizer
+from g2c.tokenizer import COURSE_SPECIAL_TOKENS, BPETokenizer
 from g2c.transformer import TransformerLM
 
 
@@ -59,6 +59,7 @@ def test_tokenizer_config_accepts_mapping_defaults():
     assert config.use_fast is True
     assert config.chunk_chars == 8_192
     assert config.encoded_sample_chars == 1_000_000
+    assert config.special_tokens == COURSE_SPECIAL_TOKENS
 
 
 def test_load_tokenizer_source_text_reads_tinyshakespeare(tmp_path):
@@ -259,6 +260,7 @@ def test_train_or_load_tokenizer_artifact_saves_and_reloads(tmp_path):
         source="tinyshakespeare",
         vocab_size=256,
         max_chars=20,
+        special_tokens=(),
     )
 
     artifact = train_or_load_tokenizer_artifact(config, repo_root=repo)
@@ -277,6 +279,31 @@ def test_train_or_load_tokenizer_artifact_saves_and_reloads(tmp_path):
     assert loaded.manifest == artifact.manifest
 
 
+def test_tokenizer_artifacts_default_to_course_special_tokens(tmp_path):
+    repo = make_repo(tmp_path)
+    data_path = repo / "data" / "tinyshakespeare.txt"
+    data_path.parent.mkdir(parents=True)
+    data_path.write_text("hello<|endoftext|>artifact", encoding="utf-8")
+    config = TokenizerArtifactConfig(
+        name="CourseSpecialTokenizer",
+        source="tinyshakespeare",
+        vocab_size=256 + len(COURSE_SPECIAL_TOKENS),
+        max_chars=30,
+    )
+
+    artifact = train_or_load_tokenizer_artifact(config, repo_root=repo)
+
+    assert artifact is not None
+    assert artifact.tokenizer.special_tokens == COURSE_SPECIAL_TOKENS
+    assert artifact.manifest["special_tokens"] == list(COURSE_SPECIAL_TOKENS)
+    assert artifact.tokenizer.encode("<|user|>hi<|end|>") == [
+        artifact.tokenizer.special_to_id["<|user|>"],
+        104,
+        105,
+        artifact.tokenizer.special_to_id["<|end|>"],
+    ]
+
+
 def test_load_tokenizer_artifact_loads_without_source_text_or_ids(tmp_path):
     repo = make_repo(tmp_path)
     data_path = repo / "data" / "tinyshakespeare.txt"
@@ -287,6 +314,7 @@ def test_load_tokenizer_artifact_loads_without_source_text_or_ids(tmp_path):
         source="tinyshakespeare",
         vocab_size=256,
         max_chars=20,
+        special_tokens=(),
     )
     saved = train_or_load_tokenizer_artifact(config, repo_root=repo)
 
@@ -310,6 +338,7 @@ def test_load_tokenizer_artifact_can_load_sample_ids_and_text(tmp_path):
         vocab_size=256,
         max_chars=20,
         encoded_sample_chars=5,
+        special_tokens=(),
     )
     train_or_load_tokenizer_artifact(config, repo_root=repo)
 
@@ -336,6 +365,7 @@ def test_load_required_tokenizer_returns_saved_tokenizer(tmp_path):
         source="tinyshakespeare",
         vocab_size=256,
         max_chars=20,
+        special_tokens=(),
     )
     train_or_load_tokenizer_artifact(config, repo_root=repo)
 
@@ -354,6 +384,7 @@ def test_load_or_encode_tokenized_corpus_uses_artifact_and_cache(tmp_path):
         source="tinyshakespeare",
         vocab_size=256,
         max_chars=20,
+        special_tokens=(),
     )
     train_or_load_tokenizer_artifact(config, repo_root=repo)
 
@@ -385,6 +416,7 @@ def test_load_or_encode_tokenized_pair_uses_artifact_and_cache(tmp_path):
         source="tinyshakespeare",
         vocab_size=256,
         max_chars=20,
+        special_tokens=(),
     )
     train_or_load_tokenizer_artifact(config, repo_root=repo)
 
@@ -421,6 +453,7 @@ def test_train_or_load_tokenizer_artifact_saves_sample_ids(tmp_path):
         vocab_size=256,
         max_chars=26,
         encoded_sample_chars=5,
+        special_tokens=(),
     )
 
     artifact = train_or_load_tokenizer_artifact(config, repo_root=repo)
@@ -447,6 +480,7 @@ def test_fast_tokenizer_artifact_skips_full_training_text_encode(tmp_path):
         max_chars=len(text),
         encoded_sample_chars=10,
         use_fast=True,
+        special_tokens=(),
     )
     events: list[dict[str, object]] = []
 

@@ -80,6 +80,8 @@ def _byte_level_tokenizer_from_bpe(tokenizer: BPETokenizer):
     Tokenizer, decoders, models, pre_tokenizers, _ = _require_tokenizers()
 
     vocab = {bytes_to_token_string(bytes([byte])): byte for byte in range(256)}
+    for token, token_id in tokenizer.special_to_id.items():
+        vocab[token] = token_id
     merges: list[tuple[str, str]] = []
 
     for (left_id, right_id), new_id in sorted(
@@ -107,11 +109,17 @@ def encode_fast(tokenizer: BPETokenizer, text: str) -> list[int]:
     if not text:
         return []
     if not tokenizer.merges:
-        return list(text.encode("utf-8"))
+        return tokenizer._encode_initial_ids(text)
     rust_tokenizer = _byte_level_tokenizer_from_bpe(tokenizer)
-    encoding = rust_tokenizer.encode(text)
-    ids = encoding.ids
-    del encoding, rust_tokenizer
+    ids: list[int] = []
+    for segment in tokenizer._special_aware_segments(text):
+        if isinstance(segment, int):
+            ids.append(segment)
+        else:
+            encoding = rust_tokenizer.encode(segment)
+            ids.extend(encoding.ids)
+            del encoding
+    del rust_tokenizer
     gc.collect()
     return ids
 
@@ -136,20 +144,22 @@ def train_fast(
     Artifact builders can set `encode_training_text=False` when they only need
     the learned tokenizer tables and will encode a smaller inspection sample.
     """
-    if vocab_size < 256:
-        raise ValueError("vocab_size must be at least 256")
+    if vocab_size < tokenizer.base_vocab_size:
+        raise ValueError(
+            f"vocab_size must be at least {tokenizer.base_vocab_size} "
+            "for this tokenizer's byte + special-token base vocabulary"
+        )
     if chunk_chars < 1:
         raise ValueError("chunk_chars must be at least 1")
     effective_chunk_chars = min(chunk_chars, MAX_FAST_TRAIN_CHUNK_CHARS)
     total_chunks = _num_text_chunks(text, effective_chunk_chars)
 
     Tokenizer, decoders, models, pre_tokenizers, trainers = _require_tokenizers()
-    tokenizer.merges = {}
-    tokenizer.vocab = {i: bytes([i]) for i in range(256)}
+    tokenizer._reset_to_base_vocab()
     byte_to_id = {bytes([i]): i for i in range(256)}
 
-    if not text or vocab_size == 256:
-        return list(text.encode("utf-8"))
+    if not text or vocab_size == tokenizer.base_vocab_size:
+        return tokenizer._encode_initial_ids(text)
 
     rust_tokenizer = Tokenizer(models.BPE(unk_token=None, fuse_unk=False))
     rust_tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel(
@@ -164,6 +174,7 @@ def train_fast(
         vocab_size=vocab_size,
         show_progress=show_progress or capture_native_progress,
         progress_format="json" if capture_native_progress else "indicatif",
+        special_tokens=tokenizer.special_tokens,
     )
     _emit_progress(
         progress_callback,
@@ -335,6 +346,7 @@ def _make_bpe_trainer(
     vocab_size: int,
     show_progress: bool,
     progress_format: str,
+    special_tokens: tuple[str, ...] = (),
 ):
     kwargs = {
         "vocab_size": vocab_size,
@@ -342,7 +354,7 @@ def _make_bpe_trainer(
         "initial_alphabet": pre_tokenizers.ByteLevel.alphabet(),
         "show_progress": show_progress,
         "progress_format": progress_format,
-        "special_tokens": [],
+        "special_tokens": list(special_tokens),
     }
     try:
         return trainers.BpeTrainer(**kwargs)

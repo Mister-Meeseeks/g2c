@@ -336,9 +336,10 @@ def test_trainer_train_step_clips_grads():
     """
     torch.manual_seed(0)
     m = _tiny_model()
-    # Inflate the head's weights so the loss + gradients are large.
+    # Inflate the unembedding (the token embedding, since they are tied)
+    # so the loss + gradients are large.
     with torch.no_grad():
-        m.head.W *= 100.0
+        m.token_embed.weight *= 100.0
     t = Trainer(
         m,
         batch_size=4,

@@ -17,7 +17,7 @@ from time import perf_counter
 
 import torch
 
-from g2c.tokenizer import BPETokenizer
+from g2c.tokenizer import COURSE_SPECIAL_TOKENS, BPETokenizer
 from g2c.tokenizer.fast import MAX_FAST_TRAIN_CHUNK_CHARS
 from g2c.tokenizer.persistence import (
     MANIFEST_FILENAME,
@@ -53,11 +53,17 @@ class TokenizerArtifactConfig:
     use_fast: bool = True
     chunk_chars: int = MAX_FAST_TRAIN_CHUNK_CHARS
     encoded_sample_chars: int = DEFAULT_ENCODED_SAMPLE_CHARS
+    special_tokens: tuple[str, ...] = COURSE_SPECIAL_TOKENS
     notes: str = ""
 
     @classmethod
     def from_mapping(cls, values: Mapping[str, object]) -> TokenizerArtifactConfig:
         """Build a config from a notebook-style dictionary."""
+        raw_special_tokens = values.get("special_tokens", COURSE_SPECIAL_TOKENS)
+        if isinstance(raw_special_tokens, str):
+            special_tokens = (raw_special_tokens,)
+        else:
+            special_tokens = tuple(str(token) for token in raw_special_tokens)
         return cls(
             name=str(values["name"]),
             source=str(values["source"]),
@@ -68,6 +74,7 @@ class TokenizerArtifactConfig:
             encoded_sample_chars=int(
                 values.get("encoded_sample_chars", DEFAULT_ENCODED_SAMPLE_CHARS)
             ),
+            special_tokens=special_tokens,
             notes=str(values.get("notes", "")),
         )
 
@@ -402,11 +409,11 @@ def train_or_load_tokenizer_artifact(
         _emit(status_callback, phase="missing_source", name=config.name, source=config.source)
         return None
 
-    tokenizer = BPETokenizer()
+    tokenizer = BPETokenizer(special_tokens=config.special_tokens)
     encoded_text = text[: min(len(text), config.encoded_sample_chars)]
     start = perf_counter()
-    if config.vocab_size == 256:
-        ids = list(encoded_text.encode("utf-8"))
+    if config.vocab_size == tokenizer.base_vocab_size:
+        ids = tokenizer.encode(encoded_text)
     elif config.use_fast:
         effective_chunk_chars = min(config.chunk_chars, MAX_FAST_TRAIN_CHUNK_CHARS)
         chunks = _num_text_chunks(text, effective_chunk_chars)
@@ -522,7 +529,12 @@ def _text_parts_digest(text_parts: tuple[str, ...]) -> tuple[int, str]:
 
 
 def _tokenizer_digest(tokenizer: BPETokenizer) -> str:
-    payload = repr(sorted(tokenizer.merges.items())).encode("utf-8")
+    payload = repr(
+        {
+            "special_tokens": tokenizer.special_tokens,
+            "merges": sorted(tokenizer.merges.items()),
+        }
+    ).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()[:16]
 
 
@@ -562,6 +574,10 @@ def _config_from_manifest(name: str, manifest: Mapping[str, object]) -> Tokenize
         encoded_sample_chars=int(
             manifest.get("encoded_sample_chars") or DEFAULT_ENCODED_SAMPLE_CHARS
         ),
+        special_tokens=tuple(
+            str(token)
+            for token in manifest.get("special_tokens", COURSE_SPECIAL_TOKENS)
+        ),
         notes=str(manifest.get("notes", "")),
     )
 
@@ -581,6 +597,7 @@ def _build_manifest(
         "source": config.source,
         "requested_vocab_size": config.vocab_size,
         "actual_vocab_size": len(tokenizer.vocab),
+        "special_tokens": list(config.special_tokens),
         "max_chars": config.max_chars,
         "actual_chars": len(text),
         "encoded_sample_chars": config.encoded_sample_chars,
@@ -602,7 +619,7 @@ def _build_manifest(
 
 
 def _tokenizer_progress_every(vocab_size: int, updates: int = 80) -> int:
-    return max(1, (vocab_size - 256) // updates)
+    return max(1, (vocab_size - 256 - len(COURSE_SPECIAL_TOKENS)) // updates)
 
 
 def _num_text_chunks(text: str, chunk_chars: int) -> int:

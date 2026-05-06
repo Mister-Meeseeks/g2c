@@ -18,7 +18,8 @@ if TYPE_CHECKING:
 
 
 TOKENIZER_FORMAT = "g2c.bpe"
-TOKENIZER_VERSION = 1
+TOKENIZER_VERSION = 2
+SUPPORTED_TOKENIZER_VERSIONS = {1, 2}
 TOKENIZER_FILENAME = "tokenizer.json"
 TOKEN_IDS_FILENAME = "ids.uint32"
 MANIFEST_FILENAME = "manifest.json"
@@ -29,6 +30,7 @@ def to_dict(tokenizer: BPETokenizer) -> dict[str, object]:
     return {
         "format": TOKENIZER_FORMAT,
         "version": TOKENIZER_VERSION,
+        "special_tokens": list(tokenizer.special_tokens),
         "merges": [
             [a, b, new_id]
             for (a, b), new_id in sorted(
@@ -46,15 +48,21 @@ def from_dict(
     """Construct a tokenizer from `to_dict()` output."""
     if payload.get("format") != TOKENIZER_FORMAT:
         raise ValueError("not a g2c BPE tokenizer payload")
-    if payload.get("version") != TOKENIZER_VERSION:
+    if payload.get("version") not in SUPPORTED_TOKENIZER_VERSIONS:
         raise ValueError("unsupported BPE tokenizer version")
 
-    tok = tokenizer_cls()
+    special_tokens = payload.get("special_tokens", [])
+    if not isinstance(special_tokens, list) or not all(
+        isinstance(token, str) for token in special_tokens
+    ):
+        raise ValueError("tokenizer special_tokens must be a list of strings")
+
+    tok = tokenizer_cls(special_tokens=tuple(special_tokens))
     merges = payload.get("merges")
     if not isinstance(merges, list):
         raise ValueError("tokenizer payload must contain a list of merges")
 
-    for expected_id, merge in enumerate(merges, start=256):
+    for expected_id, merge in enumerate(merges, start=tok.base_vocab_size):
         if (
             not isinstance(merge, list)
             or len(merge) != 3

@@ -96,10 +96,30 @@ Every merge shortens the sequence and adds one entry to the vocabulary. The merg
 
 The whole thing is ~50 lines of Python. The cleverness is in the choice — BPE produces a tokenization where common patterns become single tokens by virtue of statistics, no linguistic knowledge required. It's a tiny algorithm with outsized practical impact.
 
+### Special tokens
+
+"Special tokens" is the standard name for reserved strings that mean something to the model/runtime instead of just ordinary prose. Later modules need tokens for document boundaries, chat roles, and tool events:
+
+```text
+<|endoftext|>   separates documents/stories during pretraining
+<|system|>      starts a system message
+<|user|>        starts a user message
+<|assistant|>   starts an assistant message
+<|tool_call|>   starts a structured tool request
+<|tool_result|> starts a tool result
+<|end|>         ends one message/event
+<|pad|>         optional batching filler
+```
+
+These must be **atomic**. If the text contains `<|assistant|>`, the tokenizer should emit one reserved ID, not the byte sequence for `<`, `|`, `a`, ... and not a set of BPE pieces. Atomic special tokens matter because Module 13 onward will train on chat/tool formats where the marker itself is part of the interface contract.
+
+In this repo, `BPETokenizer()` is byte-only by default for the tiny BPE exercises. Use `BPETokenizer.with_course_special_tokens()` when creating reusable course tokenizer artifacts. Those reserved IDs live immediately after the 256 byte IDs, and learned BPE merges start after them. BPE training treats special tokens as barriers, so it does not learn a merge that consumes `<|endoftext|>` plus a neighboring word.
+
 ## Concepts to internalize
 
 - **Tokens vs. token IDs.** A token is a byte sequence (e.g., `b'the'`). A token ID is the integer the tokenizer assigns to it (e.g., `258`). The vocab is the bidirectional map.
 - **Base vocab is byte-level.** Every byte 0–255 has its own ID. This guarantees no out-of-vocabulary inputs, ever — every UTF-8 string can be encoded somehow, even if the encoding falls back to raw bytes for unfamiliar characters.
+- **Special tokens are reserved interface markers.** They encode atomically and are not ordinary BPE merges. Use them for document boundaries, chat roles, and tool-call events.
 - **Merges are ordered and priority-encoded by ID.** Earlier merges have lower IDs. At encode time, lower-ID merges win — they're the most frequent patterns and should be applied first.
 - **Training is one merge step repeated.** `train_step()` does the conceptual work once: count pairs, choose the most frequent pair, mint the new ID, merge the sequence, and update `merges`/`vocab`. `train()` is just the scaffolded outer loop plus progress reporting.
 - **The greedy merge rule has a subtlety.** When `_merge` sees `[1, 1, 1]` and the merge target is `(1, 1)`, the result is `[99, 1]`, not `[99, 99]`. The middle `1` is consumed by the first match and isn't available for a second. Left-to-right, non-overlapping.
@@ -115,6 +135,7 @@ Package: `g2c/tokenizer/`
 class BPETokenizer:
     merges: dict[tuple[int, int], int]    # learned: pair → new ID
     vocab: dict[int, bytes]               # ID → bytes representation
+    special_tokens: tuple[str, ...]       # optional atomic control tokens
 
     def train(self, 
 	    text: str, 
@@ -129,6 +150,13 @@ class BPETokenizer:
 ```
 
 About 50 lines of real implementation in total.
+
+For later modules and durable tokenizer artifacts, create the course-token variant:
+
+```python
+tok = BPETokenizer.with_course_special_tokens()
+ids = tok.encode("<|user|>\nHello<|end|>")
+```
 
 ## How to run the tests
 
@@ -157,11 +185,13 @@ The implementation path is the test suite above. The notebook exercises are for 
 
 3. **Encode, decode, and verify round-trip.** Encode text that includes punctuation, whitespace, and multi-byte Unicode, then decode it back. Explain why byte-level BPE can handle unseen text, why earliest learned merges get priority, and what makes decoding lossless.
 
-4. **Compare vocab size vs. compression.** Train several tokenizers at different vocab sizes and tokenize the same passage with each. Report token count and compression ratio, then explain the tradeoff: larger vocabularies shorten sequences but make the embedding table larger.
+4. **Special tokens as atomic markers.** Create `BPETokenizer.with_course_special_tokens()`, encode a tiny chat string such as `"<|user|>\nHello<|end|>"`, and verify that `<|user|>` and `<|end|>` each become one ID. Explain why this is different from ordinary text like `"Hello"`, which is free to split into bytes or BPE pieces.
 
-5. **Inspect learned tokens.** Print early and late learned vocab entries. Early IDs above 255 should usually be short, frequent patterns; later IDs should often be longer or more corpus-specific. Pick a few and explain why they make sense for your training text.
+5. **Compare vocab size vs. compression.** Train several tokenizers at different vocab sizes and tokenize the same passage with each. Report token count and compression ratio, then explain the tradeoff: larger vocabularies shorten sequences but make the embedding table larger.
 
-6. **Optional: pre-tokenization.** Try a GPT-2-style pre-split before BPE so merges do not freely cross every boundary. Compare the learned vocab before and after. The useful question is not "which one is correct?" but "what kinds of tokens does each procedure encourage?"
+6. **Inspect learned tokens.** Print early and late learned vocab entries. Early learned IDs should usually be short, high-frequency byte patterns; later learned IDs tend to be longer and more corpus-specific. Pick a few and explain why they make sense for your training text.
+
+7. **Pre-tokenization demo.** Try a simple pre-split before BPE so merges do not freely cross every boundary. A minimal version is: split text into whitespace and non-whitespace spans, then compare adjacent-pair counts with and without those boundaries. The useful question is not "which one is correct?" but "what kinds of merges does each procedure encourage?"
 
 The notebook ends with a **Mini Milestone** section that turns your tokenizer into reusable artifacts. It uses `g2c.artifacts` to train or load configured tokenizers with progress updates, save each tokenizer plus a small encoded inspection sample under `artifacts/tokenizers/`, and keep path/loading logic reusable outside the notebook. Full pre-tokenized corpora are separate later artifacts; the durable thing here is the learned tokenizer table. The notebook then prints inspection views: a pseudo-random text window tokenized as strings, frequent final tokens after encoding, frequent learned final tokens after encoding, greedy longest learned tokens that skip substring duplicates, and a frequency plot. `ShakespeareTokenizer` is enabled by default. `StoryTokenizer` and `G2CTokenizer` are configured but disabled until you choose to run the larger dataset path.
 
@@ -174,6 +204,10 @@ The notebook ends with a **Mini Milestone** section that turns your tokenizer in
 - **Mutable state across training steps.** `train_step` should add one entry to `self.merges` and one entry to `self.vocab`, not replace either dictionary. (The tests assume you start from a fresh tokenizer per test, so this is more of a real-world concern.)
 
 - **`encode` infinite loop.** If your encode logic finds a merge to apply but doesn't actually shorten the list, you'll loop forever. Always verify the new list is shorter than the old.
+
+- **Special-token off-by-one errors.** If you reserve special tokens, the first learned merge is not ID 256 anymore. It starts at `tokenizer.base_vocab_size`. Tests cover both byte-only and course-special-token paths.
+
+- **Merging across a special token.** A special token is a boundary. Do not learn a merge like `(<|endoftext|>, "The")`; that would turn an interface marker into an ordinary corpus-specific subword.
 
 - **UTF-8 decode of partial sequences.** If you ever construct an ID list that doesn't correspond to a valid UTF-8 byte stream, `bytes.decode("utf-8")` raises. Use `errors="replace"` for robustness — but a correct `encode/decode` round-trip should never trigger this.
 
@@ -207,7 +241,7 @@ Optional:
 ## Deliverable checklist
 
 - [ ] All tests in `tests/test_tokenizer.py` pass.
-- [ ] `notebooks/solutions/04-tokenizer.ipynb`: trained on a real corpus at three vocab sizes; token count + compression ratio table; printed top-20 / bottom-20 of learned vocab at the largest size.
+- [ ] `notebooks/solutions/04-tokenizer.ipynb`: trained on a real corpus at three vocab sizes; token count + compression ratio table; printed top-20 / bottom-20 of learned vocab at the largest size; demonstrated atomic course special tokens.
 - [ ] `artifacts/tokenizers/ShakespeareTokenizer/`: saved `tokenizer.json`, sample `ids.uint32`, and `manifest.json`.
 - [ ] Optional: after running `./datasets.sh --small` or `./datasets.sh tinystories`, enabled and saved `StoryTokenizer` and/or `G2CTokenizer`. The logical `g2c` source prefers the full corpus when present and falls back to the small corpus.
 - [ ] You've inspected the learned vocabulary and can point to a few subword tokens that are obviously frequent patterns (`"the"`, `"ing"`, `" of"`, etc.) and a few that are more specific to your corpus.

@@ -4,7 +4,7 @@
 
 ![Prerequisite review map showing the math, computer science, programming, and ML workflow basics that feed into the course's training loop.](00-prerequisite-review/Module00-Hero.png)
 
-This is a fast review, not a remedial course. If these ideas are familiar but rusty, this module should put the right concepts back in working memory before Module 01. If several sections feel new, pause here and use this page as a map for a longer fundamentals pass before starting the course.
+This is a fast review, not a remedial course. If these ideas are familiar but rusty, this module should put the right concepts back in working memory before the real course starts. If several sections feel new, pause here and use this page as a map for a longer fundamentals pass before starting the course.
 
 ---
 ## Prerequisites

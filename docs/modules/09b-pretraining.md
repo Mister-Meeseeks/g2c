@@ -63,6 +63,16 @@ train_ids, val_ids = split_token_stream(ids, train_fraction=0.9)
 
 Do not shuffle the individual token IDs. Shuffling would destroy the adjacency relation that next-token prediction depends on. The training stream and validation stream can each be sampled randomly by window, but each sampled window must preserve local order.
 
+### Corpus selection is model behavior selection
+
+The corpus is not just fuel for the optimizer. It is the behavior distribution the model is asked to imitate. TinyShakespeare teaches character names, stage directions, and Elizabethan fragments. TinyStories teaches simple narrative structure. A course corpus mixed with educational prose and code teaches a different shape again. Same architecture, same loss, different data: different model.
+
+At small scale, corpus choice is especially visible because the model cannot average over the internet. A narrow corpus can produce more coherent samples inside its domain, but it will be brittle outside it. A broader corpus gives the model more surface area, but each pattern gets fewer repetitions for a fixed training budget. That is why Module 10 uses named tracks: ShakespeareLM for a tiny smoke run, StoryLM for coherent small-model text, and TinyLLM for broader assistant-shaped experiments.
+
+Document boundaries also matter. If you concatenate stories or articles without a separator, the model sees the last sentence of one document followed by the first sentence of the next as an ordinary next-token event. The course tokenizer reserves `<|endoftext|>` so document boundaries can be represented explicitly. Sampling code should avoid crossing documents when possible; when it does not, the separator at least gives the model a visible boundary token.
+
+The practical rule for this course: choose the corpus that matches the artifact you want to produce, keep a held-out validation split from the same distribution, and write down the corpus size/mix in the manifest so later results are interpretable.
+
 ### Batch sampling creates shifted windows
 
 `get_lm_batch` samples `B` starting positions from a 1-D stream. Each start needs `T + 1` contiguous tokens:
@@ -114,50 +124,6 @@ loss = CrossEntropyLoss()(flat_logits, flat_targets)
 
 That is the pretraining objective in its smallest useful form: average next-token cross-entropy over every position in every sampled window.
 
-### Tied embeddings: one matrix, two jobs
-
-Module 09 left the model with two separate `(V, D)`-sized matrices on
-the input and output sides:
-
-```text
-TokenEmbedding.weight     shape (V, D)   maps token id → vector
-TransformerLM.head.W      shape (D, V)   maps vector   → V logits
-```
-
-These two matrices do related work. The input table's row `v` is "the
-vector for token `v`." The output projection's column `v` is "the
-direction that scores token `v`." Several lines of evidence — Press &
-Wolf (2017), and the fact that GPT-2, T5, and Gemma all ship with
-tying — say you can use the *same* matrix for both jobs without losing
-quality.
-
-When you tie:
-
-```text
-logits = x_normed @ token_embed.weight.T + head_bias
-```
-
-The unembedding becomes the embedding matrix transposed, plus a tiny
-per-token bias. Scoring token `v` reduces to "how aligned is the
-final-position vector with the embedding row that *put* token `v`
-into the model in the first place?" That's a clean geometric story,
-and it's why tying tends not to hurt — the two roles are already
-asking nearly the same question.
-
-The headline is parameter savings: tying removes one full `(V, D)`
-matrix.
-
-```text
-Untied:   V*D (input) + V*D (output) + V (output bias)  =  2*V*D + V
-Tied:     V*D (shared) + V (output bias)                =    V*D + V
-Savings:  V*D parameters
-```
-
-For a `D = 192`, `V = 8000` model that's ~1.5M fewer parameters — on
-a small model that can be 30–50% of the total. Flip the flag, drop
-the parameters, train the same effective model on less compute. We
-turn this on for the Module 10 run.
-
 ### `log(V)` is the sanity baseline
 
 If all logits are zero, softmax is uniform over the vocabulary. Cross-entropy against a uniform distribution is:
@@ -172,11 +138,12 @@ At initialization, a random model's loss should usually start near `log(V)`. If 
 ## Concepts to Internalize
 
 - **A token stream is supervised data once you shift it by one.**
+- **Corpus choice shapes model behavior.** Data distribution matters as much as architecture at this scale.
+- **Document separators are training data.** `<|endoftext|>` tells the model one document ended before another begins.
 - **Causal masking makes multi-position training valid.** Every position predicts the next token without seeing it.
 - **One `(B, T)` batch contains `B * T` classification examples.**
 - **Language-model cross-entropy is ordinary cross-entropy after a reshape.**
 - **`log(V)` is not transformer-specific.** It is the uniform baseline for any language model with vocabulary size `V`.
-- **Tied embeddings reuse one `(V, D)` matrix as both input lookup and output projection.** Saves `V*D` parameters; tends not to hurt quality because the two roles are already asking the same question.
 
 ### What we didn't cover
 
@@ -246,10 +213,6 @@ Enter questions or answers in [answers/module-09b.md](../../answers/module-09b.m
 
 7. **Random model sanity check.** Instantiate a tiny `TransformerLM`, sample one batch, compute `lm_cross_entropy`, and compare it to `log(V)`. If the two values differ a lot, write down two possible explanations.
 
-8. **Count the tying win.** For `V = 8000`, `D = 192`, and `num_layers = 6`, compute (a) total parameters in an untied `TransformerLM`, (b) total in the tied version, (c) the savings as a fraction of the untied total. Use the Module 12 budget formulas if you've read ahead, otherwise count by parts: token embedding `V*D`, positional `max_seq_len * D` (assume 256), each block `12 * D**2` params, two final-LN parameters, and head `V*D + V` (or `V` if tied).
-
-9. **Sanity-check tied training.** Build two tiny `TransformerLM`s on the same seed — one untied, one with `tie_embeddings=True`. Sample one batch, compute `lm_cross_entropy` for both, and confirm they are close to `log(V)`. They will not match exactly because the tied model has fewer parameters at init. Then take three SGD steps on each with the same fixed batch and confirm both losses drop. The tied model trains; the gradient routes back through the shared embedding fine.
-
 ## Pitfalls to Expect
 
 - **Off-by-one targets.** `y` starts one token after `x`. If `y == x`, the model is learning to copy the current token, not predict the next one.
@@ -257,14 +220,12 @@ Enter questions or answers in [answers/module-09b.md](../../answers/module-09b.m
 - **Shuffling tokens.** Shuffle windows if you want randomness, not individual token IDs.
 - **Flattening one tensor differently than the other.** `logits.reshape(B * T, V)` and `targets.reshape(B * T)` must preserve the same `(B, T)` order.
 - **Reading `log(V)` as failure.** At step 0, `log(V)` is the expected baseline. The interesting question is whether the curve drops below it.
-- **Tying then loading an untied artifact.** The two parameter lists differ by one tensor. Loading checkpoints across the boundary fails the param-count check in `load_model_artifact`. Pick a setting at training time and stay with it — model artifacts record `tie_embeddings` in their config so this is automatic for new runs.
 
 ## Reading
 
 - Karpathy, *nanoGPT*, especially the `get_batch` and loss computation.
 - Karpathy, "Let's reproduce GPT-2 (124M)", the data-loader and training-loop sections.
 - Vaswani et al., "Attention Is All You Need", causal masking and parallel sequence training context.
-- Press & Wolf, "Using the Output Embedding to Improve Language Models" (2017). The original case for tied input/output embeddings — same matrix, two roles.
 
 ## Deliverable Checklist
 
@@ -273,7 +234,6 @@ Enter questions or answers in [answers/module-09b.md](../../answers/module-09b.m
 - [ ] You can explain why one `(B, T)` batch contains `B * T` next-token prediction examples.
 - [ ] You can implement `lm_cross_entropy` from the shape contract alone.
 - [ ] You can use `log(V)` as a step-0 sanity check before a Module 10 training run.
-- [ ] You can explain when and why to set `tie_embeddings=True`, and quantify the parameter savings for a given `V` and `D`.
 
 ## M-Series Notes
 
