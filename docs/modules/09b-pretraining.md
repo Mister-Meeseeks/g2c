@@ -4,32 +4,26 @@
 
 ![Multi-position targets in three steps: sample a (B, T) window from the token stream with the target window shifted left by one; run one TransformerLM forward pass to produce (B, T, V) logits; compute per-position cross-entropy at every (b, t) pair and average across all B * T positions.](09b-pretraining/Module09B-Hero.png)
 
-*This is what causal masking earned us. Because position `t` can never see token `t+1`, position `t`'s logits are a valid prediction for token `t+1`, for every position in the window at once. Module 10 will use this setup inside the full training loop.*
+Module 09B sits between "the architecture exists" and "the model trains on a real corpus." It is a small bridge module, but it removes a lot of shape bookkeeping from the payoff week. 
 
 ---
 ## Prerequisites
 
-Module 09B sits between "the architecture exists" and "the model trains on a real corpus." It is a small bridge module, but it removes a lot of shape bookkeeping from the payoff week.
 
 ### Math
 
 - **Cross-entropy.** Same classification loss from Module 03.
-- **Averages.** The language-model loss averages over every `B * T` position.
 - **Logarithms.** `log(V)` is the uniform random baseline for a vocabulary of size `V`.
 
-### Computer science
-
-- **Contiguous sequences.** Token order matters. A train/validation split should preserve local order inside each split.
-- **Shape contracts.** You should be comfortable tracing `(B, T)` inputs and `(B, T, V)` logits.
-
-### Programming
+### PyTorch
 
 - **PyTorch tensor indexing.**  Used to flatten all token positions before calling cross-entropy.
+- **Shape contracts.** You should be comfortable tracing `(B, T)` inputs and `(B, T, V)` logits.
 
 ---
 ## Why We Start Here
 
-At the end of Module 09, `TransformerLM.forward(token_ids)` returns logits shaped `(B, T, V)`. That output is not useful until you can answer two questions:
+At the end of Module 09, `TransformerLM.forward()` returns logits shaped `(B, T, V)`. That output is not useful until you can answer two questions:
 
 1. What exactly are the `(B, T)` inputs and `(B, T)` targets?
 2. How do those `(B, T, V)` logits become one scalar loss?
@@ -55,9 +49,7 @@ Every position in `x` has a target in `y`. The causal mask makes this legal: whe
 
 ## The Big Idea
 
-### A corpus becomes token streams
-
-Start with text, tokenize it, and store a single 1-D token stream:
+Any corpus can be turned into a token stream. Start with text, tokenize it, and store a single 1-D token stream:
 
 ```python
 ids = torch.tensor(tokenizer.encode(text), dtype=torch.long)
@@ -141,6 +133,14 @@ At initialization, a random model's loss should usually start near `log(V)`. If 
 - **Language-model cross-entropy is ordinary cross-entropy after a reshape.**
 - **`log(V)` is not transformer-specific.** It is the uniform baseline for any language model with vocabulary size `V`.
 
+### What we didn't cover
+
+* **Distributed training.** Used to scale large-scale training beyond a single machine. Lots of devops considerations, but conceptually just an extension of gradient batching.
+* **Mixed precision.** Speeds up training by using lower precision floats for most operations and selectively keeping high precision for load bearing weights. 
+* **Packed datasets.** Combines multiple short training sequences into a single long sequence. Reduces wasting compute on padding.
+* **Checkpoint managers.** Important for large scale runs to allow transparency into training progress without having to wait until the end of a massive run. Conceptually no change to the core pre-training loop.
+
+---
 ## Scaffolding and How to Run the Tests
 
 This module starts the `g2c/pretraining/` package:

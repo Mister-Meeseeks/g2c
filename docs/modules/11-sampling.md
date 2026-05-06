@@ -14,7 +14,7 @@ Sampling is short, mostly stateless, and entirely about logit-space arithmetic. 
 ### Math
 
 - **Softmax over logits.** Already used in Modules 03–10. 
-- **Cumulative distribution functions.** Cumulatively sum probabilities in descending order.
+- **Cumulative probability.** The probability of n independent events is the sum of the probability of each of the events.  
 
 ### Computer science
 
@@ -346,8 +346,6 @@ pytest tests/test_sampling.py -k repetition    # just repetition-penalty tests
 pytest tests/test_sampling.py -k generate      # just generate tests
 pytest tests/test_sampling.py -v               # verbose
 ```
-
-
 
 ## Exercises
 

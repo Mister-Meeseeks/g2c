@@ -9,26 +9,9 @@
 ---
 ## Prerequisites
 
-### Math
+### Machine Learning
 
-- **Cross-entropy and perplexity.** Module 09B introduced `lm_cross_entropy` and the `log(V)` baseline.
-- **Learning-rate schedules and gradient norms.** Module 03B introduced warmup, cosine decay, and global-norm clipping.
-
-### Computer science
-
-- **Stateful loops.** A trainer owns a model, optimizer, step counter, random generator, and history.
 - **Train/validation workflow.** Validation loss is the main signal that the run is improving rather than merely memorizing.
-
-### Programming
-
-- **`torch.no_grad()`.** Evaluation should not build an autograd graph.
-- **Device movement.** The trainer moves model parameters and sampled batches to MPS when available.
-
-### What you can skip
-
-- **Re-deriving the language-model objective.** That was Module 09B.
-- **Optimizer internals.** AdamW, clipping, and schedules were Module 03B.
-- **Production training systems.** No distributed training, mixed precision, packed datasets, or checkpoint managers yet.
 
 ---
 ## Why We Start Here
