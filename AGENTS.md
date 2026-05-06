@@ -147,6 +147,22 @@ Use small ASCII diagrams to crack genuinely dense conceptual sections — partic
 
 Student-facing notebooks should foreground the conceptual flow, not the plumbing. When authoring or cleaning a notebook:
 
+- **Open with the canonical intro cell.** The first cell is markdown and follows this template (see `notebooks/clean/00-prerequisite-review.ipynb` for the reference):
+
+  ```markdown
+  # Module NN - <Title>
+
+  <one short paragraph orienting the student to what this notebook is for>
+
+  1. Read the lesson page (`docs/modules/NN-name.md`).
+  2. Open this notebook with `.venv/bin/python scripts/open_notebook.py NN`.
+  3. Answer the `Question:` / `Answer:` cells below.
+  4. When you're ready, ask a coding agent to grade your notebook.
+
+  Partial work is fine. Blank `Answer: ""` strings are skipped, not counted wrong. If you'd like a hint instead of a grade, write the request inline in the answer string and the agent will tutor first.
+  ```
+
+  Keep the workflow list and the trailing "Partial work is fine..." paragraph verbatim across modules. The only per-module variation is the title, the orientation paragraph, the lesson page filename, and the `open_notebook.py` argument (e.g. `03b`, `09b`).
 - **Configs live near consumption.** No global "Run Configuration" wall at the top. Corpus knobs go in the prep cell, model and trainer config dicts at the top of the cell that uses them, sample prompts inline with the sample cell. A small shared base is fine only if it materially cuts duplication.
 - **No user-controlled run gates.** Don't add `run_X = True/False` toggles to skip long-running cells. If a student doesn't want to run a cell, they don't run it; Jupyter handles "stop execution." Environment checks (e.g. "TinyStories not downloaded → skip with friendly message") are different and should stay.
 - **Extract notebook plumbing, not concepts.** IPython display helpers, matplotlib chart glue, and `Trainer` progress wrappers belong in `g2c/notebook_extras/<topic>.py`, not inline. Code that IS the experiment the student is meant to read (an LR sweep loop, an ablation set) stays inline. Code the lesson explicitly frames as transitional (e.g. "Module 11 will build the real generation utilities, here's a stand-in") also stays inline so the framing is visible.
