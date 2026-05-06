@@ -594,6 +594,195 @@ def test_transformer_lm_causality():
     assert not torch.allclose(out1[0, 4:], out2[0, 4:], atol=1e-4)
 
 
+# ----------------------------------------------------------------------
+# TransformerLM — tied embeddings (Module 09B)
+# ----------------------------------------------------------------------
+
+def test_transformer_lm_tied_default_is_false():
+    m = TransformerLM(
+        vocab_size=12,
+        embedding_dim=8,
+        num_layers=1,
+        num_heads=2,
+        max_seq_len=16,
+    )
+    assert m.tie_embeddings is False
+    assert m.head is not None
+    assert m.head_bias is None
+
+
+def test_transformer_lm_tied_construction():
+    m = TransformerLM(
+        vocab_size=12,
+        embedding_dim=8,
+        num_layers=1,
+        num_heads=2,
+        max_seq_len=16,
+        tie_embeddings=True,
+    )
+    assert m.tie_embeddings is True
+    # Tied: no separate head matrix; only a per-token bias on the output.
+    assert m.head is None
+    assert m.head_bias is not None
+    assert m.head_bias.shape == (12,)
+    assert m.head_bias.requires_grad
+
+
+def test_transformer_lm_tied_drops_one_param_tensor():
+    """Tying removes the head's `(D, V)` weight matrix from the parameter
+    list (the embedding plays both roles). The head bias replaces the
+    head's own bias, so the net change is exactly one fewer tensor.
+
+    Untied:   token_embed (1) + pos_embed (1) + blocks (16) + ln (2) + head (W, b) (2) = 23
+    Tied:     token_embed (1) + pos_embed (1) + blocks (16) + ln (2) + head_bias (1) = 22
+    """
+    common = dict(
+        vocab_size=12,
+        embedding_dim=8,
+        num_layers=1,
+        num_heads=2,
+        max_seq_len=16,
+    )
+    untied = list(TransformerLM(**common).parameters())
+    tied = list(TransformerLM(**common, tie_embeddings=True).parameters())
+    assert len(untied) - len(tied) == 1
+
+
+def test_transformer_lm_tied_saves_v_times_d_numel():
+    """The headline efficiency claim: tying saves exactly `V * D` scalar
+    parameters — the size of the unembedding's weight matrix. The bias
+    on each side is the same size (`V`), so it cancels out.
+    """
+    V, D = 50, 16
+    common = dict(
+        vocab_size=V,
+        embedding_dim=D,
+        num_layers=2,
+        num_heads=2,
+        max_seq_len=16,
+    )
+    untied_total = sum(p.numel() for p in TransformerLM(**common).parameters())
+    tied_total = sum(
+        p.numel() for p in TransformerLM(**common, tie_embeddings=True).parameters()
+    )
+    assert untied_total - tied_total == V * D
+
+
+def test_transformer_lm_tied_forward_shape():
+    torch.manual_seed(0)
+    m = TransformerLM(
+        vocab_size=12,
+        embedding_dim=8,
+        num_layers=2,
+        num_heads=2,
+        max_seq_len=16,
+        tie_embeddings=True,
+    )
+    ids = torch.randint(0, 12, (3, 5))
+    out = m(ids)
+    assert out.shape == (3, 5, 12)
+
+
+def test_transformer_lm_tied_forward_uses_embedding_matrix():
+    """Headline test: row `v` of `token_embed.weight` controls logit `v`
+    of the unembedding head. We pick a token id that does NOT appear in
+    the input, mutate its embedding row, and verify ONLY the matching
+    output column changes. That isolates the unembedding path (the
+    input-lookup path doesn't touch the mutated row) and pins down that
+    the head is actually reusing the embedding matrix.
+    """
+    torch.manual_seed(0)
+    V = 12
+    m = TransformerLM(
+        vocab_size=V,
+        embedding_dim=8,
+        num_layers=1,
+        num_heads=2,
+        max_seq_len=16,
+        tie_embeddings=True,
+    )
+    ids = torch.tensor([[0, 1, 2, 3]])   # token 7 deliberately absent
+    target_v = 7
+    assert target_v not in ids.unique().tolist()
+
+    out_before = m(ids).detach().clone()
+    with torch.no_grad():
+        m.token_embed.weight[target_v] = torch.randn_like(
+            m.token_embed.weight[target_v]
+        ) * 5.0
+    out_after = m(ids)
+
+    # Logit column `target_v` should change.
+    assert not torch.allclose(
+        out_before[..., target_v], out_after[..., target_v], atol=1e-4
+    )
+    # Every other logit column should be unchanged — the input-lookup
+    # path never touched any other row of the embedding, and the
+    # unembedding only writes column `v` from row `v`.
+    other_cols = [v for v in range(V) if v != target_v]
+    assert torch.allclose(
+        out_before[..., other_cols], out_after[..., other_cols], atol=1e-5
+    )
+
+
+def test_transformer_lm_tied_routes_gradient_into_embedding():
+    """Headline test: a loss computed from the unembedding head must
+    flow gradient back into `token_embed.weight`. With tying, that
+    matrix gets gradient from BOTH the input-lookup path AND the
+    unembedding path on every step.
+    """
+    torch.manual_seed(0)
+    m = TransformerLM(
+        vocab_size=12,
+        embedding_dim=8,
+        num_layers=1,
+        num_heads=2,
+        max_seq_len=16,
+        tie_embeddings=True,
+    )
+    ids = torch.randint(0, 12, (2, 4))
+    out = m(ids)
+    out.sum().backward()
+    assert m.token_embed.weight.grad is not None
+    assert torch.isfinite(m.token_embed.weight.grad).all()
+    assert m.head_bias.grad is not None
+    assert torch.isfinite(m.head_bias.grad).all()
+
+
+def test_transformer_lm_tied_smoke_train():
+    """Tied model still trains: a few SGD steps on a fixed batch reduce
+    loss, just like the untied version. The gradient path through the
+    shared embedding doesn't break the optimization.
+    """
+    torch.manual_seed(0)
+    m = TransformerLM(
+        vocab_size=10,
+        embedding_dim=8,
+        num_layers=1,
+        num_heads=2,
+        max_seq_len=8,
+        tie_embeddings=True,
+    )
+    loss_fn = CrossEntropyLoss()
+    ids = torch.randint(0, 10, (4, 6))
+    targets = torch.randint(0, 10, (4, 6))
+    logits = m(ids)
+    initial_loss = loss_fn(logits.reshape(-1, 10), targets.reshape(-1)).item()
+    lr = 0.5
+    for _ in range(30):
+        for p in m.parameters():
+            if p.grad is not None:
+                p.grad = None
+        logits = m(ids)
+        loss = loss_fn(logits.reshape(-1, 10), targets.reshape(-1))
+        loss.backward()
+        with torch.no_grad():
+            for p in m.parameters():
+                p -= lr * p.grad
+    final_loss = loss.item()
+    assert final_loss < initial_loss * 0.5
+
+
 def test_transformer_lm_smoke_train():
     """Smoke test: a few SGD steps on a fixed batch should reduce loss.
 

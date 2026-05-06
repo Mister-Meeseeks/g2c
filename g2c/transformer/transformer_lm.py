@@ -31,10 +31,13 @@ Two design choices to internalize:
     that materially improves training stability.
 
   * **The unembedding `Linear(D, V)`.** This is the last weight matrix
-    in the model and is genuinely large — `D × V`. Some implementations
-    *tie* it to the input `TokenEmbedding` (same matrix, used in both
-    directions); we do NOT tie weights here for clarity. Module 10
-    discusses tied embeddings.
+    in the model and is genuinely large — `D × V`. Pass
+    `tie_embeddings=True` and the model uses the input `TokenEmbedding`
+    matrix as the unembedding (transposed), with only a per-token bias
+    of size `V` on the output side. That removes one `(V, D)` matrix
+    from the parameter count — sometimes a meaningful chunk for small
+    `D`. Module 09B introduces the tradeoff. Default is `False` so the
+    untied case stays the simple reference.
 
 Boilerplate (`__init__`, `parameters`) is implemented. The `forward`
 method — the six-step embed/blocks/norm/unembed pipeline — is
@@ -65,6 +68,11 @@ class TransformerLM(Module):
                        learned positional embedding table). Inputs longer
                        than this fail with a `ValueError` in `forward`.
         hidden_dim:    FFN inner dim. Defaults to `4 * embedding_dim`.
+        tie_embeddings: when `True`, the unembedding head reuses the
+                       input `TokenEmbedding` matrix (transposed) instead
+                       of holding its own `(D, V)` weight matrix. A
+                       per-token bias of shape `(V,)` is still learned
+                       separately. Default `False`. See Module 09B.
     """
 
     vocab_size: int
@@ -73,12 +81,14 @@ class TransformerLM(Module):
     num_heads: int
     max_seq_len: int
     hidden_dim: int
+    tie_embeddings: bool
 
     token_embed: TokenEmbedding
     pos_embed: LearnedPositionalEmbedding
     blocks: list[Block]
     ln_final: LayerNorm
-    head: Linear
+    head: Linear | None
+    head_bias: torch.Tensor | None
 
     def __init__(
         self,
@@ -89,6 +99,7 @@ class TransformerLM(Module):
         max_seq_len: int,
         *,
         hidden_dim: int | None = None,
+        tie_embeddings: bool = False,
     ) -> None:
         super().__init__()
         if hidden_dim is None:
@@ -99,6 +110,7 @@ class TransformerLM(Module):
         self.num_heads = num_heads
         self.max_seq_len = max_seq_len
         self.hidden_dim = hidden_dim
+        self.tie_embeddings = tie_embeddings
 
         self.token_embed = TokenEmbedding(vocab_size, embedding_dim)
         self.pos_embed = LearnedPositionalEmbedding(max_seq_len, embedding_dim)
@@ -112,7 +124,14 @@ class TransformerLM(Module):
             for _ in range(num_layers)
         ]
         self.ln_final = LayerNorm(embedding_dim)
-        self.head = Linear(embedding_dim, vocab_size)
+        if tie_embeddings:
+            self.head = None
+            head_bias = torch.zeros(vocab_size)
+            head_bias.requires_grad_(True)
+            self.head_bias = head_bias
+        else:
+            self.head = Linear(embedding_dim, vocab_size)
+            self.head_bias = None
 
     def parameters(self) -> Iterable[torch.Tensor]:
         params: list[torch.Tensor] = []
@@ -121,7 +140,12 @@ class TransformerLM(Module):
         for block in self.blocks:
             params.extend(block.parameters())
         params.extend(self.ln_final.parameters())
-        params.extend(self.head.parameters())
+        if self.tie_embeddings:
+            assert self.head_bias is not None
+            params.append(self.head_bias)
+        else:
+            assert self.head is not None
+            params.extend(self.head.parameters())
         return params
 
     def forward(self, token_ids: torch.Tensor) -> torch.Tensor:
@@ -173,6 +197,12 @@ class TransformerLM(Module):
                The unembedding head projects `D`-dim vectors to
                `V`-dim logits. The student-facing softmax / cross-entropy
                happens OUTSIDE this method, in the training loop.
+
+               When `tie_embeddings=True`, instead of `self.head(x)` we
+               compute `x @ self.token_embed.weight.T + self.head_bias`.
+               That reuses the `(V, D)` embedding matrix as the
+               unembedding without copying it — autograd routes the
+               gradient back into `token_embed.weight` automatically.
         """
         B, T = token_ids.shape
         if T > self.max_seq_len:
@@ -183,5 +213,6 @@ class TransformerLM(Module):
         for block in self.blocks:
             x = block(x)
         x = self.ln_final(x)
+        if self.tie_embeddings:
+            return x @ self.token_embed.weight.T + self.head_bias
         return self.head(x)
-

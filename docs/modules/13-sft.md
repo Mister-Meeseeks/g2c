@@ -4,12 +4,11 @@
 
 ![Module 13 on one page: the TinyShakespeare-pretrained TransformerLM from Modules 10/12 confronted with an instruction-style prompt before and after SFT. Top half: the BASE model's continuation of "What is the capital of France?" — it ignores the question entirely and produces "What is the capital of France? And the noble Duke of Norfolk hath sworn..." (the question is just text to continue). Bottom half: the SFT'd version of the same model on the same prompt, formatted with the chat template "<|user|>\\nWhat is the capital of France?\\n<|assistant|>\\n" — it now produces "Paris.<|end|>" and stops. A central panel shows the SFT data flow: 50 hand-authored (instruction, response) pairs → render through chat template → tokenize + build label mask (only assistant tokens get loss=1; user tokens get loss=0) → fine-tune the base model for ~500 steps at 10× lower LR → SFT'd checkpoint. A right-edge panel highlights the three behavioral shifts: (1) the model now respects turn boundaries, (2) the assistant turn is short and stops on <|end|>, (3) the model still hallucinates confidently — alignment teaches FORMAT, not TRUTH (the truth/calibration question waits for Modules 14–15). A bottom strip captions the headline: "SFT changes behavior, not knowledge — the base model already had to know what 'capital of France' means; SFT just taught it to answer rather than to continue."](13-sft/Module13-Hero.png)
 
-*The whole module on one page. Module 12 was about how a base model scales; Module 13 is about how its **behavior** is shaped. The mechanics are minimal — a chat template, a label mask that zeroes out user tokens, and the same `Trainer` you wrote in Module 10 — but the qualitative effect is the largest single change in this course: the model goes from "completes any text" to "answers questions in a turn-shaped format." The 50-example dataset is the entire training set; everything else is plumbing.*
+Last week's module was about how models scale; this week is about how model **behavior** is shaped. The mechanics are minimal — a chat template, a label mask that zeroes out user tokens, and the same `Trainer` you wrote in Module 10 — but the qualitative effect is the largest single change in this course. The model goes from "completes any text" to "answers questions in a turn-shaped format." 50 directed examples are the entire training set. Everything else is plumbing.
 
 ## Prerequisites
 
-Module 13 opens the second half of Phase IV. Module 11 gave you sampling controls; Module 12 gave you scaling intuitions. Now you take the model that you trained yourself and bend its behavior toward a specific role — *assistant that follows instructions* — using a tiny supervised dataset and a masked variant of the loss you already know.
-
+---
 ### Math
 
 - **Cross-entropy with masked positions.** The pretraining loss in Module 10 averages CE over every `(B, T)` position uniformly. SFT averages CE over only the positions the model is supposed to *generate* (the assistant's response), and ignores the prompt positions. Mathematically:
@@ -117,11 +116,19 @@ The qualitative shift you'll see in exercise 2: a SFT'd model **stops continuing
 
 A non-obvious consequence, which the syllabus calls out and the LIMA paper made famous: **at this stage, data quality dominates data quantity by a wide margin**. A few hundred clean (instruction, response) pairs produce more useful behavior change than tens of thousands of noisy ones. The "clean" part is doing real work: every example is a vote for what the assistant turn should look like, and a 5-example template-failure pattern can poison the model's behavior far out of proportion to its size in the dataset.
 
+#### Where SFT sits in the bigger alignment picture
+
+![RLHF (traditional) vs DPO (next module). InstructGPT's classical 3-stage pipeline: (1) supervised fine-tuning on demonstration data, (2) reward-model training on preference comparisons, (3) PPO reinforcement-learning to optimize the SFT model against the reward model. Module 13 implements stage 1 only. Module 14 will replace stages 2 and 3 with DPO — a single closed-form loss that uses the SFT'd model as the reference and trains directly on (prompt, chosen, rejected) preference triples, no reward model and no RL loop. A "bottom line" panel pins the framing: same goal — align the model with human preferences — but DPO collapses the reward-modeling and PPO stages into a single supervised loss.](13-sft/Module13-RLHF.png)
+
+*Where Module 13 lives in the alignment landscape. SFT is the first and most important stage; everything downstream (DPO in Module 14, RLHF at production scale) presupposes a reasonably well-formatted SFT'd starting point. Many small-scale projects stop at SFT and ship — the qualitative jump from "base" to "SFT'd" is bigger than the jump from "SFT'd" to "RLHF'd."*
+
 ## The big idea
 
-### Base vs instruction model: a behavioral shift, not a capability shift
-
 This is the single most important framing in the module:
+
+![SFT changes behavior, not knowledge: a one-page summary of the module. The base model produced by Module 12 trains on next-token prediction over TinyShakespeare prose and continues a question prompt as if it were more prose. After SFT on 50 hand-authored (instruction, response) pairs — rendered through a chat template, tokenized with a loss mask that zeroes out user tokens, fine-tuned for ~500 steps at 10× lower LR — the same model recognizes the assistant turn marker, produces a single short response, and stops on `<|end|>`. A "what improves, what doesn't" panel pins the central distinction: format compliance, turn boundaries, and concision are taught; factual knowledge is unchanged from the base model. A "key insight" callout closes with: pretraining gives the model a world model; SFT gives it a job description.](13-sft/Module13-Behavior.png)
+
+*The whole module compressed onto one slide. Read this once before the prose below — every concept in "The big idea" is a zoomed-in view of one panel here.*
 
 ```
    ┌────────────────────────────────────────────────────────────────────┐
@@ -203,6 +210,10 @@ This is the central implementation trick.
 In pretraining, every token in every window is a training target — the model learns to predict the next token uniformly across the whole corpus. In SFT, the model should *not* learn to predict the user's tokens; those tokens come from the user at inference time, and training to predict them either does nothing useful (if user text is in-distribution) or actively damages behavior (if user text is rare or domain-specific).
 
 The fix is the **loss mask**: a `(T-1,)` boolean tensor that's `1` at positions where loss should be applied and `0` elsewhere.
+
+![Loss mask alignment: the central implementation trick of SFT, drawn end-to-end. Starting from a `messages` list, the chat template renders to a string, the tokenizer produces an `ids` array, and the (input, target) pair is built by shifting: `x = ids[:-1]`, `y = ids[1:]`. The loss mask is aligned with `y`, not `x` — `mask[t] = 1` iff `y[t]` is a token the assistant is responsible for emitting (including `<|end|>`). A "wrong vs right" pair shows the off-by-one bug: a mask aligned with `x` trains the model to predict the role marker, while the correctly-shifted mask trains it to produce the first word of the response. A "golden rule" panel closes: at position t, the model is trying to predict `y[t]`; the assistant should answer at inference time iff `mask[t] = 1`. Otherwise mask = 0.](13-sft/Module13-LossMask.png)
+
+*The picture to internalize before writing `masked_cross_entropy`. The shift-by-one between `mask` and `y` is the bug-prone seam — get it right once and the rest of the SFT pipeline follows.*
 
 ```
    ids:   [ <|user|>  \n  Hi   .   <|assistant|>  \n  Hello   .   <|end|> ]
@@ -374,6 +385,12 @@ class SFTTrainer:
 ```
 
 Total scaffolded code: roughly 50 lines across five locations. The math is light; the lesson is the masking, the format, and the recipe consistency.
+
+#### Forward look: the SFT'd model becomes Module 14's frozen reference
+
+![Policy vs frozen reference, the DPO setup. Both models start from the same SFT'd checkpoint produced by this module. The "policy" copy is trainable — gradients flow, weights update, it learns to prefer chosen answers over rejected ones. The "reference" copy is frozen — never gradients, only used to score the same prompts under the original SFT distribution. A single preference triple `(prompt, chosen, rejected)` is fed to both models; the policy's log-probabilities for `chosen` and `rejected` are compared against the reference's log-probabilities for the same, and the DPO loss pushes the policy to widen the margin without drifting too far from the reference. A "key idea" panel pins the role: the reference model is what prevents the policy from collapsing during preference training. A "what it buys you" panel emphasizes: the SFT'd checkpoint you produce in this module is the stable anchor the DPO step cannot do without.](13-sft/Module13-Policy.png)
+
+*Why the deliverable checklist insists on saving the SFT'd checkpoint as a separate file (not overwriting the base). Module 14 will load this checkpoint twice — once as the trainable policy, once as the frozen reference — and the entire DPO loss depends on the reference being a faithful copy of the SFT-stage end state.*
 
 ## How to run the tests
 

@@ -4,7 +4,7 @@
 
 ![Three tiny GPTs trained on the same TinyShakespeare corpus, side by side: 1M / 5M / 20M parameters. Each column shows the model's parameter count up top, its final validation perplexity in the middle (e.g. 6.5 → 4.8 → 4.0), and a 100-token continuation from the same prompt at the bottom. The 1M sample is locally-correct but largely nonsense; the 5M sample has short coherent phrases; the 20M sample has multi-line dialogue-like text. A panel below plots final loss vs parameter count on log-log axes — the three points fall close to a straight line whose negative slope is the empirical scaling exponent. A small caveat box on the right notes "iso-step, not iso-FLOP — the 20M model has consumed roughly 20× more compute per step." A second caveat box reminds the reader that "perplexity ≠ capability" — even at 20M, the model still confidently invents quotes, and several "emergent" tasks the larger model passes are actually still random chance.](12-scaling/Module12-Hero.png)
 
-Same corpus, same step budget, different parameter counts, *very* different outputs. Scaling laws tell us how model quality varies with more or fewer parameters (and compute).  Module 12 is the first module without new package code. You're not implementing a new layer or training utility — you're running the trainer from Module 10 different sizes
+Same corpus, same step budget, different parameter counts, *very* different outputs. Scaling laws tell us how model quality varies with model size. We also will frame scaling and model size through the lens of number of parameters, compute power, and training data size. The rest of this lesson is about exploring this relationship, both quantitatively and behaviorally. This is the first module where we don't write new package code. You can think of this as a "lab week"
 
 ---
 ## Prerequisites
@@ -14,7 +14,7 @@ Same corpus, same step budget, different parameter counts, *very* different outp
 
 ### Computer science
 
-- **FLOPS** - Floating point operations. A way to standardize the measure of total compute expended between different models and training runs. 
+- **FLOPS.** It stands for Floating Point OPerations. A way to standardize the measure of total compute expended between different models and training runs. 
 
 ### Programming
 
@@ -59,7 +59,7 @@ Model capabilities follow a power law. The scaling laws claim: validation loss `
    L(N)  =  α · N^(−β)  +  L∞
 ```
 
-`α` is a constant, `β` is the scaling exponent (positive — larger means loss falls faster as `N` grows), and `L∞` is the irreducible loss (the entropy of the data — the loss a perfect model would still achieve because language is inherently uncertain). Kaplan reported `β ≈ 0.076` for transformer LMs; Chinchilla — using a different methodology — argued the exponent depends on whether you're varying `N` at fixed dataset size, fixed compute, or fixed token count.
+`α` is a constant, `β` is the scaling exponent (larger means loss falls faster as `N` grows), and `L∞` is the irreducible loss (the loss a perfect model would still achieve because language is inherently uncertain). Kaplan reported `β ≈ 0.076` for transformer LMs. Chinchilla, using a different methodology, argued the exponent depends on whether you're varying `N` at fixed dataset size, fixed compute, or fixed token count.
 
 Three things to internalize about this curve:
 
@@ -123,7 +123,7 @@ The two comparisons answer different questions. **Iso-step** answers "more param
 
 ![Iso-step vs iso-FLOP side by side as two laps-around-the-track experiments. Panel A (iso-step): every model — 1M, 5M, 20M — runs the same 5000 steps; compute per step grows ~6·N·T_step, so the 20M model burns ~20× more compute total than the 1M one. Same dataset passes, more capacity wins, larger model lower loss. Panel B (iso-FLOP): every model gets the same total compute budget (~7.7e13 FLOPs in the example), so the 1M model gets 75,000 steps, the 5M model 15,000, and the 20M model only 1000. Tokens-seen totals shift accordingly (~30M / ~30M / ~3M). The smaller models do many laps; the 20M model does one short lap and is undertrained. A "When to use which" panel pins the choice: iso-step when comparing capacity at fixed dataset, iso-FLOP when comparing what size to train under a real compute constraint. The Chinchilla intuition — smaller-but-longer beats larger-but-shorter on a fixed budget — falls out of panel B.](12-scaling/Module12-IsoFlop.png)
 
-*Both comparisons appear in this module: exercise 1 is iso-step (the headline log-log plot), exercise 5 is iso-FLOP (the same plot, often with the slope reversed near the largest size). Reading the same three checkpoints under both lenses is the cleanest way to internalize that "scaling laws" is not one curve — it's at least two, and which one matters depends on whether your real-world constraint is dataset size or compute.*
+*Both comparisons appear in this module. Reading the same checkpoints under both lenses is the cleanest way to internalize that "scaling laws" is not one curve — it's at least two, and which one matters depends on whether your real-world constraint is data or compute.*
 
 For this module's *primary* exercise, iso-step is the right comparison. It's simpler to reason about and is what Kaplan-style "loss vs N at fixed dataset" plots show. The iso-FLOP comparison appears as exercise 5 — and at toy scale, it tends to show iso-step's monotonicity *flip* near the largest size (the 20M model with too-few tokens is under-trained relative to the 5M model with sufficient tokens, exactly as Chinchilla predicts).
 
@@ -210,8 +210,11 @@ The other Schaeffer-style observation, applicable at every scale:
 ### What we didn't cover
 
 - **Mixed precision (fp16, bf16) on MPS.** Introduces silent op-fallback edges and changes loss curves enough to confuse a scaling experiment. Stay in fp32 for this module. Module 16 returns to inference-time precision.
+
 - **Theoretical derivations of the scaling exponents.** The Kaplan paper has them; Hoffmann's Chinchilla paper revisits them with cleaner methodology. They're worth reading, but the exponent itself is not a deep theoretical object — it's an empirical fit and the value at toy scale will not match published large-scale numbers.
+
 - **Inverse scaling (`Inverse Scaling Prize`, McKenzie et al.).** A small but real set of tasks where larger models do *worse*. Genuinely interesting, but our smallest model is too small for this to manifest. Skim later if curious.
+
 - **The full BIG-bench debate.** Wei et al. claimed several capabilities are "emergent" (sharp threshold-style improvements). Schaeffer et al. argued most "emergence" is an artifact of the metric (multiple choice with a hard-edge scoring rule). Both papers are listed in *Reading*; the debate is worth understanding qualitatively but you won't reproduce it at our scale.
 
 ---
@@ -358,7 +361,7 @@ Numbers are wide ballparks — context length, vocab, and Mac generation all mat
 
 8. **Optional: vocab-size sweep at fixed `D · L`.** Tokenize TinyShakespeare with three vocab sizes — 512, 2048, 8192 — and train the same architecture (~5M params) on each. Vocab affects both `N` (via `2·V·D`) and the per-token entropy of the dataset. The expected pattern: per-token val loss is *not* the right comparison across vocab sizes (smaller vocab → higher per-token entropy by construction), but `bits-per-character` is invariant. Compute `bpc = val_loss * tokens_per_char / log(2)` for each tokenizer and compare. This is harder to interpret cleanly, which is itself the lesson — "perplexity" is not a vocab-independent quantity.
 
-## Pitfalls to expect
+## Pitfalls to avoid
 
 - **Single-seed conclusions.** A 5M model trained from one seed can land 5–10% higher or lower than the seed-mean, especially with SGD. Two or three seeds per configuration is the floor for any quantitative claim. If you see "20M is *worse* than 5M" on a single seed, run another seed before believing it.
 

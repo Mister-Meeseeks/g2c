@@ -224,7 +224,6 @@ Three details worth pinning down:
 
 ### What we don't cover
 
-- **Tied embeddings** (sharing weights between `TokenEmbedding` and the unembedding `head`). Standard in most modern LMs; we keep them separate for clarity. Module 10 discusses the tradeoff.
 - **Dropout.** Used by Vaswani et al. and many follow-ups for regularization; not strictly necessary at the small scales we'll train, and it adds a `training`/`eval` mode distinction that our minimal `Module` base class doesn't model. Out of scope.
 - **RMSNorm** (used by Llama and other modern transformers). A simplified LayerNorm without the mean-subtraction step. Equivalent in practice but conceptually a small variation; we use vanilla LN.
 - **Mixed precision, gradient checkpointing, fused ops.** Module 10 pretraining concerns, not architecture concerns.

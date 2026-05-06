@@ -137,6 +137,10 @@ Confidently wrong. The SFT loss never saw "13 + 28" specifically; it saw the *fo
 
 That's what Module 15 builds. Two harnesses (multiple-choice + generation), four matchers (exact, normalized, numeric, contains), one calibration metric (ECE), one reliability curve. ~250 lines of code in `g2c/eval/`. The pedagogical content is small but load-bearing: every later module (capstone evals, agent task success, RAG retrieval quality) reuses these primitives.
 
+![Closed-set (multiple choice) vs open-set (generation) eval. Two complementary harnesses, side by side. Closed-set: the model chooses from a finite list of candidate continuations; we score each candidate by sequence-log-probability, take argmax for the prediction, and softmax over scores for confidence. Open-set: the model generates freely, and a matcher decides whether the generated string matches any reference answer. A "key differences at a glance" panel pins the trade-off: closed-set is fast and calibration-friendly but bounded by the candidate list; open-set is realistic and uncalibrated by default. Use both — they expose different aspects of the same model.](15-evaluation/Module15-Closed.png)
+
+*The two halves of the harness, on one slide. Closed-set scoring is what builds calibration; open-set generation is what surfaces hallucination. The exercises walk through both — see exercise 2 for closed-set on your DPO'd model and exercise 3 for hallucination probing through generation.*
+
 ```
    ┌──────────────────────────────────────────────────────────────────────┐
    │  TWO EVAL HARNESSES, FOUR MATCHERS, ONE CALIBRATION METRIC           │
@@ -210,6 +214,10 @@ The eval harness is what closes this loop. By scoring outputs against **what we 
 
 ### Calibration: the headline scalar
 
+![Calibration — reliability diagram and ECE. Three panels. Top-left: how to read a reliability plot. The blue bars are bin-empirical accuracy; the red dots are bin mean-confidence; the diagonal is the perfectly-calibrated line. Below the diagonal: over-confident (model says 0.95, gets it right 0.7 of the time). Above the diagonal: under-confident. Top-right: a worked example with 10 equal-width bins on [0, 1]. The model's bars sit BELOW the diagonal in the high-confidence bins and ABOVE in the low-confidence bins — the canonical signature of a small, under-trained LM. Bottom: the ECE formula `ECE = Σ_b (|B_b| / N) · |acc(B_b) − conf(B_b)|` printed in full, with each term annotated; this model's ECE is 0.187 (moderately miscalibrated). Side panels explain "what the bins mean," "why calibration matters" (the model doesn't tell you it's guessing — eval exposes overconfidence in high-confidence regions), and "how to improve" (more eval data, better-calibrated training, refusal behavior).](15-evaluation/Module15-Calibration.png)
+
+*The picture to internalize before implementing `expected_calibration_error` and `reliability_curve`. The bin-by-bin |acc − conf| visualization is what the test `test_ece_known_case_two_bins` hand-computes; reading this image first makes the test's expected value (0.25) visibly correct rather than mysterious.*
+
 ```
    ┌──────────────────────────────────────────────────────────────────────┐
    │   ACCURACY vs CALIBRATION                                             │
@@ -268,6 +276,10 @@ The reliability diagram makes this visible:
 The model's points sit on the diagonal in the middle bins (confidence ≈ accuracy ≈ 0.5) but drift below in the high-confidence bins (the model says 0.95, gets it right 0.7 of the time). That gap — across all bins, weighted by bin frequency — is ECE.
 
 ### Multiple choice: scoring continuations
+
+![Multiple choice — closed-set eval flow. Score each candidate continuation with sequence-log-probability. Step 1: the prompt is the shared `<|user|>...<|assistant|>` prefix; the four candidate continuations (Madrid, Lisbon, Barcelona, Berlin, each followed by `<|end|>`) are the choices. Step 2: model scoring — concatenate prompt + option, forward, log-softmax + gather + masked sum over the option's tokens only (NOT the prompt's). Each option produces one scalar log-probability (e.g., −2.34, −1.82, −3.41, −4.12). Step 3: prediction by argmax (Lisbon at −1.82) and confidence by softmax over scores (0.42 — mildly confident). Step 4: compare to the gold index; record correct/incorrect plus the per-option scores in `EvalResult.metadata`. A "length normalization (optional)" panel pins the knob: dividing each option's score by its token count makes the ranking length-invariant; lm-eval-harness exposes both as `acc` and `acc_norm`. A "why it's useful" panel: deterministic, fast, and confidence-calibration-friendly — exactly what the harness needs.](15-evaluation/Module15-MultiChoice.png)
+
+*The picture for `score_multiple_choice`. The four-step flow IS the implementation: tokenize each option, score each via `continuation_logprob`, argmax for prediction, softmax for confidence. The test `test_score_multiple_choice_uniform_logits_indifferent` asserts the degenerate case (all options score equally → confidence = 1/N) — read off this picture, that's the case where every score is the same.*
 
 Multiple-choice scoring is the most pedagogically clean eval primitive. Given a prompt and N candidate continuations, the model scores each by sequence-log-probability:
 
@@ -338,6 +350,10 @@ Generation eval is the more realistic of the two. Given a prompt, the model gene
 
 The matcher is the load-bearing decision. Choose well:
 
+![Matcher zoo — pick the right tool for the job. Four matchers, side by side. `exact_match`: character-equality, use for single-token answers and trailing-space sensitivity. `normalized_match`: case/punctuation/whitespace stripped, then equality — best for factual QA where surface form varies but content matches. `numeric_match`: extract first number from prediction, compare to first number in references within tolerance — best for arithmetic and quantitative answers. `contains_match`: any reference appears as a substring of the prediction (case-insensitive) — best for refusal probes and long-form outputs with target keywords. Each matcher has an "example: prediction vs references" panel showing one representative case with True/False; an "important" panel calls out asymmetric matchers like `contains_match` (search direction matters) and the silent-failure mode of using `numeric_match` with a regex that catches the wrong number.](15-evaluation/Module15-Matcher.png)
+
+*The lookup table for choosing a matcher. Exercise 3 asks you to categorize hallucinations using `contains_match` for refusal probes (anchor on `"I cannot"`); exercise 4 asks for `numeric_match` on arithmetic. Picking the right matcher is half the eval design problem — the wrong matcher silently produces the wrong accuracy.*
+
 ```
                                      Best matcher for...
    ┌─────────────────────────────────────────────────────────────────────┐
@@ -354,6 +370,10 @@ The matcher is the load-bearing decision. Choose well:
 Generation eval doesn't expose a confidence by default — the harness sets `confidence=None` in `EvalResult` and `ece=None` in the report. To get a confidence on a generated string, re-score it under the model with `continuation_logprob(model, tokenizer, prompt, prediction)` and convert per-token mean log-prob to a probability via `exp`. Exercise 6 walks through this.
 
 ### Hallucination categories
+
+![Hallucination taxonomy — not all wrongs are the same. Five columns. (1) Factual hallucination: the model states a fact that contradicts the real world ("the largest city in Spain is Lisbon"). Cause: gaps in pretraining knowledge, over-generalization. Detect with: ground-truth Q&A. (2) Contextual hallucination: the model contradicts a fact stated explicitly in the prompt ("Alice is 30. How old is Alice? → 25"). Cause: weak in-context attention, recency bias, insufficient reasoning capacity. Detect with: prompts containing explicit facts. (3) Intrinsic vs extrinsic: intrinsic — the wrong information was implied by but contradicts the prompt or training data; extrinsic — the wrong information has no support anywhere, the model invented it. (4) Refusal failure: the model answers a question it should refuse ("What's my mother's maiden name? → Smith"). Cause: training data lacks refusals; refusal behavior was never reinforced. (5) Format breakage: the model emits valid content but breaks the chat-template format (forgets `<|end|>`, emits stray `<|user|>`). A "key takeaway" panel below: a wrong answer is not one thing — labeling failure modes turns error analysis into a roadmap for better data, training, and evaluation.](15-evaluation/Module15-Hallucination.png)
+
+*The categorization grid you'll use in exercise 3. Naming the failure mode is more useful than reporting raw accuracy: a 30% accuracy with 90% factual hallucinations needs different fixes than a 30% accuracy with 90% refusal failures. Module 17 (RAG) targets factual hallucination; Module 19 (agent) targets refusal calibration; the lesson here is that "wrong" is multidimensional.*
 
 When the eval harness flags a wrong answer, it's useful to classify *why* it was wrong. The categories below are loose but common:
 

@@ -142,6 +142,10 @@ A non-obvious framing: **DPO turns the policy itself into the reward model.** Th
 
 ### From RLHF to DPO: same gradient, different machinery
 
+![RLHF (traditional) vs DPO (this module). The classical InstructGPT pipeline runs three stages: SFT (Module 13's deliverable), then reward modeling on preference comparisons, then PPO reinforcement-learning to optimize the SFT model against the reward model with a KL penalty. DPO collapses the second and third stages into a single supervised loss using the SFT'd model as a frozen reference. A "what RLHF needs" panel lists rollouts, value heads, KL controllers, and PPO ratio clipping. A "what DPO needs" panel lists: a frozen reference, a trainable policy, β, and a preference dataset. A "bottom line" panel pins the framing: same goal — align the model with human preferences — same gradient, but no reward model, no PPO loop, no on-policy rollouts.](14-dpo/Module14-RLHF.png)
+
+*The headline simplification this module captures. The classical pipeline's middle and right stages are notoriously expensive and finicky at production scale; DPO's closed-form derivation makes them disappear, leaving a single forward+backward against an offline preference dataset.*
+
 The RLHF pipeline (Ouyang et al., 2022) has three stages:
 
 ```
@@ -174,6 +178,10 @@ The end result is a loss that depends only on:
 No reward model. No rollouts. No on-policy data. The gradient of the DPO loss is *exactly the same* as the gradient you'd get from running RLHF with the optimal reward model — but you compute it from a fixed offline dataset using a single supervised forward+backward.
 
 ### The DPO loss, in detail
+
+![DPO mechanism: four log-probs → one margin → one loss. Step 1 takes one preference example `(prompt, chosen, rejected)`. Step 2 forwards both the policy and the frozen reference on (prompt + chosen) and (prompt + rejected) — four sequences, four scalar log-probabilities `log π(c|x)`, `log π(r|x)`, `log π_ref(c|x)`, `log π_ref(r|x)`, each computed by log-softmaxing logits, gathering the target's column, and summing over the response tokens (mask = 1 only on the response, including `<|end|>`). Step 3 turns four log-probs into two log-ratios — chosen ratio `Δ_c = log π(c|x) − log π_ref(c|x)` and rejected ratio `Δ_r = log π(r|x) − log π_ref(r|x)` — and one margin `m = Δ_c − Δ_r`. Step 4 plugs the margin into the closed-form DPO loss `L = −log σ(β · m)`. A "step 0 sanity check" panel pins the canonical invariant: when the policy equals the reference, every Δ is zero, m is zero, σ(0) = 0.5, and the loss is exactly `log 2 ≈ 0.693`. An "intuition: what the loss does" panel shows three regimes — before training the policy and reference produce equal probabilities; during training the policy pushes chosen log-probs UP and rejected log-probs DOWN; bad training pushes both down (implicit-reward collapse).](14-dpo/Module14-FourLogs.png)
+
+*The whole DPO mechanism on one page. Trace the flow once before reading the prose: (prompt, chosen, rejected) → four log-probs → two log-ratios → one margin → one scalar loss. Every test in `tests/test_dpo.py` is a check on one stage of this pipeline.*
 
 For a single preference example `(x, y_c, y_r)` with chosen `y_c` and rejected `y_r`:
 
@@ -219,6 +227,10 @@ For a single preference example `(x, y_c, y_r)` with chosen `y_c` and rejected `
 **β controls how far the policy can drift.** Mathematically, `β` is the KL coefficient in the original RLHF objective; intuitively, it's the "strength" of the policy's connection to the reference. Small β (e.g. 0.01) lets the policy diverge a long way for small preference signals — risk of mode collapse, repetition, gibberish. Large β (e.g. 1.0) pins the policy near the reference — safe but sometimes can't move enough to absorb the preference signal. The DPO paper and most follow-ups recommend `β ∈ [0.1, 0.5]` as the sweet spot. **At toy scale `β = 0.1` is a fine default**; exercise 4 sweeps it.
 
 ### The frozen reference: what it does and why it must stay frozen
+
+![Policy vs frozen reference. Both models start from the same SFT'd checkpoint produced by Module 13 — `ref_model = copy.deepcopy(model)`. The policy is trainable: gradients flow, weights update, it learns to prefer chosen over rejected. The reference is frozen: never gradients (`with torch.no_grad():` around its forwards), only used to score the same prompts under the original SFT distribution so the log-ratios `log π / log π_ref` have a fixed denominator. A single preference triple `(prompt, chosen, rejected)` is fed to both models; both compute scalar log-probabilities `log π_θ(c|x)`, `log π_θ(r|x)`, `log π_ref(c|x)`, `log π_ref(r|x)`. The DPO loss combines these into a margin and pushes the policy to widen it without drifting too far from the reference. A "key idea" panel: we don't care about the absolute probabilities, only how the policy moves relative to the reference. An "important" panel: the reference must not change, ever — the deepest invariant test of a DPO implementation is to snapshot reference params before/after training and assert byte-for-byte equality.](14-dpo/Module14-Policy.png)
+
+*The two-model setup. Module 13's SFT'd checkpoint plays both roles — once trainable, once frozen. The freeze invariant is what `test_dpo_trainer_ref_model_unchanged` enforces, and exercise 5 asks you to verify it on your real run.*
 
 The reference is the **anchor** for the implicit-reward computation. The whole DPO loss is a function of *log-ratios* between the policy and the reference; if both move together (e.g. you accidentally update both), the log-ratios stay zero and nothing changes.
 
