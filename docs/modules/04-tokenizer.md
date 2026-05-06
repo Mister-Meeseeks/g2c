@@ -1,6 +1,6 @@
 # Module 04 — Tokenization
 
-> **Question this module answers:** *How does text become model input?*
+> **Question this module answers:** *How do we turn text into model input?*
 
 ![From text to token IDs: raw text → UTF-8 bytes → BPE tokens (greedy pair merges) → integer ID sequence → model input. Robust (no OOV), efficient, learned from data, lossless, and the foundation every LLM is built on.](04-tokenizer/Module04-Hero.png)
 
@@ -114,30 +114,23 @@ Package: `g2c/tokenizer/`
 ```python
 class BPETokenizer:
     merges: dict[tuple[int, int], int]    # learned: pair → new ID
-    vocab: dict[int, bytes]                # ID → bytes representation
+    vocab: dict[int, bytes]               # ID → bytes representation
 
-    def __init__(self) -> None: ...        # implemented (base vocab)
-    def save(self, path: str | Path) -> None: ...         # implemented
-    @classmethod
-    def load(cls, path: str | Path) -> "BPETokenizer": ... # implemented
-    def encode_fast(self, text: str) -> list[int]: ...     # implemented
-    def train_fast(self, text: str, vocab_size: int, *, chunk_chars: int = 8_192) -> list[int]: ... # implemented
+    def train(self, 
+	    text: str, 
+	    vocab_size: int, ...): ...        # Pre-implemented loop
+    
+    def train_step(self, 
+	    ids: list[int], 
+	    new_id: int): ...                 # You write it
 
-    @staticmethod
-    def _get_pair_counts(ids: list[int]) -> dict[tuple[int, int], int]: ...
-
-    @staticmethod
-    def _merge(ids: list[int], pair: tuple[int, int], new_id: int) -> list[int]: ...
-
-    def train_step(self, ids: list[int], new_id: int) -> tuple[list[int], tuple[int, int], int] | None: ...
-    def train(self, text: str, vocab_size: int, *, progress_callback=None, progress_every: int = 100) -> None: ...  # implemented loop
-    def encode(self, text: str) -> list[int]: ...
-    def decode(self, ids: list[int]) -> str: ...
+    def encode(self, text: str) -> list[int]: # You write it
+    def decode(self, ids: list[int]) -> str:  # You write it
 ```
 
-About 50 lines of real implementation in total. The scaffolded `train()` loop also gives notebooks and corpus-building scripts a progress hook, so students can watch long tokenizer runs without mixing callback plumbing into the BPE algorithm. `save`/`load` plus token-ID artifact persistence live in `g2c/tokenizer/persistence.py`; reusable artifact path/loading/training orchestration lives in `g2c/artifacts/`; `encode_fast`/`train_fast` live in `g2c/tokenizer/fast.py` and use a Rust-backed tokenizer library for larger artifacts. `train_fast` feeds large text to the Rust trainer in chunks, then copies the learned merges back into the same course tokenizer tables. Those helpers are functionally the same tokenizer artifact you build in `bpe.py`, but faster. The learning target is still the plain BPE algorithm.
+About 50 lines of real implementation in total.
 
-## Scaffolding and how to run the tests
+## How to run the tests
 
 Tests live in `tests/test_tokenizer.py`. Initial state: the construction and train-validation tests pass; the BPE algorithm tests fail with `NotImplementedError` until you fill in the TODOs.
 
@@ -172,13 +165,18 @@ The implementation path is the test suite above. The notebook exercises are for 
 
 The notebook ends with a **Mini Milestone** section that turns your tokenizer into reusable artifacts. It uses `g2c.artifacts` to train or load configured tokenizers with progress updates, save each tokenizer plus a small encoded inspection sample under `artifacts/tokenizers/`, and keep path/loading logic reusable outside the notebook. Full pre-tokenized corpora are separate later artifacts; the durable thing here is the learned tokenizer table. The notebook then prints inspection views: a pseudo-random text window tokenized as strings, frequent final tokens after encoding, frequent learned final tokens after encoding, greedy longest learned tokens that skip substring duplicates, and a frequency plot. `ShakespeareTokenizer` is enabled by default. `StoryTokenizer` and `G2CTokenizer` are configured but disabled until you choose to run the larger dataset path.
 
-## Pitfalls to expect
+## Common Pitfalls
 
 - **Off-by-one in pair counting.** A list of length `n` has `n - 1` adjacent pairs, not `n`. `range(len(ids) - 1)` or a `zip(ids, ids[1:])` style is the cleanest.
+
 - **The overlap trap in `_merge`.** Naively iterating with `for i in range(len(ids))` and matching at every position will double-consume the middle element of `[1, 1, 1]`. Use a `while` loop with explicit index advancement, or a `for` loop with a `skip-next` flag, but make sure you only consume each element once.
+
 - **Mutable state across training steps.** `train_step` should add one entry to `self.merges` and one entry to `self.vocab`, not replace either dictionary. (The tests assume you start from a fresh tokenizer per test, so this is more of a real-world concern.)
+
 - **`encode` infinite loop.** If your encode logic finds a merge to apply but doesn't actually shorten the list, you'll loop forever. Always verify the new list is shorter than the old.
+
 - **UTF-8 decode of partial sequences.** If you ever construct an ID list that doesn't correspond to a valid UTF-8 byte stream, `bytes.decode("utf-8")` raises. Use `errors="replace"` for robustness — but a correct `encode/decode` round-trip should never trigger this.
+
 - **Performance on big corpora.** A naive implementation re-counts all pairs on the full sequence every iteration: O(n) per merge × thousands of merges = slow on real corpora. For training on TinyShakespeare it's fine; if you wanted to train on Wikipedia you'd need to keep counts incrementally. For this course's scope, the naive version is the right call.
 
 ## M-series notes

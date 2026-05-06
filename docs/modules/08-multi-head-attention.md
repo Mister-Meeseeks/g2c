@@ -1,6 +1,6 @@
 # Module 08 — Multi-head attention
 
-> **Question this module answers:** *Why split attention into multiple heads?*
+> **Question this module answers:** *How does attention specialize?*
 
 ![Multi-head attention end-to-end: input X (B, T, D); three big linear projections produce Q, K, V each of shape (B, T, D); a reshape + transpose splits the channel dim into H heads, each of size d_h = D/H, so every tensor becomes (B, H, T, d_h); H independent attention computations run in parallel (each with its own scaling factor √d_h); concatenation merges the heads back to (B, T, D); a final output projection W_O lands the result. A side panel emphasizes the headline fact: same total parameter count as a single big attention, but H different "ways of looking" at the same sequence.](08-multi-head-attention/Module08-Hero.png)
 
@@ -125,7 +125,7 @@ You won't see these in your tiny model from Module 10 with high fidelity — you
 
 ![Four canonical head-specialization patterns visualized as attention heatmaps over a sample sentence: (1) a previous-token head — all mass on the position immediately before the query, a clean sub-diagonal stripe; (2) a syntactic head — sparse off-diagonal links between grammatically related tokens (subject↔verb, modifier↔noun); (3) an induction head — for the pattern "...A B...A", weight concentrates on the token after the previous A; (4) a global / broadcast head — diffuse weight covering most of the sequence. A side caption emphasizes the headline: nothing in the architecture forces these patterns; they emerge during training.](08-multi-head-attention/Module08-DiffHeads.png)
 
-*Multi-head attention's empirical payoff isn't visible from the math — it shows up only when you train and look. With H heads available, the optimizer is free to use one for previous-token copying, another for syntactic dependencies, another for induction, etc., and it tends to do so. Single-head attention has to commit one set of weights to ALL of these jobs simultaneously; multi-head attention can specialize and recombine via W_O. Exercise 4 (per-head visualization on a trained model) is the visceral version of this picture — at toy scale you'll see partial versions of these patterns rather than the textbook-clean ones above.*
+*Multi-head attention's empirical payoff isn't visible from the math — it shows up only when you train and look. With H heads available, the optimizer is free to use one for previous-token copying, another for syntactic dependencies, another for induction, etc., and it tends to do so. Single-head attention has to commit one set of weights to ALL of these jobs simultaneously; multi-head attention can specialize and recombine via W_O. 
 
 ## Concepts to internalize
 
@@ -171,7 +171,7 @@ class MultiHeadAttention(Module):
 
 Roughly 20 lines of real code split across the two scaffolded methods. The conceptual delta from Module 07 is small — most of the lesson is in the reshape and the `√head_dim` change.
 
-## Scaffolding and how to run the tests
+## How to run the tests
 
 Tests live in `tests/test_multi_head_attention.py`. Initial state: 11 passed (construction + `causal_mask` + parameter counts), 16 failed.
 
@@ -212,7 +212,7 @@ pytest tests/test_multi_head_attention.py -v          # verbose
 
 5. **Parameter counts at varying H.** Verify analytically that `MultiHeadAttention(embedding_dim=D, num_heads=H)` has parameter count `4 * (D*D + D)`, independent of `H`. Compute it programmatically for a few `(D, H)` pairs by summing `p.numel()` over `attn.parameters()`. Convince yourself that "more heads" is a free structural change at fixed `D`.
 
-## Pitfalls to expect
+## Common pitfalls
 
 - **Scaling by √D instead of √head_dim.** The single most common multi-head bug. Training sluggish; attention weights are too flat; gradients propagate weakly. Crashes nothing, fails subtly. 
 
@@ -232,7 +232,7 @@ pytest tests/test_multi_head_attention.py -v          # verbose
 
 ## M-series notes
 
-This module is light on compute — the same regime as Module 07.
+This module is light on compute 
 
 - All tests run in well under a second on CPU.
 - Exercise 3's training comparison (3 runs at fixed `D = 64`) is a few hundred steps each on a small corpus; under a couple minutes total on CPU.

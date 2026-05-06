@@ -8,6 +8,8 @@ import torch
 
 from g2c.artifacts import (
     TokenizerArtifactConfig,
+    atomic_torch_save,
+    checkpoint_backup_path,
     default_text_chunks,
     encode_text_to_tensor,
     find_repo_root,
@@ -16,13 +18,16 @@ from g2c.artifacts import (
     load_or_encode_tokenized_corpus,
     load_or_encode_tokenized_pair,
     load_required_tokenizer,
+    load_run_state,
     load_tinystories_text,
     load_tokenizer_artifact,
     load_tokenizer_source_text,
+    load_torch_checkpoint,
     tokenizer_artifact_exists,
     train_or_load_tokenizer_artifact,
 )
 from g2c.tokenizer import BPETokenizer
+from g2c.transformer import TransformerLM
 
 
 def make_repo(tmp_path: Path) -> Path:
@@ -100,6 +105,61 @@ def test_encode_text_to_tensor_uses_two_pass_chunking():
         "encode_write_chunk",
         "encode_done",
     ]
+
+
+def test_atomic_torch_save_keeps_previous_checkpoint_backup(tmp_path):
+    checkpoint_path = tmp_path / "run.ckpt"
+
+    atomic_torch_save({"step": torch.tensor([1])}, checkpoint_path)
+    atomic_torch_save({"step": torch.tensor([2])}, checkpoint_path)
+    checkpoint_path.write_bytes(b"not a complete torch checkpoint")
+
+    loaded = load_torch_checkpoint(checkpoint_path)
+
+    assert checkpoint_backup_path(checkpoint_path).exists()
+    assert torch.equal(loaded["step"], torch.tensor([1]))
+
+
+def test_load_run_state_reconstructs_model_and_history(tmp_path):
+    model_config = {
+        "embedding_dim": 8,
+        "num_layers": 1,
+        "num_heads": 2,
+        "max_seq_len": 16,
+        "hidden_dim": 32,
+    }
+    torch.manual_seed(0)
+    model = TransformerLM(vocab_size=12, **model_config)
+    history = {
+        "step": [0],
+        "train_loss": [2.0],
+        "lr": [1e-3],
+        "grad_norm": [0.5],
+        "val_step": [0],
+        "val_loss": [2.1],
+    }
+    checkpoint_path = tmp_path / "run.ckpt"
+    atomic_torch_save(
+        {
+            "model_params": [p.detach().cpu().clone() for p in model.parameters()],
+            "history": history,
+            "extra": {
+                "model_config": model_config,
+                "vocab_size": 12,
+            },
+        },
+        checkpoint_path,
+    )
+
+    loaded_model, loaded_history = load_run_state(checkpoint_path)
+
+    assert loaded_history == history
+    for expected, actual in zip(
+        model.parameters(),
+        loaded_model.parameters(),
+        strict=True,
+    ):
+        assert torch.allclose(expected, actual)
 
 
 def test_load_tinystories_text_reads_compressed_shards(tmp_path):

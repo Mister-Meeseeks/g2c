@@ -1,6 +1,6 @@
 # Module 09 — The transformer block
 
-> **Question this module answers:** *How do we compose attention and per-token computation into a reusable unit?*
+> **Question this module answers:** *How do we compose attention and "thinking"?*
 
 ![One transformer block, drawn as two pre-norm sublayers wrapped in residual connections. The residual stream (the (B, T, D) tensor at the top) flows forward unchanged by default; each sublayer reads it through a LayerNorm, computes an update, and adds the update back. Sublayer 1 is multi-head attention; sublayer 2 is the position-wise feed-forward network. Side panels label the two structural ideas (LayerNorm normalizes per token, residual connections add a small update) and pin the recipe `x = x + attn(ln1(x)); x = x + ffn(ln2(x))`.](09-transformer-block/Module09-Hero.png)
 
@@ -18,7 +18,7 @@ Module 09 is where the transformer finally takes shape — every piece you've bu
 
 ### Computer science
 
-- **Module composition.** The `Block` module we developer here uses the same python object-oriented pattern as Module 03's `Sequential`.
+- **Object composition.** The `Block` module we developer here uses the same python object-oriented pattern as Module 03's `Sequential`.
 
 ### PyTorch
 
@@ -241,7 +241,6 @@ class LayerNorm(Module):
     gamma: torch.Tensor                  # (D,)
     beta: torch.Tensor                   # (D,)
 
-    def __init__(self, embedding_dim, *, eps=1e-5): ...        # implemented
     def parameters(self): ...                                   # implemented
     def forward(self, x): ...                                   # SCAFFOLDED
 
@@ -251,7 +250,6 @@ class FeedForward(Module):
     fc1: Linear                          # (D, hidden_dim)
     fc2: Linear                          # (hidden_dim, D)
 
-    def __init__(self, embedding_dim, *, hidden_dim=None): ...  # implemented
     def parameters(self): ...                                   # implemented
     def forward(self, x): ...                                   # SCAFFOLDED
 
@@ -265,7 +263,6 @@ class Block(Module):
     ln2: LayerNorm
     ffn: FeedForward
 
-    def __init__(self, embedding_dim, num_heads, *, hidden_dim=None, causal=True): ...  # implemented
     def parameters(self): ...                                                            # implemented
     def forward(self, x): ...                                                            # SCAFFOLDED
 
@@ -282,7 +279,6 @@ class TransformerLM(Module):
     ln_final: LayerNorm
     head: Linear
 
-    def __init__(self, vocab_size, embedding_dim, num_layers, num_heads, max_seq_len, *, hidden_dim=None): ...  # implemented
     def parameters(self): ...                                                                                    # implemented
     def forward(self, token_ids): ...                                                                            # SCAFFOLDED
 ```
@@ -311,8 +307,6 @@ pytest tests/test_transformer.py -v          # verbose
    ```
 
    Stack 6 of these into a small LM (vocab = 50, D = 64, H = 4, T = 32, no warmup, lr = 1e-3) and train for 1000 steps on a tokenized short corpus. Train an identical pre-norm `TransformerLM` on the same data with the same hyperparameters. Plot both training-loss curves on the same axes.
-
-   Expected pattern: the pre-norm model trains smoothly. The post-norm model either trains slower, oscillates, or diverges within a few hundred steps. The deeper you stack, the more dramatic the gap. Note that the original 2017 transformer used post-norm with a careful learning-rate warmup schedule — *with* warmup, post-norm trains fine, which is why the 2017 paper worked. Without warmup, modern wisdom says use pre-norm.
 
 2. **Strip residual connections.** Edit `Block.forward` (or make a `ResidualFreeBlock` variant) to drop the residual additions:
 
@@ -343,9 +337,9 @@ pytest tests/test_transformer.py -v          # verbose
 
    Sum it up symbolically; verify by summing `p.numel()` over `m.parameters()` for a few `(V, D, N, H, T_max)` tuples. Notice that for typical `D ≫ T_max ≪ V`, the dominant term is `V × D` (the embeddings) at small scales and `12 N D²` (the blocks) at large scales.
 
-## Pitfalls to expect
+## Common pitfalls
 
-- **LayerNorm over the wrong dim.** Pooling statistics over the batch dim (BatchNorm-style) or over the sequence dim instead of the channel dim. Symptom: training works but is unusually slow; batch size matters in surprising ways. `test_layer_norm_normalizes_last_dim` and `test_layer_norm_normalizes_each_position_independently` catch this.
+- **LayerNorm over the wrong dim.** Pooling statistics over the batch dim (BatchNorm-style) or over the sequence dim instead of the channel dim. Symptom: training works but is unusually slow; batch size matters in surprising ways. 
 
 - **`unbiased=True` in the variance.** Divides by `N - 1` instead of `N` — the *sample* variance instead of the *population* variance. Off by a factor of `D / (D - 1)` from the standard implementation. Hard to notice; impossible to debug.
 
@@ -353,7 +347,7 @@ pytest tests/test_transformer.py -v          # verbose
 
 - **Post-norm by accident.** Writing `x = self.ln1(x + self.attn(x))` instead of `x = x + self.attn(self.ln1(x))`. The shape is the same, the test for output shape passes, but training is dramatically less stable.
 
-- **Forgetting the residual.** Writing `x = self.attn(self.ln1(x))` instead of `x = x + self.attn(self.ln1(x))`. The model becomes untrainable past 2-3 layers. Catches in `test_block_residual_identity_when_sublayers_zeroed`.
+- **Forgetting the residual.** Writing `x = self.attn(self.ln1(x))` instead of `x = x + self.attn(self.ln1(x))`. The model becomes untrainable past 2-3 layers. 
 
 - **Sharing one LN between sublayers.** Reusing `self.ln1` for both the attention and FFN sublayers instead of having a separate `self.ln2`. Doesn't crash, but reduces expressiveness — the FFN loses its independent scale/shift.
 
@@ -361,11 +355,11 @@ pytest tests/test_transformer.py -v          # verbose
 
 - **Wiring `pos_embed` outside the broadcast.** `pos = self.pos_embed(T)` has shape `(T, D)`. Adding it to `tok` of shape `(B, T, D)` works via broadcasting — but if you accidentally write `pos.unsqueeze(0)` you get `(1, T, D)` which also broadcasts but hints at a confused mental model. Both work; one is cleaner.
 
-- **`for block in self.blocks: x = block(x)` is sequential — do NOT parallelize it.** Block `i` reads block `i-1`'s output. Trying to run them concurrently misunderstands the architecture (this is a recurring beginner instinct; the transformer is parallel WITHIN a block, sequential ACROSS blocks).
+- **`for block in self.blocks: x = block(x)` is sequential — do NOT parallelize it.** Block `i` reads block `i-1`'s output. Trying to run them concurrently misunderstands the architecture (this is a recurring beginner instinct; the transformer is parallel *within* a block, sequential *across* blocks).
 
 ## M-series notes
 
-This module is still light on compute — building and unit-testing the block is fast.
+This module is still light on compute
 
 - Exercise 1's pre-norm vs post-norm comparison at `num_layers = 6, D = 64, T = 32` is a few minutes per run on CPU; comfortable on MPS.
 - Exercise 2's strip-residuals study at `num_layers = 8` is the first configuration big enough that MPS starts paying off — about 2× over CPU at this size.

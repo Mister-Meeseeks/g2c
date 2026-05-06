@@ -1,6 +1,6 @@
 # Module 07 — Self-attention
 
-> **Question this module answers:** *How do tokens communicate?*
+> **Question this module answers:** *How can tokens communicate?*
 
 ![Self-attention as six steps from tokens to refined representations: input embeddings (T, D); query/key/value projections via three Linear layers; pairwise compatibility scores from Q · Kᵀ / √D; softmax to row-normalized attention weights; mixed value vectors; an output projection. The bottom strip restates the same recipe as a one-position view ("ask, compare, pass, gather, update") and pins the headline takeaway: every token looks at every token, decides who is relevant, and mixes their information.](07-attention/Module07-Hero.png)
 

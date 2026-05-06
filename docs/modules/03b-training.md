@@ -1,6 +1,6 @@
 # Module 03B — Training
 
-> **Question this module answers:** *Why does the same network sometimes learn, stall, or explode?*
+> **Question this module answers:** *How do we make the model learn efficiently?*
 
 ![A training dashboard: learning rate controls step size, AdamW adapts that step per parameter, gradient clipping caps rare spikes, and train/validation curves diagnose whether the run is learning, overfitting, or stalled.](03b-training/Module03B-Hero.png)
 

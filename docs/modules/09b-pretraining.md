@@ -1,6 +1,6 @@
 # Module 09B — Pretraining
 
-> **Question this module answers:** *How do we turn a text corpus and a TransformerLM into supervised training data?*
+> **Question this module answers:** *How do we learn from text?*
 
 ![Multi-position targets in three steps: sample a (B, T) window from the token stream with the target window shifted left by one; run one TransformerLM forward pass to produce (B, T, V) logits; compute per-position cross-entropy at every (b, t) pair and average across all B * T positions.](09b-pretraining/Module09B-Hero.png)
 

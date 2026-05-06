@@ -1,6 +1,6 @@
 # Module 10 — Milestone: Your First LLM
 
-> **Question this module answers:** *What changes when the transformer block becomes a trained language model?*
+> **Question this module answers:** *Can I build a language model using the tools we learned?*
 
 ![Pretraining the tiny GPT end-to-end: a raw token stream is sliced into (B, T) windows; each window goes through TransformerLM to produce (B, T, V) logits; lm_cross_entropy averages per-position cross-entropy across all B * T positions; loss.backward populates parameter gradients; clip_grad_norm rescales them if their global norm is too large; cosine_with_warmup picks the lr for this step; optimizer.step applies the optimizer update; the step counter advances. A side panel shows sample text quality progressing through training: random characters at step 0, locally-correct subwords at step 500, locally-coherent sentences by step 2000+.](10-your-first-llm/Module10-Hero.png)
 

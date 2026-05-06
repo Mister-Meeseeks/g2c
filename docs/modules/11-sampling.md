@@ -1,6 +1,6 @@
 # Module 11 — Sampling and decoding
 
-> **Question this module answers:** *How does a probability distribution over tokens become actual text?*
+> **Question this module answers:** *How do we use a model to produce text?*
 
 ![Sampling and decoding on one page: the trained TransformerLM (left) emits (B, T, V) logits at every step; only the last position's row, (1, V), is used. Four logit warpers — repetition penalty, temperature, top-k, top-p — apply in that order, each transforming logits to logits and setting dropped tokens to -inf. The warped logits go through softmax and multinomial to sample one new token id, which is appended to the running sequence. A side panel contrasts greedy decoding (skip every warper, take argmax — deterministic) with sampled decoding (full pipeline). The whole loop repeats max_new_tokens times.](11-sampling/Module11-Hero.png)
 

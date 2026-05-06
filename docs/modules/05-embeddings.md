@@ -1,6 +1,6 @@
 # Module 05 — Embeddings and positions
 
-> **Question this module answers:** *How do discrete symbols become meaning-like vectors, and how does order get in?*
+> **Question this module answers:** *How do discrete symbols become meaning-like vectors?*
 
 ![From token IDs to meaning-like vectors: text → token IDs → embedding lookup → add positional information (learned, sinusoidal, or RoPE) → model-ready vectors. Embeddings become a learned geometry; positions tell the model where each token is.](05-embeddings/Module05-Hero.png)
 

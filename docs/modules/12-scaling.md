@@ -4,12 +4,10 @@
 
 ![Three tiny GPTs trained on the same TinyShakespeare corpus, side by side: 1M / 5M / 20M parameters. Each column shows the model's parameter count up top, its final validation perplexity in the middle (e.g. 6.5 → 4.8 → 4.0), and a 100-token continuation from the same prompt at the bottom. The 1M sample is locally-correct but largely nonsense; the 5M sample has short coherent phrases; the 20M sample has multi-line dialogue-like text. A panel below plots final loss vs parameter count on log-log axes — the three points fall close to a straight line whose negative slope is the empirical scaling exponent. A small caveat box on the right notes "iso-step, not iso-FLOP — the 20M model has consumed roughly 20× more compute per step." A second caveat box reminds the reader that "perplexity ≠ capability" — even at 20M, the model still confidently invents quotes, and several "emergent" tasks the larger model passes are actually still random chance.](12-scaling/Module12-Hero.png)
 
-Same corpus, same step budget, different parameter counts, *very* different outputs. Scaling laws tell us how model quality varies with more or fewer parameters (and compute).
+Same corpus, same step budget, different parameter counts, *very* different outputs. Scaling laws tell us how model quality varies with more or fewer parameters (and compute).  Module 12 is the first module without new package code. You're not implementing a new layer or training utility — you're running the trainer from Module 10 different sizes
 
+---
 ## Prerequisites
-
-Module 12 is the first module without new package code. You're not implementing a new layer or training utility — you're running the trainer from Module 10 different sizes
-
 ### Math
 
 - **Power laws on log-log axes.** A relationship `y = A · x^α` plots as a straight line on log-log axes with slope `α`. 
@@ -22,7 +20,7 @@ Module 12 is the first module without new package code. You're not implementing 
 
 - **Matplotlib** Used in the exercise notebook for charting scaling laws.
 
-
+---
 ## Where this fits in
 
 After Module 10 you trained a single tiny GPT and sampled from it. After Module 11 you have decoding controls. Both modules let you study one model — but the *interesting* questions about LLMs are inherently comparative. Why is GPT-4 dramatically better than GPT-2? Is it just more parameters? Is it more parameters spent in a particular way? Is there a regime where adding parameters stops helping?
@@ -55,9 +53,7 @@ The other empirical observation is harder to capture in a power law: some capabi
 
 ## The big idea
 
-### Power laws and what they mean
-
-The scaling laws claim: validation loss `L(N)` falls as a power of parameter count `N`, with a non-zero floor:
+Model capabilities follow a power law. The scaling laws claim: validation loss `L(N)` falls as a power of parameter count `N`, with a non-zero floor:
 
 ```
    L(N)  =  α · N^(−β)  +  L∞

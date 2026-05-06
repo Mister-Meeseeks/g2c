@@ -222,17 +222,20 @@ class Trainer:
         extra: dict | None = None,
     ) -> Path:
         """Save model, optimizer, RNG, step counter, and history to `path`."""
-        checkpoint_path = Path(path)
-        checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
-        torch.save(
-            self.checkpoint_state(history=history, extra=extra),
-            checkpoint_path,
+        from g2c.artifacts.models import save_training_checkpoint
+
+        return save_training_checkpoint(
+            self,
+            path,
+            history=history,
+            extra=extra,
         )
-        return checkpoint_path
 
     def load_checkpoint(self, path: str | PathLike[str]) -> dict:
         """Restore a checkpoint saved by `save_checkpoint` and return it."""
-        checkpoint = torch.load(Path(path), map_location="cpu", weights_only=False)
+        from g2c.artifacts.models import load_training_checkpoint
+
+        checkpoint = load_training_checkpoint(path, map_location="cpu")
         self.restore_checkpoint_state(checkpoint)
         return checkpoint
 

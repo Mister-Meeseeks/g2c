@@ -10,16 +10,27 @@ from __future__ import annotations
 
 import math
 import time
+from collections.abc import Callable
 from os import PathLike
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import matplotlib.pyplot as plt
 import torch
 from IPython.display import Markdown, display
 
+from g2c.artifacts import load_run_state
 from g2c.pretraining import Trainer
 from g2c.transformer import TransformerLM
+
+__all__ = [
+    "format_training_progress",
+    "format_training_start",
+    "load_run_state",
+    "make_encode_progress",
+    "plot_training_history",
+    "train_with_progress",
+]
 
 
 _BAR_WIDTH = 28
@@ -214,42 +225,3 @@ def train_with_progress(
     print("final val loss:", history["val_loss"][-1])
     print("final val perplexity:", math.exp(history["val_loss"][-1]))
     return history
-
-
-def load_run_state(
-    checkpoint_path: str | PathLike[str],
-) -> tuple[TransformerLM, dict]:
-    """Reconstruct ``(model, history)`` from a rolling training checkpoint.
-
-    Use this in the curves/samples cells when the training cell may have been
-    interrupted before its return value was assigned, or when the kernel was
-    restarted between training and inspection. The checkpoint must have been
-    written by ``train_with_progress`` with ``checkpoint_extra`` containing
-    ``model_config`` and ``vocab_size``.
-    """
-    path = Path(checkpoint_path)
-    state = torch.load(path, map_location="cpu", weights_only=False)
-    extra = state.get("extra") or {}
-    model_config = extra.get("model_config")
-    vocab_size = extra.get("vocab_size")
-    if model_config is None or vocab_size is None:
-        raise ValueError(
-            f"Checkpoint at {path} is missing model_config / vocab_size in extra; "
-            "training cell must pass these via checkpoint_extra."
-        )
-
-    model = TransformerLM(vocab_size=vocab_size, **model_config)
-    saved = state["model_params"]
-    target = list(model.parameters())
-    if len(saved) != len(target):
-        raise ValueError(
-            f"Checkpoint has {len(saved)} params, model has {len(target)}"
-        )
-    with torch.no_grad():
-        for p, s in zip(target, saved, strict=True):
-            p.copy_(s.to(device=p.device, dtype=p.dtype))
-
-    history = state.get("history")
-    if history is None:
-        raise ValueError(f"Checkpoint at {path} has no history")
-    return model, history
