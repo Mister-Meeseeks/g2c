@@ -7,7 +7,7 @@
 The last module handed us integer IDs. This module turns them into vectors. The embedding lookup itself is a one-line table indexing — the lesson is what the table learns and which of the three positional schemes you use to break the bag-of-tokens symmetry.
 
 ---
-## Prerequisites
+## Before you start
 
 ### Math
 

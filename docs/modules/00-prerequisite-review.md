@@ -7,30 +7,33 @@
 This is a fast review, not a remedial course. If these ideas are familiar but rusty, this module should put the right concepts back in working memory before the real course starts. If several sections feel new, pause here and use this page as a map for a longer fundamentals pass before starting the course.
 
 ---
-## Prerequisites
+## Before you start
 
 This module assumes you are already a competent programmer and have seen the math before. The goal is recall, not first exposure.
 ### Math
 
 - **Algebraic manipulation.** Rearranging formulas, reading subscripts, and following expressions with several variables.
 - **Derivatives.** Single-variable derivatives, partial derivatives, and the chain rule.
-- **Vectors and matrices.** Dot products, matrix multiplication, and shape reasoning.
-- **Basic probability.** Discrete distributions, expected "probability mass over choices," and logarithms.
+- **Vectors and matrices.** Dot products, matrix multiplication, norms, and shape reasoning.
+- **Basic probability.** Discrete distributions, expected "probability mass over choices," logarithms, and sampling.
 ### Computer science
 
 - **Functions and composition.** The whole course treats models as large composed functions.
 - **Loops and state.** Training loops, decode loops, and agent loops are all explicit loops with changing state.
 - **Graphs.** Computational graphs in Module 01 are directed acyclic graphs; later attention maps are dense communication graphs over tokens.
+- **Memory locality.** Why traversing memory sequentially is much faster than jumping around.
+- **GPU vs. CPU**. Basic familiarity with what a GPU does and why it's used for parallel computation 
+-  **Asymptotic complexity.** Comfortable with "this is O(n³), this is O(n²)" and what that implies as `n` grows.
 ### Programming
 
-- **Python.** Classes, functions, list/dict basics, imports, virtual environments, and reading stack traces.
+- **Python.** Classes, functions, list/dict basics, closures, operator overloads, imports, virtual environments, and reading stack traces.
 - **Testing.** Running `pytest`, using `-x`, and reading a failing test as a contract.
 - **Numerical Python basics.** Enough NumPy or PyTorch familiarity to read `.shape`, use `@`, and understand that vectorized code runs outside the Python interpreter.
 
 ---
 ## Why we start here
 
-Module 01 starts by building scalar autodiff. That only feels enlightening if derivatives, the chain rule, and "a computation as a graph" are already close at hand. Module 02 immediately moves to tensors and matrix multiplication. Module 03 adds loss functions, mini-batches, and train/validation splits. By Module 04, text has become token IDs; by Module 07, those token IDs are communicating through attention.
+Module 01 starts by building scalar autodiff. That only feels enlightening if derivatives, the chain rule, and "a computation as a graph" are already close at hand. Module 02 immediately moves to tensors and matrix multiplication. Module 03 adds loss functions, mini-batches, and train/validation splits. From there the building blocks keep rapidly stacking on top of one another.
 
 This module narrows the prerequisite surface to the parts that will actually be used. It is intentionally incomplete as a math course. You are reviewing just enough to keep the early modules focused on the ideas under study instead of turning every exercise into prerequisite archaeology.
 
@@ -280,6 +283,8 @@ You do not need to know all of PyTorch. You do need:
 - `torch.no_grad()` for inference
 - enough autograd familiarity to know that `loss.backward()` fills `.grad`
 
+This course includes a [[PyTorch Primer]] that can be used as both an in-depth review focused on the PyTorch features used in this course, as well as a general reference. 
+
 ---
 ## Setup
 
@@ -303,7 +308,7 @@ If feedback shows a weak spot, ask the agent for a few focused practice problems
 
 ## Exercises
 
-Enter questions or answers in [`answers/module-00.md`](../../answers/module-00.md) for agent help and grading. You can ask for a hint, answer one question, answer a subset, or answer all of them; blank answer sections are skipped rather than counted wrong.
+Open the working notebook with `.venv/bin/python scripts/open_notebook.py 00`. Each exercise has `Question:` / `Answer:` cells where you write your response. If you'd like a hint instead of a grade, write the request in the answer string and ask a coding agent for help. Blank answers are skipped rather than counted wrong.
 
 1. **Shape trace.** Let `B = 4`, `T = 8`, `C = 16`, and `V = 1000`. Token IDs have shape `(B, T)`. An embedding table has shape `(V, C)`. What is the shape after embedding lookup? If the final projection has shape `(C, V)`, what shape are the logits?
 
@@ -330,7 +335,7 @@ Enter questions or answers in [`answers/module-00.md`](../../answers/module-00.m
 
 6. **Environment check.** Run `./setup.sh`. If MPS is unavailable on an Apple Silicon machine, fix that before Module 02.
 
-## Pitfalls to expect
+## Pitfalls to avoid
 
 - **Trying to relearn everything.** The goal is not to master all prerequisite fields. It is to recover the pieces used by this course.
 - **Treating shapes as incidental.** Shapes are the fastest debugging tool you have. Write them down.

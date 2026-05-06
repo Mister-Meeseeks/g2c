@@ -1,6 +1,6 @@
 # Module 03B Rubric
 
-Use this rubric to grade submitted answers in `answers/module-03b.md`. If `Help request / hint request` is filled, tutor before grading and avoid giving away the full solution unless explicitly asked. Blank `Student answer` sections are not wrong; skip them unless the student asks for a completeness check. Give feedback by exercise and avoid replacing the student's work with a full solution unless explicitly asked.
+Use this rubric to grade submitted answers in the student's working notebook (`notebooks/solutions/03b-training.ipynb`, falling back to `notebooks/clean/03b-training.ipynb` if no solutions copy exists yet). Each exercise has `Question:` / `Answer:` string cells; treat a blank `"Answer: "` as not submitted (skip it). If the student wrote a hint or help request inside the answer string, tutor first before grading and avoid giving away the full solution unless they explicitly ask. Give feedback exercise by exercise and avoid replacing the student's work with a full solution unless explicitly asked.
 
 ## Exercise 03B.01 — Learning-rate sweep
 

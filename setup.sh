@@ -121,6 +121,12 @@ fi
 info "Running smoke test"
 .venv/bin/python scripts/smoke_test.py
 
+# ---- 7. Completion sentinel --------------------------------------------------
+# Module 00's environment-check exercise reads this file to confirm setup.sh
+# ran end-to-end (smoke test passed, deps installed). Removed and rewritten on
+# every successful run so it always reflects the latest setup.
+date -u +"%Y-%m-%dT%H:%M:%SZ" > .venv/.g2c-setup-complete
+
 echo ""
 ok "Setup complete."
 echo ""

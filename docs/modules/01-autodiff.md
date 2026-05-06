@@ -7,26 +7,14 @@
 Module 01 builds the **backward pass** — the autodiff machinery that converts a forward computation into gradients with respect to every parameter. The forward pass, the loss, and the parameter update are all straightforward arithmetic; the gradient computation is the keystone, and it's what every later module's training loop will lean on.
 
 ---
-## Prerequisites
+## Before you start
 
-The math, CS, and programming concepts this module uses. If any feel rusty, the linked refreshers will get you back up to speed in 10–30 minutes each.
-### Math
-
-- **Single-variable derivatives.** You should be able to differentiate something like `f(x) = x³ + 2x` by hand without thinking about it. Refresher: Khan Academy "Differentiation rules" or Paul's Online Math Notes.
-- **The chain rule.** `d/dx[f(g(x))] = f'(g(x)) · g'(x)`. The single most important rule in deep learning — every gradient propagation step is one application of it. Refresher: 3Blue1Brown's "Backpropagation calculus" video (10 min) gives the geometric picture.
-- **Partial derivatives.** `d/dx[xy] = y`, `d/dy[xy] = x`. Used implicitly because every binary op has two inputs and you need a derivative with respect to each.
-- **Standard derivatives to have memorized.** Power rule: `d/dx[xⁿ] = n·xⁿ⁻¹`. Exponential: `d/dx[eˣ] = eˣ`. Logarithm: `d/dx[ln x] = 1/x`. Tanh: `d/dx[tanh x] = 1 − tanh²x`.
-### Computer science
-
-- **DAGs and topological sort.** A directed acyclic graph; a topological ordering places each node after all its parents. Refresher: any algorithms textbook, or just the Wikipedia article. The standard recursive-DFS algorithm is what you'll write here.
-- **Recursion.** Comfortable enough to write a depth-first traversal by hand.
-### Programming
-
-- **Python dunder methods.** `__add__`, `__mul__`, `__pow__`, `__radd__`, etc. — the protocol for overloading operators on a class. Refresher: Python language reference §3.3.7 ("Emulating numeric types").
-- **Closures.** Each operation defines a `_backward` function that captures local variables (the parents and the output Value). If "closures in Python" is fuzzy, skim Fluent Python's chapter on them or any short tutorial — they're central to the autodiff implementation pattern.
+- **Review Module 00.** Load the underlying math, computer science and programming topics back into cache.
+- **Run `setup.sh`**. If you haven't already setup the course environment. We'll use it in this module's exercises.
+- **Setup your favorite code editor**. In this and the rest of the course we'll be writing, reading and running a lot of python code in `g2c`
 
 ---
-## Why we start here
+## Where this fits in
 
 A neural network is a function with millions to billions of adjustable knobs. Training it is the process of repeatedly nudging each knob in the direction that makes the output less wrong. To do that, you need the partial derivative of the loss with respect to every knob. For any nontrivial network, computing those derivatives by hand would be hopeless — there are too many, and they share structure.
 

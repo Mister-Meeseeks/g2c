@@ -4,26 +4,16 @@
 
 ![A training dashboard: learning rate controls step size, AdamW adapts that step per parameter, gradient clipping caps rare spikes, and train/validation curves diagnose whether the run is learning, overfitting, or stalled.](03b-training/Module03B-Hero.png)
 
-*The model architecture is only half the story. The training recipe controls whether gradient descent turns that architecture into a useful function. This module names the knobs that otherwise feel like magic when they reappear in pretraining.*
+The model architecture is only half the story. The training recipe controls whether gradient descent turns that architecture into a useful function. This module names the knobs that otherwise feel like magic when they keep re-appearing in later lessons.
 
-## Prerequisites
+---
+## Before you start
 
-### Math
+* **Review** [[03-nn]] for neural net overview and [[02-tensors]] for tensor arithmetic. 
+* **Review** [[PyTorch Primer]] if any PyTorch code feels unfamiliar or confusing
+* **Finish** the `g2c/nn` implementation from [[03-nn]]. It's used in this section's exercises
 
-- **Gradient descent from Module 03.** You should be comfortable with `param -= lr * grad`.
-- **Elementwise tensor arithmetic.** AdamW's state is just tensors with the same shape as each parameter.
-- **Basic plots.** You will read loss curves and learning-rate curves.
-
-### Computer Science
-
-- **Stateful objects.** Optimizers carry state between steps. `SGD` barely has any; `AdamW` has two buffers per parameter.
-- **Interfaces.** Module 10's trainer only needs `zero_grad`, mutable `lr`, and `step`. Different optimizers can plug into the same loop if they satisfy that interface.
-
-### Programming
-
-- **PyTorch autograd.** You still use `.backward()` to populate gradients.
-
-
+---
 ## Where this fits
 
 Module 03 taught the basic loop:
@@ -44,7 +34,7 @@ train and val high   -> underfit or under-optimized
 train and val flat   -> stalled optimization
 ```
 
-When Module 10 pretrains a tiny GPT, these ideas should already be familiar. The payoff module should feel like assembly, not like learning five training tricks at once.
+When we pretrain our course LLM in Module 10, the ideas and techniques from this module will be heavily utilized.
 
 ## The Big Idea
 
@@ -80,8 +70,7 @@ The result is still gradient descent. AdamW does not change the model or the obj
 ### Learning Rates
 
 ![Three parameter-space trajectories — too small, just right, too large — paired with their loss-vs-steps curves. Too-small crawls toward the minimum, just-right descends steadily, too-large oscillates or diverges. A side panel summarizes the gradient-as-direction / `lr`-as-step-length intuition and the sweep workflow.](03b-training/Module03b-Steps.png)
-
-*The gradient picks the direction; the learning rate picks the step length along that direction. The three columns are exactly what Exercise 1 asks you to reproduce — sweep `lr` across powers of 10 and find the largest one that still lives in the middle column.*
+*The gradient picks the direction; the learning rate picks the step length along that direction.*
 
 The learning rate is the knob that turns gradient direction into parameter motion. In the plain SGD case, the relationship is visible:
 
@@ -96,8 +85,7 @@ There is no universal answer, so the practical move is a small sweep. Try a few 
 ### AdamW's Effective Step Size
 
 ![Side-by-side comparison of SGD and AdamW. SGD applies one global step size to every parameter using the raw gradient. AdamW maintains per-parameter first-moment `m` (smoothed direction) and second-moment `v` (squared-gradient scale), applies bias correction, and produces a per-parameter adaptive step. Bottom callouts contrast "every parameter the same" against "shock absorbers per parameter" and call out decoupled weight decay.](03b-training/Module03b-Adam.png)
-
-*Both optimizers are still gradient descent — they differ in how the step is scaled. The `sqrt(v_hat)` denominator is the visible reason a single global `lr` survives transformer training: parameters with historically large gradients automatically get smaller effective steps, and rare-gradient parameters are not starved.*
+*Both optimizers are still gradient descent — they differ in how the step is scaled. 
 
 AdamW still has a global `lr`, but the actual update is adapted per tensor element:
 
@@ -118,8 +106,7 @@ That direct shrink is the "W" in AdamW. Do not fold it into the gradient update.
 ### Norms And Scale
 
 ![Three-panel diagram. Panel 1 defines the L2 norm of a vector with a worked example. Panel 2 builds the global gradient norm by flattening every parameter gradient into one long vector and taking its L2 norm. Panel 3 shows before/after gradient clipping: when the global norm exceeds the threshold, every gradient is rescaled by the same factor, so direction is preserved and step size is capped. Side panels show example loss-spike traces and what to monitor during training.](03b-training/Module03b-Norms.png)
-
-*The image carries the next two subsections together: a norm is just a measurement (panels 1–2), and clipping is the response when that measurement is too large (panel 3). The key visual is that clipping multiplies every gradient by one shared scalar — direction is preserved, only the step length is shortened. Exercise 5 asks you to reproduce panel 3 by hand.*
+*The image ties the next two subsections together: a norm is just a measurement (panels 1–2), and clipping is the response when that measurement is too large (panel 3). Clipping multiplies every gradient by one shared scalar — direction is preserved, only the step length is shortened.*
 
 A norm is a way to turn a vector into one number that says "how large is this?" The norm we use most is the L2 norm:
 
@@ -159,11 +146,23 @@ A schedule changes the learning rate over training. The standard small-LM recipe
 ```text
 warmup:        lr rises linearly to max_lr
 cosine decay:  lr falls smoothly from max_lr to min_lr
+
+  lr
+   ▲
+   │              ╮
+   │           ╱   ╰─╮
+   │         ╱        ╰─╮
+   │       ╱             ╰─╮
+   │     ╱                  ╰─╮
+   │   ╱                      ╰─╮___
+   │ ╱
+   └─────────────┬────────────────────► step
+   0    warmup_steps               max_steps
 ```
 
-Warmup protects the first steps, when the model is random and gradients can be poorly scaled. Cosine decay then lets the run take larger steps early and smaller steps late. In this repo's convention, if `warmup_steps > 0`, step 0 uses `max_lr / warmup_steps`, and the last warmup step reaches exactly `max_lr`.
 
-This is not deep magic. It is arithmetic on the step counter. But once it is named and implemented, Module 10 can focus on the language-modeling loop instead of reintroducing schedules during the payoff week.
+
+Warmup protects the first steps, when the model is random and gradients can be poorly scaled. Cosine decay then lets the run take larger steps early and smaller steps late. This is not deep magic. It is arithmetic on the step counter. 
 
 ### Reading Curves
 
@@ -203,9 +202,9 @@ We are not implementing dropout in this course path because it is not the bottle
 ### What we didn't cover
 
 - Formal convergence proofs. Mathematically interesting, but not needed to train models in the wild.
-- The optimizer zoo. We only need SGD and AdamW.
+- The optimizer zoo. SGD and AdamW are more than sufficient for our goals 
 - BatchNorm and advanced regularization. They matter in deep learning generally, but not for this LLM stack.
-- Dropout was introduced conceptually below, but you will not implement it in this module.
+- Dropout was introduced conceptually, but you will not implement it in this module.
 
 ---
 ## What You'll Build
@@ -258,9 +257,7 @@ pytest tests/test_training.py -x
 
 ## Exercises
 
-Enter questions or answers in [`answers/module-03b.md`](../../answers/module-03b.md) for agent help and grading. You can ask for a hint, answer one question, answer a subset, or answer all of them; blank answer sections are skipped rather than counted wrong.
-
-Set up or resume the working notebook:
+Set up or resume the working notebook for this exercise set by running:
 
 ```bash
 .venv/bin/python scripts/open_notebook.py 03b
@@ -280,7 +277,7 @@ Set up or resume the working notebook:
 
 7. **Curve diagnosis.** Given three train/validation plots — both high and flat, train low / val high, and both decreasing smoothly — write what you would try next for each.
 
-## Pitfalls To Avoid
+## Pitfalls to avoid
 
 - **Confusing Adam and AdamW.** Adam's original L2 penalty adds `weight_decay * param` to the gradient. AdamW decays the parameter directly. The distinction matters.
 - **Incrementing `step_count` per parameter.** The step counter advances once per optimizer step.

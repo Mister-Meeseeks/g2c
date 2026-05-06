@@ -159,7 +159,7 @@ This module starts the `g2c/pretraining/` package:
 
 - **`data.py`** has `split_token_stream` and `get_lm_batch`. Both are implemented.
 - **`loss.py`** has `lm_cross_entropy`. This is scaffolded.
-- **`answers/module-09b.md`** is the student workspace for written answers, hint requests, and partial submissions.
+- **`notebooks/clean/09b-pretraining.ipynb`** holds the written exercises directly: each section has `Question:` / `Answer:` cells. Open the working copy with `.venv/bin/python scripts/open_notebook.py 09b`.
 - **`docs/rubrics/module-09b.md`** is the grading contract agents should use when reviewing written answers.
 
 Run:
@@ -197,7 +197,7 @@ def lm_cross_entropy(
 
 ## Exercises
 
-Enter questions or answers in [answers/module-09b.md](../../answers/module-09b.md) for agent help and grading. You can ask for a hint, answer one question, answer a subset, or answer all of them; blank answer sections are skipped rather than counted wrong.
+Open the working notebook with `.venv/bin/python scripts/open_notebook.py 09b`. Each exercise has `Question:` / `Answer:` cells inside the notebook. If you'd like a hint instead of a grade, write the request in the answer string and ask a coding agent for help. Blank answers are skipped rather than counted wrong.
 
 1. **Shift a toy stream by hand.** Given `ids = [10, 11, 12, 13, 14, 15]`, `start = 1`, and `T = 3`, write `x` and `y`. Explain why `y[t]` is the target for `x[t]`.
 

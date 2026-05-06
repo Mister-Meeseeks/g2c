@@ -103,7 +103,7 @@ Module 10 uses prior modules and adds the top-level trainer:
 - **`g2c/pretraining/loss.py`** from Module 09B: `lm_cross_entropy`.
 - **`g2c/training/`** from Module 03B: `AdamW`, `clip_grad_norm_`, `cosine_with_warmup`.
 - **`g2c/pretraining/trainer.py`** for Module 10: `Trainer`.
-- **`answers/module-10.md`** is the student workspace for written answers, hint requests, and run notes.
+- **`notebooks/clean/10-your-first-llm.ipynb`** holds the written exercises directly: each section has `Question:` / `Answer:` cells alongside the run cells. Open the working copy with `.venv/bin/python scripts/open_notebook.py 10`.
 - **`docs/rubrics/module-10.md`** is the grading contract agents should use when reviewing written answers.
 
 Run prerequisite tests first when debugging:
@@ -178,7 +178,7 @@ class Trainer:
 
 ## Exercises
 
-Enter questions or answers in [answers/module-10.md](../../answers/module-10.md) for agent help and grading. You can ask for a hint, answer one question, answer a subset, or answer all of them; blank answer sections are skipped rather than counted wrong.
+Open the working notebook with `.venv/bin/python scripts/open_notebook.py 10`. Each exercise has `Question:` / `Answer:` cells inside the notebook. If you'd like a hint instead of a grade, write the request in the answer string and ask a coding agent for help. Blank answers are skipped rather than counted wrong.
 
 1. **Implement `Trainer.train_step`.** Follow the method docstring exactly. Run `pytest tests/test_pretraining.py -k train_step -x`, then the full `tests/test_pretraining.py`.
 

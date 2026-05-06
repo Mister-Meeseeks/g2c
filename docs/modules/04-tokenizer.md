@@ -7,18 +7,10 @@
 The whole pipeline that turns `"The quick brown fox..."` into the integer list a model actually sees. Finding and merging the most frequent adjacent byte pairs is the entire BPE algorithm.
 
 ---
-## Prerequisites
+## Before you start
 
-### Computer science
-
-- **Frequency counting with hash maps.** Build a dict of `pair → count` in one pass over a sequence. The single most-used technique in the BPE algorithm.
-- **Greedy algorithms.** Comfort with "make the locally best choice; iterate" as a strategy is enough.
-- **Sliding-window scans.** Adjacent-pair counting and merge application are both window-of-2 scans over a list.
-
-### Programming
-
-- **Python `bytes` and UTF-8.** A `bytes` object is a sequence of integers in `[0, 256)`. UTF-8 is variable-width: ASCII is 1 byte, common European characters 2, emoji 4. `bytes.encode()` and `bytes.decode()`
-- **Dict iteration order.** Since Python 3.7, dicts preserve insertion order. We rely on this for "earliest learned merge wins" priority.
+- **Refresh Python `bytes` and UTF-8.** A `bytes` object is a sequence of integers in `[0, 256)`. UTF-8 is variable-width: ASCII is 1 byte, common European characters 2, emoji 4. `bytes.encode()` and `bytes.decode()`
+- Run `./datasets.sh` in the repo root to download the corpus we'll use to train a tokenizer in the exercises
 
 ---
 ## Where this fits
@@ -85,8 +77,7 @@ After merge 2:
 ```
 
 ![The BPE training loop: start → count adjacent pairs → pick the most frequent → mint a new token → merge non-overlapping occurrences → repeat. A worked example trains BPE on "the the the" iteration by iteration, building the vocab one merge at a time.](04-tokenizer/Module04-BPELoop.png)
-
-*The five-step greedy loop (left) and exactly the same worked example unrolled (right). At inference, encoding replays the merges in learned order; decoding is just byte concatenation. The one-merge loop body is the `train_step()` method you'll implement; scaffolded `train()` repeats it until the vocabulary reaches the target size. The picture should make the iteration order, the non-overlapping merge rule, and the "earliest merge wins" priority click before you hit the test suite.*
+*Encoding replays the merges in learned order. Decoding is just byte concatenation. Training is just repeating the loop until the target vocabulary size is reached.*
 
 Every merge shortens the sequence and adds one entry to the vocabulary. The merges learned earliest (lowest IDs) capture the most common patterns; later merges capture progressively more specific patterns. The final tokenizer is just the table of merges, applied left-to-right by priority.
 
@@ -98,7 +89,7 @@ The whole thing is ~50 lines of Python. The cleverness is in the choice — BPE 
 
 ### Special tokens
 
-"Special tokens" is the standard name for reserved strings that mean something to the model/runtime instead of just ordinary prose. Later modules need tokens for document boundaries, chat roles, and tool events:
+"Special tokens" are reserved strings that mean something to the model/runtime instead of just ordinary prose. Later modules need tokens for document boundaries, chat roles, and tool events:
 
 ```text
 <|endoftext|>   separates documents/stories during pretraining
@@ -119,12 +110,16 @@ In this repo, `BPETokenizer()` is byte-only by default for the tiny BPE exercise
 
 - **Tokens vs. token IDs.** A token is a byte sequence (e.g., `b'the'`). A token ID is the integer the tokenizer assigns to it (e.g., `258`). The vocab is the bidirectional map.
 - **Base vocab is byte-level.** Every byte 0–255 has its own ID. This guarantees no out-of-vocabulary inputs, ever — every UTF-8 string can be encoded somehow, even if the encoding falls back to raw bytes for unfamiliar characters.
-- **Special tokens are reserved interface markers.** They encode atomically and are not ordinary BPE merges. Use them for document boundaries, chat roles, and tool-call events.
 - **Merges are ordered and priority-encoded by ID.** Earlier merges have lower IDs. At encode time, lower-ID merges win — they're the most frequent patterns and should be applied first.
 - **Training is one merge step repeated.** `train_step()` does the conceptual work once: count pairs, choose the most frequent pair, mint the new ID, merge the sequence, and update `merges`/`vocab`. `train()` is just the scaffolded outer loop plus progress reporting.
 - **The greedy merge rule has a subtlety.** When `_merge` sees `[1, 1, 1]` and the merge target is `(1, 1)`, the result is `[99, 1]`, not `[99, 99]`. The middle `1` is consumed by the first match and isn't available for a second. Left-to-right, non-overlapping.
 - **Lossless round-trip is structural.** As long as every byte ends up in the vocab and merges are concatenations of their parents, `decode(encode(text)) == text` for any UTF-8 string. This is not a property you have to test for at every input — it's guaranteed by the construction.
 - **Vocab size is a tunable knob.** Bigger vocab → more compression on the training distribution → shorter sequences but more parameters in the embedding table. Real LLMs use 32k–200k range.
+- **Special tokens are reserved interface markers.** They encode atomically and are not ordinary BPE merges. Use them for document boundaries, chat roles, and tool-call events.
+
+### What we don't cover
+
+* **Performance on big corpora.** A naive implementation re-counts all pairs on the full sequence every iteration: O(n) per merge × thousands of merges = slow on real corpora. For training on TinyShakespeare it's fine. If you wanted to train on Wikipedia you'd need to keep counts incrementally.
 
 ---
 ## What you'll build
@@ -143,10 +138,10 @@ class BPETokenizer:
     
     def train_step(self, 
 	    ids: list[int], 
-	    new_id: int): ...                 # You write it
+	    new_id: int): ...                 
 
-    def encode(self, text: str) -> list[int]: # You write it
-    def decode(self, ids: list[int]) -> str:  # You write it
+    def encode(self, text: str) -> list[int]: 
+    def decode(self, ids: list[int]) -> str:  
 ```
 
 About 50 lines of real implementation in total.
@@ -163,10 +158,12 @@ ids = tok.encode("<|user|>\nHello<|end|>")
 Tests live in `tests/test_tokenizer.py`. Initial state: the construction and train-validation tests pass; the BPE algorithm tests fail with `NotImplementedError` until you fill in the TODOs.
 
 ```bash
-.venv/bin/python -m pytest tests/test_tokenizer.py             # run all module-04 tests
-.venv/bin/python -m pytest tests/test_tokenizer.py -x          # stop at first failure
-.venv/bin/python -m pytest tests/test_tokenizer.py -k pair     # only pair-count tests
-.venv/bin/python -m pytest tests/test_tokenizer.py -v          # verbose
+source .venv/bin/activate
+
+pytest tests/test_tokenizer.py             # run all module-04 tests
+pytest tests/test_tokenizer.py -x          # stop at first failure
+pytest tests/test_tokenizer.py -k pair     # only pair-count tests
+pytest tests/test_tokenizer.py -v          # verbose
 ```
 
 ## Exercises
@@ -210,8 +207,6 @@ The notebook ends with a **Mini Milestone** section that turns your tokenizer in
 - **Merging across a special token.** A special token is a boundary. Do not learn a merge like `(<|endoftext|>, "The")`; that would turn an interface marker into an ordinary corpus-specific subword.
 
 - **UTF-8 decode of partial sequences.** If you ever construct an ID list that doesn't correspond to a valid UTF-8 byte stream, `bytes.decode("utf-8")` raises. Use `errors="replace"` for robustness — but a correct `encode/decode` round-trip should never trigger this.
-
-- **Performance on big corpora.** A naive implementation re-counts all pairs on the full sequence every iteration: O(n) per merge × thousands of merges = slow on real corpora. For training on TinyShakespeare it's fine; if you wanted to train on Wikipedia you'd need to keep counts incrementally. For this course's scope, the naive version is the right call.
 
 ## M-series notes
 
