@@ -7,18 +7,12 @@
 Same corpus, same step budget, different parameter counts, *very* different outputs. Scaling laws tell us how model quality varies with model size. We also will frame scaling and model size through the lens of number of parameters, compute power, and training data size. The rest of this lesson is about exploring this relationship, both quantitatively and behaviorally. This is the first module where we don't write new package code. You can think of this as a "lab week"
 
 ---
-## Prerequisites
-### Math
+## Before you start
 
-- **Power laws on log-log axes.** A relationship `y = A · x^α` plots as a straight line on log-log axes with slope `α`. 
-
-### Computer science
-
-- **FLOPS.** It stands for Floating Point OPerations. A way to standardize the measure of total compute expended between different models and training runs. 
-
-### Programming
-
-- **Matplotlib** Used in the exercise notebook for charting scaling laws.
+* *Review* power laws on log-log axes — `y = A · x^α` plots as a straight line with slope `α`
+* *Review* FLOPs as a unit of compute — used here to standardize comparisons across model sizes and training runs
+* *Finish* Modules 10–11 — you'll be training and sampling from three sizes of `TransformerLM` checkpoints
+* *Run* `./datasets.sh` if you haven't already, for the corpora the experiments train on
 
 ---
 ## Where this fits in
@@ -122,7 +116,6 @@ Two ways to compare three models, and they give different answers:
 The two comparisons answer different questions. **Iso-step** answers "more parameters = better, all else equal?" — the answer is yes, monotonically. **Iso-FLOP** answers "if I have a fixed compute budget, what size should I train?" — the answer at large scale is "a smaller model than you'd think, trained for longer."
 
 ![Iso-step vs iso-FLOP side by side as two laps-around-the-track experiments. Panel A (iso-step): every model — 1M, 5M, 20M — runs the same 5000 steps; compute per step grows ~6·N·T_step, so the 20M model burns ~20× more compute total than the 1M one. Same dataset passes, more capacity wins, larger model lower loss. Panel B (iso-FLOP): every model gets the same total compute budget (~7.7e13 FLOPs in the example), so the 1M model gets 75,000 steps, the 5M model 15,000, and the 20M model only 1000. Tokens-seen totals shift accordingly (~30M / ~30M / ~3M). The smaller models do many laps; the 20M model does one short lap and is undertrained. A "When to use which" panel pins the choice: iso-step when comparing capacity at fixed dataset, iso-FLOP when comparing what size to train under a real compute constraint. The Chinchilla intuition — smaller-but-longer beats larger-but-shorter on a fixed budget — falls out of panel B.](12-scaling/Module12-IsoFlop.png)
-
 *Both comparisons appear in this module. Reading the same checkpoints under both lenses is the cleanest way to internalize that "scaling laws" is not one curve — it's at least two, and which one matters depends on whether your real-world constraint is data or compute.*
 
 For this module's *primary* exercise, iso-step is the right comparison. It's simpler to reason about and is what Kaplan-style "loss vs N at fixed dataset" plots show. The iso-FLOP comparison appears as exercise 5 — and at toy scale, it tends to show iso-step's monotonicity *flip* near the largest size (the 20M model with too-few tokens is under-trained relative to the 5M model with sufficient tokens, exactly as Chinchilla predicts).
@@ -160,7 +153,6 @@ You'll need rough parameter and FLOP counts to plan runs. The exact formulas:
 ```
 
 ![Anatomy of a transformer's parameter count. Inside one block: self-attention's four projections (Q, K, V, output) total 4·D²; the feedforward network with 4D inner width totals 8·D²; LayerNorms and biases are negligible — block total ≈ 12·D². Whole-model breakdown: 2·V·D for token + unembedding, max_seq_len·D for positional embeddings, L·12·D² for the stack, plus a final LayerNorm. A pie chart showing where the parameters actually live — for typical D and L, the FFN is ~65–75% of the total, attention projections are ~25–35%, and embeddings shrink to a few percent as the model grows because they scale linearly in D while the blocks scale quadratically. A "how parameters scale" panel pins the rules: doubling D quadruples per-block params (D² scaling), doubling L doubles total block params (linear scaling). Three example configurations (1M / 5M / 20M) show the formula evaluated end-to-end and matched against `sum(p.numel() for p in model.parameters())`.](12-scaling/Module12-ParamAnatomy.png)
-
 *The headline takeaway is the pie chart: parameters live in the FFN, mostly. This is why "make the FFN inner width 4·D" is treated as a design constant in almost every transformer paper — the FFN is already the bulk of the model. It's also why the depth-vs-width exercise (#4) is worth running: at fixed parameter budget, you're trading the number of refinement layers against the per-layer FFN width, and at our scale the depth direction wins by a few percent.*
 
 For FLOPs:
@@ -183,7 +175,6 @@ Schaeffer et al. (2023, "Are Emergent Abilities of Large Language Models a Mirag
 The honest summary as of 2026: both papers are correct about different things. Many "emergent" tasks are smooth under better metrics — the Schaeffer critique landed. But some capabilities — like in-context learning of arbitrary new patterns — really do appear to show genuine threshold behavior even on smoothed metrics, with sharp transitions at scale. The community moved on from "emergence vs not" to "what fraction of progress is smooth and how should we measure each task."
 
 ![Smooth improvement vs threshold metrics, side by side. Top panel: an underlying skill (the model's competence on a task) improves smoothly and continuously as model scale grows — the curve is the kind of thing cross-entropy / log-likelihood metrics actually measure. Middle panel: the SAME underlying smooth improvement, viewed through an exact-match accuracy metric, looks like a step function — flat near zero, sharp jump near the threshold, plateau near one. The smooth competence curve and the threshold curve are generated by the same underlying model behavior; only the scoring rule is different. Bottom panel: three regions explain why the threshold metric reads as "emergence." Below the threshold the model is improving but answers still look wrong — partial credit would catch this, exact-match scores zero. Near the threshold tiny smooth gains carry many examples across the line at once. Past the threshold further improvement is invisible because the score has saturated. A "key takeaway" pins the lesson: a sudden jump in a benchmark score does not necessarily mean the model learned something discontinuously — it often means the benchmark itself imposes a threshold.](12-scaling/Module12-Smooth.png)
-
 *The core of the Schaeffer-vs-Wei debate. Both authors are looking at the same underlying training dynamics; the disagreement is at the metric layer, not the model layer.*
 
 At MacBook scale, you won't see clean threshold behavior. You'll see *qualitative* threshold behavior — exercise 3 has you find a task where the smallest model is hopeless and the largest is just barely able to do it. Treat this as the toy version of the Wei observation, not as a cleanly emergent capability.
@@ -361,7 +352,7 @@ Numbers are wide ballparks — context length, vocab, and Mac generation all mat
 
 8. **Optional: vocab-size sweep at fixed `D · L`.** Tokenize TinyShakespeare with three vocab sizes — 512, 2048, 8192 — and train the same architecture (~5M params) on each. Vocab affects both `N` (via `2·V·D`) and the per-token entropy of the dataset. The expected pattern: per-token val loss is *not* the right comparison across vocab sizes (smaller vocab → higher per-token entropy by construction), but `bits-per-character` is invariant. Compute `bpc = val_loss * tokens_per_char / log(2)` for each tokenizer and compare. This is harder to interpret cleanly, which is itself the lesson — "perplexity" is not a vocab-independent quantity.
 
-## Pitfalls to avoid
+## Pitfalls to expect
 
 - **Single-seed conclusions.** A 5M model trained from one seed can land 5–10% higher or lower than the seed-mean, especially with SGD. Two or three seeds per configuration is the floor for any quantitative claim. If you see "20M is *worse* than 5M" on a single seed, run another seed before believing it.
 

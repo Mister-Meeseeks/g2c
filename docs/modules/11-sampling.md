@@ -7,22 +7,11 @@
 You trained a model in Module 10, and now you need to actually generate text from it. Sampling is just the loop that calls the model. Plus four small functions that reshape the model's native distribution before each draw. Internalizing those four warpers and the eight-step loop *is* the module
 
 ---
-## Prerequisites
+## Before you start
 
-Sampling is short, mostly stateless, and entirely about logit-space arithmetic. Almost everything is one or two lines of code.
-
-### Math
-
-- **Softmax over logits.** Already used in Modules 03–10. 
-- **Cumulative probability.** The probability of n independent events is the sum of the probability of each of the events.  
-
-### Computer science
-
-- **Stateful vs stateless code.** Keeping warpers stateless is what lets them compose freely.
-
-### PyTorch
-
-- Familiarize yourself with `multinomial()`  and `topk()` functions. 
+* *Review* softmax over logits and cumulative probability — sampling is logit-space arithmetic
+* *Review* `torch.multinomial` and `torch.topk` if either is unfamiliar — they're the only PyTorch primitives this module needs
+* *Finish* Module 10 — you'll sample from a trained `TransformerLM` checkpoint
 
 ---
 ## Where this fits in
@@ -332,7 +321,7 @@ def generate(
 
 Total scaffolded code: roughly 30 lines across five functions. The math is light; the lesson is the order, the masking convention (`-inf`), and the composition.
 
-### How to run the tests
+## How to run the tests
 
 Tests live in `tests/test_sampling.py`. Initial state: 0 passed, 43 failed.
 
