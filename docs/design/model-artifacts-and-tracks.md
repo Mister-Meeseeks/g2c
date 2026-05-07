@@ -155,7 +155,7 @@ unless a module has a documented reason to differ:
 artifacts/models/<artifact-name>/
   model.pt
   config.json
-  tokenizer.pkl
+  tokenizer.json
   manifest.json
 ```
 
@@ -164,8 +164,8 @@ models:
 
 ```text
 artifacts/tokenizers/<tokenizer-name>/
-  tokenizer.pkl
-  config.json
+  tokenizer.json
+  ids.uint32      # small encoded inspection sample, not the full corpus
   manifest.json
 ```
 
@@ -217,7 +217,7 @@ The full target mix is:
 
 - FineWeb-Edu-Dedup: ~5GB
 - Cosmopedia v2: ~2.5GB
-- TinyStories: ~1GB
+- TinyStories: ~1GB, stored as gzip-compressed 100MB-uncompressed text shards
 - CodeSearchNet: ~1GB
 
 The small target uses the same ratios at about 1GB total. CodeSearchNet defaults
@@ -249,7 +249,7 @@ raw corpus should be saved under `artifacts/`.
 
 ## Module Map
 
-### Module 10 - Milestone: Your First LLM
+### Module 10 - Milestone: TinyLLM
 
 Module 10 is the first durable model-artifact boundary.
 

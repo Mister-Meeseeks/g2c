@@ -6,6 +6,14 @@
 
 *The whole module on one page. The capstone is fundamentally an integration: the new code (`Conversation`, `Assistant`, `EvalSuite`, the CLI) is small; the lesson is the architecture and the post-mortem. By the end of this module you will have a working chat assistant — and, more importantly, a written characterization of where each layer earns its keep, where it breaks down, and where the from-scratch model stops being viable.*
 
+---
+## Before you start
+
+* *Finish* `g2c/agent` from [[19-agent]] — `Assistant.chat` wraps `Agent.run`, threading conversation history into each turn
+* *Finish* `g2c/tools` from [[18-tools]] and `g2c/inference` from [[16-inference]] — the assistant supplies the tool registry and backend that the agent runs against
+* *Finish* `g2c/rag` from [[17-rag]] (optional) — only needed if you wire prefix-style retrieval into the assistant
+
+---
 ## Prerequisites
 
 Module 20 is the capstone of Phase V (assistant systems) and the final module of the course. There is no new conceptual ground broken here — every piece is already understood. What's new is *integration*: composing the substrates from Modules 16-19 with two new primitives (`Conversation` for inter-turn memory, `Assistant` for the orchestration layer), an eval-as-regression-gate harness, and a CLI you can actually talk to.
@@ -157,9 +165,17 @@ The post-mortem at the end of this module is the deliverable that compresses the
 
 Every arrow is a module you built. The integration layer is small (~100 lines of new code in `Conversation` and `Assistant`); the substrate is everything else.
 
+![Assistant.chat call flow — how the capstone assistant integrates conversation, retrieval, and the agent loop. A six-step flow annotated with which upstream module owns each piece. (1) `Assistant.chat(user_message)` enters from the CLI. (2) FORMAT CONVERSATION HISTORY: the `Conversation` (Module 20's new primitive) renders prior turns as `User: ...\nAssistant: ...`. (3) RETRIEVE k CHUNKS (optional): if `rag_enabled`, `DenseRetriever` (Module 17) embeds the query and returns top-k chunks formatted as a "Context from documents:" block. (4) COMPOSE CONTEXTUALIZED MESSAGE: history block + context block + the actual current question, in that order. (5) `agent.run(contextualized_message)` (Module 19) — planning step, then the ReAct loop with `backend.complete` calls (Module 16) and `dispatch_tool_call` against the registry (Module 18). (6) RECORD USER + ASSISTANT in conversation, return an `AssistantTurn`. A right-edge sidebar lists what each layer contributes: Conversation = inter-turn memory; Retriever = external document context; Agent = multi-step reasoning and tool use; Backend = model inference; ToolRegistry = actions outside the model. A bottom caption: every arrow is a module you built; Module 20 is the integration layer that composes them into a usable assistant.](20-capstone/Module20-Call.png)
+
+*The architecture diagram for `Assistant.chat`. Each step in this flow corresponds to a method or class you've already built in earlier modules; Module 20's contribution is the `Conversation` and `Assistant` primitives plus the orchestration that threads them together. Tracing one user question through this diagram is the fastest way to see where the integration layer earns its keep.*
+
 ## The big idea
 
 ### Conversation is to Module 20 what Scratchpad was to Module 19
+
+![Two-layer memory — scratchpad handles one task; conversation spans the session. Top: the Conversation (Module 20) — a list of user/assistant Messages stretching across the whole chat session, low-bandwidth, only the final-answer outputs are stored, used for inter-turn references like "do that again with X". Middle: the Scratchpad (Module 19) — a list of (thought, action, observation) records confined to a single agent.run, high-bandwidth, every reasoning step preserved, used for multi-step reasoning within ONE task. Right side: "what happens on each chat() call" walks through the lifecycle in five steps — read Conversation; create fresh Scratchpad; run agent (lots of scratchpad activity); drop Scratchpad at the end of the turn; append user + final-answer messages to Conversation. The model sees BOTH on every backend call inside step 3: the rendered conversation as part of the user_message, and the live scratchpad in the agent's prompt. They serve different purposes; they never get mixed. A bottom panel pins the takeaway: the model is still stateless — the prompt does the remembering.](20-capstone/Module20-Memory.png)
+
+*The picture for the load-bearing memory architecture. Module 19's scratchpad is the agent's working memory inside one task; Module 20's conversation is the assistant's working memory across tasks. Mixing them is a bug magnet — the test `test_history_does_not_double_include_current_message` and the rule "scratchpad belongs to the agent, conversation belongs to the assistant" both come out of this separation.*
 
 ```
    ┌──────────────────────────────────────────────────────────────────────┐

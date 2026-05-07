@@ -6,6 +6,12 @@
 
 *The whole module on one page. RAG is the smallest possible architecture for "give the model access to information it doesn't have memorized." Chunk the corpus, embed each chunk, store the vectors, embed the query, retrieve the top-k by cosine similarity, splice them into a citation-formatted prompt, send to the inference backend. None of the components are individually deep — but the wiring is the lesson, because RAG is the substrate Module 18's tools and Module 19's agent loop both build on.*
 
+---
+## Before you start
+
+* *Finish* `g2c/inference` from [[16-inference]] — `RAGPipeline` drives generation through the unified `Backend` interface
+
+---
 ## Prerequisites
 
 Module 17 opens the second half of Phase V (assistant systems). Module 16 built the unified `Backend` interface; this module is the first downstream piece that uses it. Every component you build here — the chunker, the embedder, the vector store, the retriever, the prompt assembler — is going to keep showing up: the agent loop in Module 19 retrieves over conversation history; the capstone in Module 20 retrieves over your own notes.
@@ -194,6 +200,10 @@ This module's chunker is the simplest possible: fixed-size sliding window with o
 
 ### Embedding — turning text into coordinates
 
+![Embedding space and cosine search. Left half: a 2D scatter of chunk embeddings color-coded by cluster — Spain/Cities (green), Python/Code (blue), Cooking (orange), Machine Learning (purple). Texts about the same topic land in the same neighborhood. The user's query "What is the capital of Spain?" embeds to a point near the Spain/Cities cluster, marked with a star. A "cosine similarity intuition" panel pins the math: for L2-normalized vectors, `cos(u, v) = u · v` — small angle → high similarity → score near 1; orthogonal → score near 0; opposite → score near -1. Right half: the search algorithm in five steps. Step 1 — embed the query. Step 2 — dot the query against every row of the (N, d) store matrix to get N similarities. Step 3 — `np.argpartition(scores, -k)` finds the top-k indices in O(N) without sorting the full array. Step 4 — sort just those k indices by descending score. Step 5 — return the top-k chunks plus their similarity scores. A "key takeaway" panel: cosine similarity finds the chunks whose meaning is most similar to the query — not the chunks that share words.](17-rag/Module17-Embedding.png)
+
+*The geometric picture for `NumpyVectorStore.search`. The five-step recipe IS the implementation: embed query, dot against store, argpartition for top-k, argsort the k indices, return chunks + scores. The test `test_search_returns_descending_order` pins the sort direction; reading off this image, the "most similar first" convention matches the natural reading direction of the panel.*
+
 An embedding is a function from `string → R^d`. Two strings are "similar" if their embeddings have a small angle between them. The choice of embedding function determines what "similar" means:
 
 ```
@@ -255,6 +265,10 @@ That's the whole search algorithm for a flat index. ~five lines of numpy. The pe
 ```
 
 ### Prompt assembly — the format matters
+
+![Prompt assembly — turn retrieved chunks into a useful prompt. Top-left: input from the retriever — three top-k chunks with scores 0.84, 0.78, 0.62 and source labels (`design.md`, `notes.md`, `research.pdf`). Center: the assembled RAG prompt as a single concatenated string with four sections — system/context header (a helpful-assistant persona); context (the three retrieved chunks, each prefaced with `[1]`, `[2]`, `[3]` plus a `(source: ...)` label); the user's question; trailing instructions ("Use only the provided context to answer," "Cite your sources using bracketed numbers," "If the answer is not in the context, say I don't know"). Top-right: the model's output — a grounded answer that quotes specific chunks by number ("We recommend ~20% chunk overlap [1]. Overlap prevents answer-bearing sentences from being split..."). Bottom: a "common mistakes to avoid" row (no citations, too much context, unlabeled sources, missing instructions) and a "good defaults" row (chunk size 500–800 chars, k=3–6, citations [1] [2] [3], the "I don't know" guard). A "the takeaway" panel: prompt assembly is the bridge between retrieval and generation; good structure plus clear instructions plus citations equals answers you can trust.](17-rag/Module17-Prompt.png)
+
+*The reference card for `assemble_rag_prompt`. The four-section template (system → context → question → instructions) plus the 1-based citation scheme is what the test `test_assemble_rag_prompt_uses_one_based_citations` pins. Exercise 5 (probing failure modes on unanswerable questions) measures how well the "I don't know" guard at the bottom of the prompt actually triggers refusal — it's the single highest-leverage line in the whole template.*
 
 Once the retriever has handed you `[chunk_1, chunk_2, ..., chunk_k]`, the question is how to splice them into the model's input. The default template:
 

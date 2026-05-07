@@ -7,24 +7,13 @@
 In Module 01, every number was its own Python object; one operation at a time, high overhead, low throughput. In Module 02, identical operations across an entire input batch are bundled into a single tensor op that compiles to vectorized native code. Same math, very different execution — and it's the only reason real deep learning is computationally feasible.
 
 ---
-## Prerequisites
+## Before you start
 
-The math, CS, and programming concepts this module uses. None of them require deep prior exposure — refresher pointers below if any feel rusty.
-### Math
-
-- **Matrix-vector and matrix-matrix multiplication.** You should be able to compute a small matmul (2×3 @ 3×2) by hand. Refresher: 3Blue1Brown's "Essence of Linear Algebra" chapters 3–4 (15 min).
-### Computer science
-
-- **Memory locality (loose intuition).** Why traversing memory sequentially is much faster than jumping around. This is part of why a hand-written triple loop is slow and a vendor BLAS implementation is fast.
-- **The vectorization mental model.** Modern hardware does many arithmetic operations in parallel per clock cycle when fed contiguous data.
-- **Asymptotic complexity at the level of intuition.** Comfortable with "this is O(n³), this is O(n²)" and what that implies as `n` grows.
-### Programming
-
-- **NumPy basics.** `np.array`, `.shape`, `.dtype`, `@` for matmul. We use NumPy as the middle benchmark rung.
-- **PyTorch tensor basics.** `torch.tensor`, `.to(device)`, `@`. Refresher: the official PyTorch "Tensors" tutorial (10 min).
+* **Review** [[00-prerequisite-review]] for matrix basics, and [[01-autodiff]] for autodiff mechanics
+* **Review** [[PyTorch Primer]] if any of the PyTorch code feels unfamiliar or confusing
 
 ---
-## Why learn this
+## Where this fits in
 
 The Module 01 autodiff engine works on individual scalars wrapped in `Value` objects. That's pedagogically beautiful — every node is legible. But it's hopeless for real neural networks. A small MLP on MNIST has thousands of parameters; per-Python-object overhead would make even one forward pass take minutes. A real LLM has hundreds of billions of parameters. Per-scalar Python is not just slow — it's the wrong shape of computation entirely.
 
@@ -34,8 +23,7 @@ The dominant operation in deep learning is **matrix multiplication**. Linear lay
 
 
 ![The vectorization ladder: Python loops → NumPy (BLAS) → PyTorch CPU → PyTorch MPS, with each rung roughly an order of magnitude faster than the last.](02-tensors/Module02-Ladder.png)
-
-*The same matmul, four engines. Each step up the ladder is roughly an order of magnitude faster than the one below it. Modern deep learning is feasible only because all four rungs exist. trying to train anything serious from rung 1 alone would take years per epoch.*
+*Each step up the ladder is roughly an order of magnitude faster than the one below it. Modern deep learning is feasible only because all four rungs exist. trying to train anything serious from rung 1 alone would take years per epoch.*
 
 ## The big idea
 
@@ -55,8 +43,7 @@ Two ideas dominate tensor-based numerical code:
         outer dims (m and n) survive.
 ```
 
-![Matrix multiplication as a grid of dot products: each output entry C[i, j] is the dot product of row i of A with column j of B.](02-tensors/Module02-MatMul.png)
-
+![Matrix Mult](02-tensors/Module02-MatMul.png)
 *Matmul broken down to its atoms. The triple-loop implementation in Exercise 1 just enumerates this directly. Vendor BLAS does the same operation in a fundamentally different way (cache blocking, SIMD, parallelism), but the math is identical.*
 
 **2. Broadcasting.** When two tensors with different but compatible shapes are combined element-wise, smaller dimensions are *implicitly stretched* without copying memory. The standard rules (NumPy and PyTorch use the same):
@@ -94,6 +81,9 @@ The trickiest case is the two-way stretch — `(1, 3) + (2, 1)` — where neithe
       [11  21  31]                 shape (2, 3)
       [12  22  32]
 ```
+
+![Broadcasting Illustrated](02-tensors/Module02-Broadcast.png)
+*Broadcasting is just a simple (and efficient) way to "stretch" shapes so they can be added or multiplied with other shapes of different dimensions*
 
 No memory is actually copied during the stretch — the size-1 dimension is just re-read at every position. This is what makes broadcasting cheap.
 
@@ -146,22 +136,22 @@ softmax(x: torch.Tensor, dim: int = -1) -> torch.Tensor
 
 A linear layer (`y = x @ W + b`) and a numerically stable softmax. Together they form the forward pass of a single-layer classifier.
 
-## Scaffolding and how to run the tests
+## How to run the tests
 
 A pytest suite is in `tests/test_tensors.py`. Initial state: a small number of construction/repr tests pass; the rest fail informatively until you implement.
 
 ```bash
-.venv/bin/python -m pytest tests/test_tensors.py             # run all module-02 tests
-.venv/bin/python -m pytest tests/test_tensors.py -x          # stop at first failure
-.venv/bin/python -m pytest tests/test_tensors.py -k matmul   # only matmul tests
-.venv/bin/python -m pytest tests/test_tensors.py -v          # verbose
+source .venv/bin/activate
+
+pytest tests/test_tensors.py             # run all module-02 tests
+pytest tests/test_tensors.py -x          # stop at first failure
+pytest tests/test_tensors.py -k matmul   # only matmul tests
+pytest tests/test_tensors.py -v          # verbose
 ```
 
 ## Exercises
 
-These are practice and investigation prompts. The implementation targets are the TODOs in `g2c/tensors/` and the tests above; the exercises use those pieces to build shape intuition and performance intuition.
-
-Set up or resume the working notebook for the exercise set by running:
+To start setup a Jupyter notebook for the exercise set by running:
 
 ```bash
 .venv/bin/python scripts/open_notebook.py 02
@@ -198,7 +188,7 @@ Set up or resume the working notebook for the exercise set by running:
 
 6. **A tiny classifier forward pass.** In the Module 02 notebook, implement `classifier_forward(x, W, b)` on top of `linear` and `softmax`: random weights, a batch of inputs, logits, and an output probability distribution over classes. Annotate every shape. Check that each row of probabilities sums to 1. No training in this module — we don't have tensor-shaped autograd yet.
 
-## Pitfalls to expect
+## Pitfalls avoid
 
 - **Off-by-one in the matmul loop.** The standard order is `for i in range(m): for j in range(n): for p in range(k): C[i][j] += A[i][p] * B[p][j]`. Mixing up the inner index breaks correctness silently — always test against NumPy.
 - **Forgetting to subtract the max in softmax.** Works fine on small inputs; produces NaN on real-world logits because `exp(50.0)` overflows float32. The shift-invariance test in the suite catches this.

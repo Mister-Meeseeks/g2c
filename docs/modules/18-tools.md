@@ -6,6 +6,12 @@
 
 *The whole module on one page. Tool use is the smallest possible architecture for "let the model affect the outside world." Define a tool with a JSON schema, splice the schemas into the prompt, parse `<tool_call>` blocks out of the model's output, validate arguments, dispatch the call, format the result back into the next prompt turn, and loop until the model stops calling tools. The agent loop with planning and scratchpad memory comes in Module 19; Module 18 builds the substrate.*
 
+---
+## Before you start
+
+* *Finish* `g2c/inference` from [[16-inference]] — the tool-use loop calls `backend.complete(...)` to produce each model turn
+
+---
 ## Prerequisites
 
 Module 18 is the third leg of Phase V (assistant systems). Module 16 built the unified `Backend` interface; Module 17 used it to wire retrieval into the prompt. Module 18 wires *outgoing* affordances — the model gets a list of tools it can invoke, a structured way to invoke them, and a feedback channel for the results.
@@ -177,6 +183,10 @@ Why JSON inside? Because JSON has a `dict` and we need named arguments. Position
 
 ### The parse → validate → dispatch → feedback contract
 
+![From model text to tool result. A four-stage pipeline drawn left-to-right. (1) PARSE: the model's completion text contains `<tool_call>{"name": "calculator", "arguments": {"expression": "3220000 * 7"}}</tool_call>`. A regex extracts the block; `json.loads` parses the body; a shape check rejects non-dict top-level, missing `name`, empty name. Output: a `ToolCall(name, arguments, call_id)`. Permissive: malformed blocks are silently skipped. (2) VALIDATE: the JSON-schema-lite validator type-checks each argument against the tool's `parameters` schema — `string`, `integer` (rejecting `bool`), `number`, `boolean`, `array`, `object`. Required keys must be present; unknown extra keys are rejected. Strict: failures surface as `ToolError`. (3) DISPATCH: the registry looks up the tool by name; if missing, return `ToolResult(is_error=True, output="unknown tool: ...")`. If validation failed, same. If the tool's `func` raises at runtime, catch the exception and wrap as `ToolResult(is_error=True, output=f"{type(e).__name__}: {e}")`. Never raise. (4) FEEDBACK: format successful results as `<tool_result name="..." id="...">22540000</tool_result>` and errors as `<tool_error>` blocks, append back to the transcript. The model reads the feedback and either calls another tool or emits a final answer. A "common failure paths" panel below: malformed JSON → silently skipped; missing required arg → `<tool_error>`; wrong type → `<tool_error>`; tool raises → `<tool_error>`; unknown tool → `<tool_error>`. Errors are conversation, not crashes.](18-tools/Module18-Parse.png)
+
+*The picture for the four scaffolded methods. Each box is one of `parse_tool_calls`, `validate_arguments`, `dispatch_tool_call`, and the `format_tool_results` step inside `run_with_tools`. Reading off this image: the parser is permissive (silent skip on malformed blocks); the validator is strict (loud errors); the dispatcher converts everything to model-readable feedback; the loop never crashes on a model behavior. This contract is what makes the system robust.*
+
 Each step has a precise responsibility, and each must handle its own failures by surfacing them as data (not exceptions) so the loop can continue:
 
 ```
@@ -238,6 +248,10 @@ The parser is permissive; the validator is strict; the dispatcher converts every
 The first design throws on every failure; the loop dies, the user sees a Python stack trace. The second design wraps every failure as a `ToolResult(is_error=True)`, which the loop formats as `<tool_error name="..." id="...">message</tool_error>` and feeds back to the model. The model reads it and tries again. Errors aren't bugs; they're conversation.
 
 ### Safe evaluation, by construction
+
+![Safe calculator — AST whitelist, not eval(). A four-stage pipeline. (1) EXPRESSION INPUT: a string like `"2 + 3 * 4"` from the model. (2) PARSE TO AST: `ast.parse(expr, mode="eval")` produces an `ast.Expression` whose `.body` is a tree of nodes — `BinOp`, `Constant`, `UnaryOp`. (3) WALK & VALIDATE (whitelist): a recursive walker visits each node and checks its type against an explicit allowlist. Allowed nodes: `Constant` (numeric only — booleans rejected), `BinOp` (with `Add`/`Sub`/`Mult`/`Div`/`Mod`/`Pow`/`FloorDiv`), `UnaryOp` (with `UAdd`/`USub`), and parenthesization. Rejected nodes: `Name` (variable references), `Call` (function calls), `Attribute` (e.g., `(1).bit_length()`), `Subscript` (e.g., `[1,2,3][0]`), `Compare`, `Lambda`, `If`, `Import` — refused by name, not by pattern matching the source string. (4) EVALUATE: only after the whole tree validates, recursively compute the numeric result. A "why not eval()?" panel below pins the rationale: `eval(expr, {"__builtins__": {}})` is famously not safe — `().__class__.__base__.__subclasses__()` and many other escapes break out of the restricted environment. Whitelist > denylist for safety. The "examples" panel shows safe expressions (`"2 + 3 * 4"`, `"-5 ** 2"`) passing and unsafe expressions (`"abs(-1)"`, `"__import__('os').system('rm -rf /')"`) being refused at the AST check, before any execution happens.](18-tools/Module18-AST.png)
+
+*The picture for `calculator_evaluate`. The AST-walker pattern generalizes — you'd build a safe regex evaluator, a safe template engine, a safe filter expression the same way: structurally bound the surface to exactly what you can vouch for. The test `test_rejects_dunder_import` pins the most-attempted attack vector, but the security argument is structural: nodes not on the whitelist never reach evaluation.*
 
 The calculator's safe-eval is the only piece of "real CS" in this module:
 

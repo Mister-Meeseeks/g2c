@@ -464,15 +464,17 @@ def test_transformer_lm_blocks_count():
 
 def test_transformer_lm_parameter_chain_is_complete():
     """parameters() chains through token embed, pos embed, every block,
-    final LN, and the unembedding head.
+    final LN, and the unembedding's per-token bias. The unembedding's
+    weight matrix is the SAME tensor as `token_embed.weight` (tied), so
+    it appears once via `token_embed`, not twice.
 
     Counts:
         token_embed: 1 tensor
         pos_embed:   1 tensor
         blocks:      num_layers × 16 tensors
         ln_final:    2 tensors
-        head:        2 tensors
-    Total for num_layers=2: 1 + 1 + 32 + 2 + 2 = 38
+        head_bias:   1 tensor
+    Total for num_layers=2: 1 + 1 + 32 + 2 + 1 = 37
     """
     m = TransformerLM(
         vocab_size=12,
@@ -482,7 +484,67 @@ def test_transformer_lm_parameter_chain_is_complete():
         max_seq_len=16,
     )
     params = list(m.parameters())
-    assert len(params) == 38
+    assert len(params) == 37
+
+
+def test_transformer_lm_unembedding_is_tied_to_token_embedding():
+    """Headline test: row `v` of `token_embed.weight` controls logit `v`
+    of the unembedding. We pick a token id that does NOT appear in the
+    input, mutate its embedding row, and verify ONLY the matching
+    output column changes. That isolates the unembedding path (the
+    input-lookup never touches the mutated row) and pins down that
+    the unembedding really reuses the embedding matrix.
+    """
+    torch.manual_seed(0)
+    V = 12
+    m = TransformerLM(
+        vocab_size=V,
+        embedding_dim=8,
+        num_layers=1,
+        num_heads=2,
+        max_seq_len=16,
+    )
+    ids = torch.tensor([[0, 1, 2, 3]])   # token 7 deliberately absent
+    target_v = 7
+    assert target_v not in ids.unique().tolist()
+
+    out_before = m(ids).detach().clone()
+    with torch.no_grad():
+        m.token_embed.weight[target_v] = (
+            torch.randn_like(m.token_embed.weight[target_v]) * 5.0
+        )
+    out_after = m(ids)
+
+    # Logit column `target_v` should change.
+    assert not torch.allclose(
+        out_before[..., target_v], out_after[..., target_v], atol=1e-4
+    )
+    # Every other logit column should be unchanged — the input-lookup
+    # path never touched any other row of the embedding, and the
+    # unembedding only writes column `v` from row `v`.
+    other_cols = [v for v in range(V) if v != target_v]
+    assert torch.allclose(
+        out_before[..., other_cols], out_after[..., other_cols], atol=1e-5
+    )
+
+
+def test_transformer_lm_head_bias_routes_gradient():
+    """The per-token output bias is a learnable parameter that gets
+    gradient on backward. Prevents a regression where `head_bias` is
+    omitted from `parameters()` or detached from the graph.
+    """
+    torch.manual_seed(0)
+    m = TransformerLM(
+        vocab_size=12,
+        embedding_dim=8,
+        num_layers=1,
+        num_heads=2,
+        max_seq_len=16,
+    )
+    ids = torch.randint(0, 12, (2, 4))
+    m(ids).sum().backward()
+    assert m.head_bias.grad is not None
+    assert torch.isfinite(m.head_bias.grad).all()
 
 
 def test_transformer_lm_more_layers_more_params():

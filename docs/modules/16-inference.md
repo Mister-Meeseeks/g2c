@@ -6,6 +6,13 @@
 
 *The whole module on one page. After 15 modules of "build it from scratch," Module 16 is the pivot to "use what's already been built." Your tiny `TransformerLM` learned the architecture; a 4-bit quantized 7B-class open model is what the rest of the course actually uses. The unified `Backend` interface is the abstraction that lets you keep both — Module 17's RAG, Module 18's tools, and Module 19's agent loop see one API regardless of which model is underneath.*
 
+---
+## Before you start
+
+* *Finish* `g2c/sampling` from [[11-sampling]] — `LocalTransformerBackend` drives the from-scratch model through `g2c.sampling.generate`
+* *Run* `ollama pull llama3.2:3b` (or another size from the suggested list below) — `OllamaBackend` needs a daemon serving a quantized model
+
+---
 ## Prerequisites
 
 Module 16 opens Phase V. Modules 1–15 built a complete (if toy) LM stack from scratch — autodiff, tensors, attention, the transformer, sampling, SFT, DPO, eval. From here on, the course pivots: instead of training models, we use them. Module 16 is the bridge — the unified interface that makes the rest of Phase V (RAG, tools, agents, capstone) treat "your tiny model" and "a real pretrained model" as interchangeable substrates.
@@ -152,6 +159,10 @@ The `complete` method is the entire interface. No streaming, no async, no batche
 
 ### Quantization: how a 7B model fits in 4 GB
 
+![Quantization ladder — more model, less memory. Lower precision means fewer bits per weight, smaller checkpoint, more model fits on a laptop. A vertical "ladder" shows precision steps from FP32 (32 bits/param, 28 GB for 7B, highest fidelity) → FP16/BF16 (16 bits, 14 GB, near-lossless for inference) → INT8 (8 bits, 7 GB, mild accuracy hit) → INT4 (4 bits, ~3.5 GB, larger but still tractable accuracy hit). A right-side panel pins the speed lever: inference is memory-bandwidth-bound, so halving weight bytes roughly halves the time to fetch them per matmul — the headline 2-4× speedup at int4 comes from bandwidth, not faster math. A "GGUF Q-K variants" panel decodes the cryptic naming: `Q4_K_S` (most weights at 4 bits, smallest), `Q4_K_M` (recommended default — most weights at 4 bits, more important ones at 5–6 bits), `Q5_K_M` (slightly bigger, slightly better quality). A "memory budget example" computes 16 GB Mac − 4 GB OS − 2 GB KV cache = ~10 GB usable for weights, which fits a 7B Q4_K_M comfortably. The takeaway pinned at the bottom: quantization buys headroom, not magic — Q4_K_M is the default for the rest of the course.](16-inference/Module16-Quant.png)
+
+*The lookup table for choosing a quantization level. The deliverable post-mortem (exercise 8) asks you to commit to one (model, quant) pair as your default backend; this image is the chart you'll consult to pick. For 16 GB Macs, Q4_K_M at 7B is the sweet spot the rest of Phase V assumes.*
+
 A model's weights are an array of floats. The array's size is `n_parameters × bytes_per_parameter`. Reducing `bytes_per_parameter` is the lever:
 
 ```
@@ -187,6 +198,10 @@ The accuracy hit from quantization is real but small for instruction-tuned model
 The reason quantization speeds inference up isn't the math — int4 multiplications aren't faster than fp16 multiplications on most hardware. It's that **inference is memory-bandwidth-bound**. The time to multiply a weight by an activation is dominated by the time to *fetch the weight from RAM*. Halving the weight size halves the fetch time, even if the math itself is the same speed.
 
 ### KV cache: from O(T²) per token to O(T) per token
+
+![KV cache — remember once, reuse forever. Two side-by-side flow diagrams. WITHOUT KV CACHE: each generation step recomputes attention over the whole sequence. Step 1 computes K/V for tokens 0..2; step 2 recomputes K/V for tokens 0..3 (re-doing the work for 0..2); step 3 redoes 0..4; cost per step grows linearly with sequence length, total work is O(T²). WITH KV CACHE: step 1 computes K/V for tokens 0..2, stores them; step 2 only computes K/V for the new token (one row), appends to the cache, attends from the new query against the entire cached K/V; per-step cost is O(T), total work is O(T·T) but with a much smaller constant. A "what is stored" panel pins the layout: `K_cache` and `V_cache` per layer, shape `(max_seq_len, n_heads, head_dim)`, dtype fp16. A memory-budget example for a 7B model (Llama 3.1 8B): 32 layers × 32 heads × 128 head_dim × 2 (K and V) × 2 bytes (fp16) × 2048 context = ~1 GB; doubles linearly with context length. A "scaling with context length" panel shows weights stay fixed while the cache grows — long-context inference is memory-bound on the cache, not the weights. A "the takeaway" panel: KV cache is mandatory at scale; production servers like llama.cpp build one in; we don't add one to our toy `TransformerLM` because at 32-token contexts the speedup is negligible.](16-inference/Module16-KVCache.png)
+
+*The picture for understanding why Ollama's 30 tok/s on a 7B model is even possible. The KV cache turns autoregressive decoding from O(T²) to O(T) per step — a 5–20× speedup at production context lengths. Your tiny `TransformerLM` doesn't have one because you don't need it; Ollama's underlying llama.cpp does, because without it 7B-class models would be unusable on a laptop.*
 
 Module 11's generation loop recomputes attention over the entire sequence every step:
 
@@ -281,6 +296,10 @@ In practice: 2–3× throughput improvement on long generations. We don't build 
 Ollama is the right default for this course: the install is one shell command, the API is small, and the model registry is curated (easy to find a working `:tag` for any popular open model). MLX is the alternative when you want maximum throughput on Apple Silicon and are willing to manage the conversion pipeline.
 
 ### The unified Backend interface — what we actually build
+
+![Backend abstraction — one interface, many models. A central `backend.complete(prompt, *, max_new_tokens, temperature, top_k, top_p) -> InferenceResult` method is the entire public surface. Above it: a row of consumers (eval harness from Module 15, RAG pipeline from Module 17, tool calls from Module 18, the agent loop from Module 19, the capstone app from Module 20) — none of them know which backend is underneath. Below it: a row of three concrete implementations (LocalTransformerBackend wraps your tokenizer + TransformerLM + sampling.generate; OllamaBackend POSTs JSON to a local llama.cpp daemon; an optional MLXBackend wraps mlx_lm in-process for Apple Silicon). The same prompt routed through any of them produces an InferenceResult with the same fields. A "design pattern" panel pins the name: dependency injection — same idea as `generate_fn` in the Module 15 eval harness, applied at a coarser granularity. A "the takeaway" panel: the unified interface comes BEFORE the strong model. Build the seam first; the strong model plugs in behind it.](16-inference/Module16-Backend.png)
+
+*The architecture diagram for the rest of the course. Module 17 onward calls `backend.complete(...)` and never branches on whether the backend is your tiny model or Ollama. Exercise 8 (the deliverable post-mortem) commits you to one default backend; the abstraction is what lets you swap in a different model later without touching downstream code.*
 
 Three classes plus one helper:
 

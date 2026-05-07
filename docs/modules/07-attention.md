@@ -1,23 +1,17 @@
 # Module 07 — Self-attention
 
-> **Question this module answers:** *How do tokens communicate?*
+> **Question this module answers:** *How can tokens communicate?*
 
 ![Self-attention as six steps from tokens to refined representations: input embeddings (T, D); query/key/value projections via three Linear layers; pairwise compatibility scores from Q · Kᵀ / √D; softmax to row-normalized attention weights; mixed value vectors; an output projection. The bottom strip restates the same recipe as a one-position view ("ask, compare, pass, gather, update") and pins the headline takeaway: every token looks at every token, decides who is relevant, and mixes their information.](07-attention/Module07-Hero.png)
 
-The same six-step pipeline runs at every position in parallel, with the only per-position difference being which Q vector poses the question — every other piece of machinery (the K/V tables, the scaling factor, the softmax, the output projection) is shared. Most of the rest of this lesson page is unpacking the "why" behind each of these six boxes.
+The same pipeline runs at every position in parallel, with the only per-position difference being which Q vector poses the question. Most of the rest of this lesson page is unpacking the "why" behind the pipeline. This week is the hinge of the course — everything from here through the transformer block is variations on what you build this week.
 
 ---
-## Prerequisites
+## Before you start
 
-Module 07 is the hinge of the course — everything from here through the transformer block (Module 09) is variations on what you build this week.
-### Math
+* *Review* [[06-language-models]] for the next-token-prediction setup that attention extends
+* *Finish* `g2c/nn` from [[03-nn]], `g2c/embeddings` from [[05-embeddings]], and `g2c/tokenizer` from [[04-tokenizer]] — exercise 3 trains a tiny LM end-to-end and needs all three
 
-- **Dot products as similarity.** `q · k = |q| |k| cos θ`. When `q` and `k` point in the same direction the dot product is large; when they're orthogonal it's zero. The whole attention mechanism is built on "treat dot products as a learnable similarity score."
-- **Softmax over a vector.** Already used in Modules 02–06.
-- **Matrix multiplication, batched.** matmul is the same op you've used for ages, just with a batch dim carried along. PyTorch's `@` operator handles this — be comfortable with it.
-### PyTorch
-
-* Re-familiarize with `transpose()`  and `masked_flow()` functions.
 ---
 ## Where this fits in
 
@@ -63,8 +57,7 @@ The "match score" between query `t` and key `s` is the dot product `q_t · k_s`.
 The whole module is that diagram, generalized to a batch dim.
 
 ![Scaled dot-product attention as a six-stage pipeline: input X (T, D); three linear projections build Q, K, V; scores S = Q · Kᵀ / √D; a softmax (with optional causal mask) turns scores into attention weights A (each row a probability distribution over key positions); the weights mix the value vectors to produce Z = A · V; an output projection W_O lands the result back in (T, D).](07-attention/Module07-DotProduct.png)
-
-*The same pipeline as the ASCII diagram above, with each tensor's shape pinned and the role of every operation labelled. Two details worth lingering on: the score matrix is always (T, T) regardless of D — that's the quadratic cost ceiling — and the √D divide before softmax is what keeps the softmax in a non-saturated regime as D grows, which is the most common bug to forget.*
+*Two details worth lingering on: the score matrix is always (T, T) regardless of D — that's the quadratic cost ceiling — and the √D divide before softmax is what keeps the softmax in a non-saturated regime as D grows, which is the most common bug to forget.*
 
 ### Why Q, K, V are three different projections
 
@@ -73,8 +66,7 @@ In principle you could use the input vectors themselves as queries, keys, and va
 The output projection `W_o` plays a similar role: it lets the model remap the mixed values back into a representation space that's useful for the next layer. (In single-head attention `W_o` is mostly ceremonial; in multi-head attention it's where the heads' outputs get combined and is genuinely critical.)
 
 ![Each token plays three roles, each parameterized by its own learned matrix: the query asks "what am I looking for?", the key advertises "what's distinctive about me?", the value contributes "what I'd pass on if attended to." A worked example over the sentence "the animal didn't cross the street because it was too tired" shows how the three projections specialize after training, with separate row-vectors per token labelled by their semantic content.](07-attention/Module07-QKV.png)
-
-*The decoupling is what gives attention its expressive power. With one shared projection ("just use x"), the same vector would have to simultaneously be a question, an advertisement, and a contribution — three jobs that pull in different directions during training. Three separate matrices let each role specialize, and exercise 1 (the by-hand 3-token computation) is where the role separation stops being abstract.*
+*The decoupling is what gives attention its expressive power. With one shared projection ("just use x"), the same vector would have to simultaneously be a question, an advertisement, and a contribution — three jobs that pull in different directions during training. Three separate matrices let each role specialize.*
 
 ### The √D scaling
 
@@ -102,9 +94,8 @@ The fix is to set `scores[t, s] = -inf` for all `s > t` BEFORE the softmax. Afte
   Above-diagonal is True — no peeking at the future.
 ```
 
-![The causal mask shown three ways for T=6: as a True/False checkmark grid (True positions are allowed to attend), as the same grid applied to the (T, T) score matrix (above-diagonal scores set to −∞), and as the post-softmax weight matrix where above-diagonal weights are exactly 0. A side panel pins the conceptual point: token at position t can only attend to positions 0..t.](07-attention/Module07-Causal.png)
-
-*The mask is applied BEFORE the softmax so the −∞ scores become exact zeros after exponentiation, not merely small numbers. Setting the post-softmax weights to zero directly would be wrong — the remaining weights wouldn't sum to 1, and gradients would route through the zeroed entries during backprop. Exercise 3's "drop the mask, watch loss collapse to 0" is the visceral version of why this step is load-bearing.*
+![The causal mask shown three ways for T=6: as a True/False checkmark grid where True means blocked, as the same grid applied to the (T, T) score matrix with above-diagonal scores set to −∞, and as the post-softmax weight matrix where above-diagonal weights are exactly 0. A side panel pins the conceptual point: token at position t can only attend to positions 0..t.](07-attention/Module07-Causal.png)
+*The mask is applied BEFORE the softmax so the −∞ scores become exact zeros after exponentiation, not merely small numbers. Setting the post-softmax weights to zero directly would be wrong — the remaining weights wouldn't sum to 1.*
 
 The convention "True means blocked" matches `masked_fill(mask, value)`, which fills wherever the mask is True. The `causal_mask` static method on `SelfAttention` is implemented for you because it's bookkeeping, not the lesson.
 
@@ -125,7 +116,7 @@ The score matrix is `(T, T)` and grows with the square of the sequence length. F
 - **Attention is a learnable gather.** A weighted sum where the weights depend on the data, not on a fixed position.
 - **Q, K, V are three projections of the same input.** Each plays a different role; the decoupling is where the expressive power comes from.
 - **Scores are dot products, scaled by `1/√D`.** Without the scaling, softmax saturates as `D` grows.
-- **The causal mask must be applied BEFORE softmax.** Masking after softmax destroys the row-sum-to-1 property and is the bug everyone introduces at least once.
+- **The causal mask must be applied before softmax.** Masking after softmax destroys the row-sum-to-1 property and is the bug everyone introduces at least once.
 - **Self-attention is sequence-length-agnostic.** No fixed-length weights; the same parameters handle any `T`. This is the structural property that lets transformers generalize across context lengths and is why positional encoding is decoupled from the layer itself.
 - **Cost is `O(T²)` in time and memory.** Felt as soon as `T` exceeds a few thousand. Worth feeling now so the efficient-attention literature later makes sense.
 - **Self-attention is permutation-equivariant on its own.** Position must be injected externally (Module 05's job, wired up in Module 09).
@@ -187,32 +178,36 @@ pytest tests/test_attention.py -v          # verbose
 
 ## Pitfalls to expect
 
-- **Forgetting the `1/√D` scaling.** Training is unstable; loss is noisy and slow to converge. The model can still learn, but the training curve looks bad. `test_attention_weights_use_sqrt_d_scaling` catches this.
-- **Softmax along the wrong dim.** `scores.softmax(dim=-1)` is correct — for each query position, normalize over key positions. `dim=-2` normalizes over query positions per key, which is a different (and wrong) computation. Symptom: weights don't sum to 1 along rows; `test_attention_weights_sum_to_one` catches it.
-- **Mask polarity backwards.** `causal_mask` returns True ABOVE the diagonal (the positions to BLOCK). If you pass `~mask` to `masked_fill`, you'll mask positions `0..t` and let position `t` attend only to the future — exactly the opposite of what you want. `test_attention_weights_causal_first_row_is_one_hot` catches this.
+- **Forgetting the `1/√D` scaling.** Training is unstable; loss is noisy and slow to converge. The model can still learn, but the training curve looks bad. 
+
+- **Softmax along the wrong dim.** `scores.softmax(dim=-1)` is correct — for each query position, normalize over key positions. `dim=-2` normalizes over query positions per key, which is a different (and wrong) computation. Symptom: weights don't sum to 1 along rows.
+
+- **Mask polarity backwards.** `causal_mask` returns True above the diagonal (the positions to block). If you pass `~mask` to `masked_fill`, you'll mask positions `0..t` and let position `t` attend only to the future — exactly the opposite of what you want.
+
 - **Mask AFTER softmax.** Setting masked entries to 0 after softmax destroys the row-sums-to-one property; renormalizing afterwards is numerically unstable and not what we want anyway. Always mask *before* softmax.
+
 - **Transposing the wrong dims.** `K.T` would transpose only a 2D tensor; for a 3D `(B, T, D)` tensor you need `K.transpose(-2, -1)` to get `(B, D, T)`. The wrong transpose silently produces wrong-sized outputs that throw later in the pipeline.
-- **Treating attention as `O(T)`.** It's `O(T²)` in both time and memory because of the `(T, T)` score matrix. The full transformer's O(T²) cost is dominated by attention — the FFN is O(T·D²).
-- **Using `attention_weights` and `forward` with different code paths.** If you compute scores or apply the mask differently in the two methods, the visualization no longer reflects the actual attention pattern used by `forward`. `test_attention_weights_consistent_with_forward` catches this.
-- **Running attention on un-positioned embeddings and expecting it to learn order.** Self-attention is permutation-equivariant — without positional information, "dog bites man" and "man bites dog" produce the same set of output vectors (just permuted). For exercise 2 this is fine; for exercise 3 you must add positional encoding.
+
+- **Using `attention_weights` and `forward` with different code paths.** If you compute scores or apply the mask differently in the two methods, the visualization no longer reflects the actual attention pattern used by `forward`. 
+
+- **Running attention on un-positioned embeddings and expecting it to learn order.** Self-attention is permutation-equivariant — without positional information, "dog bites man" and "man bites dog" produce the same set of output vectors (just permuted). 
 
 ## M-series notes
 
 This module is light on compute.
 
-- All tests run in well under a second on CPU.
 - The viz exercise (exercise 2) is forward-pass-only on a single short sentence — milliseconds.
 - Exercise 3's strip-mask experiment is a few hundred training steps on a small corpus with a single attention layer — under a minute on CPU.
 - Exercise 5's `O(T²)` timing demo at `T = 4096, D = 128` allocates a 16M-entry `(T, T)` score tensor — comfortable on a 16GB machine. If you push to `T = 16384` it's a 256M-entry tensor (`~1GB` at fp32); manageable but you'll feel it.
 
-The clean notebook uses `experiment_device = "auto"` in the strip-mask training helper. CPU is still fine at the default size, but if you increase `steps`, `D`, or `T`, the helper will move the model and minibatches to MPS when available.
+The clean notebook uses `experiment_device = "auto"` in the strip-mask training helper. CPU is still fine at the default size. If you increase `steps`, `D`, or `T`, the helper will move the model and minibatches to MPS when available.
 
 ---
 ## Reading
 
 Primary:
 
-- **Vaswani et al., "Attention Is All You Need" (2017), §3.2.** The paper that introduced this exact mechanism. Sections 3.2.1 (Scaled Dot-Product Attention) and 3.2.3 (the masking scheme) are the parts you're implementing. The whole paper is short and worth a careful read once.
+- **Vaswani et al., "Attention Is All You Need" (2017), §3.2.** The paper that introduced this exact mechanism. Sections 3.2.1 (Scaled Dot-Product Attention) and 3.2.3 (the masking scheme) are the parts you're implementing. The whole paper is short and a must read at least once.
 - **Karpathy, "Let's build GPT: from scratch, in code, spelled out"** (YouTube). The attention section walks through this same construction with PyTorch — different idioms, identical math. The "self-attention block" derivation in particular is excellent.
 - **Alammar, "The Illustrated Transformer."** The classic visual explainer. The Q/K/V geometric intuition is hard to beat.
 

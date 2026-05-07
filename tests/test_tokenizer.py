@@ -9,7 +9,7 @@ Suggested order to implement & turn green:
   5. decode                  → test_decode_*
   6. Round-trip + properties → test_round_trip_*
 
-Construction, persistence, fast-encode, and train-validation tests pass from
+Construction, persistence, fast-path, and train-validation tests pass from
 the start because that boilerplate is implemented. The BPE algorithm tests fail
 with `NotImplementedError` until you fill in the TODOs.
 """
@@ -17,7 +17,14 @@ from __future__ import annotations
 
 import pytest
 
-from g2c.tokenizer import BPETokenizer
+from g2c.tokenizer import COURSE_SPECIAL_TOKENS, BPETokenizer
+from g2c.tokenizer.fast import _import_merge_lines, bytes_to_token_string
+from g2c.tokenizer.persistence import (
+    load_artifact,
+    load_token_ids,
+    save_artifact,
+    save_token_ids,
+)
 
 # ----------------------------------------------------------------------
 # Construction (boilerplate — passes from the start)
@@ -38,6 +45,39 @@ def test_initial_vocab_byte_identity():
         assert tok.vocab[i] == bytes([i])
 
 
+def test_course_special_tokens_are_reserved_after_bytes():
+    tok = BPETokenizer.with_course_special_tokens()
+
+    assert tok.special_tokens == COURSE_SPECIAL_TOKENS
+    assert tok.base_vocab_size == 256 + len(COURSE_SPECIAL_TOKENS)
+    assert tok.special_to_id["<|endoftext|>"] == 256
+    assert tok.vocab[256] == b"<|endoftext|>"
+
+
+def test_special_tokens_must_be_unique():
+    with pytest.raises(ValueError, match="unique"):
+        BPETokenizer(special_tokens=("<|x|>", "<|x|>"))
+
+
+def test_special_token_encode_decode_is_atomic_without_merges():
+    tok = BPETokenizer(special_tokens=("<|user|>", "<|end|>"))
+
+    ids = tok.encode("hi<|user|>there<|end|>")
+
+    assert ids == [
+        104,
+        105,
+        tok.special_to_id["<|user|>"],
+        116,
+        104,
+        101,
+        114,
+        101,
+        tok.special_to_id["<|end|>"],
+    ]
+    assert tok.decode(ids) == "hi<|user|>there<|end|>"
+
+
 # ----------------------------------------------------------------------
 # Persistence (boilerplate — passes from the start)
 # ----------------------------------------------------------------------
@@ -52,8 +92,21 @@ def test_to_dict_contains_ordered_merges():
     payload = tok.to_dict()
 
     assert payload["format"] == "g2c.bpe"
-    assert payload["version"] == 1
+    assert payload["version"] == 2
+    assert payload["special_tokens"] == []
     assert payload["merges"] == [[97, 98, 256], [256, 99, 257]]
+
+
+def test_to_dict_contains_special_tokens_and_offset_merges():
+    tok = BPETokenizer(special_tokens=("<|end|>",))
+    new_id = tok.base_vocab_size
+    tok.merges[(97, 98)] = new_id
+    tok.vocab[new_id] = b"ab"
+
+    payload = tok.to_dict()
+
+    assert payload["special_tokens"] == ["<|end|>"]
+    assert payload["merges"] == [[97, 98, new_id]]
 
 
 def test_save_load_round_trips_learned_merges(tmp_path):
@@ -71,17 +124,64 @@ def test_save_load_round_trips_learned_merges(tmp_path):
     assert loaded.vocab == tok.vocab
 
 
+def test_save_load_round_trips_special_tokens(tmp_path):
+    tok = BPETokenizer(special_tokens=("<|user|>", "<|end|>"))
+    new_id = tok.base_vocab_size
+    tok.merges[(97, 98)] = new_id
+    tok.vocab[new_id] = b"ab"
+
+    path = tmp_path / "tokenizer.json"
+    tok.save(path)
+    loaded = BPETokenizer.load(path)
+
+    assert loaded.special_tokens == tok.special_tokens
+    assert loaded.special_to_id == tok.special_to_id
+    assert loaded.id_to_special == tok.id_to_special
+    assert loaded.merges == tok.merges
+    assert loaded.vocab == tok.vocab
+
+
 def test_from_dict_rejects_wrong_format():
     with pytest.raises(ValueError, match="BPE tokenizer"):
         BPETokenizer.from_dict({"format": "other", "version": 1, "merges": []})
 
 
+def test_token_id_binary_persistence_round_trips(tmp_path):
+    ids = [0, 255, 256, 4096]
+    path = tmp_path / "ids.uint32"
+
+    save_token_ids(ids, path)
+
+    assert load_token_ids(path) == ids
+
+
+def test_artifact_persistence_round_trips(tmp_path):
+    tok = BPETokenizer()
+    tok.merges[(97, 98)] = 256
+    tok.vocab[256] = b"ab"
+    ids = [256, 97]
+    manifest = {"name": "ExampleTokenizer", "token_count": len(ids)}
+
+    save_artifact(tok, ids, manifest, tmp_path)
+    loaded_tok, loaded_ids, loaded_manifest = load_artifact(BPETokenizer, tmp_path)
+
+    assert loaded_tok.merges == tok.merges
+    assert loaded_tok.vocab == tok.vocab
+    assert loaded_ids == ids
+    assert loaded_manifest == manifest
+
+
 # ----------------------------------------------------------------------
-# encode_fast (infrastructure — passes from the start)
+# Fast path (infrastructure — passes from the start)
 # ----------------------------------------------------------------------
 
 def test_encode_fast_no_merges_is_utf8_bytes():
     assert BPETokenizer().encode_fast("hi") == [104, 105]
+
+
+def test_encode_fast_no_merges_preserves_special_tokens():
+    tok = BPETokenizer(special_tokens=("<|end|>",))
+    assert tok.encode_fast("hi<|end|>") == [104, 105, tok.special_to_id["<|end|>"]]
 
 
 def test_encode_fast_applies_learned_merges_in_priority_order():
@@ -100,6 +200,73 @@ def test_encode_fast_respects_non_overlapping_merges():
     tok.vocab[256] = b"aa"
 
     assert tok.encode_fast("aaa") == [256, 97]
+
+
+def test_train_fast_populates_course_merge_tables():
+    text = "ababab abcabc " * 4
+    tok = BPETokenizer()
+
+    ids = tok.train_fast(text, vocab_size=270, show_progress=False, chunk_chars=5)
+
+    assert len(tok.vocab) > 256
+    assert len(tok.vocab) == 256 + len(tok.merges)
+    assert ids == tok.encode_fast(text)
+    for (left_id, right_id), new_id in tok.merges.items():
+        assert tok.vocab[new_id] == tok.vocab[left_id] + tok.vocab[right_id]
+
+
+def test_train_fast_preserves_special_tokens():
+    text = "ababab<|endoftext|>abcabc " * 4
+    tok = BPETokenizer.with_course_special_tokens()
+
+    ids = tok.train_fast(
+        text,
+        vocab_size=tok.base_vocab_size + 12,
+        show_progress=False,
+        chunk_chars=5,
+    )
+
+    special_id = tok.special_to_id["<|endoftext|>"]
+    assert special_id in ids
+    assert tok.decode(tok.encode_fast(text)) == text
+
+
+def test_train_fast_progress_callback_reports_chunks_and_encoding():
+    text = "ababab abcabc " * 20
+    tok = BPETokenizer()
+    reports: list[dict[str, object]] = []
+
+    tok.train_fast(
+        text,
+        vocab_size=270,
+        show_progress=False,
+        chunk_chars=5,
+        progress_callback=reports.append,
+    )
+
+    phases = [report["phase"] for report in reports]
+    assert phases[0] == "fast_chunks_start"
+    assert "fast_chunk" in phases
+    assert "fast_native_train_start" in phases
+    assert "fast_native_progress" in phases
+    assert "fast_chunks_done" in phases
+    assert phases[-1] == "fast_encode_done"
+    assert reports[-1]["token_count"] == len(tok.encode_fast(text))
+
+
+def test_fast_merge_import_handles_out_of_order_composite_operand():
+    tok = BPETokenizer()
+    byte_to_id = {bytes([i]): i for i in range(256)}
+    merge_lines = [
+        f"{bytes_to_token_string(b'ab')} {bytes_to_token_string(b'c')}",
+        f"{bytes_to_token_string(b'a')} {bytes_to_token_string(b'b')}",
+    ]
+
+    _import_merge_lines(tok, byte_to_id, merge_lines)
+
+    assert tok.decode(tok.encode_fast("abcabc")) == "abcabc"
+    assert b"ab" in tok.vocab.values()
+    assert b"abc" in tok.vocab.values()
 
 
 # ----------------------------------------------------------------------
@@ -185,6 +352,20 @@ def test_train_step_updates_vocab_bytes():
     assert tok.vocab[256] == b"ab"
 
 
+def test_train_step_does_not_merge_across_special_tokens():
+    tok = BPETokenizer(special_tokens=("<|end|>",))
+    special_id = tok.special_to_id["<|end|>"]
+    new_id = tok.base_vocab_size
+
+    result = tok.train_step([97, special_id, 97, 97], new_id=new_id)
+
+    assert result == ([97, special_id, new_id], (97, 97), 1)
+    assert all(
+        left not in tok.special_token_ids and right not in tok.special_token_ids
+        for left, right in tok.merges
+    )
+
+
 # ----------------------------------------------------------------------
 # train
 # ----------------------------------------------------------------------
@@ -209,12 +390,31 @@ def test_train_below_base_size_raises():
         tok.train("hello", vocab_size=200)
 
 
+def test_train_below_special_base_size_raises():
+    tok = BPETokenizer.with_course_special_tokens()
+    with pytest.raises(ValueError, match="special-token base"):
+        tok.train("hello", vocab_size=256)
+
+
 def test_train_assigns_sequential_ids():
     """Learned merge IDs should be 256, 257, 258, ... in order of learning."""
     tok = BPETokenizer()
     tok.train("the quick brown fox " * 5, vocab_size=261)
     learned_ids = sorted(tok.merges.values())
     assert learned_ids == [256, 257, 258, 259, 260]
+
+
+def test_train_with_special_tokens_assigns_merges_after_reserved_ids():
+    tok = BPETokenizer(special_tokens=("<|end|>",))
+    tok.train("the the the<|end|>the the the", vocab_size=tok.base_vocab_size + 3)
+
+    learned_ids = sorted(tok.merges.values())
+    assert learned_ids == [
+        tok.base_vocab_size,
+        tok.base_vocab_size + 1,
+        tok.base_vocab_size + 2,
+    ]
+    assert tok.decode(tok.encode("the<|end|>")) == "the<|end|>"
 
 
 def test_train_vocab_bytes_concatenation():
@@ -343,3 +543,116 @@ def test_compression_increases_with_vocab_size():
     big.train(corpus, vocab_size=350)
 
     assert len(big.encode(test_text)) <= len(small.encode(test_text))
+
+
+# ----------------------------------------------------------------------
+# encode_base / encode_at_vocab
+# ----------------------------------------------------------------------
+
+def test_encode_base_no_specials_is_utf8_bytes():
+    tok = BPETokenizer()
+    tok.train("hello world " * 5, vocab_size=270)
+    assert tok.encode_base("hi") == [104, 105]
+
+
+def test_encode_base_keeps_special_tokens_atomic():
+    tok = BPETokenizer.with_course_special_tokens()
+    tok.train("the quick brown fox " * 5, vocab_size=320)
+    ids = tok.encode_base("a<|endoftext|>b")
+    eot_id = tok.special_to_id["<|endoftext|>"]
+    assert ids == [ord("a"), eot_id, ord("b")]
+
+
+def test_encode_at_vocab_at_base_size_matches_encode_base():
+    tok = BPETokenizer.with_course_special_tokens()
+    tok.train("the quick brown fox " * 5, vocab_size=320)
+    text = "the quick brown"
+    assert tok.encode_at_vocab(text, tok.base_vocab_size) == tok.encode_base(text)
+
+
+def test_encode_at_vocab_at_full_size_matches_encode():
+    tok = BPETokenizer()
+    tok.train("the quick brown fox " * 5, vocab_size=320)
+    text = "the quick brown"
+    assert tok.encode_at_vocab(text, len(tok.vocab)) == tok.encode(text)
+
+
+def test_encode_at_vocab_matches_smaller_trained_tokenizer():
+    """Truncating merges at K gives the same encoding as training to K."""
+    corpus = "the quick brown fox jumps over the lazy dog " * 30
+    test_text = corpus[:120]
+
+    big = BPETokenizer()
+    big.train(corpus, vocab_size=320)
+
+    small = BPETokenizer()
+    small.train(corpus, vocab_size=280)
+
+    assert big.encode_at_vocab(test_text, 280) == small.encode(test_text)
+
+
+def test_encode_at_vocab_monotonic_in_vocab_size():
+    """Larger vocab_size → at most as many tokens for the same text."""
+    corpus = "the quick brown fox jumps over the lazy dog " * 30
+    tok = BPETokenizer()
+    tok.train(corpus, vocab_size=350)
+    text = corpus[:200]
+
+    counts = [len(tok.encode_at_vocab(text, v)) for v in (260, 280, 300, 320, 350)]
+    assert counts == sorted(counts, reverse=True)
+
+
+def test_encode_at_vocab_below_base_raises():
+    tok = BPETokenizer.with_course_special_tokens()
+    with pytest.raises(ValueError):
+        tok.encode_at_vocab("anything", tok.base_vocab_size - 1)
+
+
+def test_encode_at_vocab_round_trips():
+    tok = BPETokenizer()
+    tok.train("the quick brown fox " * 5, vocab_size=320)
+    text = "the quick brown fox"
+    for vocab in (tok.base_vocab_size, 280, 300, len(tok.vocab)):
+        assert tok.decode(tok.encode_at_vocab(text, vocab)) == text
+
+
+# ----------------------------------------------------------------------
+# encode_with_vocab_size / effective_vocab_size
+# ----------------------------------------------------------------------
+
+def test_encode_with_vocab_size_none_uses_full_vocab():
+    tok = BPETokenizer()
+    tok.train("hello world " * 5, vocab_size=300)
+    text = "hello world"
+    assert tok.encode_with_vocab_size(text, None) == tok.encode_fast(text)
+
+
+def test_encode_with_vocab_size_zero_uses_base():
+    tok = BPETokenizer.with_course_special_tokens()
+    tok.train("the quick brown fox " * 5, vocab_size=320)
+    text = "a<|endoftext|>b"
+    assert tok.encode_with_vocab_size(text, 0) == tok.encode_base(text)
+
+
+def test_encode_with_vocab_size_truncates():
+    tok = BPETokenizer()
+    tok.train("the quick brown fox jumps over the lazy dog. " * 30, vocab_size=320)
+    text = "the quick"
+    assert tok.encode_with_vocab_size(text, 280) == tok.encode_at_vocab(text, 280)
+
+
+def test_encode_with_vocab_size_too_large_raises():
+    tok = BPETokenizer()
+    tok.train("hi " * 5, vocab_size=270)
+    with pytest.raises(ValueError):
+        tok.encode_with_vocab_size("hi", len(tok.vocab) + 1)
+
+
+def test_effective_vocab_size_routing():
+    tok = BPETokenizer.with_course_special_tokens()
+    tok.train("the quick brown fox jumps over the lazy dog. " * 30, vocab_size=320)
+    assert tok.effective_vocab_size(None) == len(tok.vocab)
+    assert tok.effective_vocab_size(0) == tok.base_vocab_size
+    assert tok.effective_vocab_size(290) == 290
+    with pytest.raises(ValueError):
+        tok.effective_vocab_size(len(tok.vocab) + 1)

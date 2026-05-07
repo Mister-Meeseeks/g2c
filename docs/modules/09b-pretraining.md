@@ -1,42 +1,28 @@
 # Module 09B — Pretraining
 
-> **Question this module answers:** *How do we turn a text corpus and a TransformerLM into supervised training data?*
+> **Question this module answers:** *How do we learn from text?*
 
-![Multi-position targets in three steps: sample a (B, T) window from the token stream with the target window shifted left by one; run one TransformerLM forward pass to produce (B, T, V) logits; compute per-position cross-entropy at every (b, t) pair and average across all B * T positions.](09b-pretraining/Module09B-Hero.png)
+![Multi-position targets in three steps: sample a (B, T) window from the token stream with the target window shifted left by one; run one TransformerLM forward pass to produce (B, T, V) logits; compute per-position cross-entropy at every (b, t) pair and average across all B * T positions.](09b-pretraining/Module09b-Hero.png)
 
-*This is what causal masking earned us. Because position `t` can never see token `t+1`, position `t`'s logits are a valid prediction for token `t+1`, for every position in the window at once. Module 10 will use this setup inside the full training loop.*
+Last week we built the transformer; a language model composed of stacked attention and neural networks. In terms of language model architecture, the transformer is the "final form". Every single major LLM in use today is built on top of the transformer. It will be the model we use for the remainder of the course.
 
----
-## Prerequisites
-
-Module 09B sits between "the architecture exists" and "the model trains on a real corpus." It is a small bridge module, but it removes a lot of shape bookkeeping from the payoff week.
-
-### Math
-
-- **Cross-entropy.** Same classification loss from Module 03.
-- **Averages.** The language-model loss averages over every `B * T` position.
-- **Logarithms.** `log(V)` is the uniform random baseline for a vocabulary of size `V`.
-
-### Computer science
-
-- **Contiguous sequences.** Token order matters. A train/validation split should preserve local order inside each split.
-- **Shape contracts.** You should be comfortable tracing `(B, T)` inputs and `(B, T, V)` logits.
-
-### Programming
-
-- **PyTorch tensor indexing.** Slices like `ids[s : s + T]` and `ids[s + 1 : s + T + 1]`.
-- **`reshape`.** Used to flatten all token positions before calling cross-entropy.
-
-### What you can skip
-
-- **Optimizer mechanics.** AdamW, clipping, warmup, and cosine decay were Module 03B.
-- **The full trainer.** Module 10 owns the top-level loop.
-- **Sampling quality.** This module verifies setup, not generation.
+The next step is turning the core architecture into an actual trained model. Training language models to even basic levels of competency requires vast scales of data and compute. There is no room for inefficiency in the process. This lesson will be about how to build an efficient and effective self-supervised learning pipeline on top of the transformer. 
 
 ---
-## Why We Start Here
+## Before you start
 
-At the end of Module 09, `TransformerLM.forward(token_ids)` returns logits shaped `(B, T, V)`. That output is not useful until you can answer two questions:
+* *Review* 
+	* [[03-nn]] on cross-entropy
+	* [[09-transformer-block]] on logit shapes
+* *Finish* packages:
+	* `g2c/transformer` ([[09-transformer-block]]])
+	* `g2c/nn` ([[03-nn]])
+	* `g2c/training` ([[03b-training]])
+
+---
+## Where this fits in
+
+At the end of Module 09, `TransformerLM.forward()` returns logits shaped `(B, T, V)`. That output is not useful until you can answer two questions:
 
 1. What exactly are the `(B, T)` inputs and `(B, T)` targets?
 2. How do those `(B, T, V)` logits become one scalar loss?
@@ -60,11 +46,9 @@ y:   [3, 9, 2, 6]
 
 Every position in `x` has a target in `y`. The causal mask makes this legal: when the model predicts `y[t]`, it can see `x[:t+1]` but not the future token itself.
 
-## The Big Idea
+## The big idea
 
-### A corpus becomes token streams
-
-Start with text, tokenize it, and store a single 1-D token stream:
+Any corpus can be turned into a token stream. Start with text, tokenize it, and store a single 1-D token stream:
 
 ```python
 ids = torch.tensor(tokenizer.encode(text), dtype=torch.long)
@@ -101,6 +85,9 @@ The headline contract is simple:
 ```text
 y[b, t] is the token immediately after x[b, t] in the corpus.
 ```
+
+![One sampled (B, T) window expands into B*T (input, target) classification pairs — each position in x is paired with the next token in the corpus, all in parallel under the causal mask.](09b-pretraining/Module09B-MultiPosition.png)
+*One contiguous stream sample becomes many supervised examples: every position predicts the token immediately after it. The causal mask is what makes this parallel training legal, because each position can use only its past and present inputs.*
 
 ### The loss flattens positions
 
@@ -140,33 +127,34 @@ perplexity = exp(loss) = V
 
 At initialization, a random model's loss should usually start near `log(V)`. If it starts far below `log(V)`, suspect a bug: wrong targets, wrong reshape, repeated trivial data, or loading a trained checkpoint by accident. If it starts near `log(V)` and then drops, the model is learning.
 
-## Concepts to Internalize
+### Corpus selection is model behavior selection
+
+The corpus is not just fuel for the optimizer. It is the behavior distribution the model is asked to imitate. TinyShakespeare teaches character names, stage directions, and Elizabethan fragments. TinyStories teaches simple narrative structure. A course corpus mixed with educational prose and code teaches a different shape again. Same architecture, same loss, different data: different model.
+
+At small scale, corpus choice is especially visible because the model cannot average over the internet. A narrow corpus can produce more coherent samples inside its domain, but it will be brittle outside it. A broader corpus gives the model more surface area, but each pattern gets fewer repetitions for a fixed training budget. That is why Module 10 uses named tracks: ShakespeareLM for a tiny smoke run, StoryLM for coherent small-model text, and TinyLLM for broader assistant-shaped experiments.
+
+Document boundaries also matter. If you concatenate stories or articles without a separator, the model sees the last sentence of one document followed by the first sentence of the next as an ordinary next-token event. The course tokenizer reserves `<|endoftext|>` so document boundaries can be represented explicitly. Sampling code should avoid crossing documents when possible; when it does not, the separator at least gives the model a visible boundary token.
+
+The practical rule for this course: choose the corpus that matches the artifact you want to produce, keep a held-out validation split from the same distribution, and write down the corpus size/mix in the manifest so later results are interpretable.
+
+## Concepts to internalize
 
 - **A token stream is supervised data once you shift it by one.**
+- **Document separators are training data.** `<|endoftext|>` tells the model one document ended before another begins.
 - **Causal masking makes multi-position training valid.** Every position predicts the next token without seeing it.
 - **One `(B, T)` batch contains `B * T` classification examples.**
 - **Language-model cross-entropy is ordinary cross-entropy after a reshape.**
 - **`log(V)` is not transformer-specific.** It is the uniform baseline for any language model with vocabulary size `V`.
+- **Corpus choice shapes model behavior.** Data distribution matters as much as architecture at this scale.
 
-## Scaffolding and How to Run the Tests
+### What we don't cover
 
-This module starts the `g2c/pretraining/` package:
+* **Distributed training.** Used to scale large-scale training beyond a single machine. Lots of devops considerations, but conceptually just an extension of gradient batching.
+* **Mixed precision.** Speeds up training by using lower precision floats for most operations and selectively keeping high precision for load bearing weights. 
+* **Packed datasets.** Combines multiple short training sequences into a single long sequence. Reduces wasting compute on padding.
 
-- **`data.py`** has `split_token_stream` and `get_lm_batch`. Both are implemented.
-- **`loss.py`** has `lm_cross_entropy`. This is scaffolded.
-- **`answers/module-09b.md`** is the student workspace for written answers, hint requests, and partial submissions.
-- **`docs/rubrics/module-09b.md`** is the grading contract agents should use when reviewing written answers.
-
-Run:
-
-```bash
-pytest tests/test_pretraining_setup.py -x
-pytest tests/test_pretraining_setup.py -v
-```
-
-The first tests should already pass. The `lm_cross_entropy` tests fail until you implement the reshape and call your Module 03 `CrossEntropyLoss`.
-
-## What You'll Build
+---
+## What you'll build
 
 Package: `g2c/pretraining/`
 
@@ -190,9 +178,20 @@ def lm_cross_entropy(
 ) -> torch.Tensor:                                      # SCAFFOLDED
 ```
 
+`split_token_stream` and `get_lm_batch` are implemented for you. `lm_cross_entropy` is the one scaffolded function — it reshapes `(B, T, V)` logits and `(B, T)` targets, then calls your Module 03 `CrossEntropyLoss`.
+
+## How to run the tests
+
+Tests live in `tests/test_pretraining_setup.py`. The `data.py` tests pass from the start; `lm_cross_entropy` tests fail until you implement the reshape.
+
+```bash
+pytest tests/test_pretraining_setup.py -x
+pytest tests/test_pretraining_setup.py -v
+```
+
 ## Exercises
 
-Enter questions or answers in [answers/module-09b.md](../../answers/module-09b.md) for agent help and grading. You can ask for a hint, answer one question, answer a subset, or answer all of them; blank answer sections are skipped rather than counted wrong.
+Open the working notebook with `.venv/bin/python scripts/open_notebook.py 09b`. Each exercise has `Question:` / `Answer:` cells inside the notebook. If you'd like a hint instead of a grade, write the request in the answer string and ask a coding agent for help. Blank answers are skipped rather than counted wrong.
 
 1. **Shift a toy stream by hand.** Given `ids = [10, 11, 12, 13, 14, 15]`, `start = 1`, and `T = 3`, write `x` and `y`. Explain why `y[t]` is the target for `x[t]`.
 
@@ -208,7 +207,7 @@ Enter questions or answers in [answers/module-09b.md](../../answers/module-09b.m
 
 7. **Random model sanity check.** Instantiate a tiny `TransformerLM`, sample one batch, compute `lm_cross_entropy`, and compare it to `log(V)`. If the two values differ a lot, write down two possible explanations.
 
-## Pitfalls to Expect
+## Pitfalls to expect
 
 - **Off-by-one targets.** `y` starts one token after `x`. If `y == x`, the model is learning to copy the current token, not predict the next one.
 - **Sampling past the end.** Each window needs `T + 1` tokens, not just `T`.
@@ -216,20 +215,21 @@ Enter questions or answers in [answers/module-09b.md](../../answers/module-09b.m
 - **Flattening one tensor differently than the other.** `logits.reshape(B * T, V)` and `targets.reshape(B * T)` must preserve the same `(B, T)` order.
 - **Reading `log(V)` as failure.** At step 0, `log(V)` is the expected baseline. The interesting question is whether the curve drops below it.
 
+## M-series notes
+
+This module is CPU-light. The tensors are tiny, and no serious training run happens yet. MPS matters again in Module 10, where the same helpers sit inside thousands of optimizer steps.
+
+---
 ## Reading
 
 - Karpathy, *nanoGPT*, especially the `get_batch` and loss computation.
 - Karpathy, "Let's reproduce GPT-2 (124M)", the data-loader and training-loop sections.
 - Vaswani et al., "Attention Is All You Need", causal masking and parallel sequence training context.
 
-## Deliverable Checklist
+## Deliverable checklist
 
 - [ ] `pytest tests/test_pretraining_setup.py` passes.
 - [ ] Notebook: `notebooks/clean/09b-pretraining.ipynb`.
 - [ ] You can explain why one `(B, T)` batch contains `B * T` next-token prediction examples.
 - [ ] You can implement `lm_cross_entropy` from the shape contract alone.
 - [ ] You can use `log(V)` as a step-0 sanity check before a Module 10 training run.
-
-## M-Series Notes
-
-This module is CPU-light. The tensors are tiny, and no serious training run happens yet. MPS matters again in Module 10, where the same helpers sit inside thousands of optimizer steps.

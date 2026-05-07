@@ -1,57 +1,22 @@
 # Module 13 — Instruction tuning (SFT)
 
-> **Question this module answers:** *Why does the model follow requests rather than just continuing text?*
+> **Question this module answers:** *How do we make the model follow requests?*
 
 ![Module 13 on one page: the TinyShakespeare-pretrained TransformerLM from Modules 10/12 confronted with an instruction-style prompt before and after SFT. Top half: the BASE model's continuation of "What is the capital of France?" — it ignores the question entirely and produces "What is the capital of France? And the noble Duke of Norfolk hath sworn..." (the question is just text to continue). Bottom half: the SFT'd version of the same model on the same prompt, formatted with the chat template "<|user|>\\nWhat is the capital of France?\\n<|assistant|>\\n" — it now produces "Paris.<|end|>" and stops. A central panel shows the SFT data flow: 50 hand-authored (instruction, response) pairs → render through chat template → tokenize + build label mask (only assistant tokens get loss=1; user tokens get loss=0) → fine-tune the base model for ~500 steps at 10× lower LR → SFT'd checkpoint. A right-edge panel highlights the three behavioral shifts: (1) the model now respects turn boundaries, (2) the assistant turn is short and stops on <|end|>, (3) the model still hallucinates confidently — alignment teaches FORMAT, not TRUTH (the truth/calibration question waits for Modules 14–15). A bottom strip captions the headline: "SFT changes behavior, not knowledge — the base model already had to know what 'capital of France' means; SFT just taught it to answer rather than to continue."](13-sft/Module13-Hero.png)
 
-*The whole module on one page. Module 12 was about how a base model scales; Module 13 is about how its **behavior** is shaped. The mechanics are minimal — a chat template, a label mask that zeroes out user tokens, and the same `Trainer` you wrote in Module 10 — but the qualitative effect is the largest single change in this course: the model goes from "completes any text" to "answers questions in a turn-shaped format." The 50-example dataset is the entire training set; everything else is plumbing.*
+Last week's module was about how models scale; this week is about how model **behavior** is shaped. The mechanics are minimal — a chat template, a label mask that zeroes out user tokens, and the same `Trainer` you wrote in Module 10 — but the qualitative effect is the largest single change in this course. The model goes from "completes any text" to "answers questions in a turn-shaped format." 50 directed examples are the entire training set. Everything else is plumbing.
 
-## Prerequisites
+---
+## Before you start
 
-Module 13 opens the second half of Phase IV. Module 11 gave you sampling controls; Module 12 gave you scaling intuitions. Now you take the model that you trained yourself and bend its behavior toward a specific role — *assistant that follows instructions* — using a tiny supervised dataset and a masked variant of the loss you already know.
+* *Review* [[10-tinyllm]] for the training-loop contract — SFT reuses the same `Trainer` shape with masked CE
+* *Finish* `g2c/nn` from [[03-nn]] and `g2c/training` from [[03b-training]] — the SFT trainer and masked CE loss import from both
+* *Finish* `g2c/tokenizer` from [[04-tokenizer]] — the chat template encodes through a `BPETokenizer`
+* *Finish* a Module 10 / 12 base checkpoint — SFT loads it, fine-tunes briefly, and saves a separate checkpoint
+* *Finish* Module 04's tokenizer artifact — the chat template tokenizes through it
 
-### Math
-
-- **Cross-entropy with masked positions.** The pretraining loss in Module 10 averages CE over every `(B, T)` position uniformly. SFT averages CE over only the positions the model is supposed to *generate* (the assistant's response), and ignores the prompt positions. Mathematically:
-
-  ```
-      L_sft  =  ( Σ_{(b,t) : mask[b,t]=1}  CE(logits[b,t], targets[b,t]) )  /  Σ mask
-  ```
-
-  Two observations: the denominator is the *count of training-on positions*, not `B·T` — so the gradient magnitude doesn't depend on how much of each example is prompt. And every position with `mask=0` contributes literally zero to the loss; the `.backward()` graph still computes logits there, but the gradient through them is zero.
-
-- **Why mask the prompt at all?** A model trained without masking learns to *predict the user's text* given prefixes — a useless objective: at inference time the user's text is given, not generated. Worse, it leaks the user-distribution into the model and tends to make the model continue a user-style turn instead of starting an assistant turn. Masking is not an optimization; it's a correctness fix.
-
-- **The pretraining objective and the SFT objective are the same operator.** SFT is *not* a different loss class. It's the same per-token cross-entropy with selective averaging. The optimizer, the LR schedule, the gradient clip — all of it transfers directly. What changes is the data and the mask.
-
-### Computer science
-
-- **The chat template as a contract.** A chat template is a deterministic function `messages → token_ids` that wraps each turn in marker strings the model learns to recognize: `<|user|>`, `<|assistant|>`, `<|end|>`. The template is a *convention*, not a property of the model — but once SFT bakes the convention in, every downstream caller (Module 14 DPO, Module 17 RAG, Module 19 agent) must use the *same* template or the model behaves like a base model again. Pin the format down once and reuse it.
-
-- **Label masks travel with token sequences.** Every SFT example is a triple `(input_ids, target_ids, loss_mask)`, all of length `T-1`. The `loss_mask[t] == 1` iff `target_ids[t]` (i.e. `input_ids[t+1]`) is a token the model is supposed to learn to generate. If the mask is shifted wrong by even one position, you train the model to predict the *role marker*, not the assistant's content.
-
-- **Padding to a common length.** Pretraining packs the corpus into fixed-length windows by definition; the windows have no boundaries. SFT examples are variable-length and have hard boundaries (each example is one conversation). The standard collation: pad to the longest example in the batch with a pad token, and mask out the pad positions in the loss. (Real systems also support *packing* multiple short examples into one window with attention-aware boundaries; we don't bother at our scale.)
-
-- **A separate fine-tuning run, not a continuation of pretraining.** The Module 10 trainer mutates a model in place. The SFT trainer does the same — but you load the *pretrained checkpoint* first, fine-tune for a much smaller number of steps at a much smaller learning rate, and save the result as a *separate* checkpoint. You always want the base model preserved in case you need to retrain, ablate, or compare.
-
-### Programming
-
-- **`torch.nn.functional.cross_entropy(..., reduction='none')`** — returns the per-position CE without averaging. `reduction='none'` is the standard way to compute a masked mean: get the per-position loss, multiply by mask, sum, divide by mask sum. (We use our own `CrossEntropyLoss` from Module 03 as a building block; the mechanics are the same.)
-- **`F.pad(tensor, pad, value=...)`** — pads a tensor with a constant value along given dims. Used in the collator to grow each sequence to `max_len`.
-- **`torch.where(condition, a, b)`** — element-wise select. Used to overwrite target positions with the mask sentinel, or to gate the per-position loss by the mask.
-- **`model.load_state_dict(...)`** isn't part of the `g2c` `Module` API (we hand-roll a parameter list). Loading the Module 10 checkpoint into a fresh model means walking the `parameters()` list in matched order and copying weight tensors with `param.data.copy_(saved[i])`. This is exercise 1's first step.
-
-### What you can skip
-
-- **LoRA / parameter-efficient fine-tuning.** The "real" alternative to full SFT is LoRA — train only a tiny low-rank update to each weight matrix, leaving the base weights frozen. Saves ~99% of the optimizer memory and prevents catastrophic forgetting almost for free. We don't implement it because at our model scale (~5–20M params) full SFT is comfortable on MPS, and the LoRA mechanics distract from the SFT mechanics. Module 13 is conceptually full-fine-tuning; LoRA is a Module 14-or-later optional extension.
-- **Multi-turn conversations.** Real chat templates support arbitrary alternations of `(user, assistant, user, assistant, ...)`. The `ChatTemplate` you'll build does too. But the exercises stick to single-turn examples (`one user → one assistant`) — easier to author, easier to evaluate, and the multi-turn behavior follows automatically once the template is generalized.
-- **System prompts.** A leading `<|system|>You are a helpful assistant.<|end|>` turn is the third role real systems support. We omit it: at toy scale, system prompts inflate the prompt length without changing the model's behavior measurably. The lesson notes where it would slot in.
-- **PEFT prompt tuning, prefix tuning, P-tuning.** Pre-LoRA parameter-efficient methods that train a small set of "soft prompt" tokens. Largely superseded by LoRA. Skim once; don't implement.
-- **RLHF.** The other half of "alignment" — preference-based fine-tuning. Module 14 covers DPO (the modern simplified form). Don't try to reproduce InstructGPT's full pipeline at this scale; the SFT step alone is the right unit of work for one week.
-- **Continual / online SFT.** Updating the model as new examples arrive. Production concern with its own catastrophic-forgetting issues; out of scope.
-- **Special-token vocab extension.** Real chat-tuned models extend the tokenizer with reserved IDs for `<|user|>`, `<|assistant|>`, etc., and grow the embedding/unembedding matrices to match. We use the simpler approach of *literal text markers* (described below) so the existing tokenizer and model accept the chat-formatted strings unchanged. The tradeoff: each marker costs ~3–8 BPE tokens instead of 1, so prompts are slightly longer; you don't have to surgery the tokenizer or pad the embedding table.
-
-## Why we start here
+---
+## Where this fits in
 
 After Module 12 you have three checkpoints at ~1M / ~5M / ~20M parameters. Each is a **base model** — its training objective was "predict the next token in TinyShakespeare-style prose." If you give it the prompt:
 
@@ -117,11 +82,17 @@ The qualitative shift you'll see in exercise 2: a SFT'd model **stops continuing
 
 A non-obvious consequence, which the syllabus calls out and the LIMA paper made famous: **at this stage, data quality dominates data quantity by a wide margin**. A few hundred clean (instruction, response) pairs produce more useful behavior change than tens of thousands of noisy ones. The "clean" part is doing real work: every example is a vote for what the assistant turn should look like, and a 5-example template-failure pattern can poison the model's behavior far out of proportion to its size in the dataset.
 
+#### Where SFT sits in the bigger alignment picture
+
+![RLHF (traditional) vs DPO (next module). InstructGPT's classical 3-stage pipeline: (1) supervised fine-tuning on demonstration data, (2) reward-model training on preference comparisons, (3) PPO reinforcement-learning to optimize the SFT model against the reward model. Module 13 implements stage 1 only. Module 14 will replace stages 2 and 3 with DPO — a single closed-form loss that uses the SFT'd model as the reference and trains directly on (prompt, chosen, rejected) preference triples, no reward model and no RL loop. A "bottom line" panel pins the framing: same goal — align the model with human preferences — but DPO collapses the reward-modeling and PPO stages into a single supervised loss.](13-sft/Module13-RLHF.png)
+*Where Module 13 lives in the alignment landscape. SFT is the first and most important stage; everything downstream (DPO in Module 14, RLHF at production scale) presupposes a reasonably well-formatted SFT'd starting point. Many small-scale projects stop at SFT and ship — the qualitative jump from "base" to "SFT'd" is bigger than the jump from "SFT'd" to "RLHF'd."*
+
 ## The big idea
 
-### Base vs instruction model: a behavioral shift, not a capability shift
-
 This is the single most important framing in the module:
+
+![SFT changes behavior, not knowledge: a one-page summary of the module. The base model produced by Module 12 trains on next-token prediction over TinyShakespeare prose and continues a question prompt as if it were more prose. After SFT on 50 hand-authored (instruction, response) pairs — rendered through a chat template, tokenized with a loss mask that zeroes out user tokens, fine-tuned for ~500 steps at 10× lower LR — the same model recognizes the assistant turn marker, produces a single short response, and stops on `<|end|>`. A "what improves, what doesn't" panel pins the central distinction: format compliance, turn boundaries, and concision are taught; factual knowledge is unchanged from the base model. A "key insight" callout closes with: pretraining gives the model a world model; SFT gives it a job description.](13-sft/Module13-Behavior.png)
+*The whole module compressed onto one slide. Read this once before the prose below — every concept in "The big idea" is a zoomed-in view of one panel here.*
 
 ```
    ┌────────────────────────────────────────────────────────────────────┐
@@ -204,6 +175,9 @@ In pretraining, every token in every window is a training target — the model l
 
 The fix is the **loss mask**: a `(T-1,)` boolean tensor that's `1` at positions where loss should be applied and `0` elsewhere.
 
+![Loss mask alignment: the central implementation trick of SFT, drawn end-to-end. Starting from a `messages` list, the chat template renders to a string, the tokenizer produces an `ids` array, and the (input, target) pair is built by shifting: `x = ids[:-1]`, `y = ids[1:]`. The loss mask is aligned with `y`, not `x` — `mask[t] = 1` iff `y[t]` is a token the assistant is responsible for emitting (including `<|end|>`). A "wrong vs right" pair shows the off-by-one bug: a mask aligned with `x` trains the model to predict the role marker, while the correctly-shifted mask trains it to produce the first word of the response. A "golden rule" panel closes: at position t, the model is trying to predict `y[t]`; the assistant should answer at inference time iff `mask[t] = 1`. Otherwise mask = 0.](13-sft/Module13-LossMask.png)
+*The picture to internalize before writing `masked_cross_entropy`. The shift-by-one between `mask` and `y` is the bug-prone seam — get it right once and the rest of the SFT pipeline follows.*
+
 ```
    ids:   [ <|user|>  \n  Hi   .   <|assistant|>  \n  Hello   .   <|end|> ]
             T_u       n   Hi   .   T_a            n   Hello   .   T_e
@@ -237,7 +211,7 @@ The masked-loss formula is:
    loss           = masked_total / masked_count       # scalar
 ```
 
-The denominator is the *count of training-on positions*, not `B·(T-1)`. If you accidentally divide by `B·(T-1)` (the full batch shape), the gradient magnitude depends on how much of each example is prompt — a longer prompt looks like a smaller loss to the optimizer, even though the same response was learned. `test_masked_cross_entropy_normalizes_by_mask_count` pins this down.
+The denominator is the *count of training-on positions*, not `B·(T-1)`. If you accidentally divide by `B·(T-1)` (the full batch shape), the gradient magnitude depends on how much of each example is prompt — a longer prompt looks like a smaller loss to the optimizer, even though the same response was learned.
 
 ### Data quality versus data quantity
 
@@ -324,48 +298,17 @@ The top three (format collapse, role leakage, format forgetting) are *training* 
 - **SFT step count is small.** Hundreds, not thousands. Each example is seen many times; over-training on 50 examples for 5000 steps is the textbook recipe for memorization without generalization.
 - **The model may answer perfectly and still be wrong.** Format compliance is not truth. A SFT'd toy model is the best demonstration of this distinction in the course — it answers questions confidently in well-formatted prose, and almost everything it says is invented.
 
-## Scaffolding and how to run the tests
+### What we don't cover
 
-This module ships four files in `g2c/sft/`, all scaffolded:
+- **LoRA / parameter-efficient fine-tuning.** The "real" alternative to full SFT is LoRA — train only a tiny low-rank update to each weight matrix, leaving the base weights frozen. Saves ~99% of the optimizer memory and prevents catastrophic forgetting almost for free. We don't implement it because at our model scale (~5–20M params) full SFT is comfortable on MPS, and the LoRA mechanics distract from the SFT mechanics. Module 13 is conceptually full-fine-tuning; LoRA is a Module 14-or-later optional extension.
+- **Multi-turn conversations.** Real chat templates support arbitrary alternations of `(user, assistant, user, assistant, ...)`. The `ChatTemplate` you'll build does too. But the exercises stick to single-turn examples (`one user → one assistant`) — easier to author, easier to evaluate, and the multi-turn behavior follows automatically once the template is generalized.
+- **System prompts.** A leading `<|system|>You are a helpful assistant.<|end|>` turn is the third role real systems support. We omit it: at toy scale, system prompts inflate the prompt length without changing the model's behavior measurably. The lesson notes where it would slot in.
+- **PEFT prompt tuning, prefix tuning, P-tuning.** Pre-LoRA parameter-efficient methods that train a small set of "soft prompt" tokens. Largely superseded by LoRA. Skim once; don't implement.
+- **RLHF.** The other half of "alignment" — preference-based fine-tuning. Module 14 covers DPO (the modern simplified form). Don't try to reproduce InstructGPT's full pipeline at this scale; the SFT step alone is the right unit of work for one week.
+- **Continual / online SFT.** Updating the model as new examples arrive. Production concern with its own catastrophic-forgetting issues; out of scope.
+- **Special-token vocab extension.** Real chat-tuned models extend the tokenizer with reserved IDs for `<|user|>`, `<|assistant|>`, etc., and grow the embedding/unembedding matrices to match. We use the simpler approach of *literal text markers* (described below) so the existing tokenizer and model accept the chat-formatted strings unchanged. The tradeoff: each marker costs ~3–8 BPE tokens instead of 1, so prompts are slightly longer; you don't have to surgery the tokenizer or pad the embedding table.
 
-- **`chat_template.py`** — `ChatTemplate` class with the role-marker constants and a `render(messages, *, with_mask=False)` method. The single source of truth for the SFT format. Constructor and constants are implemented; `render` and `render_with_mask` are scaffolded.
-- **`data.py`** — `SFTExample` (a NamedTuple-style container of `(ids, mask)`) plus `pad_and_collate(examples, max_seq_len, pad_id)` which builds `(x, y, loss_mask)` batches. Boilerplate is implemented; `pad_and_collate` is scaffolded.
-- **`loss.py`** — `masked_cross_entropy(logits, targets, mask)`. Scaffolded. Reuses Module 03's `CrossEntropyLoss` with `reduction='none'`-style behavior.
-- **`trainer.py`** — `SFTTrainer`. Constructor, `lr`, `evaluate`, and `train` are implemented; `train_step` is scaffolded. Mirrors the Module 10 `Trainer` shape so the structure is familiar; the only operational differences are the data source (a list of `SFTExample`) and the loss function (`masked_cross_entropy`).
-
-Tests live in `tests/test_sft.py`. Initial state: a few boilerplate tests pass (constructor / constants / pad token IDs are implemented); the rest fail with `NotImplementedError`.
-
-```bash
-pytest tests/test_sft.py                       # all module-13 tests
-pytest tests/test_sft.py -x                    # stop at first failure
-pytest tests/test_sft.py -k chat_template      # template tests only
-pytest tests/test_sft.py -k pad_and_collate    # collator tests only
-pytest tests/test_sft.py -k masked_cross       # loss tests only
-pytest tests/test_sft.py -k trainer            # trainer tests only
-pytest tests/test_sft.py -v                    # verbose
-```
-
-Implementation order — earlier scaffolds unblock later tests:
-
-  1. **`ChatTemplate.render`** → unblocks the rendering tests.
-  2. **`ChatTemplate.render_with_mask`** → unblocks the mask-shape and mask-content tests.
-  3. **`pad_and_collate`** → unblocks the batching tests.
-  4. **`masked_cross_entropy`** → unblocks the loss-shape and loss-value tests.
-  5. **`SFTTrainer.train_step`** → unblocks the end-to-end SFT smoke test.
-
-Steps 1–4 are independent: you can implement and test them in any order. Step 5 depends on the first four.
-
-The `SFTTrainer` end-to-end test pulls in your full Module 03 / 05 / 07 / 08 / 09 / 10 stack — if any of those scaffolds aren't filled in (in particular `TransformerLM.forward` from Module 09 and `Trainer.train_step` from Module 10), the trainer tests will fail at the prerequisite layer. The Module 10 deliverable (`test_trainer_train_runs_to_completion`) is a good gate — if it passes, your prerequisites are in order.
-
-The headline tests to watch:
-
-- **`test_chat_template_round_trip_format`** — pins down the exact byte string the template produces. A drift in the marker convention between the SFT trainer and the inference-time formatter is the single most-common Module 13 / Module 17 / Module 19 bug; this test pins the format down.
-- **`test_render_with_mask_assistant_only`** — pins down that the loss mask is `1` exactly on assistant-content tokens and the trailing `<|end|>`, and `0` everywhere else. The shift-by-one is the hidden cost.
-- **`test_pad_and_collate_shifts_for_lm`** — pins down that the collator returns `x = ids[:-1]`, `y = ids[1:]`, `loss_mask = mask[1:]`, all aligned. A shift error here means the model trains on the wrong target distribution.
-- **`test_masked_cross_entropy_normalizes_by_mask_count`** — pins down the denominator. A bug that divides by `B·T` instead of `mask.sum()` makes the gradient depend on prompt length.
-- **`test_masked_cross_entropy_zero_mask_returns_zero`** — pins down that an empty mask doesn't crash with NaN. Useful for the corner case where a single example in a batch has no assistant tokens (shouldn't happen with a well-built dataset, but the implementation must not blow up).
-- **`test_sft_trainer_loss_decreases`** — the headline end-to-end check. A handful of SFT steps on a tiny synthetic dataset must drive the loss down monotonically (or near-monotonically). If this fails, the data, the loss, the optimizer, or the trainer wiring is broken — and the smaller tests will tell you which.
-
+---
 ## What you'll build
 
 Package: `g2c/sft/`
@@ -406,27 +349,6 @@ def masked_cross_entropy(
 
 
 class SFTTrainer:
-    def __init__(
-        self,
-        model,
-        *,
-        examples: list[SFTExample],
-        max_seq_len: int,
-        pad_id: int,
-        batch_size: int,
-        max_steps: int,
-        max_lr: float,
-        min_lr: float = 0.0,
-        warmup_steps: int = 0,
-        weight_decay: float = 0.0,
-        grad_clip: float | None = None,
-        eval_every: int = 100,
-        eval_iters: int = 20,
-        log_every: int = 10,
-        generator: torch.Generator | None = None,
-        device: str | torch.device | None = "auto",
-    ) -> None:                                                # implemented
-
     def lr(self, step: int | None = None) -> float:          # implemented
 
     def train_step(self) -> dict[str, float]:                 # SCAFFOLDED
@@ -437,6 +359,27 @@ class SFTTrainer:
 ```
 
 Total scaffolded code: roughly 50 lines across five locations. The math is light; the lesson is the masking, the format, and the recipe consistency.
+
+#### Forward look: the SFT'd model becomes Module 14's frozen reference
+
+![Policy vs frozen reference, the DPO setup. Both models start from the same SFT'd checkpoint produced by this module. The "policy" copy is trainable — gradients flow, weights update, it learns to prefer chosen answers over rejected ones. The "reference" copy is frozen — never gradients, only used to score the same prompts under the original SFT distribution. A single preference triple `(prompt, chosen, rejected)` is fed to both models; the policy's log-probabilities for `chosen` and `rejected` are compared against the reference's log-probabilities for the same, and the DPO loss pushes the policy to widen the margin without drifting too far from the reference. A "key idea" panel pins the role: the reference model is what prevents the policy from collapsing during preference training. A "what it buys you" panel emphasizes: the SFT'd checkpoint you produce in this module is the stable anchor the DPO step cannot do without.](13-sft/Module13-Policy.png)
+*Why the deliverable checklist insists on saving the SFT'd checkpoint as a separate file (not overwriting the base). Module 14 will load this checkpoint twice — once as the trainable policy, once as the frozen reference — and the entire DPO loss depends on the reference being a faithful copy of the SFT-stage end state.*
+
+## How to run the tests
+
+Tests live in `tests/test_sft.py`. 
+
+```bash
+pytest tests/test_sft.py                       # all module-13 tests
+pytest tests/test_sft.py -x                    # stop at first failure
+pytest tests/test_sft.py -k chat_template      # template tests only
+pytest tests/test_sft.py -k pad_and_collate    # collator tests only
+pytest tests/test_sft.py -k masked_cross       # loss tests only
+pytest tests/test_sft.py -k trainer            # trainer tests only
+pytest tests/test_sft.py -v                    # verbose
+```
+
+The `SFTTrainer` end-to-end test pulls in your full Module 03 / 05 / 07 / 08 / 09 / 10 stack — if any of those scaffolds aren't filled in the trainer tests will fail at the prerequisite layer.
 
 ## Exercises
 
@@ -481,7 +424,6 @@ Total scaffolded code: roughly 50 lines across five locations. The math is light
      - Does it learn faster or slower?
      - Most importantly: at inference time, given the prompt `<|user|>\nWhat is 2+2?\n<|assistant|>\n`, does the model continue with the assistant's response, or does it sometimes "complete" the user's text first (i.e. emit more user-style tokens before an `<|assistant|>` marker)?
 
-   The expected pattern: the unmasked variant *also* learns the format — eventually, after enough steps — but its outputs are noticeably more user-shaped (tendency to add "and what is 3+3?" to its responses). Document one side-by-side comparison where this is visible. (This is the toy demonstration of why mask-loss-on-prompt is the wrong objective.)
 
 4. **Format-collapse exploration.** Use exercise 2's SFT'd model and feed it the prompt:
 
@@ -526,7 +468,7 @@ Total scaffolded code: roughly 50 lines across five locations. The math is light
 
 - **Loss mask off-by-one.** The most common bug. The mask is aligned with `y = ids[1:]`, not with `ids` directly. A mask aligned with `ids` (forgot to shift) trains the model to predict each *prompt* token from its prefix — which is the wrong objective and will silently produce a model that fluently continues user text.
 
-- **Marker drift between training and inference.** SFT trains the model on `<|user|>\nFoo\n<|assistant|>\nBar<|end|>`. If your inference-time prompt assembly uses `<|USER|>` (capital), or skips a newline, the model sees an unfamiliar prefix and reverts to base behavior. The `ChatTemplate.render` method is the *only* place the format should be defined; every caller must go through it. (Real systems define the template once in a JSON config and import it; we do the same with the class.)
+- **Marker drift between training and inference.** SFT trains the model on `<|user|>\nFoo\n<|assistant|>\nBar<|end|>`. If your inference-time prompt assembly uses `<|USER|>` , or skips a newline, the model sees an unfamiliar prefix and reverts to base behavior. The `ChatTemplate.render` method is the *only* place the format should be defined; every caller must go through it. (Real systems define the template once in a JSON config and import it; we do the same with the class.)
 
 - **Forgetting `<|end|>` in the loss mask.** If `<|end|>` is in the assistant content but the mask is `0` at its position, the model never learns to emit `<|end|>`. At inference, generation runs to `max_new_tokens` and produces a long, drifting response. The `loss_mask` must cover every assistant token *including* `<|end|>`.
 
@@ -548,8 +490,29 @@ Total scaffolded code: roughly 50 lines across five locations. The math is light
 
 - **Forgetting to set `model.eval()` semantics on inference, or `.train()` on training.** Our hand-rolled `Module` doesn't have `.eval()` / `.train()` modes — there's no Dropout or BatchNorm in the architecture, so it doesn't matter. (If you ever add Dropout, mode-toggle bugs become real.) For now: nothing to do, but the habit of separating "training" and "inference" code paths is worth preserving.
 
-- **Re-running the trainer without re-loading the checkpoint.** If you train, evaluate, then retrain in the same notebook session, the second training session starts from the *already-SFT'd* weights, not from the base. Always load fresh weights at the top of every training run unless you mean to chain.
+## M-series notes
 
+SFT is much less compute-hungry than the Module 12 scaling experiments — typically minutes, not hours.
+
+- **Total wall-clock estimates** at `max_steps=500`, on a Module-10-pretrained checkpoint:
+
+  ```
+     ┌────────┬────────────┬────────────┬────────────┐
+     │ size   │ M1/M2 8GB  │ M2 Pro 32GB│ M3 Max 64GB│
+     ├────────┼────────────┼────────────┼────────────┤
+     │  1M    │   ~2 min   │   ~1 min   │   <1 min   │
+     │  5M    │   ~5 min   │   ~3 min   │   ~2 min   │
+     │  20M   │  ~15 min   │   ~7 min   │   ~5 min   │
+     └────────┴────────────┴────────────┴────────────┘
+  ```
+
+  The 20M model's SFT comfortably fits in a coffee-break window. Run it on the largest checkpoint you have — quality scales with base-model size, and SFT is cheap enough that there's no reason to start small.
+
+- **Memory.** SFT memory cost is the same as Module 10 training at the same `(B, T)`. No new tensors of meaningful size. If you can train the model from scratch, you can SFT it.
+
+- **Evaluation cost.** Generation from a Module 10/12 checkpoint with `max_new_tokens=100` takes roughly 1–5 seconds per prompt on MPS, depending on size. Running 10 prompts × 2 models (base + SFT) is under a minute total. The deliverable comparison notebook is fast to iterate on.
+
+---
 ## Reading
 
 Primary:
@@ -583,36 +546,4 @@ Optional:
 - [ ] You can explain — out loud, without notes — why "data quality dominates data quantity" applies more strongly at toy scale than at production scale.
 - [ ] You can explain — out loud, without notes — why an SFT'd model that confidently invents factual answers is not a *training* failure — it's a *capability* limit, and SFT alone can't fix it.
 
-## M-series notes
 
-SFT is much less compute-hungry than the Module 12 scaling experiments — typically minutes, not hours.
-
-- **Per-step cost.** Each SFT step processes one batch of `(B, T)` tokens just like pretraining. With `batch_size=4` and `max_seq_len=128`, this is `4×128 = 512` tokens — about 1/8 the throughput of a Module 10 step. The wall clock per step is roughly the same, though, because the fixed overhead of forward + backward is what dominates at this scale.
-
-- **Total wall-clock estimates** at `max_steps=500`, on a Module-10-pretrained checkpoint:
-
-  ```
-     ┌────────┬────────────┬────────────┬────────────┐
-     │ size   │ M1/M2 8GB  │ M2 Pro 32GB│ M3 Max 64GB│
-     ├────────┼────────────┼────────────┼────────────┤
-     │  1M    │   ~2 min   │   ~1 min   │   <1 min   │
-     │  5M    │   ~5 min   │   ~3 min   │   ~2 min   │
-     │  20M   │  ~15 min   │   ~7 min   │   ~5 min   │
-     └────────┴────────────┴────────────┴────────────┘
-  ```
-
-  The 20M model's SFT comfortably fits in a coffee-break window. Run it on the largest checkpoint you have — quality scales with base-model size, and SFT is cheap enough that there's no reason to start small.
-
-- **Memory.** SFT memory cost is the same as Module 10 training at the same `(B, T)`. No new tensors of meaningful size. If you can train the model from scratch, you can SFT it.
-
-- **Device.** `SFTTrainer(..., device="auto")` mirrors Module 10: the model and collated batches move to MPS when available. Use `device="cpu"` for CPU-only debugging.
-
-- **Dataset size.** 50–500 hand-authored examples occupy KB to low MB on disk as JSON. The tokenized representation fits comfortably in memory; no disk-streaming or sharding considerations apply.
-
-- **Evaluation cost.** Generation from a Module 10/12 checkpoint with `max_new_tokens=100` takes roughly 1–5 seconds per prompt on MPS, depending on size. Running 10 prompts × 2 models (base + SFT) is under a minute total. The deliverable comparison notebook is fast to iterate on.
-
-- **Checkpoint sizes.** Same as Module 12: 1M ≈ 4MB, 5M ≈ 20MB, 20M ≈ 80MB. Storing both base and SFT'd versions of the 20M model is ~160MB — comfortable.
-
-- **Mixed precision.** Same caveats as Module 12 — stay in fp32 for SFT. The risk of fp16 NaN'ing in the attention softmax is real and not worth the modest speedup at our scale.
-
-- **Reproducibility.** Pass `torch.Generator().manual_seed(seed)` to the `SFTTrainer` constructor to make the example-shuffling reproducible. Without it, repeated runs can produce somewhat different SFT'd models because the order of training-batch construction varies.

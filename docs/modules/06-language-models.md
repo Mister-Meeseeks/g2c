@@ -4,30 +4,21 @@
 
 ![Four panels showing language modeling as next-token prediction: (1) raw text becomes a sequence of token IDs via BPE; (2) a sliding window over those IDs produces (context, target) training examples; (3) at each position the model emits a probability distribution over the vocabulary, scored by cross-entropy against the true next token; (4) at inference the same model is called autoregressively — predict, append, repeat — to generate text.](06-language-models/Module06-Hero.png)
 
-The training-time path (panels 1–3) and the inference-time path (panel 4) use the same model with the same forward pass — the only difference is whether the next token comes from the corpus (training) or from sampling the model's own output (generation). Internalizing that those are the same loop, run with different inputs, is the conceptual breakthrough this module is built around.
+The training-time path and the inference-time path use the same model with the same forward pass — the only difference is whether the next token comes from the corpus (training) or from sampling the model's own output (generation). Internalizing that they're the same loop is what this lesson is built around.
 
-## Prerequisites
+---
+## Before you start
 
-### Math
+* *Review* [[03-nn]] for neural models, [[05-embeddings]] and [[04-tokenizer]] for representing language
+* *Review* [[PyTorch Primer]] if any PyTorch code feels unfamiliar or confusing
+* *Finish* the `g2c/nn` package from [[03-nn]] and the `g2c/embeddings` package from [[05-embeddings]] — this module relies on both
 
-- **Conditional probability and the chain rule of probability.** Factorize conditional probability `P(x_1, x_2, ..., x_T) = ∏_t P(x_t | x_{<t})`.
-- **Cross-entropy.** `H(p, q) = -∑ p(x) log q(x)`. When `p` is a one-hot of the true next token, this collapses to `-log q(true_token)`
-- **Exponents** Perplexity is `exp(mean cross-entropy)`.
-- **Random sampling** 
-
-### Computer science
-
-- **Sliding windows over a sequence.** `get_batch` picks random length-`N` windows from a long token stream. The same idea recurs in every transformer trainer you'll ever write.
-
-### Programming
-
-- **You'll be reusing your earlier modules.** `g2c.embeddings.TokenEmbedding`, `g2c.nn.Linear`, `g2c.nn.CrossEntropyLoss`, `g2c.nn.SGD`. Module 06 is the first one that depends on most of what came before. If those are still scaffolded, fill them in first — the test suite for this module presupposes they work.
-
+---
 ## Where this fits in
 
-Modules 04 and 05 gave us the input pipeline — text becomes integer IDs becomes vectors. Module 03 gave us a way to train an MLP on labeled data. What we don't yet have is a way to train on TEXT.
+Modules 04 and 05 gave us the input pipeline — text becomes integer IDs becomes vectors. Module 03 gave us a way to train an MLP on labeled data. What we don't yet have is a way to train on text.
 
-The breakthrough — and it really is the conceptual breakthrough that makes LLMs work — is to recast "model the language" as "predict the next token." Given the text so far, what comes next? That's a classification problem with `vocab_size` classes. Every method we built in Module 03 (cross-entropy loss, SGD, Linear, ReLU) drops in directly. The only differences are:
+The breakthrough is to recast "model the language" as "predict the next token." Given the text so far, what comes next? That's a classification problem with `vocab_size` classes. Every method we built in Module 03 (cross-entropy loss, SGD, Linear, ReLU) drops in directly. The only differences are:
 
 1. **The label is just the next token in the corpus.** We don't need human-labeled data — we just slide a window forward, and the next token is the target. This is "self-supervision," and it's why LLMs can be trained on the entire internet.
 2. **Inference is autoregressive.** To generate text, we predict the next token, append it to the context, predict again, and so on. The generation process IS the prediction process, called repeatedly.
@@ -66,8 +57,7 @@ The only conceptual addition is what to do at inference time. There's no "true n
 That loop IS the inference path of every LLM you've ever talked to. Everything else — top-k sampling, beam search, temperature controls, RAG, tools — is decoration around this exact loop.
 
 ![Autoregressive generation: predict → append → repeat. A sequence of frames shows a model extending "the cat sat on" one token at a time, sampling from the next-token distribution and feeding each output back as part of the new context.](06-language-models/Module06-Loop.png)
-
-*The same loop drawn frame by frame. Each step asks the model for a next-token distribution given the current context, samples one token, appends it, and slides the context window forward. It's the same model used during training, just called repeatedly with its own outputs as input. The `sample()` helper in `train.py` is exactly this loop in code.*
+*Each step asks the model for a next-token distribution given the current context, samples one token, appends it, and slides the context window forward. It's the same model used during training, just called repeatedly with its own outputs as input.*
 
 ### The language model ladder
 
@@ -82,8 +72,7 @@ This module's deliverable is three language models, increasing in sophistication
 ```
 
 ![The language-model ladder: three architectures (CountsBigramLM, NeuralBigramLM, MLPLanguageModel) all estimating P(next | context), with their internals, parameter counts, and tradeoffs laid out side by side.](06-language-models/Module06-Ladder.png)
-
-*Same input (context tokens), same output (a probability distribution over the vocabulary), three increasingly expressive ways to compute it. Each row previews exactly what you'll implement: a counts table, an embedding-then-projection neural bigram, and a Bengio-style concat-MLP. Comparing all three on the same corpus is exercise 5 — and the visual companion to that comparison is the perplexity plot near the end of this page.*
+*Same input (context tokens), same output (a probability distribution over the vocabulary), three increasingly expressive ways to compute it.*
 
 ### Counts vs. neural: same model, two implementations
 
@@ -164,8 +153,7 @@ Two reasons to use perplexity over raw cross-entropy:
 When you train a neural LM, you watch `train loss` (training cross-entropy) go down step-by-step and `val perplexity` (held-out perplexity) go down checkpoint-by-checkpoint. They tell the same story in different units.
 
 ![Validation perplexity vs. training step (log-log) for the three models: a uniform-over-vocab baseline at the top, the counts bigram and neural bigram converging together at a higher floor, and the MLP language model dropping below them as it learns to use multi-token context.](06-language-models/Module06-Perplexity.png)
-
-*The kind of plot exercise 7 has you produce. The uniform baseline at perplexity = vocab_size is where any untrained model starts. The counts bigram and neural bigram converge to roughly the same floor (same model, two parameterizations). The MLP, with N-token context, drops past that floor — that gap is exactly what extra context buys you, and it's the visual punchline of the whole module.*
+*The uniform baseline at perplexity = vocab_size is where any untrained model starts. The counts bigram and neural bigram converge to roughly the same floor (same model, two parameterizations). The MLP, with N-token context, drops past that floor — that gap is exactly what extra context buys you.*
 
 ## Concepts to internalize
 
@@ -174,7 +162,6 @@ When you train a neural LM, you watch `train loss` (training cross-entropy) go d
 - **Counts and neural bigrams represent the same distribution.** The choice is parameterization, not capacity. Neural is preferred not because it fits better on small vocab, but because it scales — to more context, to deeper stacks, to shared parameters across similar tokens.
 - **Concatenation preserves position.** Inside the MLP language model, flattening the context-window embeddings is what tells the model whether token `a` came before or after token `b`. Sum or average would lose this.
 - **Perplexity is `exp(cross-entropy)`.** Same number, different units. Perplexity is the more interpretable one: it's the effective branching factor at each step.
-- **All three models share the same evaluation interface.** Each exposes `.context_length` and `.logits(ctx) → (batch, vocab_size)`. That's why `perplexity()` and `sample()` work on all of them with no model-specific code paths — and why the transformer (Module 09) will drop in too.
 
 ---
 ## What you'll build
@@ -187,7 +174,6 @@ class CountsBigramLM:
     smoothing: float                   # add-one Laplace smoothing
     context_length: int = 1
 
-    def __init__(self, vocab_size, smoothing=1.0): ...     # implemented
     def fit(self, ids: torch.Tensor) -> None: ...
     def logits(self, ctx_ids) -> torch.Tensor: ...
 
@@ -196,7 +182,6 @@ class NeuralBigramLM(Module):
     proj: Linear                       # (D, V)
     context_length: int = 1
 
-    def __init__(self, vocab_size, embedding_dim): ...     # implemented
     def forward(self, ctx_ids) -> torch.Tensor: ...
 
 class MLPLanguageModel(Module):
@@ -205,7 +190,6 @@ class MLPLanguageModel(Module):
     output: Linear                     # (H, V)
     context_length: int                # = N
 
-    def __init__(self, vocab_size, context_length, embedding_dim, hidden_dim): ...
     def forward(self, ctx_ids) -> torch.Tensor: ...
 
 # Helpers in train.py — model-agnostic, use only `.context_length` and `.logits()`
@@ -215,30 +199,8 @@ def sample(model, prompt_ids, num_tokens, *, temperature=1.0, device="auto") -> 
 def train_lm(model, train_ids, *, val_ids=None, device="auto", ...) -> dict: ...
 ```
 
-A typical training-and-evaluation flow looks like this (will land in your notebook):
+Roughly 50 lines of code split between each implementation. They all share the same interface and can be generally substituted for each other in the exercises.
 
-```python
-# Counts baseline — no SGD.
-counts = CountsBigramLM(vocab_size=V)
-counts.fit(train_ids)
-print("counts perplexity:", perplexity(counts, val_ids))
-
-# Neural bigram — trained with SGD.
-neural = NeuralBigramLM(vocab_size=V, embedding_dim=64)
-train_lm(neural, train_ids, val_ids=val_ids, num_steps=2000, device="auto")
-print("neural bigram perplexity:", perplexity(neural, val_ids))
-
-# Bengio-style MLP — more context.
-mlp = MLPLanguageModel(vocab_size=V, context_length=3, embedding_dim=64, hidden_dim=128)
-train_lm(mlp, train_ids, val_ids=val_ids, num_steps=2000, device="auto")
-print("MLP perplexity:", perplexity(mlp, val_ids))
-
-# Generate from each.
-for name, m in [("counts", counts), ("neural", neural), ("mlp", mlp)]:
-    out = sample(m, prompt_ids=val_ids[:m.context_length], num_tokens=200)
-    print(f"\n--- {name} ---")
-    print(tokenizer.decode(out.tolist()))
-```
 ## How to run the tests
 
 Tests live in `tests/test_lm.py`. Initial state: 13 passed, 35 failed.
@@ -253,17 +215,7 @@ pytest tests/test_lm.py -k mlp      # only the MLP tests
 pytest tests/test_lm.py -v          # verbose
 ```
 
-## Scaffolding and how to run the tests
-
-Tests live in `tests/test_lm.py`. Initial state: 13 passed, 35 failed.
-
-```bash
-.venv/bin/python -m pytest tests/test_lm.py             # run all module-06 tests
-.venv/bin/python -m pytest tests/test_lm.py -x          # stop at first failure (recommended)
-.venv/bin/python -m pytest tests/test_lm.py -k counts   # only the counts-model tests
-.venv/bin/python -m pytest tests/test_lm.py -k mlp      # only the MLP tests
-.venv/bin/python -m pytest tests/test_lm.py -v          # verbose
-```
+## Exercises
 
 Open the working notebook copy with:
 
@@ -271,11 +223,7 @@ Open the working notebook copy with:
 .venv/bin/python scripts/open_notebook.py 06
 ```
 
-The clean scaffold lives at `notebooks/clean/06-language-models.ipynb`; do your work in the generated `notebooks/solutions/06-language-models.ipynb` copy.
-
-## Exercises
-
-The implementation path is the test suite above. The notebook starts with an executable test gate, then uses the implemented pieces for prediction, inspection, generation, and comparison.
+The notebook starts with an executable test gate, then uses the implemented pieces for prediction, inspection, generation, and comparison.
 
 1. **Context windows and targets.** Turn one token stream into supervised `(context, target)` examples. Predict the windows by hand for a tiny sequence, then inspect what `get_batch` returns.
 
@@ -294,14 +242,30 @@ The implementation path is the test suite above. The notebook starts with an exe
 ## Pitfalls to expect
 
 - **`fit` not accumulating.** Calling `fit` twice should add to the existing table, not replace it. Reset the counts in `__init__`, not in `fit`.
+
 - **Smoothing zero by accident.** Without smoothing (or with `smoothing=0`), any unseen bigram pair has probability zero, which makes `log(0) = -inf`, which propagates through perplexity as `inf`. The default `smoothing=1.0` fixes this; if a user explicitly sets `smoothing=0`, expect `-inf` in log-probs and accept it.
+
 - **Forgetting to squeeze a `(batch, 1)` context.** `NeuralBigramLM.forward` receives `(batch, 1)` inputs from `get_batch` (because `context_length=1` produces a length-1 context window). Without a squeeze, `embed` returns `(batch, 1, D)` and the projected logits are `(batch, 1, V)`, breaking every downstream shape assumption.
-- **MLP using sum/mean instead of concat.** The MLP's flatten step is `e.view(B, -1)`, which preserves order. `e.mean(dim=1)` would silently collapse `[a, b]` and `[b, a]` to the same vector. The `test_mlp_forward_position_sensitive` test exists to catch exactly this.
+
+- **MLP using sum/mean instead of concat.** The MLP's flatten step is `e.view(B, -1)`, which preserves order. `e.mean(dim=1)` would silently collapse `[a, b]` and `[b, a]` to the same vector. 
+
 - **`train_lm` not zeroing grads.** Standard PyTorch trap. Without `optimizer.zero_grad()` between steps, gradients accumulate across iterations and SGD walks in roughly random directions. The training-loss curve will look haywire.
+
 - **Sampling without `torch.no_grad()`.** Not a correctness bug — but every sampling step builds an autograd graph that's never used, wasting memory and time. Wrap the `sample` loop body in `with torch.no_grad():` for free speedup. Same goes for the inner loop of `perplexity`.
+
 - **Perplexity blowing up on a tiny held-out set.** If `val_ids` is shorter than `context_length`, perplexity is undefined (no windows to score). The test for this throws `ValueError` from `get_batch`; for `perplexity` itself, guarantee `len(val_ids) > context_length` in the calling code.
+
 - **Comparing perplexities across vocab sizes.** A bigger vocab makes every individual prediction harder; perplexities aren't directly comparable across tokenizers. For exercise 5, train all three models on the *same* tokenized stream so the comparison is fair.
 
+## M-series notes
+
+This module is light on compute.
+
+- The counts table for `vocab_size = 1024` is 4MB. At `vocab_size = 8192` it's 256MB. Fine on a 16GB machine, but getting heavy. This is a glimpse of why counts models don't scale.
+- The neural bigram and MLP at the sizes used in exercise 5 have well under 1M parameters. CPU is fine, but MPS starts to pay off when you push steps, hidden size, or vocab size upward.
+- `train_lm(..., device="auto")` moves trainable neural models and sampled minibatches to MPS when available. CountsBigramLM stays CPU-side because it is a plain counts table.
+
+---
 ## Reading
 
 Primary:
@@ -320,12 +284,3 @@ Secondary:
 - [ ] `notebooks/solutions/06-language-models.ipynb`: counts, neural bigram, MLP all trained and evaluated on the same token stream; perplexity comparison table; sampled text from each.
 - [ ] `notebooks/solutions/06-language-models.ipynb`: training-loss and validation-perplexity plots for the neural bigram and the MLP.
 - [ ] You can explain — out loud, without notes — why a counts model can represent the same distribution as a neural bigram, but does not scale to context length 3 the way the MLP does.
-
-## M-series notes
-
-This module is light on compute.
-
-- The counts table for `vocab_size = 1024` is 4MB (int64, `1024 × 1024`). At `vocab_size = 8192` it's 256MB — fine on a 16GB machine, getting heavy. This is a glimpse of why counts models don't scale.
-- The neural bigram and MLP at the sizes used in exercise 5 (`embedding_dim=64`, `hidden_dim=128`, `vocab_size=1024`) have well under 1M parameters — CPU is fine, but MPS starts to pay off when you push steps, hidden size, or vocab size upward.
-- `train_lm(..., device="auto")` moves trainable neural models and sampled minibatches to MPS when available. CountsBigramLM stays CPU-side because it is a plain counts table.
-- Sampling returns CPU token IDs for easy decoding, while neural model forwards can still run on MPS.
