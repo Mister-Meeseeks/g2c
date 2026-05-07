@@ -155,7 +155,8 @@ The order is stable; not every module needs every section. Skip what doesn't app
   - or a short imperative ("Set up your editor for Python")
 - **Where this fits in.** Conversational framing of how this module connects to the rest of the course — what came before, what builds on it. Not a formal "why we start here" justification.
 - **What you'll build.** The orientation a student needs to start the work: what package, the public API surface, and an end-to-end usage sketch. It is not a maintainer-level walkthrough of every scaffolded file. The focus is the student doing the pedagogical parts of the module, not maintaining the scaffold.
-- **How to run the tests.** Just the `pytest` commands (with the initial pass/fail count for context). Skip the suggested implementation-order list unless the module genuinely benefits from one.
+- **How to run the tests.** Open the block with `source .venv/bin/activate`, then list the relevant `pytest` commands (the bare `pytest` form, not `python -m pytest`), including the initial pass/fail count. Skip the implementation-order checklist unless the scaffolds have non-obvious dependencies that genuinely guide the student.
+- **What we don't cover.** Optional H3 at the very end of `## Concepts to internalize` — the closing item of the lecture-notes block, immediately before the lecture→homework divider. List out-of-scope topics with a brief rationale each. Use present tense (it's a scope declaration about the module, not a retrospective on the lesson the reader just finished).
 - **M-series notes.** Sits between `Pitfalls to expect` and the closing-notes divider — last thing in the Homework block, immediately before `Reading`.
 
 ### Image assets and captions

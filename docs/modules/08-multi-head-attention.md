@@ -132,7 +132,7 @@ You won't see these in your tiny model from Module 10 with high fidelity — you
 - **Heads specialize empirically.** Different heads learn different attention patterns — the structural reason multi-head outperforms single-head with the same parameter budget.
 - **Total parameter count is independent of `H`.** Splitting D into 8 heads instead of 1 doesn't change the parameter count one bit; it changes only the structure of the computation.
 
-### What we didn't cover
+### What we don't cover
 
 - Multi-query / grouped-query attention (one K/V head shared across many Q heads — the optimization that makes long-context inference cheap). Out of scope.
 - FlashAttention's IO-aware tiling. The math is the same; only the memory access pattern changes.

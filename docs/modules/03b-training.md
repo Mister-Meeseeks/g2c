@@ -199,7 +199,7 @@ We are not implementing dropout in this course path because it is not the bottle
 - **Curves are diagnostics.** Train/validation loss curves are how you decide what to change next.
 - **Regularization targets generalization.** Dropout is one regularizer, but this course leans on weight decay, data, and validation curves for the tiny LLM path.
 
-### What we didn't cover
+### What we don't cover
 
 - Formal convergence proofs. Mathematically interesting, but not needed to train models in the wild.
 - The optimizer zoo. SGD and AdamW are more than sufficient for our goals 

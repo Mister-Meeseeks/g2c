@@ -198,7 +198,7 @@ The other Schaeffer-style observation, applicable at every scale:
 - **At toy scale, expect the wrong slope.** Published scaling exponents (Kaplan: ≈ 0.076; Chinchilla: ≈ 0.336 for fixed-FLOP) come from fits over orders of magnitude in parameters using AdamW. Your three SGD-trained TinyShakespeare points won't match these numbers. The *direction* (down and to the right) will match.
 - **The qualitative gap between samples is the lesson.** Read the 1M, 5M, and 20M continuations of the same prompt out loud. The structural difference is what you're here to see; the perplexity plot is just the quantitative summary.
 
-### What we didn't cover
+### What we don't cover
 
 - **Mixed precision (fp16, bf16) on MPS.** Introduces silent op-fallback edges and changes loss curves enough to confuse a scaling experiment. Stay in fp32 for this module. Module 16 returns to inference-time precision.
 

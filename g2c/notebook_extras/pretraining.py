@@ -46,7 +46,31 @@ def _humanize_count(n: int) -> str:
     return f"{n:,}"
 
 
-def format_training_start(name: str, *, max_steps: int, tokens_per_step: int) -> Markdown:
+def format_training_start(
+    name: str,
+    *,
+    max_steps: int,
+    tokens_per_step: int,
+    resume_step: int | None = None,
+    last_train_loss: float | None = None,
+    last_val_loss: float | None = None,
+) -> Markdown:
+    if resume_step is not None:
+        completed = min(max_steps, max(resume_step, 0))
+        filled = min(_BAR_WIDTH, round(_BAR_WIDTH * completed / max_steps)) if max_steps else 0
+        bar = "#" * filled + "-" * (_BAR_WIDTH - filled)
+        prior_bits = []
+        if last_train_loss is not None:
+            prior_bits.append(f"train loss `{last_train_loss:.3f}`")
+        if last_val_loss is not None:
+            prior_bits.append(f"val loss `{last_val_loss:.3f}`")
+        prior = f" ({', '.join(prior_bits)})" if prior_bits else ""
+        return Markdown(
+            f"{name}: `[{bar}]` `{completed:,}/{max_steps:,}` | "
+            f"resuming from checkpoint at step `{resume_step:,}`{prior}; "
+            "running first post-resume step | "
+            f"tokens/step `{tokens_per_step:,}`"
+        )
     bar = "-" * _BAR_WIDTH
     return Markdown(
         f"{name}: `[{bar}]` `0/{max_steps:,}` | "
@@ -152,6 +176,13 @@ def plot_training_history(history: dict, *, baseline_loss: float | None = None) 
     fig.tight_layout()
     plt.show()
 
+    if history.get("train_loss"):
+        print(f"final train loss:     {history['train_loss'][-1]:.4f}")
+    if history.get("val_loss"):
+        final_val = history["val_loss"][-1]
+        print(f"final val loss:       {final_val:.4f}")
+        print(f"final val perplexity: {math.exp(final_val):.2f}")
+
 
 def train_with_progress(
     name: str,
@@ -178,8 +209,9 @@ def train_with_progress(
     "tokenizer_artifact": ...}``) so ``load_run_state`` can reconstruct the
     model standalone after a kernel restart.
 
-    Returns the training history dict. Prints param count, device, resume/fresh
-    state, and final train/val/perplexity numbers.
+    Returns the training history dict. Prints param count, device, and
+    resume/fresh state. Final train/val/perplexity numbers are reported by
+    ``plot_training_history`` so they survive a kernel restart + plot rerun.
     """
     trainer = Trainer(
         model,
@@ -189,7 +221,8 @@ def train_with_progress(
 
     history: dict | None = None
     ckpt_path = Path(checkpoint_path) if checkpoint_path is not None else None
-    if ckpt_path is not None and ckpt_path.exists():
+    did_resume = ckpt_path is not None and ckpt_path.exists()
+    if did_resume:
         loaded = trainer.load_checkpoint(ckpt_path)
         history = loaded.get("history")
         print(f"{name}: resuming from step {trainer.step:,}/{trainer.max_steps:,}")
@@ -199,13 +232,33 @@ def train_with_progress(
     print(f"{name} params: {sum(p.numel() for p in model.parameters()):,}")
     print("training device:", trainer.device)
 
+    last_val_loss: float | None = None
+    last_train_loss: float | None = None
+    if history is not None:
+        if history.get("val_loss"):
+            last_val_loss = float(history["val_loss"][-1])
+        if history.get("train_loss"):
+            last_train_loss = float(history["train_loss"][-1])
+
     tokens_per_step = trainer.batch_size * trainer.context_length
     progress = display(
-        format_training_start(name, max_steps=trainer.max_steps, tokens_per_step=tokens_per_step),
+        format_training_start(
+            name,
+            max_steps=trainer.max_steps,
+            tokens_per_step=tokens_per_step,
+            resume_step=trainer.step if did_resume else None,
+            last_train_loss=last_train_loss,
+            last_val_loss=last_val_loss,
+        ),
         display_id=True,
     )
 
     def on_log(metrics: dict) -> None:
+        nonlocal last_val_loss
+        if metrics.get("val_loss") is not None:
+            last_val_loss = float(metrics["val_loss"])
+        else:
+            metrics = {**metrics, "val_loss": last_val_loss}
         message = format_training_progress(
             metrics, max_steps=trainer.max_steps, tokens_per_step=tokens_per_step,
         )
@@ -221,7 +274,4 @@ def train_with_progress(
         checkpoint_every=checkpoint_every if ckpt_path is not None else None,
         checkpoint_extra=checkpoint_extra,
     )
-    print("final train loss:", history["train_loss"][-1])
-    print("final val loss:", history["val_loss"][-1])
-    print("final val perplexity:", math.exp(history["val_loss"][-1]))
     return history

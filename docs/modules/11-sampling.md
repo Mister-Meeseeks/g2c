@@ -277,7 +277,7 @@ The exercises sweep these knobs against your trained TinyShakespeare model so yo
 - **The decode loop is `O(max_new_tokens × T_ctx²)` without KV cache.** Every step recomputes attention over the entire running context. The cost grows quadratically with context length. KV caching cuts this to linear, but that's a Module 16 concern.
 - **The diversity-quality tradeoff has no free lunch.** Lower temperature → more confident → more repetitive. Higher temperature → more creative → more derailed. Pick a setting per task and don't expect one knob to fit everything.
 
-### What we didn't cover
+### What we don't cover
 
 - **Beam search.** A breadth-first decode that keeps the top-`k` candidate sequences at every step. Important historically (machine translation), nearly absent from modern LLMs because the diversity-vs-quality tradeoff that beam search optimizes badly maps onto open-ended generation. Skim the Wikipedia entry once; we don't implement it.
 - **Typical sampling, mirostat, η-sampling.** Variants on top-p with somewhat different cutoff rules. Marginal real-world differences; not worth implementing four versions of "rank tokens, draw a cutoff, sample."
