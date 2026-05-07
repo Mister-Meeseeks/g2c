@@ -21,6 +21,8 @@ from typing import Self
 
 ProgressCallback = Callable[[dict[str, object]], None]
 
+"""Course-specific special tokens that later modules use for chat/document boundaries
+"""
 COURSE_SPECIAL_TOKENS: tuple[str, ...] = (
     "<|endoftext|>",
     "<|system|>",
