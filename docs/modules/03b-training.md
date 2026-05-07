@@ -22,7 +22,7 @@ Module 03 taught the basic loop:
 forward -> loss -> backward -> optimizer.step()
 ```
 
-That loop is correct, but it does not tell you how to choose the knobs. A too-small learning rate makes a correct model crawl. A too-large learning rate can destroy a run. SGD uses one global step size for every parameter, which is often enough for small MLPs but often stalls on transformers. Deep models also occasionally produce gradient spikes; clipping prevents one bad batch from wrecking the run. Long runs usually need a learning-rate schedule so early steps can move fast and late steps can settle.
+That loop is correct, but it does not tell you how to choose the knobs. A too-small learning rate makes a correct model crawl. A too-large learning rate can destroy a run. Vanilla SGD uses one global step size for every parameter, which often stalls on large models. Deep models occasionally produce gradient spikes; which can wreck an entire the run. Long runs usually need a learning-rate schedule so early steps can move fast and late steps can settle.
 
 The point of this module is not to turn training into a cookbook. The point is to give you a small diagnostic language:
 
@@ -44,7 +44,7 @@ The learning rate is not "how much the model learns." It is the scale of the par
 update size ~= learning_rate * gradient scale
 ```
 
-That means the same `lr` can be too small for one parameter and too large for another. A token embedding row that appears rarely may receive tiny gradients. An output-head column for a common token may receive large gradients. LayerNorm scale parameters, attention projections, and feed-forward weights all live on different gradient scales.
+That means the same `lr` can be too small for one parameter and too large for another. A neuron that's rarely activated may receive tiny gradients. A load bearing hidden unit may receive huge gradients. In models with complex architecture, different parts of the architecture live on different gradient scales.
 
 SGD uses one global `lr`:
 
@@ -78,9 +78,9 @@ The learning rate is the knob that turns gradient direction into parameter motio
 update = -lr * grad
 ```
 
-If `lr` is too small, the loss may be moving in the right direction but too slowly for your compute budget. If `lr` is too large, the update jumps past useful regions of parameter space and loss can spike or become `nan`. Most "what learning rate should I use?" questions are really asking: *what update scale is reasonable for this model, optimizer, batch size, and data?*
+If `lr` is too small, the loss may be moving in the right direction but too slowly for your compute budget. If `lr` is too large, the update jumps past useful regions of parameter space and loss can spike. "What learning rate should I use?" is really: *what update scale is reasonable for this model, optimizer, batch size, and data?*
 
-There is no universal answer, so the practical move is a small sweep. Try a few values spaced by powers of 3 or 10, plot the curves, and keep the largest learning rate that trains smoothly. That habit matters more than memorizing one magic constant.
+There is no universal answer, so the practical move is a small sweep. Try a few values spaced by powers of 3 to 10, plot the curves, and keep the largest learning rate that trains smoothly. That habit matters more than memorizing one magic constant.
 
 ### AdamW's Effective Step Size
 
@@ -106,7 +106,7 @@ That direct shrink is the "W" in AdamW. Do not fold it into the gradient update.
 ### Norms And Scale
 
 ![Three-panel diagram. Panel 1 defines the L2 norm of a vector with a worked example. Panel 2 builds the global gradient norm by flattening every parameter gradient into one long vector and taking its L2 norm. Panel 3 shows before/after gradient clipping: when the global norm exceeds the threshold, every gradient is rescaled by the same factor, so direction is preserved and step size is capped. Side panels show example loss-spike traces and what to monitor during training.](03b-training/Module03b-Norms.png)
-*The image ties the next two subsections together: a norm is just a measurement (panels 1–2), and clipping is the response when that measurement is too large (panel 3). Clipping multiplies every gradient by one shared scalar — direction is preserved, only the step length is shortened.*
+*A norm is just a measurement (panels 1–2), and clipping is the response when that measurement is too large (panel 3). Clipping multiplies every gradient by one shared scalar — direction is preserved, only the step length is shortened.*
 
 A norm is a way to turn a vector into one number that says "how large is this?" The norm we use most is the L2 norm:
 
@@ -119,8 +119,6 @@ For a parameter tensor, the L2 norm measures the scale of its values. For a grad
 ```text
 global_grad_norm = sqrt(sum(||p.grad||₂² for every parameter p))
 ```
-
-This is not LayerNorm. A norm is a measurement. Normalizing is changing a vector's scale. LayerNorm is a learned architecture layer that normalizes activations inside the transformer block, and Module 09 will cover it there. Here we only need norms because training can occasionally produce a gradient vector whose scale is much too large.
 
 ### Gradient Clipping
 
@@ -177,32 +175,29 @@ Curve reading is the bridge from "I know the mechanics" to "I can debug a traini
 
 ### Regularization And Dropout
 
-Optimization asks whether the model can lower the training loss. Regularization asks whether the model is learning something that transfers beyond the exact examples it saw. The classic warning sign is a widening train/validation gap: train loss keeps improving while validation loss stalls or gets worse.
+Optimization asks whether the model can lower the training loss. Regularization asks whether the model is learning something that generalizes beyond the exact examples it saw. The classic warning sign is a widening train/validation gap: train loss keeps improving while validation loss stalls or gets worse.
 
-Regularization is a family of responses to that pattern. Weight decay gently prefers smaller weights. More data gives the model fewer chances to memorize quirks. Early stopping keeps the checkpoint from the best validation point instead of the final training step. Data cleaning and deduplication prevent the model from seeing the same examples so often that memorization becomes the easy path.
+Regularization is a family of responses to mitigate that pattern. Dropout is a type of regularizer. During training, it randomly zeros some activations, forcing the network not to rely too heavily on any one feature path. At evaluation time, dropout is disabled so predictions are deterministic. 
 
-Dropout is another regularizer. During training, it randomly zeros some activations, forcing the network not to rely too heavily on any one feature path. At evaluation time, dropout is disabled so predictions are deterministic. Correct dropout also has scaling details so the expected activation size stays comparable between train and eval.
-
-We are not implementing dropout in this course path because it is not the bottleneck for the tiny GPT stack. It adds a useful but separate concept cluster: stochastic forward passes, train/eval mode, RNG control, and activation scaling. For GPT-style decoder-only pretraining today, dropout is often small or zero, while AdamW, learning-rate schedules, clipping, data quality, and validation monitoring are more central. So dropout is worth knowing by name, but not worth spending a build week on here.
+We are not implementing dropout in this course path because it is not the bottleneck for the TinyLLM stack. It adds a useful but separate concept cluster: stochastic forward passes, train/eval mode, RNG control, and activation scaling. For LLM pretraining, dropout is often small or zero. Worth knowing by name, but not worth spending a build week on here.
 
 ## Concepts To Internalize
 
 - **Learning rate controls update scale.** If loss explodes, lower it. If loss crawls and gradients are finite, raise it.
 - **SGD has one global scale.** Every parameter sees the same nominal `lr`.
-- **Momentum smooths direction.** AdamW's `m` is a moving average of gradients.
-- **Second moment scales the step.** AdamW's `v` tracks squared gradients; large historical gradients shrink the effective step.
-- **Bias correction matters early.** At step 1, `m` and `v` are biased toward zero. Dividing by `1 - beta^step` fixes that.
+- **AdamW momentum smooths direction.** AdamW's `m` is a moving average of gradients.
+- **AdamW second moment scales the step.** AdamW's `v` tracks squared gradients; large historical gradients shrink the effective step.
+- **AdamW bias correction matters early.** At step 1, `m` and `v` are biased toward zero. Dividing by `1 - beta^step` fixes that.
 - **AdamW weight decay is decoupled.** Shrink the parameter directly. Do not add `weight_decay * param` to the gradient as SGD does.
 - **A norm measures vector scale.** The global gradient norm is one number for the size of the whole model's proposed gradient update.
 - **Gradient clipping is a guardrail.** It rescales a too-large global gradient vector; it does not replace a reasonable learning rate.
 - **Schedules are part of the run.** Warmup avoids blasting random-initialized weights; cosine decay lowers the step size as the run settles.
 - **Curves are diagnostics.** Train/validation loss curves are how you decide what to change next.
-- **Regularization targets generalization.** Dropout is one regularizer, but this course leans on weight decay, data, and validation curves for the tiny LLM path.
 
 ### What we don't cover
 
-- Formal convergence proofs. Mathematically interesting, but not needed to train models in the wild.
-- The optimizer zoo. SGD and AdamW are more than sufficient for our goals 
+- Formal convergence proofs. Mathematically interesting, practically unnecessary. 
+- The optimizer zoo. AdamW is more than sufficient for our goals 
 - BatchNorm and advanced regularization. They matter in deep learning generally, but not for this LLM stack.
 - Dropout was introduced conceptually, but you will not implement it in this module.
 

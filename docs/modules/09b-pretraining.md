@@ -2,7 +2,7 @@
 
 > **Question this module answers:** *How do we learn from text?*
 
-![Multi-position targets in three steps: sample a (B, T) window from the token stream with the target window shifted left by one; run one TransformerLM forward pass to produce (B, T, V) logits; compute per-position cross-entropy at every (b, t) pair and average across all B * T positions.](09b-pretraining/Module09B-Hero.png)
+![Multi-position targets in three steps: sample a (B, T) window from the token stream with the target window shifted left by one; run one TransformerLM forward pass to produce (B, T, V) logits; compute per-position cross-entropy at every (b, t) pair and average across all B * T positions.](09b-pretraining/Module09b-Hero.png)
 
 Last week we built the transformer; a language model composed of stacked attention and neural networks. In terms of language model architecture, the transformer is the "final form". Every single major LLM in use today is built on top of the transformer. It will be the model we use for the remainder of the course.
 
@@ -83,7 +83,7 @@ y[b, t] is the token immediately after x[b, t] in the corpus.
 ```
 
 ![One sampled (B, T) window expands into B*T (input, target) classification pairs — each position in x is paired with the next token in the corpus, all in parallel under the causal mask.](09b-pretraining/Module09B-MultiPosition.png)
-*The mechanics behind how one stream sample produces many data points for training.*
+*One contiguous stream sample becomes many supervised examples: every position predicts the token immediately after it. The causal mask is what makes this parallel training legal, because each position can use only its past and present inputs.*
 
 ### The loss flattens positions
 

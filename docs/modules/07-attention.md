@@ -94,7 +94,7 @@ The fix is to set `scores[t, s] = -inf` for all `s > t` BEFORE the softmax. Afte
   Above-diagonal is True — no peeking at the future.
 ```
 
-![The causal mask shown three ways for T=6: as a True/False checkmark grid (True positions are allowed to attend), as the same grid applied to the (T, T) score matrix (above-diagonal scores set to −∞), and as the post-softmax weight matrix where above-diagonal weights are exactly 0. A side panel pins the conceptual point: token at position t can only attend to positions 0..t.](07-attention/Module07-Causal.png)
+![The causal mask shown three ways for T=6: as a True/False checkmark grid where True means blocked, as the same grid applied to the (T, T) score matrix with above-diagonal scores set to −∞, and as the post-softmax weight matrix where above-diagonal weights are exactly 0. A side panel pins the conceptual point: token at position t can only attend to positions 0..t.](07-attention/Module07-Causal.png)
 *The mask is applied BEFORE the softmax so the −∞ scores become exact zeros after exponentiation, not merely small numbers. Setting the post-softmax weights to zero directly would be wrong — the remaining weights wouldn't sum to 1.*
 
 The convention "True means blocked" matches `masked_fill(mask, value)`, which fills wherever the mask is True. The `causal_mask` static method on `SelfAttention` is implemented for you because it's bookkeeping, not the lesson.
