@@ -101,39 +101,69 @@ The principle: a student should be able to type `pytest -x`, read the failing te
 
 ### Lesson page structure
 
-Use this section ordering as the canonical template (established in Modules 01 and 02):
+Every lesson page is divided into five top-level sections, separated by `---` horizontal rules. The five sections, in order:
 
-```
+1. **Intro** — title, question pull-quote, hero image, and a short non-italic orientation paragraph.
+2. **Before you start** — a small bulleted list of prerequisites the student should resolve before opening the notebook.
+3. **Lecture notes** — `Where this fits in`, `The big idea`, `Concepts to internalize`.
+4. **Homework** — `What you'll build`, `How to run the tests`, `Exercises`, `Pitfalls to expect`, `M-series notes`. (Pitfalls and M-series notes belong here because they are about doing the assignment, not about background.)
+5. **Closing notes** — `Reading`, `Deliverable checklist`.
+
+The full template, with the four divider positions:
+
+```markdown
 # Module NN — <topic>
-> Question this module answers
-[hero image + italic caption]
+> **Question this module answers:** *<one-line question>*
 
-## Prerequisites
-  ### Math
-  ### Computer science
-  ### Programming
-  ### What you can skip
+![<one-sentence alt text>](<NN-name>/Module<NN>-Hero.png)
+<short non-italic orientation paragraph; functions as the hero caption.>
 
-## Why we start here
+---
+## Before you start
+
+* *Review* [[<previous module or primer>]] for <what>
+* *Finish* <prior g2c deliverable or artifact> if not already done
+* *Run* `<setup or dataset script>`
+* <short setup directive — e.g. "Set up your editor for Python">
+
+---
+## Where this fits in
 ## The big idea
 ## Concepts to internalize
-## Scaffolding and how to run the tests
+
+---
 ## What you'll build
+## How to run the tests
 ## Exercises
 ## Pitfalls to expect
+## M-series notes
+
+---
 ## Reading
 ## Deliverable checklist
-## M-series notes
 ```
 
-The order is stable; not every module needs every section. Skip what doesn't apply (e.g., M-series notes for a pure-CPU module). When skipping, drop the section heading entirely rather than leaving it empty.
+The order is stable; not every module needs every section. Skip what doesn't apply (e.g., M-series notes for a pure-CPU module). When skipping, drop the heading entirely rather than leaving it empty. Modules 01–03 are the reference implementations.
+
+**Section conventions:**
+
+- **Before you start.** Keep it short. Don't enumerate every dependency — only the actions the student should take before opening the notebook. Use a small vocabulary of bullet leads:
+  - `*Review*` — a previous module, primer, or short concept page
+  - `*Finish*` — a prior `g2c` deliverable or saved artifact this module needs
+  - `*Run*` — a setup or data-prep script
+  - or a short imperative ("Set up your editor for Python")
+- **Where this fits in.** Conversational framing of how this module connects to the rest of the course — what came before, what builds on it. Not a formal "why we start here" justification.
+- **What you'll build.** The orientation a student needs to start the work: what package, the public API surface, and an end-to-end usage sketch. It is not a maintainer-level walkthrough of every scaffolded file. The focus is the student doing the pedagogical parts of the module, not maintaining the scaffold.
+- **How to run the tests.** Just the `pytest` commands (with the initial pass/fail count for context). Skip the suggested implementation-order list unless the module genuinely benefits from one.
+- **M-series notes.** Sits between `Pitfalls to expect` and the closing-notes divider — last thing in the Homework block, immediately before `Reading`.
 
 ### Image assets and captions
 
 - **Filename convention:** `ModuleNN-<Descriptor>.png` inside `docs/modules/NN-name/`. The headline summary image is `ModuleNN-Hero.png`; specific diagrams use descriptive PascalCase names (`Module02-MatMul.png`, `Module02-Ladder.png`).
 - **Reference from the lesson** with relative paths: `![alt text](NN-name/ModuleNN-Foo.png)`. Always include real alt text — it's the fallback when the image fails to render and matters for accessibility.
-- **Every image gets a caption** underneath in *italics*. The caption explains both what the image shows AND why it matters here, ideally tying back to a specific exercise, concept, or upcoming module. Captions are signal, not decoration.
-- **Hero image placement:** immediately after the question pull-quote, before the Prerequisites section.
+- **Hero image caption** is a non-italic orientation paragraph immediately under the image, with no blank line between them. This paragraph is the start of the Intro section and sets up the module.
+- **All other figures** sit inside Lecture notes / Homework and use an *italic* caption directly underneath the image, with no blank line between the image and its caption. The caption explains both what the image shows AND why it matters here, ideally tying back to a specific exercise, concept, or upcoming module. Captions are signal, not decoration.
+- **Hero image placement:** immediately after the question pull-quote, before the first `---` divider that opens `Before you start`.
 
 ### Test file conventions
 
