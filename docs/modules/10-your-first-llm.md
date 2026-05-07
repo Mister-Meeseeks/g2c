@@ -4,17 +4,18 @@
 
 ![Pretraining the tiny GPT end-to-end: a raw token stream is sliced into (B, T) windows; each window goes through TransformerLM to produce (B, T, V) logits; lm_cross_entropy averages per-position cross-entropy across all B * T positions; loss.backward populates parameter gradients; clip_grad_norm rescales them if their global norm is too large; cosine_with_warmup picks the lr for this step; optimizer.step applies the optimizer update; the step counter advances. A side panel shows sample text quality progressing through training: random characters at step 0, locally-correct subwords at step 500, locally-coherent sentences by step 2000+.](10-your-first-llm/Module10-Hero.png)
 
-*This is the payoff week for Phase III. Module 09 built the architecture. Module 09B turned a token stream into a supervised objective. Module 03B made the training controls legible. Module 10 wires those pieces together and produces the first trained checkpoint.*
+This is the payoff week for Phase III. Module 09 built the architecture. Module 09B turned a token stream into a supervised objective. Module 03B made the training controls legible. Module 10 wires those pieces together and produces the first trained checkpoint.
 
 ---
-## Prerequisites
+## Before you start
 
-### Machine Learning
-
-- **Train/validation workflow.** Validation loss is the main signal that the run is improving rather than merely memorizing.
+* *Review* [[03b-training]] (AdamW, clipping, lr schedule) and [[09b-pretraining]] (`(B, T)` batching, `lm_cross_entropy`) — the trainer is glue between them
+* *Finish* `g2c/transformer` (Module 09), `g2c/pretraining` (Module 09B), and `g2c/training` (Module 03B) — Module 10's `Trainer` composes all three
+* *Finish* the `ShakespeareTokenizer` artifact from Module 04's Mini Milestone — the notebook loads it rather than retraining
+* *Run* `./datasets.sh tinystories` only if you plan to do the optional scale-up runs
 
 ---
-## Why We Start Here
+## Where this fits in
 
 The transformer is finally complete, but an untrained transformer is just a random function. Module 10 makes it a language model by repeating one training step thousands of times:
 
@@ -32,7 +33,7 @@ train_ids
 
 The new concept is not a new layer. It is orchestration. The course stack now has enough pieces that the core engineering problem is putting them in the right order, tracking the run, and using the resulting curve and samples to decide whether training is healthy.
 
-## The Big Idea
+## The big idea
 
 ### The trainer is glue, but load-bearing glue
 
@@ -59,7 +60,6 @@ WRONG: incrementing self.step before computing/logging the lr for this step
 Those bugs often produce a run that still appears to train. The tests pin down the step counter, learning-rate assignment, clipping behavior, evaluation mode, and end-to-end loss decrease.
 
 ![The eight-step training loop drawn in order: zero_grad clears stale gradients; forward runs the model to logits; lm_cross_entropy averages per-position CE; backward populates parameter .grad; clip_grad_norm rescales if the global norm is too large; set the learning rate from cosine_with_warmup; optimizer.step applies the optimizer update; increment the step counter.](10-your-first-llm/Module10-TrainingSteps.png)
-
 *The order is the lesson. Most miswirings produce normal-looking Python and sometimes even a falling loss curve. The trainer tests are designed to catch the quiet versions of those mistakes.*
 
 ### The artifact matters
@@ -86,7 +86,7 @@ loss spikes / NaNs                 -> lr too high, clipping missing, bug
 
 The Module 03B curve-reading habits now apply to a real transformer.
 
-## Concepts to Internalize
+## Concepts to internalize
 
 - **Pretraining is repeated next-token prediction over a corpus.**
 - **The trainer composes earlier modules.** It should feel like assembly, not new math.
@@ -95,56 +95,8 @@ The Module 03B curve-reading habits now apply to a real transformer.
 - **`log(V)` is a step-0 sanity check, not a goal.** The run needs to fall below it.
 - **Tiny models learn form before meaning.** Punctuation, word fragments, and local phrase shape appear before global coherence.
 
-## Scaffolding and How to Run the Tests
-
-Module 10 uses prior modules and adds the top-level trainer:
-
-- **`g2c/pretraining/data.py`** from Module 09B: `split_token_stream`, `get_lm_batch`.
-- **`g2c/pretraining/loss.py`** from Module 09B: `lm_cross_entropy`.
-- **`g2c/training/`** from Module 03B: `AdamW`, `clip_grad_norm_`, `cosine_with_warmup`.
-- **`g2c/pretraining/trainer.py`** for Module 10: `Trainer`.
-- **`notebooks/clean/10-your-first-llm.ipynb`** holds the written exercises directly: each section has `Question:` / `Answer:` cells alongside the run cells. Open the working copy with `.venv/bin/python scripts/open_notebook.py 10`.
-- **`docs/rubrics/module-10.md`** is the grading contract agents should use when reviewing written answers.
-
-Run prerequisite tests first when debugging:
-
-```bash
-pytest tests/test_training.py -x
-pytest tests/test_pretraining_setup.py -x
-pytest tests/test_transformer.py -x
-```
-
-Then run Module 10:
-
-```bash
-pytest tests/test_pretraining.py -x
-pytest tests/test_pretraining.py -k trainer -v
-```
-
-The only scaffolded Module 10 method is `Trainer.train_step`. Construction, `lr`, `evaluate`, and `train` are implemented so the student can focus on the one load-bearing step.
-
-The default notebook run uses `data/tinyshakespeare.txt`, which normal `./setup.sh` downloads because it is tiny. It loads the `ShakespeareTokenizer` artifact from Module 04 rather than training a tokenizer again. If the artifact is missing, run the Module 04 Mini Milestone tokenizer cell first.
-
-The optional scale-up runs use TinyStories; download it only when you want those longer experiments:
-
-```bash
-./datasets.sh tinystories
-```
-
-If TinyStories or the Module 04 `StoryTokenizer` artifact is missing, the notebook prints a skip message and the TinyShakespeare run still works.
-
-TinyStories is stored under `data/tinystories/` as gzip-compressed shards split
-by 100MB of uncompressed text per shard. The notebook loaders read those shards
-directly; you do not need to decompress them by hand.
-
-The TinyStories scale-up loads the `StoryTokenizer` artifact from Module 04 and only encodes the current train/validation slices here. This keeps Module 10 focused on training the model, not redoing BPE training.
-
-StoryLM scale-up runs save rolling checkpoints under `data/checkpoints/storylm/`
-every 100 steps by default. If you interrupt a long 5M or 30M run, the notebook
-keeps the current model in memory for sampling and writes a checkpoint; re-run
-the same training cell to continue from that point.
-
-## What You'll Build
+---
+## What you'll build
 
 Package: `g2c/pretraining/`
 
@@ -176,9 +128,30 @@ class Trainer:
     def train(self, train_ids, val_ids=None) -> dict: ...        # implemented
 ```
 
+`Trainer.train_step` is the one scaffolded method. Construction, `lr`, `evaluate`, and `train` are implemented so the student can focus on the one load-bearing step. The trainer pulls in `g2c/pretraining/data.py` and `loss.py` (Module 09B), `g2c/training/` (Module 03B), and `g2c.transformer.TransformerLM` (Module 09).
+
+## How to run the tests
+
+When debugging, run prerequisite tests first to localize failures:
+
+```bash
+pytest tests/test_training.py -x
+pytest tests/test_pretraining_setup.py -x
+pytest tests/test_transformer.py -x
+```
+
+Then run Module 10:
+
+```bash
+pytest tests/test_pretraining.py -x
+pytest tests/test_pretraining.py -k trainer -v
+```
+
 ## Exercises
 
 Open the working notebook with `.venv/bin/python scripts/open_notebook.py 10`. Each exercise has `Question:` / `Answer:` cells inside the notebook. If you'd like a hint instead of a grade, write the request in the answer string and ask a coding agent for help. Blank answers are skipped rather than counted wrong.
+
+The default notebook run uses `data/tinyshakespeare.txt` (downloaded by `./setup.sh`) and loads the Module 04 `ShakespeareTokenizer` artifact. The optional scale-up runs use TinyStories and the `StoryTokenizer` artifact; the notebook skips those cells gracefully if either is missing. StoryLM scale-up runs save rolling checkpoints under `data/checkpoints/storylm/` every 100 steps — interrupt and re-run the same training cell to resume from the last checkpoint.
 
 1. **Implement `Trainer.train_step`.** Follow the method docstring exactly. Run `pytest tests/test_pretraining.py -k train_step -x`, then the full `tests/test_pretraining.py`.
 
@@ -192,7 +165,7 @@ Open the working notebook with `.venv/bin/python scripts/open_notebook.py 10`. E
 
 6. **Diagnose the run.** Write a short post-run note: final train loss, final validation loss, final validation perplexity, whether validation tracked training, whether the learning rate looked sane, and one next experiment you would run.
 
-## Pitfalls to Expect
+## Pitfalls to expect
 
 - **Forgetting `zero_grad`.** PyTorch accumulates gradients. Without clearing them, training quickly becomes unstable.
 - **Clipping after `optimizer.step`.** The optimizer already consumed the unclipped gradients.
@@ -201,6 +174,18 @@ Open the working notebook with `.venv/bin/python scripts/open_notebook.py 10`. E
 - **Treating samples as the only metric.** Samples are high-variance. Use validation loss to judge training health.
 - **Scaling too many knobs at once.** If a larger run improves or regresses, you need to know which change caused it.
 
+## M-series notes
+
+This is the first module where MPS should be the default. `Trainer(..., device="auto")` moves the model and sampled batches to MPS when available. Use CPU only for debugging tiny tests.
+
+Practical starting points:
+
+- **1M-ish params, 2000 steps, TinyShakespeare:** minutes on MPS.
+- **5M-ish params on TinyStories:** tens of minutes depending on data slice, context length, and Mac.
+- **30M-ish params on TinyStories:** a longer experiment; watch validation loss and stop early if it turns upward.
+- **If memory fails:** halve `batch_size` first, then `context_length`. The `(B, T, V)` logits tensor is often the largest activation.
+
+---
 ## Reading
 
 Primary:
@@ -213,7 +198,7 @@ Secondary:
 - Kaplan et al., "Scaling Laws for Neural Language Models" (2020).
 - Hoffmann et al., "Training Compute-Optimal Large Language Models" (2022).
 
-## Deliverable Checklist
+## Deliverable checklist
 
 - [ ] All tests in `tests/test_pretraining.py` pass.
 - [ ] Notebook: `notebooks/clean/10-your-first-llm.ipynb`.
@@ -222,14 +207,3 @@ Secondary:
 - [ ] Training history includes train loss, validation loss, learning rate, and gradient norm.
 - [ ] You can explain the full trainer step order without notes.
 - [ ] You can compare the initial sample and trained sample and identify what improved.
-
-## M-Series Notes
-
-This is the first module where MPS should be the default. `Trainer(..., device="auto")` moves the model and sampled batches to MPS when available. Use CPU only for debugging tiny tests.
-
-Practical starting points:
-
-- **1M-ish params, 2000 steps, TinyShakespeare:** minutes on MPS.
-- **5M-ish params on TinyStories:** tens of minutes depending on data slice, context length, and Mac.
-- **30M-ish params on TinyStories:** a longer experiment; watch validation loss and stop early if it turns upward.
-- **If memory fails:** halve `batch_size` first, then `context_length`. The `(B, T, V)` logits tensor is often the largest activation.
