@@ -65,5 +65,8 @@ def apply_temperature(logits: torch.Tensor, temperature: float) -> torch.Tensor:
     of bugs that otherwise turn up as `nan`s much later in the
     pipeline.
     """
-    # TODO
-    raise NotImplementedError
+    
+    if temperature <= 0:
+        raise ValueError(f'Temperature must be > 0, got {temperature}')
+    
+    return logits / temperature
