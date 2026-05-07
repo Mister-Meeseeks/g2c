@@ -6,6 +6,13 @@
 
 *The whole module on one page. The agent loop is a thin wrapper around Module 18's tool dispatch: it adds explicit reasoning (Thought lines), persistent memory (the scratchpad), an optional plan, smarter stop conditions (duplicate-action detection, halt-on-stuck), and graceful recovery from tool errors. The model still does all the cognitive work; the agent loop just keeps it on rails.*
 
+---
+## Before you start
+
+* *Finish* `g2c/tools` from [[18-tools]] — the agent dispatches through `dispatch_tool_call`, reusing the registry, schema validation, and error wrapping
+* *Finish* `g2c/inference` from [[16-inference]] — the agent calls `backend.complete(...)` for every reasoning step
+
+---
 ## Prerequisites
 
 Module 19 is the fourth leg of Phase V (assistant systems). Module 18 built the tool-call substrate — registry, schema validation, parse → validate → dispatch contract. Module 19 wraps that substrate in a ReAct-style observe / think / act loop so the model can pursue tasks that require *several* tool calls in sequence, with recovery when one of them goes wrong.

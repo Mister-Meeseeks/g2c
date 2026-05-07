@@ -6,6 +6,12 @@
 
 *The whole module on one page. RAG is the smallest possible architecture for "give the model access to information it doesn't have memorized." Chunk the corpus, embed each chunk, store the vectors, embed the query, retrieve the top-k by cosine similarity, splice them into a citation-formatted prompt, send to the inference backend. None of the components are individually deep — but the wiring is the lesson, because RAG is the substrate Module 18's tools and Module 19's agent loop both build on.*
 
+---
+## Before you start
+
+* *Finish* `g2c/inference` from [[16-inference]] — `RAGPipeline` drives generation through the unified `Backend` interface
+
+---
 ## Prerequisites
 
 Module 17 opens the second half of Phase V (assistant systems). Module 16 built the unified `Backend` interface; this module is the first downstream piece that uses it. Every component you build here — the chunker, the embedder, the vector store, the retriever, the prompt assembler — is going to keep showing up: the agent loop in Module 19 retrieves over conversation history; the capstone in Module 20 retrieves over your own notes.

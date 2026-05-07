@@ -10,6 +10,8 @@ Last week's module was about how models scale; this week is about how model **be
 ## Before you start
 
 * *Review* [[10-tinyllm]] for the training-loop contract — SFT reuses the same `Trainer` shape with masked CE
+* *Finish* `g2c/nn` from [[03-nn]] and `g2c/training` from [[03b-training]] — the SFT trainer and masked CE loss import from both
+* *Finish* `g2c/tokenizer` from [[04-tokenizer]] — the chat template encodes through a `BPETokenizer`
 * *Finish* a Module 10 / 12 base checkpoint — SFT loads it, fine-tunes briefly, and saves a separate checkpoint
 * *Finish* Module 04's tokenizer artifact — the chat template tokenizes through it
 

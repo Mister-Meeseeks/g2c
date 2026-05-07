@@ -6,6 +6,13 @@
 
 *The whole module on one page. After 15 modules of "build it from scratch," Module 16 is the pivot to "use what's already been built." Your tiny `TransformerLM` learned the architecture; a 4-bit quantized 7B-class open model is what the rest of the course actually uses. The unified `Backend` interface is the abstraction that lets you keep both — Module 17's RAG, Module 18's tools, and Module 19's agent loop see one API regardless of which model is underneath.*
 
+---
+## Before you start
+
+* *Finish* `g2c/sampling` from [[11-sampling]] — `LocalTransformerBackend` drives the from-scratch model through `g2c.sampling.generate`
+* *Run* `ollama pull llama3.2:3b` (or another size from the suggested list below) — `OllamaBackend` needs a daemon serving a quantized model
+
+---
 ## Prerequisites
 
 Module 16 opens Phase V. Modules 1–15 built a complete (if toy) LM stack from scratch — autodiff, tensors, attention, the transformer, sampling, SFT, DPO, eval. From here on, the course pivots: instead of training models, we use them. Module 16 is the bridge — the unified interface that makes the rest of Phase V (RAG, tools, agents, capstone) treat "your tiny model" and "a real pretrained model" as interchangeable substrates.

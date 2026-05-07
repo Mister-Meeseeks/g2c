@@ -10,6 +10,7 @@ The whole module on one page. Module 13 taught the model to **format** an answer
 ## Before you start
 
 * *Review* [[13-sft]] for the chat template, masking, and `Trainer` shape — DPO reuses all three with two-model bookkeeping
+* *Finish* `g2c/nn` from [[03-nn]] and `g2c/training` from [[03b-training]] — the DPO trainer imports `SGD`/`Module`/`resolve_device` and `clip_grad_norm_`/`cosine_with_warmup` from them
 * *Finish* a Module 13 SFT'd checkpoint — DPO loads it twice (trainable policy + frozen reference)
 * *Finish* Module 04's tokenizer artifact — preference triples encode through it
 

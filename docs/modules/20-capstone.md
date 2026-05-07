@@ -6,6 +6,14 @@
 
 *The whole module on one page. The capstone is fundamentally an integration: the new code (`Conversation`, `Assistant`, `EvalSuite`, the CLI) is small; the lesson is the architecture and the post-mortem. By the end of this module you will have a working chat assistant — and, more importantly, a written characterization of where each layer earns its keep, where it breaks down, and where the from-scratch model stops being viable.*
 
+---
+## Before you start
+
+* *Finish* `g2c/agent` from [[19-agent]] — `Assistant.chat` wraps `Agent.run`, threading conversation history into each turn
+* *Finish* `g2c/tools` from [[18-tools]] and `g2c/inference` from [[16-inference]] — the assistant supplies the tool registry and backend that the agent runs against
+* *Finish* `g2c/rag` from [[17-rag]] (optional) — only needed if you wire prefix-style retrieval into the assistant
+
+---
 ## Prerequisites
 
 Module 20 is the capstone of Phase V (assistant systems) and the final module of the course. There is no new conceptual ground broken here — every piece is already understood. What's new is *integration*: composing the substrates from Modules 16-19 with two new primitives (`Conversation` for inter-turn memory, `Assistant` for the orchestration layer), an eval-as-regression-gate harness, and a CLI you can actually talk to.

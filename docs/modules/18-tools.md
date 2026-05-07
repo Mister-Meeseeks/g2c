@@ -6,6 +6,12 @@
 
 *The whole module on one page. Tool use is the smallest possible architecture for "let the model affect the outside world." Define a tool with a JSON schema, splice the schemas into the prompt, parse `<tool_call>` blocks out of the model's output, validate arguments, dispatch the call, format the result back into the next prompt turn, and loop until the model stops calling tools. The agent loop with planning and scratchpad memory comes in Module 19; Module 18 builds the substrate.*
 
+---
+## Before you start
+
+* *Finish* `g2c/inference` from [[16-inference]] — the tool-use loop calls `backend.complete(...)` to produce each model turn
+
+---
 ## Prerequisites
 
 Module 18 is the third leg of Phase V (assistant systems). Module 16 built the unified `Backend` interface; Module 17 used it to wire retrieval into the prompt. Module 18 wires *outgoing* affordances — the model gets a list of tools it can invoke, a structured way to invoke them, and a feedback channel for the results.
