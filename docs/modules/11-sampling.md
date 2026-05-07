@@ -9,9 +9,12 @@ You trained a model in Module 10, and now you need to actually generate text fro
 ---
 ## Before you start
 
-* *Review* softmax over logits and cumulative probability — sampling is logit-space arithmetic
-* *Review* `torch.multinomial` and `torch.topk` if either is unfamiliar — they're the only PyTorch primitives this module needs
-* *Finish* Module 10 — you'll sample from a trained `TransformerLM` checkpoint
+* *Review*
+	* [[09b-pretraining]] (logits)
+	* [[PyTorch Primer]]
+* *Finish* 
+	* `g2c/transformer` ([[09-transformer-block]]) 
+	* At least one trained model from [[10-tinyllm]] notebook (`ShakespeareLM`, `StoryLM`, or `TinyLLM`)
 
 ---
 ## Where this fits in

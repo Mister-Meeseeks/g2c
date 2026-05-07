@@ -9,10 +9,15 @@ This is the payoff week for Phase III. Module 09 built the architecture. Module 
 ---
 ## Before you start
 
-* *Review* [[03b-training]] (AdamW, clipping, lr schedule) and [[09b-pretraining]] (`(B, T)` batching, `lm_cross_entropy`) — the trainer is glue between them
-* *Finish* `g2c/transformer` (Module 09), `g2c/pretraining` (Module 09B), and `g2c/training` (Module 03B) — Module 10's `Trainer` composes all three
-* *Finish* the `ShakespeareTokenizer` artifact from Module 04's Mini Milestone — the notebook loads it rather than retraining
-* *Run* `./datasets.sh tinystories` only if you plan to do the optional scale-up runs
+* *Review* 
+	* [[03b-training]] (AdamW, clipping, lr schedule)
+	* [[09b-pretraining]] (batching, cross-entropy)
+* *Finish* 
+	* `g2c/transfomer-block` [[09b-pretraining]]
+	* `g2c/pretraining` from  [[09b-pretraining]]
+	* `g2c/training` from [[03b-training]]. 
+	* The trained tokenizers from [[04-tokenizer]] notebook (optional; `datasets.sh` will generate if missing)
+*  *Run* `./datasets.sh` if you plan to do the optional scale-up runs
 
 ---
 ## Where this fits in

@@ -11,9 +11,13 @@ The next step is turning the core architecture into an actual trained model. Tra
 ---
 ## Before you start
 
-* *Review* Module 03 cross-entropy and the `(B, T, V)` logits shape from [[09-transformer-block]] — this module sits between them
-* *Finish* `g2c/transformer` (Module 09) and `CrossEntropyLoss` in `g2c/nn` (Module 03) — `lm_cross_entropy` calls into both
-* *Finish* `g2c/training` from [[03b-training]] — the `Trainer` you'll build here imports `AdamW`, `clip_grad_norm_`, and `cosine_with_warmup` from it
+* *Review* 
+	* [[03-nn]] on cross-entropy
+	* [[09-transformer-block]] on logit shapes
+* *Finish* packages:
+	* `g2c/transformer` ([[09-transformer-block]]])
+	* `g2c/nn` ([[03-nn]])
+	* `g2c/training` ([[03b-training]])
 
 ---
 ## Where this fits in
