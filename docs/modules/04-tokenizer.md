@@ -209,9 +209,9 @@ The notebook ends with a **Mini Milestone** section that turns your tokenizer in
 
 This module is pure CPU. No GPU, no MPS — every operation is pointer chasing through Python data structures.
 
-- Training on TinyShakespeare (~1MB, ~1M characters) at `vocab_size=8192` takes 1–5 minutes on a typical M-series machine. Most of the time is spent recounting all pairs after each merge — that's where the naive implementation pays its O(n²) cost.
-- Training on a much smaller corpus (a few KB) finishes in seconds.
-- If you want to scale to 100MB+ corpora, you'd want incremental pair counting; but for the course's scope, the naive version is plenty.
+- Training on a small corpus takes seconds.
+- Training on TinyShakespeare (~1MB) at `vocab_size=8192` takes 1–5 minutes on a typical M-series machine. Most of the time is spent recounting all pairs after each merge — that's where the naive implementation pays its O(n²) cost.
+- Going above 10M max char is infeasible with the python native `g2c` tokenizer. The module includes a wrapper for a much faster Rust based tokenizer. This is what the notebook uses to train TinyStories and g2c. Even with that expect tens of minutes for those corpora.  
 
 ---
 ## Reading

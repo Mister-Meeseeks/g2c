@@ -4,7 +4,9 @@
 
 ![Multi-position targets in three steps: sample a (B, T) window from the token stream with the target window shifted left by one; run one TransformerLM forward pass to produce (B, T, V) logits; compute per-position cross-entropy at every (b, t) pair and average across all B * T positions.](09b-pretraining/Module09B-Hero.png)
 
-Module 09B sits between "the architecture exists" and "the model trains on a real corpus." It is a small bridge module, but it removes a lot of shape bookkeeping from the payoff week. 
+Last week we built the transformer; a language model composed of stacked attention and neural networks. In terms of language model architecture, the transformer is the "final form". Every single major LLM in use today is built on top of the transformer. It will be the model we use for the remainder of the course.
+
+The next step is turning the core architecture into an actual trained model. Training language models to even basic levels of competency requires vast scales of data and compute. There is no room for inefficiency in the process. This lesson will be about how to build an efficient and effective self-supervised learning pipeline on top of the transformer. 
 
 ---
 ## Before you start
@@ -54,16 +56,6 @@ train_ids, val_ids = split_token_stream(ids, train_fraction=0.9)
 ```
 
 Do not shuffle the individual token IDs. Shuffling would destroy the adjacency relation that next-token prediction depends on. The training stream and validation stream can each be sampled randomly by window, but each sampled window must preserve local order.
-
-### Corpus selection is model behavior selection
-
-The corpus is not just fuel for the optimizer. It is the behavior distribution the model is asked to imitate. TinyShakespeare teaches character names, stage directions, and Elizabethan fragments. TinyStories teaches simple narrative structure. A course corpus mixed with educational prose and code teaches a different shape again. Same architecture, same loss, different data: different model.
-
-At small scale, corpus choice is especially visible because the model cannot average over the internet. A narrow corpus can produce more coherent samples inside its domain, but it will be brittle outside it. A broader corpus gives the model more surface area, but each pattern gets fewer repetitions for a fixed training budget. That is why Module 10 uses named tracks: ShakespeareLM for a tiny smoke run, StoryLM for coherent small-model text, and TinyLLM for broader assistant-shaped experiments.
-
-Document boundaries also matter. If you concatenate stories or articles without a separator, the model sees the last sentence of one document followed by the first sentence of the next as an ordinary next-token event. The course tokenizer reserves `<|endoftext|>` so document boundaries can be represented explicitly. Sampling code should avoid crossing documents when possible; when it does not, the separator at least gives the model a visible boundary token.
-
-The practical rule for this course: choose the corpus that matches the artifact you want to produce, keep a held-out validation split from the same distribution, and write down the corpus size/mix in the manifest so later results are interpretable.
 
 ### Batch sampling creates shifted windows
 
@@ -130,22 +122,31 @@ perplexity = exp(loss) = V
 
 At initialization, a random model's loss should usually start near `log(V)`. If it starts far below `log(V)`, suspect a bug: wrong targets, wrong reshape, repeated trivial data, or loading a trained checkpoint by accident. If it starts near `log(V)` and then drops, the model is learning.
 
+### Corpus selection is model behavior selection
+
+The corpus is not just fuel for the optimizer. It is the behavior distribution the model is asked to imitate. TinyShakespeare teaches character names, stage directions, and Elizabethan fragments. TinyStories teaches simple narrative structure. A course corpus mixed with educational prose and code teaches a different shape again. Same architecture, same loss, different data: different model.
+
+At small scale, corpus choice is especially visible because the model cannot average over the internet. A narrow corpus can produce more coherent samples inside its domain, but it will be brittle outside it. A broader corpus gives the model more surface area, but each pattern gets fewer repetitions for a fixed training budget. That is why Module 10 uses named tracks: ShakespeareLM for a tiny smoke run, StoryLM for coherent small-model text, and TinyLLM for broader assistant-shaped experiments.
+
+Document boundaries also matter. If you concatenate stories or articles without a separator, the model sees the last sentence of one document followed by the first sentence of the next as an ordinary next-token event. The course tokenizer reserves `<|endoftext|>` so document boundaries can be represented explicitly. Sampling code should avoid crossing documents when possible; when it does not, the separator at least gives the model a visible boundary token.
+
+The practical rule for this course: choose the corpus that matches the artifact you want to produce, keep a held-out validation split from the same distribution, and write down the corpus size/mix in the manifest so later results are interpretable.
+
 ## Concepts to internalize
 
 - **A token stream is supervised data once you shift it by one.**
-- **Corpus choice shapes model behavior.** Data distribution matters as much as architecture at this scale.
 - **Document separators are training data.** `<|endoftext|>` tells the model one document ended before another begins.
 - **Causal masking makes multi-position training valid.** Every position predicts the next token without seeing it.
 - **One `(B, T)` batch contains `B * T` classification examples.**
 - **Language-model cross-entropy is ordinary cross-entropy after a reshape.**
 - **`log(V)` is not transformer-specific.** It is the uniform baseline for any language model with vocabulary size `V`.
+- **Corpus choice shapes model behavior.** Data distribution matters as much as architecture at this scale.
 
 ### What we don't cover
 
 * **Distributed training.** Used to scale large-scale training beyond a single machine. Lots of devops considerations, but conceptually just an extension of gradient batching.
 * **Mixed precision.** Speeds up training by using lower precision floats for most operations and selectively keeping high precision for load bearing weights. 
 * **Packed datasets.** Combines multiple short training sequences into a single long sequence. Reduces wasting compute on padding.
-* **Checkpoint managers.** Important for large scale runs to allow transparency into training progress without having to wait until the end of a massive run. Conceptually no change to the core pre-training loop.
 
 ---
 ## What you'll build

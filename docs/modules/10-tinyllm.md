@@ -180,10 +180,12 @@ This is the first module where MPS should be the default. `Trainer(..., device="
 
 Practical starting points:
 
-- **1M-ish params, 2000 steps, TinyShakespeare:** minutes on MPS.
-- **5M-ish params on TinyStories:** tens of minutes depending on data slice, context length, and Mac.
-- **30M-ish params on TinyStories:** a longer experiment; watch validation loss and stop early if it turns upward.
+- **1M params, 2000 steps, TinyShakespeare:** minutes on MPS. Memory usage minimal.
+- **5M params on TinyStories:** hours depending on data slice, context length, and Mac.
+- **30M params on TinyStories:** a longer experiment; overnight to a couple days for the full run. But the notebook lets you stop early, inspect performance and save the model if it looks good enough.
+- **30M params on g2c:** same story as 30M TinyStories. The full run is longer, but tokens/s should be about the same. Stop early when performance is acceptable.
 - **If memory fails:** halve `batch_size` first, then `context_length`. The `(B, T, V)` logits tensor is often the largest activation.
+- **Watch system metrics.** GPU utilization and memory pressure are in MacOS Activity Monitor. GPU utilization should stay above 80%. If not, it's probably memory pressure.
 
 ---
 ## Reading
