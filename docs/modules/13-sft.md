@@ -9,7 +9,7 @@ Last week's module was about how models scale; this week is about how model **be
 ---
 ## Before you start
 
-* *Review* [[10-your-first-llm]] for the training-loop contract — SFT reuses the same `Trainer` shape with masked CE
+* *Review* [[10-tinyllm]] for the training-loop contract — SFT reuses the same `Trainer` shape with masked CE
 * *Finish* a Module 10 / 12 base checkpoint — SFT loads it, fine-tunes briefly, and saves a separate checkpoint
 * *Finish* Module 04's tokenizer artifact — the chat template tokenizes through it
 

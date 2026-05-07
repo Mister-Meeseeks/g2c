@@ -249,7 +249,7 @@ raw corpus should be saved under `artifacts/`.
 
 ## Module Map
 
-### Module 10 - Milestone: Your First LLM
+### Module 10 - Milestone: TinyLLM
 
 Module 10 is the first durable model-artifact boundary.
 

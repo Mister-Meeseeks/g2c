@@ -243,7 +243,7 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 - **Reading.** Karpathy nanoGPT data loader and loss computation; "Let's reproduce GPT-2" data-loading sections.
 - **M-series notes.** CPU-light. This is setup, not a serious training run.
 
-### Milestone Week 10 — Your First LLM — [module ↗](modules/10-your-first-llm.md)
+### Milestone Week 10 — TinyLLM — [module ↗](modules/10-tinyllm.md)
 
 - **Question.** What changes when the transformer block becomes a trained language model?
 - **Goal.** Pretrain a small transformer LM on a real corpus.
