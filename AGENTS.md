@@ -30,9 +30,12 @@ The student is the repo author. Both roles are live.
 - `docs/modules/NN-name.md` — lesson + motivation + exercises + deliverable spec for module NN
 - `docs/modules/NN-name/` — assets for that module (images, diagrams, supplementary files). Reference from the lesson with relative paths, e.g. `![](NN-name/summary.png)`.
 - `g2c/<topic>/` — Python subpackage for that module's deliverable
-- `notebooks/clean/NN-*.ipynb` — canonical pristine notebooks tied to module NN
+- `g2c/notebook_extras/<topic>.py` — non-pedagogical notebook helpers (progress bars, matplotlib glue, run-orchestration wrappers) used by notebooks but not implemented by students
+- `g2c/artifacts/models.py` — `save_model_artifact` / `load_model_artifact` implementing the durable model artifact convention from `docs/design/model-artifacts-and-tracks.md`. Use these rather than ad-hoc `torch.save` calls when persisting a trained model that downstream modules consume.
+- `artifacts/models/<name>/` — saved model artifacts (`model.pt`, `config.json`, `manifest.json`); tokenizer is referenced by name in the manifest, not duplicated.
+- `data/module*-*.ckpt` — rolling training checkpoints (model + optimizer + step + history). These are caches, not artifacts; safe to wipe to retrain.
+- `notebooks/clean/NN-*.ipynb` — canonical pristine notebooks tied to module NN. Written exercises live here as `Question:` / `Answer:` string-literal code cells alongside the runnable cells; this is also where students write their answers (in `notebooks/solutions/`).
 - `notebooks/solutions/NN-*.ipynb` — working or solved notebook copies; use `.venv/bin/python scripts/open_notebook.py NN` to create or resume, and `--fresh` to archive the existing copy before resetting from clean
-- `answers/module-NN.md` — student-owned written answers for that module's exercises
 - `docs/rubrics/module-NN.md` — course-owned grading rubric for written answers; use for review, not as a replacement for the student's work
 - `docs/design/model-artifacts-and-tracks.md` — durable model artifact, hardware track, and Modules 10-20 backend plan
 - `data/` — datasets; anything large is gitignored
@@ -52,14 +55,14 @@ When the user asks to grade, check, review, or give feedback on answers for a mo
 
 1. Read `docs/modules/NN-name.md` first to understand the exercises and teaching intent.
 2. Read `docs/rubrics/module-NN.md` if it exists. Treat it as the grading contract.
-3. Read `answers/module-NN.md`. Do not edit `answers/` files unless explicitly asked.
+3. Read the student's working notebook at `notebooks/solutions/NN-*.ipynb`. If no solutions copy exists yet, fall back to `notebooks/clean/NN-*.ipynb`. Do not edit the student's notebook unless explicitly asked.
 4. Check conceptual correctness first, then math, then code or environment claims.
 5. If the module has relevant tests or smoke checks, run them when they materially affect the review, and include the command result in the feedback.
 6. Do not paste a full worked solution by default. Give the smallest correction or hint that would let the student repair the answer.
-7. Treat each exercise independently:
-   - If `Help request / hint request` is non-empty and `Student answer` is blank, tutor instead of grading. Give the smallest useful hint, explanation, or next step.
-   - If `Student answer` is non-empty, grade it. If `Help request / hint request` is also non-empty, answer the question first, then grade the submitted answer.
-   - If both sections are blank, skip the item unless the user explicitly asks for a completeness check.
+7. Each written exercise lives as `Question:` / `Answer:` string-literal cells in the notebook. Treat each `Question:` independently:
+   - If `"Answer: "` is empty, treat the item as not submitted and skip it unless the user asks for a completeness check.
+   - If the answer string contains a hint or help request (the student wrote text like "stuck — what's the chain rule again?"), tutor instead of grading: give the smallest useful hint, explanation, or next step.
+   - If the answer is a real attempt, grade it. If it also contains a help request, answer the question first, then grade the attempt.
 8. Do not treat blank answers as wrong. If you mention them at all, group them briefly as `not submitted` with no correctness judgment.
 9. Report feedback for submitted answers with one of these statuses: `correct`, `mostly correct`, `partially correct`, or `needs revision`.
 10. Do not paste a full worked solution in response to a hint request unless the student explicitly asks for the solution. Prefer progressive hints that leave the next reasoning step to the student.
@@ -70,14 +73,14 @@ When the user asks to grade, check, review, or give feedback on answers for a mo
 
 Prefer inline chat practice over creating files. When the student asks for more problems, drills, practice, remediation, or another round on a weak area:
 
-1. Read `docs/modules/NN-name.md`, `docs/rubrics/module-NN.md`, and any relevant previous answers or practice feedback.
+1. Read `docs/modules/NN-name.md`, `docs/rubrics/module-NN.md`, and any relevant previous answers (from `notebooks/solutions/NN-*.ipynb`) or practice feedback.
 2. Generate 2-3 focused problems directly in chat, unless the user asks for a larger set.
 3. Do not include solutions up front.
 4. Tell the student they can answer one, some, or all of the problems.
 5. Grade only the problems the student attempts.
 6. Calibrate difficulty from the student's latest mistakes: start near the missed concept, then add one small variation per problem.
 7. Offer another short round if it would help, but do not force it.
-8. If the user directly asks for practice without first using the answer file, generate inline problems immediately.
+8. If the user directly asks for practice without first answering anything in the notebook, generate inline problems immediately.
 9. Create practice files only if the user explicitly asks to save a drill set.
 
 ## When authoring a new module
@@ -88,8 +91,9 @@ When building scaffolding for any module that has a coding exercise, the goal is
 - **Scaffolds for the methods that ARE the point.** Empty bodies that `raise NotImplementedError`, with docstrings that name the contract — including, where helpful, the local rule (e.g., the gradient formula for an autodiff op, the recurrence for an attention computation). This gives the student the API surface and the math, but not the implementation.
 - **A test suite that pins the contract.** Comprehensive enough that "all tests pass" is a strong signal of correctness. Tests should fail informatively against the empty scaffolding so the failing test names tell the student what to implement next.
 - **A suggested implementation order.** A docstring at the top of the test file (or a checklist in the lesson page) describing which TODOs to tackle first. Each step should turn a coherent batch of tests green so progress is visible.
-- **An answer workspace and rubric for written exercises.** Add `answers/module-NN.md` with blank student-owned `Help request / hint request`, `Student answer`, and `Notes / uncertainty` slots, add `docs/rubrics/module-NN.md` with grading criteria, and point the lesson's scaffolding section at these files.
-- **An answer link at the start of exercises.** The first paragraph after every `## Exercises` heading should link to `answers/module-NN.md`, say that students can ask for hints or submit answers for agent grading, and state that partial submissions are fine because blank answer sections are skipped.
+- **Embedded answer slots in the clean notebook.** For each written exercise, add a code cell of `"Question: ..."` / `"Answer: "` string literals immediately after the exercise's prompt or run cells. The closing cell of the notebook should remind the student that a coding agent can grade the notebook and that partial work is fine.
+- **A rubric for written exercises.** Add `docs/rubrics/module-NN.md` with grading criteria. Its preamble should point at `notebooks/solutions/NN-*.ipynb` (with `notebooks/clean/NN-*.ipynb` as the fallback) as the source of student answers.
+- **A workflow note at the start of exercises.** The first paragraph after every `## Exercises` heading should tell students to open the working notebook with `.venv/bin/python scripts/open_notebook.py NN`, write their answers in the `Question:` / `Answer:` cells, and ask a coding agent for hints or grading. State that partial submissions are fine because blank answers are skipped.
 
 The lesson page (`docs/modules/NN-name.md`) should have a dedicated **Scaffolding and how to run the tests** section pointing the student at the `# TODO` markers and the relevant `pytest` invocations.
 
@@ -97,39 +101,80 @@ The principle: a student should be able to type `pytest -x`, read the failing te
 
 ### Lesson page structure
 
-Use this section ordering as the canonical template (established in Modules 01 and 02):
+Every lesson page is divided into five top-level sections, separated by `---` horizontal rules. The five sections, in order:
 
-```
+1. **Intro** — title, question pull-quote, hero image, and a short non-italic orientation paragraph.
+2. **Before you start** — a small bulleted list of prerequisites the student should resolve before opening the notebook.
+3. **Lecture notes** — `Where this fits in`, `The big idea`, `Concepts to internalize`.
+4. **Homework** — `What you'll build`, `How to run the tests`, `Exercises`, `Pitfalls to expect`, `M-series notes`. (Pitfalls and M-series notes belong here because they are about doing the assignment, not about background.)
+5. **Closing notes** — `Reading`, `Deliverable checklist`.
+
+The full template, with the four divider positions:
+
+```markdown
 # Module NN — <topic>
-> Question this module answers
-[hero image + italic caption]
+> **Question this module answers:** *<one-line question>*
 
-## Prerequisites
-  ### Math
-  ### Computer science
-  ### Programming
-  ### What you can skip
+![<one-sentence alt text>](<NN-name>/Module<NN>-Hero.png)
 
-## Why we start here
+<short non-italic orientation paragraph — intro text, not a caption.>
+
+---
+## Before you start
+
+* *Review* [[<previous module or primer>]] for <what>
+* *Finish* <prior g2c deliverable or artifact> if not already done
+* *Run* `<setup or dataset script>`
+* <short setup directive — e.g. "Set up your editor for Python">
+
+---
+## Where this fits in
 ## The big idea
 ## Concepts to internalize
-## Scaffolding and how to run the tests
+
+---
 ## What you'll build
+## How to run the tests
 ## Exercises
 ## Pitfalls to expect
+## M-series notes
+
+---
 ## Reading
 ## Deliverable checklist
-## M-series notes
 ```
 
-The order is stable; not every module needs every section. Skip what doesn't apply (e.g., M-series notes for a pure-CPU module). When skipping, drop the section heading entirely rather than leaving it empty.
+The order is stable; not every module needs every section. Skip what doesn't apply (e.g., M-series notes for a pure-CPU module). When skipping, drop the heading entirely rather than leaving it empty. Modules 01–03 are the reference implementations.
+
+**Section conventions:**
+
+- **Before you start.** Keep it short. Don't enumerate every dependency — only the actions the student should take before opening the notebook. Use a small vocabulary of bullet leads:
+  - `*Review*` — a previous module, primer, or short concept page
+  - `*Finish*` — a prior `g2c` deliverable or saved artifact this module needs
+  - `*Run*` — a setup or data-prep script
+  - or a short imperative ("Set up your editor for Python")
+- **Where this fits in.** Conversational framing of how this module connects to the rest of the course — what came before, what builds on it. Not a formal "why we start here" justification.
+- **What you'll build.** The orientation a student needs to start the work: what package, the public API surface, and an end-to-end usage sketch. It is not a maintainer-level walkthrough of every scaffolded file. The focus is the student doing the pedagogical parts of the module, not maintaining the scaffold.
+- **How to run the tests.** Open the block with `source .venv/bin/activate`, then list the relevant `pytest` commands (the bare `pytest` form, not `python -m pytest`), including the initial pass/fail count. Skip the implementation-order checklist unless the scaffolds have non-obvious dependencies that genuinely guide the student.
+- **What we don't cover.** Optional H3 at the very end of `## Concepts to internalize` — the closing item of the lecture-notes block, immediately before the lecture→homework divider. List out-of-scope topics with a brief rationale each. Use present tense (it's a scope declaration about the module, not a retrospective on the lesson the reader just finished).
+- **M-series notes.** Sits between `Pitfalls to expect` and the closing-notes divider — last thing in the Homework block, immediately before `Reading`.
 
 ### Image assets and captions
 
 - **Filename convention:** `ModuleNN-<Descriptor>.png` inside `docs/modules/NN-name/`. The headline summary image is `ModuleNN-Hero.png`; specific diagrams use descriptive PascalCase names (`Module02-MatMul.png`, `Module02-Ladder.png`).
 - **Reference from the lesson** with relative paths: `![alt text](NN-name/ModuleNN-Foo.png)`. Always include real alt text — it's the fallback when the image fails to render and matters for accessibility.
-- **Every image gets a caption** underneath in *italics*. The caption explains both what the image shows AND why it matters here, ideally tying back to a specific exercise, concept, or upcoming module. Captions are signal, not decoration.
-- **Hero image placement:** immediately after the question pull-quote, before the Prerequisites section.
+- **Hero image** is followed by a blank line and then a short non-italic orientation paragraph. The paragraph is intro text, not a caption — it sets up the module rather than narrating the image, so the looser binding (blank line, no italics) is correct.
+- **All other figures** sit inside Lecture notes / Homework and use an *italic* caption directly under the image, with **no blank line** between the image and its caption. The tight binding signals that the italic text is reading the image. The caption explains both what the image shows AND why it matters here, ideally tying back to a specific exercise, concept, or upcoming module. Captions are signal, not decoration.
+- **Hero image placement:** immediately after the question pull-quote, before the first `---` divider that opens `Before you start`.
+
+### Figure placement philosophy
+
+Place diagrams according to the role they play in the reader's understanding, not by a fixed "before" or "after" rule.
+
+- **Orientation diagrams** belong near the top of a section, usually after one short setup paragraph. Use this when the visual gives the student a mental model to hold while reading: architecture overviews, training-loop maps, data-flow diagrams, tensor-shape overviews.
+- **Dense synthesis diagrams** belong after the explanation. Use this when the visual collects many ideas into one poster-like summary. Shown too early, these can overload the student; shown after the pieces are introduced, they become a useful review surface.
+- **Mechanical diagrams** belong exactly where the mechanism is first needed. Use this for shape arithmetic, broadcasting, mask alignment, memory layout, indexing, or other rules where the visual is a working aid. Give the student the minimal vocabulary first, then place the diagram before the worked examples it helps decode.
+- **Captions are the default for instructional figures.** If the visual is not a hero image, include a short italic caption that says what the reader is looking at and why it matters at this point in the module. If a figure feels too minor to deserve a caption, consider using an inline ASCII sketch or removing it.
 
 ### Test file conventions
 
@@ -138,6 +183,31 @@ The top of each test file should have a docstring with a numbered "Suggested ord
 ### Visual aids in lesson pages
 
 Use small ASCII diagrams to crack genuinely dense conceptual sections — particularly anything involving graph topology, shape arithmetic, alignment rules, or memory layout — where prose alone makes the structural relationship hard to see. The bar is "would a reader struggle to picture this without it?" Don't add diagrams for visual flair or because diagrams seem like a nice idea. Roughly a handful per module is the ceiling; some modules may have zero, which is fine. Reserve image assets in `docs/modules/NN-name/` for content that genuinely needs full graphics; for everything else, ASCII inside a fenced code block reads cleanly in every markdown viewer the student is likely to use.
+
+## Notebook style
+
+Student-facing notebooks should foreground the conceptual flow, not the plumbing. When authoring or cleaning a notebook:
+
+- **Open with the canonical intro cell.** The first cell is markdown and follows this template (see `notebooks/clean/00-prerequisite-review.ipynb` for the reference):
+
+  ```markdown
+  # Module NN - <Title>
+
+  <one short paragraph orienting the student to what this notebook is for>
+
+  1. Read the lesson page (`docs/modules/NN-name.md`).
+  2. Open this notebook with `.venv/bin/python scripts/open_notebook.py NN`.
+  3. Answer the `Question:` / `Answer:` cells below.
+  4. When you're ready, ask a coding agent to grade your notebook.
+
+  Partial work is fine. Blank `Answer: ""` strings are skipped, not counted wrong. If you'd like a hint instead of a grade, write the request inline in the answer string and the agent will tutor first.
+  ```
+
+  Keep the workflow list and the trailing "Partial work is fine..." paragraph verbatim across modules. The only per-module variation is the title, the orientation paragraph, the lesson page filename, and the `open_notebook.py` argument (e.g. `03b`, `09b`).
+- **Configs live near consumption.** No global "Run Configuration" wall at the top. Corpus knobs go in the prep cell, model and trainer config dicts at the top of the cell that uses them, sample prompts inline with the sample cell. A small shared base is fine only if it materially cuts duplication.
+- **No user-controlled run gates.** Don't add `run_X = True/False` toggles to skip long-running cells. If a student doesn't want to run a cell, they don't run it; Jupyter handles "stop execution." Environment checks (e.g. "TinyStories not downloaded → skip with friendly message") are different and should stay.
+- **Extract notebook plumbing, not concepts.** IPython display helpers, matplotlib chart glue, and `Trainer` progress wrappers belong in `g2c/notebook_extras/<topic>.py`, not inline. Code that IS the experiment the student is meant to read (an LR sweep loop, an ablation set) stays inline. Code the lesson explicitly frames as transitional (e.g. "Module 11 will build the real generation utilities, here's a stand-in") also stays inline so the framing is visible.
+- **Never put student-implemented code in `g2c/notebook_extras/`.** That directory is the escape hatch for non-pedagogical helpers; pedagogical deliverables go in `g2c/<topic>/`.
 
 ## What not to do
 

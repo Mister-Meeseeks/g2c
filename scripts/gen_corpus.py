@@ -314,29 +314,48 @@ def iter_hf_dataset(
 
 def iter_tinystories_documents(path: str, url: str) -> Iterator[str]:
     """Yield TinyStories documents from a local file if present, otherwise URL."""
-
     marker = END_OF_TEXT.encode("utf-8")
+
+    buffer = b""
+    for stream_cm in iter_tinystories_streams(path, url):
+        with stream_cm as stream:
+            while True:
+                chunk = stream.read(1024 * 1024)
+                if not chunk:
+                    break
+                buffer += chunk
+                pieces = buffer.split(marker)
+                for piece in pieces[:-1]:
+                    text = piece.decode("utf-8", errors="replace")
+                    if text.strip():
+                        yield text
+                buffer = pieces[-1]
+    if buffer.strip():
+        yield buffer.decode("utf-8", errors="replace")
+
+
+def iter_tinystories_streams(path: str, url: str):
     source_path = Path(path)
     if source_path.exists():
-        stream_cm: Any = source_path.open("rb")
-    else:
-        stream_cm = urlopen(url)
+        yield source_path.open("rb")
+        return
 
-    with stream_cm as stream:
-        buffer = b""
-        while True:
-            chunk = stream.read(1024 * 1024)
-            if not chunk:
-                break
-            buffer += chunk
-            pieces = buffer.split(marker)
-            for piece in pieces[:-1]:
-                text = piece.decode("utf-8", errors="replace")
-                if text.strip():
-                    yield text
-            buffer = pieces[-1]
-        if buffer.strip():
-            yield buffer.decode("utf-8", errors="replace")
+    tinystories_dir = source_path.parent
+    shard_paths = sorted(tinystories_dir.glob("TinyStories-train-[0-9][0-9][0-9][0-9].txt.gz"))
+    if shard_paths:
+        for shard_path in shard_paths:
+            yield gzip.open(shard_path, "rb")
+        return
+
+    sample_shards = sorted(
+        tinystories_dir.glob("TinyStories-train-100MB-[0-9][0-9][0-9][0-9].txt.gz")
+    )
+    if sample_shards:
+        for shard_path in sample_shards:
+            yield gzip.open(shard_path, "rb")
+        return
+
+    yield urlopen(url)
 
 
 def collect_source(
@@ -647,7 +666,10 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--tinystories-path",
         default="data/tinystories/TinyStories-train.txt",
-        help="local TinyStories file to prefer before streaming from URL",
+        help=(
+            "local TinyStories file to prefer before streaming from URL; "
+            "if missing, compressed TinyStories-train-*.txt.gz shards are used"
+        ),
     )
     parser.add_argument(
         "--tinystories-url",

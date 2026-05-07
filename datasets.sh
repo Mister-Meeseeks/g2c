@@ -31,7 +31,7 @@ Modes:
 
 Individual targets:
     glove             Download Stanford GloVe 6B and extract glove.6B.50d.txt.
-    tinystories       Download TinyStories train/valid text files.
+    tinystories       Download TinyStories train/valid compressed shards.
     g2c-corpus-small  Build ~1GB raw G2C Corpus v1 shards.
     g2c-corpus-full   Build ~9.5GB raw G2C Corpus v1 shards.
 
@@ -39,7 +39,14 @@ G2C corpus targets accept extra flags passed to scripts/gen_corpus.py, e.g.:
     ./datasets.sh g2c-corpus-full --codesearchnet-js-ratio 0.2
 
 Large files are written under data/, which is gitignored. Downloads are resumed
-when possible and skipped when the final files already exist.
+when possible and skipped when the final files already exist. TinyStories is
+stored as gzip shards split by 100MB of uncompressed text per shard.
+
+After each corpus is downloaded, scripts/build_tokenizers.py builds the
+matching tokenizer artifact (StoryTokenizer for tinystories, G2CTokenizer for
+the G2C corpus) so Module 10 can load them by name. Idempotent: builds are
+skipped when the artifact already exists. The Shakespeare tokenizer artifact
+is built by setup.sh.
 EOF
 }
 
@@ -74,6 +81,14 @@ file_at_least_bytes() {
     local path="$1"
     local min_bytes="$2"
     [[ -f "$path" ]] && [[ "$(file_size "$path")" -ge "$min_bytes" ]]
+}
+
+python_bin() {
+    if [[ -x ".venv/bin/python" ]]; then
+        printf ".venv/bin/python"
+    else
+        printf "python3"
+    fi
 }
 
 download_glove() {
@@ -125,27 +140,23 @@ download_tinystories() {
     info "Checking TinyStories corpus"
     mkdir -p "$dir"
 
-    if file_at_least_bytes "$train_file" "$train_min_bytes"; then
-        ok "$train_file exists"
-    else
-        info "$train_file not found or incomplete; downloading TinyStories train text (~1.9GB)"
-        download_resumable "$train_url" "$train_file"
-        if ! file_at_least_bytes "$train_file" "$train_min_bytes"; then
-            fail "$train_file is still incomplete after download"
-        fi
-        ok "$train_file ready"
-    fi
+    download_tinystories_shards \
+        "$train_url" \
+        "$dir" \
+        "TinyStories-train" \
+        "$train_file" \
+        "$train_min_bytes" \
+        "TinyStories train text (~1.9GB)"
 
-    if file_at_least_bytes "$valid_file" "$valid_min_bytes"; then
-        ok "$valid_file exists"
-    else
-        info "$valid_file not found or incomplete; downloading TinyStories validation text (~20MB)"
-        download_resumable "$valid_url" "$valid_file"
-        if ! file_at_least_bytes "$valid_file" "$valid_min_bytes"; then
-            fail "$valid_file is still incomplete after download"
-        fi
-        ok "$valid_file ready"
-    fi
+    download_tinystories_shards \
+        "$valid_url" \
+        "$dir" \
+        "TinyStories-valid" \
+        "$valid_file" \
+        "$valid_min_bytes" \
+        "TinyStories validation text (~20MB)"
+
+    build_tokenizer_artifact "story"
 }
 
 download_tinystories_sample() {
@@ -154,34 +165,138 @@ download_tinystories_sample() {
     local train_url="https://huggingface.co/datasets/roneneldan/TinyStories/resolve/main/TinyStories-train.txt"
     local sample_bytes=100000000
     local actual_bytes
+    local raw_tmp="$dir/.TinyStories-train-100MB.txt.download"
 
     require_tool curl
     info "Checking TinyStories 100MB sample"
     mkdir -p "$dir"
 
-    if [[ -f "$sample_file" ]]; then
-        actual_bytes="$(wc -c < "$sample_file" | tr -d ' ')"
-        if [[ "$actual_bytes" -ge "$sample_bytes" ]]; then
-            ok "$sample_file exists"
-            return
-        fi
-        info "$sample_file is incomplete; restarting sample download"
+    if tinystories_shards_ready "$dir" "TinyStories-train-100MB" "$sample_bytes"; then
+        ok "TinyStories 100MB sample shards exist"
+    elif file_at_least_bytes "$sample_file" "$sample_bytes"; then
+        info "$sample_file exists; converting to compressed shards"
+        shard_tinystories_file "$sample_file" "$dir" "TinyStories-train-100MB"
         rm -f "$sample_file"
+        ok "TinyStories 100MB sample shards ready"
+    else
+        if [[ -f "$sample_file" ]]; then
+            info "$sample_file is incomplete; restarting sample download"
+            rm -f "$sample_file"
+        fi
+
+        info "TinyStories 100MB sample not found; downloading first 100MB of train text"
+        curl \
+            --fail \
+            --location \
+            --range "0-$((sample_bytes - 1))" \
+            --output "$raw_tmp" \
+            "$train_url"
+
+        actual_bytes="$(wc -c < "$raw_tmp" | tr -d ' ')"
+        if [[ "$actual_bytes" -gt "$((sample_bytes + 1000000))" ]]; then
+            fail "expected about 100MB, but sample download is $actual_bytes bytes"
+        fi
+        if [[ "$actual_bytes" -lt "$sample_bytes" ]]; then
+            fail "TinyStories 100MB sample is incomplete after download"
+        fi
+
+        shard_tinystories_file "$raw_tmp" "$dir" "TinyStories-train-100MB"
+        rm -f "$raw_tmp"
+        ok "TinyStories 100MB sample shards ready"
     fi
 
-    info "$sample_file not found; downloading first 100MB of TinyStories train text"
-    curl \
-        --fail \
-        --location \
-        --range "0-$((sample_bytes - 1))" \
-        --output "$sample_file" \
-        "$train_url"
+    build_tokenizer_artifact "story"
+}
 
-    actual_bytes="$(wc -c < "$sample_file" | tr -d ' ')"
-    if [[ "$actual_bytes" -gt "$((sample_bytes + 1000000))" ]]; then
-        fail "expected about 100MB, but $sample_file is $actual_bytes bytes"
+tinystories_shards_ready() {
+    local dir="$1"
+    local prefix="$2"
+    local min_bytes="$3"
+    local manifest="$dir/$prefix-shards.json"
+
+    [[ -f "$manifest" ]] || return 1
+"$(python_bin)" - "$dir" "$manifest" "$min_bytes" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+try:
+    root = Path(sys.argv[1])
+    manifest_path = Path(sys.argv[2])
+    min_bytes = int(sys.argv[3])
+    manifest = json.loads(manifest_path.read_text())
+    shards = manifest.get("shards", [])
+    if int(manifest.get("total_uncompressed_bytes", 0)) < min_bytes:
+        raise SystemExit(1)
+    if not shards:
+        raise SystemExit(1)
+    for shard in shards:
+        if not (root / shard["path"]).exists():
+            raise SystemExit(1)
+except Exception:
+    raise SystemExit(1)
+PY
+}
+
+shard_tinystories_file() {
+    local input="$1"
+    local dir="$2"
+    local prefix="$3"
+    local chunk_bytes=100000000
+
+    info "Compressing $prefix into 100MB uncompressed shards"
+    "$(python_bin)" scripts/shard_text_gzip.py \
+        "$input" \
+        --output-dir "$dir" \
+        --prefix "$prefix" \
+        --chunk-bytes "$chunk_bytes" \
+        --manifest "$dir/$prefix-shards.json"
+}
+
+download_tinystories_shards() {
+    local url="$1"
+    local dir="$2"
+    local prefix="$3"
+    local legacy_file="$4"
+    local min_bytes="$5"
+    local label="$6"
+    local raw_tmp="$dir/.$prefix.txt.download"
+
+    if tinystories_shards_ready "$dir" "$prefix" "$min_bytes"; then
+        ok "$prefix compressed shards exist"
+        return
     fi
-    ok "$sample_file ready"
+
+    if file_at_least_bytes "$legacy_file" "$min_bytes"; then
+        info "$legacy_file exists; converting to compressed shards"
+        shard_tinystories_file "$legacy_file" "$dir" "$prefix"
+        rm -f "$legacy_file"
+    else
+        if [[ -f "$legacy_file" ]]; then
+            info "$legacy_file is incomplete; removing before redownload"
+            rm -f "$legacy_file"
+        fi
+        info "$prefix shards not found; downloading $label"
+        download_resumable "$url" "$raw_tmp"
+        if ! file_at_least_bytes "$raw_tmp" "$min_bytes"; then
+            fail "$prefix download is still incomplete"
+        fi
+        shard_tinystories_file "$raw_tmp" "$dir" "$prefix"
+        rm -f "$raw_tmp"
+    fi
+
+    if ! tinystories_shards_ready "$dir" "$prefix" "$min_bytes"; then
+        fail "$prefix compressed shards were not created correctly"
+    fi
+    ok "$prefix compressed shards ready"
+}
+
+build_tokenizer_artifact() {
+    # Build one course tokenizer artifact non-interactively. Idempotent — skips
+    # when the artifact already exists. Module 10 loads these by name.
+    local name="$1"
+    info "Building $name tokenizer artifact (skipped if it already exists)"
+    "$(python_bin)" scripts/build_tokenizers.py "$name"
 }
 
 has_arg() {
@@ -201,17 +316,19 @@ build_g2c_corpus() {
     local out_dir="$2"
     shift
     shift
-    local python_bin="python3"
-    if [[ -x ".venv/bin/python" ]]; then
-        python_bin=".venv/bin/python"
-    fi
+    local py
+    py="$(python_bin)"
 
     info "Building G2C Corpus v1 ($preset preset)"
     if [[ -f "$out_dir/manifest.json" ]] && ! has_arg "--force" "$@" && ! has_arg "--dry-run" "$@"; then
         ok "$out_dir exists"
-        return
+    else
+        "$py" scripts/gen_corpus.py --preset "$preset" --out "$out_dir" "$@"
     fi
-    "$python_bin" scripts/gen_corpus.py --preset "$preset" --out "$out_dir" "$@"
+
+    if ! has_arg "--dry-run" "$@"; then
+        build_tokenizer_artifact "g2c"
+    fi
 }
 
 download_all() {

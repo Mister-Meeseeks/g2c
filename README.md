@@ -26,7 +26,7 @@ Start with the [syllabus](docs/syllabus.md) for the full 20-week arc plus the fa
 | 08 | [Multi-head attention](docs/modules/08-multi-head-attention.md) | III — The transformer |
 | 09 | [The transformer block](docs/modules/09-transformer-block.md)   | III — The transformer |
 | 09B | [Pretraining](docs/modules/09b-pretraining.md)              | III — The transformer |
-| 10 | [Milestone: Your First LLM](docs/modules/10-your-first-llm.md) | III — The transformer |
+| 10 | [Milestone: TinyLLM](docs/modules/10-tinyllm.md) | III — The transformer |
 | 11 | [Sampling and decoding](docs/modules/11-sampling.md)            | IV — Behavior shaping |
 | 12 | [Scaling experiments](docs/modules/12-scaling.md)               | IV — Behavior shaping |
 | 13 | [Instruction tuning (SFT)](docs/modules/13-sft.md)              | IV — Behavior shaping |
@@ -117,9 +117,9 @@ The first run may download `data/tinyshakespeare.txt` for language-model trainin
 ```bash
 ./datasets.sh              # full preload: GloVe, TinyStories, full G2C Corpus v1
 ./datasets.sh --small      # same, but build the ~1GB G2C corpus
-./datasets.sh --tiny       # only a 100MB TinyStories sample
+./datasets.sh --tiny       # only a compressed 100MB TinyStories sample shard
 ./datasets.sh glove        # Module 05 pretrained vectors (~822MB download)
-./datasets.sh tinystories  # Module 10 scale-up corpus (~1.94GB text)
+./datasets.sh tinystories  # Module 10 scale-up corpus as compressed 100MB text shards
 ./datasets.sh all          # same as ./datasets.sh
 ```
 
@@ -159,6 +159,8 @@ For notebook exercises, open the working copy through the launcher:
 .venv/bin/python scripts/open_notebook.py 01           # create/resume notebooks/solutions/01-*.ipynb
 .venv/bin/python scripts/open_notebook.py 01 --fresh   # archive the old working copy, then reset from notebooks/clean/
 ```
+
+Each module's notebook holds both the runnable cells and the written exercises. Written prompts appear inline as `"Question: ..."` / `"Answer: "` string-literal code cells; you fill in the answer string. When you're ready, ask a coding agent to grade the notebook — partial work is fine, blank answers are skipped.
 
 Begin with `docs/syllabus.md`, then `docs/modules/00-prerequisite-review.md`, then `docs/modules/01-autodiff.md`.
 
