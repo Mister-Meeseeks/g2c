@@ -176,7 +176,7 @@ The default notebook run uses `data/tinyshakespeare.txt` (downloaded by `./setup
 
 ## M-series notes
 
-This is the first module where MPS should be the default. `Trainer(..., device="auto")` moves the model and sampled batches to MPS when available. Use CPU only for debugging tiny tests.
+This is the first module where MPS should be the default. Use CPU only for debugging tiny tests.
 
 Practical starting points:
 
@@ -185,7 +185,8 @@ Practical starting points:
 - **30M params on TinyStories:** a longer experiment; overnight to a couple days for the full run. But the notebook lets you stop early, inspect performance and save the model if it looks good enough.
 - **30M params on g2c:** same story as 30M TinyStories. The full run is longer, but tokens/s should be about the same. Stop early when performance is acceptable.
 - **If memory fails:** halve `batch_size` first, then `context_length`. The `(B, T, V)` logits tensor is often the largest activation.
-- **Watch system metrics.** GPU utilization and memory pressure are in MacOS Activity Monitor. GPU utilization should stay above 80%. If not, it's probably memory pressure.
+- **MacOS Activity Monitor.** GPU usage should stay close to 100% and memory pressure green or yellow.
+- **Avoid battery during run**. MacOS heavy throttles long-running GPU processes on battery.
 
 ---
 ## Reading

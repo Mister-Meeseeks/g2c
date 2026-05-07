@@ -167,6 +167,15 @@ The order is stable; not every module needs every section. Skip what doesn't app
 - **All other figures** sit inside Lecture notes / Homework and use an *italic* caption directly under the image, with **no blank line** between the image and its caption. The tight binding signals that the italic text is reading the image. The caption explains both what the image shows AND why it matters here, ideally tying back to a specific exercise, concept, or upcoming module. Captions are signal, not decoration.
 - **Hero image placement:** immediately after the question pull-quote, before the first `---` divider that opens `Before you start`.
 
+### Figure placement philosophy
+
+Place diagrams according to the role they play in the reader's understanding, not by a fixed "before" or "after" rule.
+
+- **Orientation diagrams** belong near the top of a section, usually after one short setup paragraph. Use this when the visual gives the student a mental model to hold while reading: architecture overviews, training-loop maps, data-flow diagrams, tensor-shape overviews.
+- **Dense synthesis diagrams** belong after the explanation. Use this when the visual collects many ideas into one poster-like summary. Shown too early, these can overload the student; shown after the pieces are introduced, they become a useful review surface.
+- **Mechanical diagrams** belong exactly where the mechanism is first needed. Use this for shape arithmetic, broadcasting, mask alignment, memory layout, indexing, or other rules where the visual is a working aid. Give the student the minimal vocabulary first, then place the diagram before the worked examples it helps decode.
+- **Captions are the default for instructional figures.** If the visual is not a hero image, include a short italic caption that says what the reader is looking at and why it matters at this point in the module. If a figure feels too minor to deserve a caption, consider using an inline ASCII sketch or removing it.
+
 ### Test file conventions
 
 The top of each test file should have a docstring with a numbered "Suggested order to implement & turn green" — mapping each implementation step to the tests it unblocks. The student should be able to read this once and know exactly where to start. Construction / repr / boilerplate tests pass from the start (since the boilerplate is implemented), serving as a sanity check on the test file itself; the rest fail with `NotImplementedError` until the student implements.

@@ -4,7 +4,7 @@
 
 ![Sampling and decoding on one page: the trained TransformerLM (left) emits (B, T, V) logits at every step; only the last position's row, (1, V), is used. Four logit warpers — repetition penalty, temperature, top-k, top-p — apply in that order, each transforming logits to logits and setting dropped tokens to -inf. The warped logits go through softmax and multinomial to sample one new token id, which is appended to the running sequence. A side panel contrasts greedy decoding (skip every warper, take argmax — deterministic) with sampled decoding (full pipeline). The whole loop repeats max_new_tokens times.](11-sampling/Module11-Hero.png)
 
-You trained a model in Module 10, and now you need to actually generate text from it. Sampling is just the loop that calls the model. Plus four small functions that reshape the model's native distribution before each draw. Internalizing those four warpers and the eight-step loop *is* the module
+You trained a model in Module 10, and now you need to actually generate text from it. Sampling is just the loop that calls the model. Four small "warper"functions that reshape the model's native distribution before each draw. Internalizing those four warpers and the eight-step loop *is* the module
 
 ---
 ## Before you start

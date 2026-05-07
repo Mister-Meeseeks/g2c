@@ -56,7 +56,7 @@ LLM tokenizers have vocab sizes of 32k–200k and embedding dimensions of hundre
 A transformer's attention layer is symmetric in its inputs — it computes `softmax(QKᵀ/√d)V` and the only way order enters is through the position-dependent contents of Q, K, V themselves. If those contents have no position information baked in, the model literally cannot tell `dog bites man` from `man bites dog`. Both are evaluated as the same bag of three vectors.
 
 ![The bag-of-tokens problem: "dog bites man" and "man bites dog" produce identical bag-of-vectors when position is dropped, identical attention without positional encoding, and only become distinguishable once a learned, sinusoidal, or RoPE positional signal is added.](05-embeddings/Module05-BagOfTokens.png)
-*The failure mode that motivates everything. Without position information, attention only sees sees an unordered bag of tokens. Position encodes structure like sentences and grammar.*
+*The failure mode that motivates everything. Without position information, attention only sees an unordered bag of tokens. Position is what lets word order become visible to the model.*
 
 So we encode position into the token vectors themselves before they reach attention. There are two design choices: ADD a positional vector (Learned, Sinusoidal) or ROTATE the vectors (RoPE).
 
@@ -119,7 +119,7 @@ The dot product of two RoPE'd vectors depends only on `(n − m)`. Token-pair at
 This is implemented as a per-position-pair 2D rotation, applied across all dimensions. The split-halves variant (Llama and friends): split the last dimension in half, treat dim `i` and dim `d/2 + i` as a 2-vector, rotate each pair by `m · θ_i` where `θ_i = 1/10000^(2i/d)`. The cos/sin tables are precomputed; the forward pass is `x · cos + rotate_half(x) · sin` — three tensor ops.
 
 ![RoPE as position-as-rotation: queries and keys at positions m and n get rotated by their position angles, and the dot product of the rotated vectors depends only on (n − m). Bottom panels show many-frequency cos/sin tables and the split-halves implementation recipe.](05-embeddings/Module05-Rotation.png)
-*The dot product of the rotated vectors depends only on the relative offset. At any single position, every dimension pair is rotated at its own frequency*
+*The dot product of the rotated vectors depends only on the relative offset. The lower panels connect that algebra to the implementation: many rotation frequencies, paired dimensions, and the `x * cos + rotate_half(x) * sin` recipe.*
 
 ## Concepts to internalize
 
