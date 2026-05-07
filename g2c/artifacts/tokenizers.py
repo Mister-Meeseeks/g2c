@@ -7,6 +7,7 @@ here so later modules can reuse the same artifacts.
 """
 from __future__ import annotations
 
+import gzip
 import hashlib
 import pickle
 from collections.abc import Callable, Iterable, Mapping
@@ -212,12 +213,18 @@ def encode_text_to_tensor(
     chunk_fn: TextChunkFn | None = None,
     dtype: torch.dtype = torch.long,
     progress_callback: ArtifactProgressCallback | None = None,
+    vocab_size: int | None = None,
 ) -> torch.Tensor:
     """Encode text into one preallocated tensor using a two-pass chunk scan.
 
     This avoids materializing one giant Python `list[int]` before making the
     tensor. By default it chunks every 1M characters. A future corpus-aware
     caller can pass `chunk_fn` that yields story/document boundaries instead.
+
+    `vocab_size` selects the tokenizer's effective vocab (passed through to
+    ``BPETokenizer.encode_with_vocab_size``). ``None`` means the full trained
+    vocab; ``0`` means byte + special tokens only; an integer ``N`` truncates
+    learned merges to those with ID ``< N``.
     """
     chunk_fn = chunk_fn or default_text_chunks
     _emit(progress_callback, phase="encode_count_start", chars=len(text))
@@ -225,7 +232,7 @@ def encode_text_to_tensor(
     chunks = 0
     chars_seen = 0
     for chunk in chunk_fn(text):
-        chunk_ids = tokenizer.encode_fast(chunk)
+        chunk_ids = tokenizer.encode_with_vocab_size(chunk, vocab_size)
         chunks += 1
         chars_seen += len(chunk)
         total_tokens += len(chunk_ids)
@@ -254,7 +261,7 @@ def encode_text_to_tensor(
         token_count=total_tokens,
     )
     for chunk_index, chunk in enumerate(chunk_fn(text), start=1):
-        chunk_ids = tokenizer.encode_fast(chunk)
+        chunk_ids = tokenizer.encode_with_vocab_size(chunk, vocab_size)
         next_offset = offset + len(chunk_ids)
         result[offset:next_offset] = torch.as_tensor(chunk_ids, dtype=dtype)
         offset = next_offset
@@ -301,11 +308,23 @@ def load_or_encode_tokenized_corpus(
     label: str = "corpus",
     repo_root: str | Path | None = None,
     progress_callback: ArtifactProgressCallback | None = None,
+    vocab_size: int | None = None,
 ) -> tuple[BPETokenizer, torch.Tensor]:
-    """Load cached token IDs for `text`, or encode them with a tokenizer artifact."""
+    """Load cached token IDs for `text`, or encode them with a tokenizer artifact.
+
+    ``vocab_size`` controls the effective vocab used at encode time:
+    ``None`` = full tokenizer vocab, ``0`` = byte + reserved special tokens
+    only, ``N`` = truncate learned merges to those with ID < N. The cache key
+    includes this so different effective vocabs don't collide on disk.
+    """
     root = find_repo_root(repo_root)
     tokenizer = load_required_tokenizer(tokenizer_name, repo_root=root)
-    cache_path = _token_id_cache_path(label, (text,), tokenizer_name, tokenizer, repo_root=root)
+    # Validate up front so we fail fast before touching the cache path.
+    tokenizer.effective_vocab_size(vocab_size)
+    cache_path = _token_id_cache_path(
+        label, (text,), tokenizer_name, tokenizer,
+        repo_root=root, vocab_size=vocab_size,
+    )
     if cache_path.exists():
         state = _load_pickle(cache_path)
         return tokenizer, _as_long_tensor(state["ids"])
@@ -314,12 +333,14 @@ def load_or_encode_tokenized_corpus(
         tokenizer,
         text,
         progress_callback=progress_callback,
+        vocab_size=vocab_size,
     )
     _save_pickle(
         {
             "ids": ids,
             "tokenizer_name": tokenizer_name,
             "kind": "tokenized-corpus",
+            "vocab_size": vocab_size,
         },
         cache_path,
     )
@@ -335,16 +356,22 @@ def load_or_encode_tokenized_pair(
     repo_root: str | Path | None = None,
     train_progress_callback: ArtifactProgressCallback | None = None,
     val_progress_callback: ArtifactProgressCallback | None = None,
+    vocab_size: int | None = None,
 ) -> tuple[BPETokenizer, torch.Tensor, torch.Tensor]:
-    """Load cached train/validation token IDs, or encode both text splits."""
+    """Load cached train/validation token IDs, or encode both text splits.
+
+    See ``load_or_encode_tokenized_corpus`` for ``vocab_size`` semantics.
+    """
     root = find_repo_root(repo_root)
     tokenizer = load_required_tokenizer(tokenizer_name, repo_root=root)
+    tokenizer.effective_vocab_size(vocab_size)
     cache_path = _token_id_cache_path(
         label,
         (train_text, val_text),
         tokenizer_name,
         tokenizer,
         repo_root=root,
+        vocab_size=vocab_size,
     )
     if cache_path.exists():
         state = _load_pickle(cache_path)
@@ -358,11 +385,13 @@ def load_or_encode_tokenized_pair(
         tokenizer,
         train_text,
         progress_callback=train_progress_callback,
+        vocab_size=vocab_size,
     )
     val_ids = encode_text_to_tensor(
         tokenizer,
         val_text,
         progress_callback=val_progress_callback,
+        vocab_size=vocab_size,
     )
     _save_pickle(
         {
@@ -370,6 +399,7 @@ def load_or_encode_tokenized_pair(
             "kind": "tokenized-pair",
             "train_ids": train_ids,
             "val_ids": val_ids,
+            "vocab_size": vocab_size,
         },
         cache_path,
     )
@@ -507,14 +537,19 @@ def _token_id_cache_path(
     tokenizer: BPETokenizer,
     *,
     repo_root: str | Path | None = None,
+    vocab_size: int | None = None,
 ) -> Path:
     root = find_repo_root(repo_root)
     total_chars, text_digest = _text_parts_digest(text_parts)
     safe_label = label.replace("/", "-")
     safe_tokenizer = tokenizer_name.replace("/", "-")
+    # `v{N}` (or `vfull`) keeps caches at different effective vocab sizes
+    # separate. Without it a switch from full vocab to a truncated vocab
+    # would silently serve a stale ID stream.
+    vocab_tag = "vfull" if vocab_size is None else f"v{vocab_size}"
     return root / "data" / "tokenizer-cache" / (
         f"{safe_label}-{safe_tokenizer}-{total_chars}-"
-        f"{text_digest}-{_tokenizer_digest(tokenizer)}.pkl"
+        f"{text_digest}-{_tokenizer_digest(tokenizer)}-{vocab_tag}.pkl.gz"
     )
 
 
@@ -544,8 +579,30 @@ def _as_long_tensor(value) -> torch.Tensor:
     return torch.as_tensor(value, dtype=torch.long)
 
 
+def _smallest_signed_int_dtype(max_id: int) -> torch.dtype:
+    """Return the narrowest signed int dtype that fits IDs in ``[0, max_id]``."""
+    if max_id < 2**15:
+        return torch.int16
+    if max_id < 2**31:
+        return torch.int32
+    return torch.int64
+
+
+def _downcast_for_storage(ids: torch.Tensor) -> torch.Tensor:
+    """Cast a token ID tensor to the smallest signed int that fits its values.
+
+    Used only for on-disk cache writes. Saves 4-8x disk vs raw int64 since every
+    course tokenizer's vocab fits in int16. ``_as_long_tensor`` widens back to
+    ``torch.long`` on load, so callers see the long-tensor contract unchanged.
+    """
+    if ids.numel() == 0:
+        return ids.to(torch.int16)
+    target = _smallest_signed_int_dtype(int(ids.max().item()))
+    return ids.to(target) if ids.dtype != target else ids
+
+
 def _load_pickle(path: Path) -> dict[str, object]:
-    with path.open("rb") as f:
+    with gzip.open(path, "rb") as f:
         state = pickle.load(f)
     if not isinstance(state, dict):
         raise ValueError(f"token ID cache must contain a dict: {path}")
@@ -554,8 +611,12 @@ def _load_pickle(path: Path) -> dict[str, object]:
 
 def _save_pickle(state: dict[str, object], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("wb") as f:
-        pickle.dump(state, f)
+    storage_state = dict(state)
+    for key, value in storage_state.items():
+        if isinstance(value, torch.Tensor):
+            storage_state[key] = _downcast_for_storage(value)
+    with gzip.open(path, "wb") as f:
+        pickle.dump(storage_state, f)
 
 
 def _config_from_manifest(name: str, manifest: Mapping[str, object]) -> TokenizerArtifactConfig:

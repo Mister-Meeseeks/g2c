@@ -457,6 +457,52 @@ class BPETokenizer:
 
         return ids
 
+    def encode_with_vocab_size(
+        self,
+        text: str,
+        vocab_size: int | None,
+    ) -> list[int]:
+        """Encode `text` at a requested effective vocab size.
+
+        Single entry point for the three encoding modes the course exposes:
+          - ``vocab_size=None``: full trained vocab (``encode_fast``).
+          - ``vocab_size=0``: byte + reserved special tokens only (``encode_base``).
+          - ``0 < vocab_size <= len(self.vocab)``: only merges with new ID
+            ``< vocab_size`` (``encode_at_vocab``).
+
+        Raises ``ValueError`` if ``vocab_size`` exceeds the trained vocab.
+        """
+        full = len(self.vocab)
+        if vocab_size is None or vocab_size == full:
+            return self.encode_fast(text)
+        if vocab_size > full:
+            raise ValueError(
+                f"requested vocab_size={vocab_size} exceeds tokenizer's "
+                f"trained vocab size {full}"
+            )
+        if vocab_size == 0:
+            return self.encode_base(text)
+        return self.encode_at_vocab(text, vocab_size)
+
+    def effective_vocab_size(self, vocab_size: int | None) -> int:
+        """Return the model vocab size implied by a requested ``vocab_size``.
+
+        Companion to ``encode_with_vocab_size``: maps the user-facing knob
+        (``None``/``0``/``N``) to the actual integer the embedding table
+        should be sized for.
+        """
+        full = len(self.vocab)
+        if vocab_size is None:
+            return full
+        if vocab_size == 0:
+            return self.base_vocab_size
+        if vocab_size > full:
+            raise ValueError(
+                f"requested vocab_size={vocab_size} exceeds tokenizer's "
+                f"trained vocab size {full}"
+            )
+        return vocab_size
+
     def decode(self, ids: list[int]) -> str:
         """Reverse of `encode`: reconstruct the original text from IDs.
 

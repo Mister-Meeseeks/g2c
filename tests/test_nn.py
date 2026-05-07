@@ -81,7 +81,7 @@ def test_module_to_cpu_moves_parameters():
 def test_module_to_mps_moves_parameters():
     layer = Linear(5, 3)
     layer.to("mps")
-    assert layer.device == torch.device("mps")
+    assert layer.device.type == "mps"
     for p in layer.parameters():
         assert p.device.type == "mps"
 

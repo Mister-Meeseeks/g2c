@@ -614,3 +614,45 @@ def test_encode_at_vocab_round_trips():
     text = "the quick brown fox"
     for vocab in (tok.base_vocab_size, 280, 300, len(tok.vocab)):
         assert tok.decode(tok.encode_at_vocab(text, vocab)) == text
+
+
+# ----------------------------------------------------------------------
+# encode_with_vocab_size / effective_vocab_size
+# ----------------------------------------------------------------------
+
+def test_encode_with_vocab_size_none_uses_full_vocab():
+    tok = BPETokenizer()
+    tok.train("hello world " * 5, vocab_size=300)
+    text = "hello world"
+    assert tok.encode_with_vocab_size(text, None) == tok.encode_fast(text)
+
+
+def test_encode_with_vocab_size_zero_uses_base():
+    tok = BPETokenizer.with_course_special_tokens()
+    tok.train("the quick brown fox " * 5, vocab_size=320)
+    text = "a<|endoftext|>b"
+    assert tok.encode_with_vocab_size(text, 0) == tok.encode_base(text)
+
+
+def test_encode_with_vocab_size_truncates():
+    tok = BPETokenizer()
+    tok.train("the quick brown fox jumps over the lazy dog. " * 30, vocab_size=320)
+    text = "the quick"
+    assert tok.encode_with_vocab_size(text, 280) == tok.encode_at_vocab(text, 280)
+
+
+def test_encode_with_vocab_size_too_large_raises():
+    tok = BPETokenizer()
+    tok.train("hi " * 5, vocab_size=270)
+    with pytest.raises(ValueError):
+        tok.encode_with_vocab_size("hi", len(tok.vocab) + 1)
+
+
+def test_effective_vocab_size_routing():
+    tok = BPETokenizer.with_course_special_tokens()
+    tok.train("the quick brown fox jumps over the lazy dog. " * 30, vocab_size=320)
+    assert tok.effective_vocab_size(None) == len(tok.vocab)
+    assert tok.effective_vocab_size(0) == tok.base_vocab_size
+    assert tok.effective_vocab_size(290) == 290
+    with pytest.raises(ValueError):
+        tok.effective_vocab_size(len(tok.vocab) + 1)
