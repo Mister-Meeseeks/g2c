@@ -9,13 +9,13 @@ The last module handed us integer IDs. This module turns them into vectors. The 
 ---
 ## Before you start
 
-* **Review Trigonometry** `sin(0) = 0`, `cos(0) = 1`. Sin and cos are bounded in `[−1, 1]`. Sin and cos at multiple frequencies. Nothing more exotic than what's in a high school trig review.
-* **Review** [[PyTorch Primer]] if any PyTorch code looks unfamiliar or confusing
-* **Finish** the `g2c/nn` package implementation from [[03-nn]]. The code and exercises in this module rely on that implementation
-* **Run `datasets.sh`** if you haven't already to get the datasets used in this lesson's exercises
+* *Review* high-school trig (sin/cos basics, multiple frequencies — nothing exotic)
+* *Review* [[PyTorch Primer]] if any PyTorch code looks unfamiliar or confusing
+* *Finish* the `g2c/nn` package implementation from [[03-nn]] — this module relies on it
+* *Run* `datasets.sh` if you haven't already, to get the datasets used in the exercises
 
 ---
-## Where this fits
+## Where this fits in
 
 After Module 04 you can turn text into a sequence of integer token IDs. After this module you can turn that sequence into a sequence of vectors that a neural network can actually use.
 
@@ -220,13 +220,14 @@ Set up or resume the working notebook for this exercise set by running:
 
 7. **Compare positional schemes side-by-side.** Plot learned, sinusoidal, and RoPE tables as heatmaps. Identify which table is learned, which ones are fixed, and what visual pattern sinusoidal and RoPE share.
 
-## Pitfalls to avoid
+## Pitfalls to expect
 
 - **Wrong axis when slicing sin/cos in sinusoidal.** Even dimensions should get sines; odd should get cosines. `weight[:, 0::2] = sin(angles)` and `weight[:, 1::2] = cos(angles)`. Mixing these up gives a tensor that's not a valid sinusoidal encoding.
 - **`embedding_dim` odd.** Sinusoidal and RoPE both require an even dim. The `__init__`s raise a `ValueError`; if you instantiate at the wrong size, the error tells you what's wrong.
 - **Forgetting `.requires_grad_(False)` on fixed tables.** The sinusoidal weight and the RoPE cos/sin tables are *not* parameters — they should not appear in `parameters()` and should not be updated by the optimizer.
 - **`outer` vs. element-wise multiply.** Building the angles table requires `torch.outer(positions, inv_freq)` (or `positions[:, None] * inv_freq[None, :]`), not just `positions * inv_freq` (which would be element-wise on mismatched-shape tensors).
 - **Wrong half-split convention for RoPE.** We use the *split-halves* variant: pair dim `i` with dim `d/2 + i`. The original RoPE paper paired dim `2i` with dim `2i+1` (interleaved). Both are valid rotations and produce the same end-to-end behavior in attention, but they're not interchangeable — `_rotate_half` is specifically the split-halves version.
+
 ## M-series notes
 
 This module is light on compute.

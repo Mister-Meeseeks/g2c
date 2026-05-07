@@ -9,8 +9,8 @@ The same pipeline runs at every position in parallel, with the only per-position
 ---
 ## Before you start
 
-* **Finish** the `g2c/nn` package implementation from [[03-nn]]. The code and exercises in this module rely on that implementation
-
+* *Review* [[06-language-models]] for the next-token-prediction setup that attention extends
+* *Finish* `g2c/nn` from [[03-nn]], `g2c/embeddings` from [[05-embeddings]], and `g2c/tokenizer` from [[04-tokenizer]] — exercise 3 trains a tiny LM end-to-end and needs all three
 
 ---
 ## Where this fits in
@@ -176,7 +176,7 @@ pytest tests/test_attention.py -v          # verbose
 
 5. **Feel the `O(T²)` cost.** Time `attn(x)` for `x` of shape `(1, T, 128)` at `T = 64, 256, 1024, 4096`. Plot wall time vs `T` on a log-log scale. The slope should be very close to 2.
 
-## Pitfalls to avoid
+## Pitfalls to expect
 
 - **Forgetting the `1/√D` scaling.** Training is unstable; loss is noisy and slow to converge. The model can still learn, but the training curve looks bad. 
 

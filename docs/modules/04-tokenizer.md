@@ -9,11 +9,11 @@ The whole pipeline that turns `"The quick brown fox..."` into the integer list a
 ---
 ## Before you start
 
-- **Refresh Python `bytes` and UTF-8.** A `bytes` object is a sequence of integers in `[0, 256)`. UTF-8 is variable-width: ASCII is 1 byte, common European characters 2, emoji 4. `bytes.encode()` and `bytes.decode()`
-- Run `./datasets.sh` in the repo root to download the corpus we'll use to train a tokenizer in the exercises
+* *Review* Python `bytes` and UTF-8 if either feels unfamiliar — `bytes` is a sequence of integers in `[0, 256)`; UTF-8 is variable-width (ASCII 1 byte, common European 2, emoji 4)
+* *Run* `./datasets.sh` to download the corpus we'll train the tokenizer on
 
 ---
-## Where this fits
+## Where this fits in
 
 The course up to this point has worked with numbers. Real LLMs work with text. Tokenization is the bridge between the two — the function that turns `"The quick brown fox"` into `[464, 2068, 7586, 21831]` and back. Every input to every transformer in production goes through a tokenizer first; every output comes from one in reverse. It's the first thing you'd build in an LLM pipeline and the last thing in inference.
 
@@ -30,7 +30,6 @@ There are three genuinely different ways to do this, with very different tradeof
 Character-level (or byte-level) is robust but produces sequences too long to fit in a context window. Word-level produces short sequences but explodes vocab size and silently drops out-of-vocabulary words. Subword tokenization — specifically **byte-pair encoding (BPE)** and its close cousins WordPiece and SentencePiece — splits the difference. Common substrings (`"the"`, `"ing"`, `"ation"`) become single tokens; rare or novel inputs fall back to smaller pieces; nothing is ever truly out-of-vocabulary because the base vocab covers every possible byte.
 
 ![Character vs word vs subword (BPE) tokenization, applied to "The unbelievable speed of the spacecraft was astonishing!", with vocab-size, sequence-length, OOV-robustness, and compute tradeoffs side by side.](04-tokenizer/Module04-Subword.png)
-
 *The same sentence, three tokenizers. Character-level keeps the vocab tiny but blows out the sequence; word-level shortens the sequence but balloons the vocab and chokes on `"unbelievable"` if it wasn't seen during training; subword/BPE finds the middle by carving common substrings (`"_un"`, `"believ"`, `"_speed"`) into single tokens and falling back to pieces only for the rare bits. Every modern LLM picks the third column.*
 
 Modern LLMs all use BPE-family tokenizers. GPT-2/3/4, Llama, Mistral, Qwen — same algorithm, different training data. Module 04 has you build it.
@@ -190,7 +189,7 @@ Set up or resume the working notebook for this exercise set by running:
 
 The notebook ends with a **Mini Milestone** section that turns your tokenizer into reusable artifacts. It uses `g2c.artifacts` to train or load configured tokenizers with progress updates, save each tokenizer plus a small encoded inspection sample under `artifacts/tokenizers/`, and keep path/loading logic reusable outside the notebook. Full pre-tokenized corpora are separate later artifacts; the durable thing here is the learned tokenizer table. The notebook then prints inspection views: a pseudo-random text window tokenized as strings, frequent final tokens after encoding, frequent learned final tokens after encoding, greedy longest learned tokens that skip substring duplicates, and a frequency plot. `ShakespeareTokenizer` is enabled by default. `StoryTokenizer` and `G2CTokenizer` are configured but disabled until you choose to run the larger dataset path.
 
-## Common Pitfalls
+## Pitfalls to expect
 
 - **Off-by-one in pair counting.** A list of length `n` has `n - 1` adjacent pairs, not `n`. `range(len(ids) - 1)` or a `zip(ids, ids[1:])` style is the cleanest.
 

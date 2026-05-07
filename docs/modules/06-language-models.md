@@ -9,9 +9,9 @@ The training-time path and the inference-time path use the same model with the s
 ---
 ## Before you start
 
-* **Review** [[03-nn]] for neural models and [[05-embeddings]] and [[04-tokenizer]] for representing language
-* **Review** [[PyTorch Primer]] if any PyTorch code feels unfamiliar or confusing
-* **Finish** the `g2c/nn` package from [[03-nn]] and the `g2c/embeddings` package from [[05-embeddings]]. This module relies on those implementations.
+* *Review* [[03-nn]] for neural models, [[05-embeddings]] and [[04-tokenizer]] for representing language
+* *Review* [[PyTorch Primer]] if any PyTorch code feels unfamiliar or confusing
+* *Finish* the `g2c/nn` package from [[03-nn]] and the `g2c/embeddings` package from [[05-embeddings]] — this module relies on both
 
 ---
 ## Where this fits in
@@ -57,7 +57,7 @@ The only conceptual addition is what to do at inference time. There's no "true n
 That loop IS the inference path of every LLM you've ever talked to. Everything else — top-k sampling, beam search, temperature controls, RAG, tools — is decoration around this exact loop.
 
 ![Autoregressive generation: predict → append → repeat. A sequence of frames shows a model extending "the cat sat on" one token at a time, sampling from the next-token distribution and feeding each output back as part of the new context.](06-language-models/Module06-Loop.png)
-*Each step asks the model for a next-token distribution given the current context, samples one token, appends it, and slides the context window forward. It's the same model used during training, just called repeatedly with its own outputs as input.
+*Each step asks the model for a next-token distribution given the current context, samples one token, appends it, and slides the context window forward. It's the same model used during training, just called repeatedly with its own outputs as input.*
 
 ### The language model ladder
 
@@ -199,7 +199,8 @@ def sample(model, prompt_ids, num_tokens, *, temperature=1.0, device="auto") -> 
 def train_lm(model, train_ids, *, val_ids=None, device="auto", ...) -> dict: ...
 ```
 
-Roughly 50 lines of code split between each implementation. They all share the same interface and can be generally substituted for each other in the exercises. 
+Roughly 50 lines of code split between each implementation. They all share the same interface and can be generally substituted for each other in the exercises.
+
 ## How to run the tests
 
 Tests live in `tests/test_lm.py`. Initial state: 13 passed, 35 failed.
@@ -212,18 +213,6 @@ pytest tests/test_lm.py -x          # stop at first failure (recommended)
 pytest tests/test_lm.py -k counts   # only the counts-model tests
 pytest tests/test_lm.py -k mlp      # only the MLP tests
 pytest tests/test_lm.py -v          # verbose
-```
-
-## Scaffolding and how to run the tests
-
-Tests live in `tests/test_lm.py`. Initial state: 13 passed, 35 failed.
-
-```bash
-.venv/bin/python -m pytest tests/test_lm.py             # run all module-06 tests
-.venv/bin/python -m pytest tests/test_lm.py -x          # stop at first failure (recommended)
-.venv/bin/python -m pytest tests/test_lm.py -k counts   # only the counts-model tests
-.venv/bin/python -m pytest tests/test_lm.py -k mlp      # only the MLP tests
-.venv/bin/python -m pytest tests/test_lm.py -v          # verbose
 ```
 
 ## Exercises
@@ -250,7 +239,7 @@ The notebook starts with an executable test gate, then uses the implemented piec
 
 7. **Plot training curves.** Plot training cross-entropy and validation perplexity for the neural bigram and MLP. Use the counts bigram perplexity as a horizontal baseline.
 
-## Pitfalls to avoid
+## Pitfalls to expect
 
 - **`fit` not accumulating.** Calling `fit` twice should add to the existing table, not replace it. Reset the counts in `__init__`, not in `fit`.
 

@@ -6,11 +6,14 @@
 
 This week is short in terms of content. Almost everything is already in place from last lesson. Review the scaled dot-product and softmax machinery from the previous module. The conceptual move is "split D into H slots and run H copies of attention in parallel"; the engineering move is "do that with one matmul, not H of them."
 
---- 
+---
 ## Before you start
 
+* *Review* [[07-attention]] — multi-head is one structural change on top of single-head attention
+* *Finish* `g2c/nn` from [[03-nn]], `g2c/embeddings` from [[05-embeddings]], and `g2c/tokenizer` from [[04-tokenizer]] — exercise 3 trains a tiny LM end-to-end and uses all three
+
 ---
-## Where this fits
+## Where this fits in
 
 Module 07's single-head attention works, but it has a structural limitation: the Q/K/V projections compress everything one query wants to ask about into a single `D`-dimensional vector. If the model wants to attend differently for different reasons — e.g., one query direction for syntactic dependencies, another for coreference, another for adjacency — a single head must overload all of those onto the same `D` channels.
 
@@ -117,7 +120,7 @@ This is the empirical surprise: when you train a transformer with multi-head att
 You won't see these in your tiny model from Module 10 with high fidelity — you need many more parameters and training data — but the mechanism is set up here. The visualization exercise (exercise 4) will let you LOOK at attention patterns after training and see whether any heads have learned anything interpretable.
 
 ![Four canonical head-specialization patterns visualized as attention heatmaps over a sample sentence: (1) a previous-token head — all mass on the position immediately before the query, a clean sub-diagonal stripe; (2) a syntactic head — sparse off-diagonal links between grammatically related tokens (subject↔verb, modifier↔noun); (3) an induction head — for the pattern "...A B...A", weight concentrates on the token after the previous A; (4) a global / broadcast head — diffuse weight covering most of the sequence. A side caption emphasizes the headline: nothing in the architecture forces these patterns; they emerge during training.](08-multi-head-attention/Module08-DiffHeads.png)
-*Multi-head attention's empirical payoff isn't visible from the math — it shows up only when you train and look. With H heads available, the optimizer is free to use one for previous-token copying, another for syntactic dependencies, another for induction, etc., and it tends to do so. Single-head attention has to commit one set of weights to ALL of these jobs simultaneously; multi-head attention can specialize and recombine via W_O. 
+*Multi-head attention's empirical payoff isn't visible from the math — it shows up only when you train and look. With H heads available, the optimizer is free to use one for previous-token copying, another for syntactic dependencies, another for induction, etc., and it tends to do so. Single-head attention has to commit one set of weights to ALL of these jobs simultaneously; multi-head attention can specialize and recombine via W_O.*
 
 ## Concepts to internalize
 
@@ -206,7 +209,7 @@ pytest tests/test_multi_head_attention.py -v          # verbose
 
 5. **Parameter counts at varying H.** Verify analytically that `MultiHeadAttention(embedding_dim=D, num_heads=H)` has parameter count `4 * (D*D + D)`, independent of `H`. Compute it programmatically for a few `(D, H)` pairs by summing `p.numel()` over `attn.parameters()`. Convince yourself that "more heads" is a free structural change at fixed `D`.
 
-## Pitfalls to avoid
+## Pitfalls to expect
 
 - **Scaling by √D instead of √head_dim.** The single most common multi-head bug. Training sluggish; attention weights are too flat; gradients propagate weakly. Crashes nothing, fails subtly. 
 
@@ -226,7 +229,7 @@ pytest tests/test_multi_head_attention.py -v          # verbose
 
 ## M-series notes
 
-This module is light on compute 
+This module is light on compute.
 
 - Exercise 3's training comparison (3 runs at fixed `D = 64`) is a few hundred steps each on a small corpus; under a couple minutes total on CPU.
 - Exercise 4's per-head visualization is a single forward pass on one sentence — milliseconds.

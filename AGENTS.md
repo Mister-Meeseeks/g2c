@@ -116,7 +116,8 @@ The full template, with the four divider positions:
 > **Question this module answers:** *<one-line question>*
 
 ![<one-sentence alt text>](<NN-name>/Module<NN>-Hero.png)
-<short non-italic orientation paragraph; functions as the hero caption.>
+
+<short non-italic orientation paragraph — intro text, not a caption.>
 
 ---
 ## Before you start
@@ -161,8 +162,8 @@ The order is stable; not every module needs every section. Skip what doesn't app
 
 - **Filename convention:** `ModuleNN-<Descriptor>.png` inside `docs/modules/NN-name/`. The headline summary image is `ModuleNN-Hero.png`; specific diagrams use descriptive PascalCase names (`Module02-MatMul.png`, `Module02-Ladder.png`).
 - **Reference from the lesson** with relative paths: `![alt text](NN-name/ModuleNN-Foo.png)`. Always include real alt text — it's the fallback when the image fails to render and matters for accessibility.
-- **Hero image caption** is a non-italic orientation paragraph immediately under the image, with no blank line between them. This paragraph is the start of the Intro section and sets up the module.
-- **All other figures** sit inside Lecture notes / Homework and use an *italic* caption directly underneath the image, with no blank line between the image and its caption. The caption explains both what the image shows AND why it matters here, ideally tying back to a specific exercise, concept, or upcoming module. Captions are signal, not decoration.
+- **Hero image** is followed by a blank line and then a short non-italic orientation paragraph. The paragraph is intro text, not a caption — it sets up the module rather than narrating the image, so the looser binding (blank line, no italics) is correct.
+- **All other figures** sit inside Lecture notes / Homework and use an *italic* caption directly under the image, with **no blank line** between the image and its caption. The tight binding signals that the italic text is reading the image. The caption explains both what the image shows AND why it matters here, ideally tying back to a specific exercise, concept, or upcoming module. Captions are signal, not decoration.
 - **Hero image placement:** immediately after the question pull-quote, before the first `---` divider that opens `Before you start`.
 
 ### Test file conventions
