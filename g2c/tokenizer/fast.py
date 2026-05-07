@@ -77,7 +77,18 @@ def token_string_to_bytes(token: str) -> bytes:
     return bytes(UNICODE_TO_BYTE[char] for char in token)
 
 
-def _byte_level_tokenizer_from_bpe(tokenizer: BPETokenizer):
+def _byte_level_tokenizer_from_bpe(
+    tokenizer: BPETokenizer,
+    *,
+    vocab_size: int | None = None,
+):
+    """Build an HF Rust tokenizer from this BPE's vocab and merges.
+
+    When `vocab_size` is set, the merge list is truncated to merges with
+    `new_id < vocab_size`. The result is byte-identical to encoding with a
+    BPE that was *trained* up to `vocab_size`, because BPE encoding is greedy
+    in merge-rank order and ranks are stable across truncation.
+    """
     Tokenizer, decoders, models, pre_tokenizers, _ = _require_tokenizers()
 
     vocab = {bytes_to_token_string(bytes([byte])): byte for byte in range(256)}
@@ -89,6 +100,8 @@ def _byte_level_tokenizer_from_bpe(tokenizer: BPETokenizer):
         tokenizer.merges.items(),
         key=lambda item: item[1],
     ):
+        if vocab_size is not None and new_id >= vocab_size:
+            break  # merges are sorted by new_id; stop at the cap
         left = bytes_to_token_string(tokenizer.vocab[left_id])
         right = bytes_to_token_string(tokenizer.vocab[right_id])
         token = bytes_to_token_string(tokenizer.vocab[new_id])
@@ -105,13 +118,23 @@ def _byte_level_tokenizer_from_bpe(tokenizer: BPETokenizer):
     return rust_tokenizer
 
 
-def encode_fast(tokenizer: BPETokenizer, text: str) -> list[int]:
-    """Encode text using the Rust-backed byte-level BPE implementation."""
+def encode_fast(
+    tokenizer: BPETokenizer,
+    text: str,
+    *,
+    vocab_size: int | None = None,
+) -> list[int]:
+    """Encode text using the Rust-backed byte-level BPE implementation.
+
+    `vocab_size`, when set, truncates the active merge list so that only
+    merges with `new_id < vocab_size` apply. This produces the same IDs as
+    the slow `encode_at_vocab` path at Rust speed.
+    """
     if not text:
         return []
-    if not tokenizer.merges:
+    if not tokenizer.merges or vocab_size == tokenizer.base_vocab_size:
         return tokenizer._encode_initial_ids(text)
-    rust_tokenizer = _byte_level_tokenizer_from_bpe(tokenizer)
+    rust_tokenizer = _byte_level_tokenizer_from_bpe(tokenizer, vocab_size=vocab_size)
     ids: list[int] = []
     for segment in tokenizer._special_aware_segments(text):
         if isinstance(segment, int):

@@ -135,11 +135,15 @@ class BPETokenizer:
     # Fast path — implemented infrastructure
     # ------------------------------------------------------------------
 
-    def encode_fast(self, text: str) -> list[int]:
-        """Encode `text` with the Rust-backed BPE implementation."""
+    def encode_fast(self, text: str, *, vocab_size: int | None = None) -> list[int]:
+        """Encode `text` with the Rust-backed BPE implementation.
+
+        `vocab_size`, when set, restricts merges to those with new ID below
+        the cap — same semantics as `encode_at_vocab` but at Rust speed.
+        """
         from .fast import encode_fast
 
-        return encode_fast(self, text)
+        return encode_fast(self, text, vocab_size=vocab_size)
 
     def train_fast(
         self,
@@ -468,7 +472,8 @@ class BPETokenizer:
           - ``vocab_size=None``: full trained vocab (``encode_fast``).
           - ``vocab_size=0``: byte + reserved special tokens only (``encode_base``).
           - ``0 < vocab_size <= len(self.vocab)``: only merges with new ID
-            ``< vocab_size`` (``encode_at_vocab``).
+            ``< vocab_size``. Routed through the Rust fast path with a
+            truncated merge list — byte-identical to ``encode_at_vocab``.
 
         Raises ``ValueError`` if ``vocab_size`` exceeds the trained vocab.
         """
@@ -482,7 +487,7 @@ class BPETokenizer:
             )
         if vocab_size == 0:
             return self.encode_base(text)
-        return self.encode_at_vocab(text, vocab_size)
+        return self.encode_fast(text, vocab_size=vocab_size)
 
     def effective_vocab_size(self, vocab_size: int | None) -> int:
         """Return the model vocab size implied by a requested ``vocab_size``.
