@@ -305,6 +305,37 @@ def _vocab_divider_indices(tokenizer: BPETokenizer) -> list[int]:
     return indices
 
 
+def _print_encoded_at_dividers(
+    tokenizer: BPETokenizer,
+    text: str,
+    *,
+    chars: int = 80,
+) -> None:
+    """Print a short sample re-encoded at the base vocab and each divider.
+
+    Demonstrates the truncated-vocab property of BPE: each line is what the
+    same tokenizer would produce if it had only been trained to that vocab
+    size. Token count drops as vocab grows.
+    """
+    sample = text[:chars]
+    if not sample:
+        return
+    base = tokenizer.base_vocab_size
+    vocab_sizes = [base] + [idx + 1 for idx in _vocab_divider_indices(tokenizer)]
+    print("\nSample text re-encoded at successive vocab sizes:")
+    print(f"  source ({len(sample)} chars): {sample!r}")
+    for vocab in vocab_sizes:
+        ids = tokenizer.encode_at_vocab(sample, vocab)
+        token_strs = [
+            _shorten(repr(_display_token_bytes(tokenizer.vocab[token_id])), 16)
+            for token_id in ids
+        ]
+        display = " ".join(token_strs)
+        if len(display) > 220:
+            display = display[:217] + "..."
+        print(f"  vocab={vocab:>5} | {len(ids):>4} tokens | {display}")
+
+
 def _plot_vocab_divider_tokens(
     tokenizer: BPETokenizer,
     text: str,
@@ -360,6 +391,8 @@ def inspect_tokenizer_artifact(artifact: TokenizerArtifact, *, seed: int = 13) -
         ("token_id", "bytes", "token"),
         [(token_id, length, repr(_shorten(token, 120))) for token_id, length, token in longest_rows],
     )
+
+    _print_encoded_at_dividers(tokenizer, sample)
 
     learned_frequent_rows = _most_frequent_final_tokens(tokenizer, text, top_n=20, learned_only=True)
     _plot_frequency_rows(learned_frequent_rows, title=f"{name}: most frequent learned final tokens")

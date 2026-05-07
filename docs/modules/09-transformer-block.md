@@ -9,6 +9,9 @@ Transformers are layers of blocks. Each block is an attention sublayer and a nor
 ---
 ## Before you start
 
+* *Review* [[08-multi-head-attention]] — this module wraps it in LayerNorm and residuals
+* *Finish* `g2c/nn` (Module 03), `g2c/embeddings` (Module 05), and `g2c/attention` (Modules 07–08) — the block stitches all three together
+
 ---
 ## Where this fits in
 
@@ -356,7 +359,7 @@ pytest tests/test_transformer.py -v          # verbose
 
    Sum it up symbolically; verify by summing `p.numel()` over `m.parameters()` for a few `(V, D, N, H, T_max)` tuples. Notice that for typical `D ≫ T_max ≪ V`, the dominant term is `V × D` (the embeddings) at small scales and `12 N D²` (the blocks) at large scales.
 
-## Common pitfalls
+## Pitfalls to expect
 
 - **LayerNorm over the wrong dim.** Pooling statistics over the batch dim (BatchNorm-style) or over the sequence dim instead of the channel dim. Symptom: training works but is unusually slow; batch size matters in surprising ways. 
 
@@ -378,7 +381,7 @@ pytest tests/test_transformer.py -v          # verbose
 
 ## M-series notes
 
-This module is still light on compute
+This module is still light on compute.
 
 - Exercise 1's pre-norm vs post-norm comparison at `num_layers = 6, D = 64, T = 32` is a few minutes per run on CPU; comfortable on MPS.
 - Exercise 2's strip-residuals study at `num_layers = 8` is the first configuration big enough that MPS starts paying off — about 2× over CPU at this size.

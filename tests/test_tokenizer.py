@@ -543,3 +543,74 @@ def test_compression_increases_with_vocab_size():
     big.train(corpus, vocab_size=350)
 
     assert len(big.encode(test_text)) <= len(small.encode(test_text))
+
+
+# ----------------------------------------------------------------------
+# encode_base / encode_at_vocab
+# ----------------------------------------------------------------------
+
+def test_encode_base_no_specials_is_utf8_bytes():
+    tok = BPETokenizer()
+    tok.train("hello world " * 5, vocab_size=270)
+    assert tok.encode_base("hi") == [104, 105]
+
+
+def test_encode_base_keeps_special_tokens_atomic():
+    tok = BPETokenizer.with_course_special_tokens()
+    tok.train("the quick brown fox " * 5, vocab_size=320)
+    ids = tok.encode_base("a<|endoftext|>b")
+    eot_id = tok.special_to_id["<|endoftext|>"]
+    assert ids == [ord("a"), eot_id, ord("b")]
+
+
+def test_encode_at_vocab_at_base_size_matches_encode_base():
+    tok = BPETokenizer.with_course_special_tokens()
+    tok.train("the quick brown fox " * 5, vocab_size=320)
+    text = "the quick brown"
+    assert tok.encode_at_vocab(text, tok.base_vocab_size) == tok.encode_base(text)
+
+
+def test_encode_at_vocab_at_full_size_matches_encode():
+    tok = BPETokenizer()
+    tok.train("the quick brown fox " * 5, vocab_size=320)
+    text = "the quick brown"
+    assert tok.encode_at_vocab(text, len(tok.vocab)) == tok.encode(text)
+
+
+def test_encode_at_vocab_matches_smaller_trained_tokenizer():
+    """Truncating merges at K gives the same encoding as training to K."""
+    corpus = "the quick brown fox jumps over the lazy dog " * 30
+    test_text = corpus[:120]
+
+    big = BPETokenizer()
+    big.train(corpus, vocab_size=320)
+
+    small = BPETokenizer()
+    small.train(corpus, vocab_size=280)
+
+    assert big.encode_at_vocab(test_text, 280) == small.encode(test_text)
+
+
+def test_encode_at_vocab_monotonic_in_vocab_size():
+    """Larger vocab_size → at most as many tokens for the same text."""
+    corpus = "the quick brown fox jumps over the lazy dog " * 30
+    tok = BPETokenizer()
+    tok.train(corpus, vocab_size=350)
+    text = corpus[:200]
+
+    counts = [len(tok.encode_at_vocab(text, v)) for v in (260, 280, 300, 320, 350)]
+    assert counts == sorted(counts, reverse=True)
+
+
+def test_encode_at_vocab_below_base_raises():
+    tok = BPETokenizer.with_course_special_tokens()
+    with pytest.raises(ValueError):
+        tok.encode_at_vocab("anything", tok.base_vocab_size - 1)
+
+
+def test_encode_at_vocab_round_trips():
+    tok = BPETokenizer()
+    tok.train("the quick brown fox " * 5, vocab_size=320)
+    text = "the quick brown fox"
+    for vocab in (tok.base_vocab_size, 280, 300, len(tok.vocab)):
+        assert tok.decode(tok.encode_at_vocab(text, vocab)) == text

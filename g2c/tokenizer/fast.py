@@ -18,6 +18,7 @@ from __future__ import annotations
 import gc
 import json
 import os
+import re
 import tempfile
 import threading
 from collections.abc import Callable
@@ -162,10 +163,27 @@ def train_fast(
         return tokenizer._encode_initial_ids(text)
 
     rust_tokenizer = Tokenizer(models.BPE(unk_token=None, fuse_unk=False))
-    rust_tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel(
+    byte_level = pre_tokenizers.ByteLevel(
         add_prefix_space=False,
         use_regex=False,
     )
+    if tokenizer.special_tokens:
+        # Isolate special-token spans as their own pre-tokens so BPE pair
+        # counting cannot form merges that span across them. Reserved IDs are
+        # still added by `BpeTrainer(special_tokens=...)`; this just keeps the
+        # special-token bytes from polluting the learned merge table on the
+        # fast path. (The slow `train` path enforces this via barrier_ids.)
+        from tokenizers import Regex
+
+        pattern = "|".join(
+            re.escape(token) for token in tokenizer._special_tokens_by_length
+        )
+        rust_tokenizer.pre_tokenizer = pre_tokenizers.Sequence([
+            pre_tokenizers.Split(pattern=Regex(pattern), behavior="isolated"),
+            byte_level,
+        ])
+    else:
+        rust_tokenizer.pre_tokenizer = byte_level
     rust_tokenizer.decoder = decoders.ByteLevel()
     capture_native_progress = progress_callback is not None
     trainer = _make_bpe_trainer(
