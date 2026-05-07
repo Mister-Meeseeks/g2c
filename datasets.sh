@@ -41,6 +41,12 @@ G2C corpus targets accept extra flags passed to scripts/gen_corpus.py, e.g.:
 Large files are written under data/, which is gitignored. Downloads are resumed
 when possible and skipped when the final files already exist. TinyStories is
 stored as gzip shards split by 100MB of uncompressed text per shard.
+
+After each corpus is downloaded, scripts/build_tokenizers.py builds the
+matching tokenizer artifact (StoryTokenizer for tinystories, G2CTokenizer for
+the G2C corpus) so Module 10 can load them by name. Idempotent: builds are
+skipped when the artifact already exists. The Shakespeare tokenizer artifact
+is built by setup.sh.
 EOF
 }
 
@@ -149,6 +155,8 @@ download_tinystories() {
         "$valid_file" \
         "$valid_min_bytes" \
         "TinyStories validation text (~20MB)"
+
+    build_tokenizer_artifact "story"
 }
 
 download_tinystories_sample() {
@@ -165,41 +173,39 @@ download_tinystories_sample() {
 
     if tinystories_shards_ready "$dir" "TinyStories-train-100MB" "$sample_bytes"; then
         ok "TinyStories 100MB sample shards exist"
-        return
-    fi
-
-    if file_at_least_bytes "$sample_file" "$sample_bytes"; then
+    elif file_at_least_bytes "$sample_file" "$sample_bytes"; then
         info "$sample_file exists; converting to compressed shards"
         shard_tinystories_file "$sample_file" "$dir" "TinyStories-train-100MB"
         rm -f "$sample_file"
         ok "TinyStories 100MB sample shards ready"
-        return
+    else
+        if [[ -f "$sample_file" ]]; then
+            info "$sample_file is incomplete; restarting sample download"
+            rm -f "$sample_file"
+        fi
+
+        info "TinyStories 100MB sample not found; downloading first 100MB of train text"
+        curl \
+            --fail \
+            --location \
+            --range "0-$((sample_bytes - 1))" \
+            --output "$raw_tmp" \
+            "$train_url"
+
+        actual_bytes="$(wc -c < "$raw_tmp" | tr -d ' ')"
+        if [[ "$actual_bytes" -gt "$((sample_bytes + 1000000))" ]]; then
+            fail "expected about 100MB, but sample download is $actual_bytes bytes"
+        fi
+        if [[ "$actual_bytes" -lt "$sample_bytes" ]]; then
+            fail "TinyStories 100MB sample is incomplete after download"
+        fi
+
+        shard_tinystories_file "$raw_tmp" "$dir" "TinyStories-train-100MB"
+        rm -f "$raw_tmp"
+        ok "TinyStories 100MB sample shards ready"
     fi
 
-    if [[ -f "$sample_file" ]]; then
-        info "$sample_file is incomplete; restarting sample download"
-        rm -f "$sample_file"
-    fi
-
-    info "TinyStories 100MB sample not found; downloading first 100MB of train text"
-    curl \
-        --fail \
-        --location \
-        --range "0-$((sample_bytes - 1))" \
-        --output "$raw_tmp" \
-        "$train_url"
-
-    actual_bytes="$(wc -c < "$raw_tmp" | tr -d ' ')"
-    if [[ "$actual_bytes" -gt "$((sample_bytes + 1000000))" ]]; then
-        fail "expected about 100MB, but sample download is $actual_bytes bytes"
-    fi
-    if [[ "$actual_bytes" -lt "$sample_bytes" ]]; then
-        fail "TinyStories 100MB sample is incomplete after download"
-    fi
-
-    shard_tinystories_file "$raw_tmp" "$dir" "TinyStories-train-100MB"
-    rm -f "$raw_tmp"
-    ok "TinyStories 100MB sample shards ready"
+    build_tokenizer_artifact "story"
 }
 
 tinystories_shards_ready() {
@@ -285,6 +291,14 @@ download_tinystories_shards() {
     ok "$prefix compressed shards ready"
 }
 
+build_tokenizer_artifact() {
+    # Build one course tokenizer artifact non-interactively. Idempotent — skips
+    # when the artifact already exists. Module 10 loads these by name.
+    local name="$1"
+    info "Building $name tokenizer artifact (skipped if it already exists)"
+    "$(python_bin)" scripts/build_tokenizers.py "$name"
+}
+
 has_arg() {
     local needle="$1"
     shift
@@ -308,9 +322,13 @@ build_g2c_corpus() {
     info "Building G2C Corpus v1 ($preset preset)"
     if [[ -f "$out_dir/manifest.json" ]] && ! has_arg "--force" "$@" && ! has_arg "--dry-run" "$@"; then
         ok "$out_dir exists"
-        return
+    else
+        "$py" scripts/gen_corpus.py --preset "$preset" --out "$out_dir" "$@"
     fi
-    "$py" scripts/gen_corpus.py --preset "$preset" --out "$out_dir" "$@"
+
+    if ! has_arg "--dry-run" "$@"; then
+        build_tokenizer_artifact "g2c"
+    fi
 }
 
 download_all() {

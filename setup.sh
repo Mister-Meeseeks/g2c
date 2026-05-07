@@ -117,6 +117,12 @@ else
     ok "$TINY_SHAKESPEARE_FILE ready"
 fi
 
+# Build the Shakespeare tokenizer artifact so Module 10's pretraining can load
+# it by name even when a student skips Module 04's optional artifact cells.
+# Idempotent: skips if the artifact already exists.
+info "Building Shakespeare tokenizer artifact (~2 sec on first run)"
+.venv/bin/python scripts/build_tokenizers.py shakespeare
+
 # ---- 6. Smoke test -----------------------------------------------------------
 info "Running smoke test"
 .venv/bin/python scripts/smoke_test.py
