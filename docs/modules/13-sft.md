@@ -11,6 +11,7 @@ This week is about how to shape model **behavior**. The mechanics are minimal bu
 
 * *Review*
 	* [[10-tinyllm]] for the training-loop contract 
+	* [[PyTorch Primer]] if any PyTorch code is unfamiliar or confusing
 * *Finish*
 	* `g2c/nn` from [[03-nn]]
 	* `g2c/training` from [[03b-training]]
@@ -31,8 +32,8 @@ What is the capital of France?
 …the 5M StoryLM model produces something like:
 
 ```
-What is the capital of France? Once upon a time
-there was a girl nemed Lily who loved to pick flowers...
+What is the capital of France? 
+Once upon a time there was a girl nemed Lily who loved to pick flowers...
 ```
 
 It doesn't matter how big you make it — at any size, a base model trained on prose continues prose. This is *correct behavior under the training objective*. The model isn't broken. It's just not an assistant.
@@ -55,20 +56,19 @@ A SFT'd model stops continuing the user's text and starts producing an assistant
 ![SFT changes behavior, not knowledge: a one-page summary of the module. The base model produced by Module 12 trains on next-token prediction over TinyShakespeare prose and continues a question prompt as if it were more prose. After SFT on 50 hand-authored (instruction, response) pairs — rendered through a chat template, tokenized with a loss mask that zeroes out user tokens, fine-tuned for ~500 steps at 10× lower LR — the same model recognizes the assistant turn marker, produces a single short response, and stops on `<|end|>`. A "what improves, what doesn't" panel pins the central distinction: format compliance, turn boundaries, and concision are taught; factual knowledge is unchanged from the base model. A "key insight" callout closes with: pretraining gives the model a world model; SFT gives it a job description.](13-sft/Module13-Behavior.png)
 *SFT is about shaping assistant shaped text. Not teaching new abilities*
 
-The "knowledge stays the same" claim is empirically robust: SFT'd models, probed for factual recall, score within a few percent of their base versions on factual benchmarks. What changes dramatically is *response style* — short vs long, format-compliant vs free-form, refusal-aware vs refusal-naive. This is why InstructGPT is described as a "less harmful, less helpful" version of GPT-3 in some respects: SFT teaches the model to defer, to refuse, to format — but the underlying world-model is whatever pretraining baked in.
+The "knowledge stays the same" claim is empirically robust: SFT'd models, probed for factual recall, score within a few percent of their base versions on factual benchmarks. What changes dramatically is *response style* — short vs long, format-compliant vs free-form, refusal-aware vs refusal-naive. 
 
 ### Chat templates as a learned format
 
 A chat template is a deterministic encoder from a list of role-tagged messages to a single string. The string contains *role markers* — short fixed sequences that delimit turns — and the model learns to recognize and emit them.
 
-The conventions used in production:
+Among the many different conventions used in production:
 
   * **ChatML** (OpenAI). Markers `<|im_start|>role` / `<|im_end|>`. Each marker is a single reserved token in the tokenizer.
-  * **Llama 2 chat**. Markers `[INST]` / `[/INST]`, plus a `<<SYS>>` block. Designed to fit Llama 2's existing BPE tokenizer without vocab extension.
-  * **Llama 3 chat**. Markers `<|start_header_id|>role<|end_header_id|>` plus `<|eot_id|>` — back to reserved tokens, like ChatML.
-  * **Alpaca** (Stanford). `### Instruction:` / `### Response:` markers. Pure ASCII, no special tokens; the cleanest match for a small from-scratch tokenizer like ours.
+  * **Llama 3 chat**. Markers `<|start_header_id|>role<|end_header_id|>` plus `<|eot_id|>` — Reserved tokens, like ChatML.
+  * **Alpaca** (Stanford). `### Instruction:` / `### Response:` markers. Pure ASCII, no special tokens; a good fallback when the tokenizer has no reserved chat tokens.
 
-We'll use a **ChatML-lite** template — the spirit of ChatML but with literal byte strings the existing BPE tokenizer encodes natively, no vocab extension required:
+We'll use a **ChatML-lite** template — the spirit of ChatML, but with the course-native special tokens reserved.
 
 ```
 <|user|>
@@ -77,11 +77,13 @@ We'll use a **ChatML-lite** template — the spirit of ChatML but with literal b
 {assistant_content}<|end|>
 ```
 
-The pipe-and-bracket marker syntax is preserved (visually distinct, hard to collide with corpus text), but the tokenizer treats `<|user|>` as a sequence of ~6 BPE tokens rather than one reserved token. Every downstream system (DPO in Module 14, RAG in Module 17, agent in Module 19) must use exactly this template — character-for-character — or the model behaves like a base model again.
+Unlike a plain BPE string, each marker here is **atomic**: `<|user|>`, `<|assistant|>`, and `<|end|>` each encode to one reserved token ID. That only works because the tokenizer used for the reusable model artifacts reserved those course special tokens before pretraining.
+
+Every downstream system must use the same chat template: same role tokens, same `<|end|>` convention, and same newline layout. If inference uses even slightly different markers, the model sees an unfamiliar prompt shape and regresses.
 
 ```
    ┌────────────────────────────────────────────────────────────────┐
-   │   ChatML-lite template, byte-for-byte                          │
+   │   ChatML-lite template, special-token aware                    │
    ├────────────────────────────────────────────────────────────────┤
    │                                                                │
    │   <|user|>\n                                                   │
@@ -98,9 +100,9 @@ The pipe-and-bracket marker syntax is preserved (visually distinct, hard to coll
    └────────────────────────────────────────────────────────────────┘
 ```
 
-The asymmetry — newline-terminated user turns vs `<|end|>`-terminated assistant turns — is intentional: at inference time the *assistant* is what the model emits, and we want a single distinctive stop token. The user's turn always comes from outside the model, so it doesn't need a special end marker; the next role marker delimits it.
+The termination asymmetry — newline-terminated user turns vs `<|end|>`-terminated assistant turns — is intentional. At inference time the model emits assistant text, and we want a single distinctive stop token. The user's turn text always comes from outside the model. So it doesn't need a special end marker;.
 
-Why does the model learn this? Because every SFT example trains it to associate the prefix `<|assistant|>\n` with "now produce concise content followed by `<|end|>`." The marker strings are arbitrary; what matters is that they appear consistently in the same positions across every training example. After ~100 well-formed examples the model has essentially memorized the schedule.
+Why does the model learn this? Because every SFT example trains it to associate the prefix `<|assistant|>\n` with "now produce concise content followed by `<|end|>`." The marker tokens are arbitrary. What matters is that they appear consistently in the same positions across every training example. After ~100 examples the model will essentially memorize this format.
 
 ### Data quality versus data quantity
 
@@ -116,11 +118,11 @@ At small scale, the model overfits to your dataset's surface regularities. This 
 
 ## SFT Training
 
-SFT uses the same basic gradient descent loop as pretraining: run the model forward, compute a next-token prediction loss, backpropagate, and update the weights. The difference is the data. Instead of training on raw text, we train on curated examples of the behavior we want.
+SFT is the same basic gradient descent loop as pretraining. The difference is the data. Instead of training on raw text, we train on curated examples of desired behavior.
 
-SFT usually requires orders of magnitude less training than pretraining because we are not trying to teach the model language from scratch. We are mostly teaching it how to respond: the assistant format, the tone, the structure of answers, and the kinds of behavior we want after a user instruction.
+SFT usually requires orders of magnitude less training than pretraining because we are not trying to teach the model language from scratch. We are mostly teaching it how to respond: the assistant format, the tone, the structure of answers, and the behavior we want after a user instruction.
 
-The below hyperparameters are universal rules. They are a practical starting neighborhood for small modles
+The below hyperparameters are not universal rules. They are a practical starting points for small models. As always, try sweeping at different settings and compare results.
 
 - **50–500 examples.** Quality matters much more than quantity. Counterintuitively larger models need *less* examples (but higher quality) since they tend to have more abilities.
 - **100–1,000 optimizer steps.** The main danger is overfitting or making the model memorize a tiny dataset. Watch samples and validation loss closely for early stopping
@@ -152,14 +154,14 @@ The below hyperparameters are universal rules. They are a practical starting nei
 
 ### Loss masking
 
-In pretraining, every token in every window is a training target — the model learns to predict the next token uniformly across the whole corpus. In SFT, the model should *not* learn to predict the user's tokens; those tokens come from the user at inference time, and training to predict them actively damages behavior.
+In pretraining, every token in the window is a training target. The model learns to predict tokens uniformly across the corpus. In SFT, the model should *not* learn to predict user tokens. Those tokens come from the user at inference time, and training to predict them actively damages behavior.
 
 The fix is the **loss mask**: a `(T-1,)` boolean tensor that's `1` at positions where loss should be applied and `0` elsewhere.
 
 ![Loss Mask](13-sft/Module13-LossMask.png)
 *The shift-by-one between `mask` and `y` is the bug-prone seam — get it right once and the rest of the SFT pipeline follows.*
 
-A loose mnemonic: the response is *everything the assistant is responsible for emitting*, including the closing `<|end|>`. The loss mask is `1` exactly on those positions. The masked-loss formula is:
+The response is every token the assistant is responsbile for emitting, *including* the closing `<|end|>`. The loss mask is `1` exactly on those positions. The masked-loss formula is:
 
 ```
    per_pos_loss   = CE(logits, y, reduction='none')   # (B, T-1)
@@ -167,8 +169,6 @@ A loose mnemonic: the response is *everything the assistant is responsible for e
    masked_count   = loss_mask.sum()                   # scalar
    loss           = masked_total / masked_count       # scalar
 ```
-
-The denominator is the *count of training-on positions*. If you accidentally divide by `B·(T-1)` (the full batch shape), the gradient magnitude will be mismatched.
 
 ### Format collapse and other failure modes
 
@@ -234,7 +234,7 @@ The top three are *training* problems — fixable by adjusting data or hyperpara
 ## Concepts to internalize
 
 - **SFT changes behavior, not knowledge.** A 20M model that didn't know X before SFT doesn't know X after SFT either. What changed is *response style*.
-- **The chat template is part of the model.** Every system that calls the SFT'd model must use the exact same template the model was trained on. A typo in `<|user|>` is enough to revert behavior to base-model output.
+- **The chat template is part of the model.** Every system that calls the SFT'd model must use the same role/end tokens and newline layout the model was trained on. A typo in `<|user|>` no longer hits the reserved token ID, so it is enough to revert behavior toward base-model output.
 - **Loss masking is the critical implementation trick.** Without it, the model also learns to predict user text, which is wrong. With it, the model only learns to generate assistant text, which is right. 
 - **50–500 examples.** Not 5; not 5000. The dataset is small enough to read end-to-end and audit; large enough to teach a stable convention.
 - **Data quality dominates data quantity.** Inconsistent examples teach inconsistent format. Spend the curation effort.
@@ -382,7 +382,9 @@ pytest tests/test_sft.py -v                    # verbose
 
 - **Loss mask off-by-one.** The most common bug. The mask is aligned with `y = ids[1:]`, not with `ids` directly. A mask aligned with `ids` (forgot to shift) trains the model to predict each *prompt* token from its prefix.
 
-- **Marker drift between training and inference.** SFT trains the model on `<|user|>\nFoo\n<|assistant|>\nBar<|end|>`. If your inference-time prompt assembly uses `<|USER|>` , or skips a newline, the model sees an unfamiliar prefix and reverts to base behavior. 
+- **Marker drift between training and inference.** SFT trains the model on `<|user|>\nFoo\n<|assistant|>\nBar<|end|>`, where each marker is an atomic reserved token. If your inference-time prompt assembly uses `<|USER|>`, omits `<|end|>`, or skips a newline, the model sees an unfamiliar prefix and reverts toward base behavior.
+  
+- **Dividing loss by full token acount** The denominator is the count of masked tokens only. If you accidentally divide by `B·(T-1)` (the full batch shape), the gradient magnitude will be mismatched.
 
 - **Forgetting `<|end|>` in the loss mask.** If `<|end|>` is in the assistant content but the mask is `0` at its position, the model never learns to emit `<|end|>`.
 
@@ -451,5 +453,4 @@ Optional:
 - [ ] You can explain — out loud, without notes — what the chat template's role markers are, and what the asymmetry between user-turn-ends and assistant-turn-ends is.
 - [ ] You can explain — out loud, without notes — why "data quality dominates data quantity" applies more strongly at toy scale than at production scale.
 - [ ] You can explain — out loud, without notes — why an SFT'd model that confidently invents factual answers is not a *training* failure — it's a *capability* limit, and SFT alone can't fix it.
-
 
