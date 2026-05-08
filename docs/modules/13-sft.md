@@ -37,6 +37,8 @@ there was a girl nemed Lily who loved to pick flowers...
 
 It doesn't matter how big you make it — at any size, a base model trained on prose continues prose. This is *correct behavior under the training objective*. The model isn't broken. It's just not an assistant.
 
+The journey from prose autocomplete to helpful assistant can be broken down into two components: one is *style* and the other is *capabilities*. The techniques covered this week will focus on the former — tuning the model to generate assistant like responses (that are still frequently confidently wrong). The latter will be addressed in later modules. 
+
 ## The big idea
 
 Going from "continues text" to "answers questions in a turn-shaped format" can be achieved with supervised fine-tuning (SFT) does.  The recipe:
@@ -51,34 +53,9 @@ That's the whole pipeline. There is no new architecture, no new optimizer, no ne
 A SFT'd model stops continuing the user's text and starts producing an assistant turn. Often short, often plausible-sounding, often wrong on facts (that's a Module 15 problem). The model has not learned new facts. It has learned a new *format*.
 
 ![SFT changes behavior, not knowledge: a one-page summary of the module. The base model produced by Module 12 trains on next-token prediction over TinyShakespeare prose and continues a question prompt as if it were more prose. After SFT on 50 hand-authored (instruction, response) pairs — rendered through a chat template, tokenized with a loss mask that zeroes out user tokens, fine-tuned for ~500 steps at 10× lower LR — the same model recognizes the assistant turn marker, produces a single short response, and stops on `<|end|>`. A "what improves, what doesn't" panel pins the central distinction: format compliance, turn boundaries, and concision are taught; factual knowledge is unchanged from the base model. A "key insight" callout closes with: pretraining gives the model a world model; SFT gives it a job description.](13-sft/Module13-Behavior.png)
-*SFT changes behavior, not knowledge.*
+*SFT is about shaping assistant shaped text. Not teaching new abilities*
 
 The "knowledge stays the same" claim is empirically robust: SFT'd models, probed for factual recall, score within a few percent of their base versions on factual benchmarks. What changes dramatically is *response style* — short vs long, format-compliant vs free-form, refusal-aware vs refusal-naive. This is why InstructGPT is described as a "less harmful, less helpful" version of GPT-3 in some respects: SFT teaches the model to defer, to refuse, to format — but the underlying world-model is whatever pretraining baked in.
-
-
-```
-   ┌────────────────────────────────────────────────────────────────────┐
-   │                                                                     │
-   │    BASE model  (Module 10 checkpoint)                            │
-   │       trained on:  next-token prediction over prose                 │
-   │       behavior:    continues any text in the style of training data │
-   │       knowledge:   whatever the corpus contained                    │
-   │                                                                     │
-   │       ┌──────────────────┐                                          │
-   │       │    SFT            │   ── 50–500 (instruction, response)     │
-   │       │  fine-tuning      │      pairs                              │
-   │       └────────┬─────────┘      ── 100–1000 fine-tuning steps       │
-   │                │                ── lr ≈ 0.1 × pretraining lr        │
-   │                ▼                                                     │
-   │                                                                     │
-   │    INSTRUCTION model                                                 │
-   │       trained on:  pretraining objective + SFT pairs                │
-   │       behavior:    answers in turn-shaped format on prompt          │
-   │       knowledge:   ALMOST IDENTICAL to base — SFT moves behavior,    │
-   │                    not facts                                        │
-   │                                                                     │
-   └────────────────────────────────────────────────────────────────────┘
-```
 
 ### Chat templates as a learned format
 
@@ -125,26 +102,6 @@ The asymmetry — newline-terminated user turns vs `<|end|>`-terminated assistan
 
 Why does the model learn this? Because every SFT example trains it to associate the prefix `<|assistant|>\n` with "now produce concise content followed by `<|end|>`." The marker strings are arbitrary; what matters is that they appear consistently in the same positions across every training example. After ~100 well-formed examples the model has essentially memorized the schedule.
 
-### Loss masking
-
-In pretraining, every token in every window is a training target — the model learns to predict the next token uniformly across the whole corpus. In SFT, the model should *not* learn to predict the user's tokens; those tokens come from the user at inference time, and training to predict them either does nothing useful (if user text is in-distribution) or actively damages behavior (if user text is rare or domain-specific).
-
-The fix is the **loss mask**: a `(T-1,)` boolean tensor that's `1` at positions where loss should be applied and `0` elsewhere.
-
-![Loss Mask](13-sft/Module13-LossMask.png)
-*The picture to internalize before writing `masked_cross_entropy`. The shift-by-one between `mask` and `y` is the bug-prone seam — get it right once and the rest of the SFT pipeline follows.*
-
-A loose mnemonic: the response is *everything the assistant is responsible for emitting*, including the closing `<|end|>`. The loss mask is `1` exactly on those positions. The masked-loss formula is:
-
-```
-   per_pos_loss   = CE(logits, y, reduction='none')   # (B, T-1)
-   masked_total   = (per_pos_loss * loss_mask).sum()  # scalar
-   masked_count   = loss_mask.sum()                   # scalar
-   loss           = masked_total / masked_count       # scalar
-```
-
-The denominator is the *count of training-on positions*. If you accidentally divide by `B·(T-1)` (the full batch shape), the gradient magnitude will be mismatched.
-
 ### Data quality versus data quantity
 
 The headline empirical finding from the LIMA paper: *Less Is More for Alignment*. They showed that **1000 carefully-curated SFT examples** produce a chat model nearly indistinguishable from one trained on tens of thousands of crowd-sourced examples. The active ingredient is *consistency*: every example follows the same format, every assistant response is well-structured, and the dataset lacks the noise floor that comes from heterogeneous crowd labelers.
@@ -156,6 +113,62 @@ At toy scale this is even more pronounced. With 50 hand-authored examples:
   * If every example ends with exactly one sentence, the model learns *exactly one sentence* as the assistant turn, regardless of what was asked.
 
 At small scale, the model overfits to your dataset's surface regularities. This is both a feature (50 examples are enough) and a bug (you have to be very consistent). The exercises ask you to author the dataset yourself because the experience of writing 50 consistent examples is the fastest way to internalize what "consistency" means.
+
+## SFT Training
+
+SFT uses the same basic gradient descent loop as pretraining: run the model forward, compute a next-token prediction loss, backpropagate, and update the weights. The difference is the data. Instead of training on raw text, we train on curated examples of the behavior we want.
+
+SFT usually requires orders of magnitude less training than pretraining because we are not trying to teach the model language from scratch. We are mostly teaching it how to respond: the assistant format, the tone, the structure of answers, and the kinds of behavior we want after a user instruction.
+
+The below hyperparameters are universal rules. They are a practical starting neighborhood for small modles
+
+- **50–500 examples.** Quality matters much more than quantity. Counterintuitively larger models need *less* examples (but higher quality) since they tend to have more abilities.
+- **100–1,000 optimizer steps.** The main danger is overfitting or making the model memorize a tiny dataset. Watch samples and validation loss closely for early stopping
+- **Learning rate 5–20% of pretraining.** Larger models more sensitive to regression from aggressive SFT, and should start lower.
+
+```
+   ┌────────────────────────────────────────────────────────────────────┐
+   │                                                                     │
+   │    BASE model  (Module 10 checkpoint)                            │
+   │       trained on:  next-token prediction over prose                 │
+   │       behavior:    continues any text in the style of training data │
+   │       knowledge:   whatever the corpus contained                    │
+   │                                                                     │
+   │       ┌──────────────────┐                                          │
+   │       │    SFT            │   ── 50–500 (instruction, response)     │
+   │       │  fine-tuning      │      pairs                              │
+   │       └────────┬─────────┘      ── 100–1000 fine-tuning steps       │
+   │                │                ── lr ≈ 0.1 × pretraining lr        │
+   │                ▼                                                     │
+   │                                                                     │
+   │    INSTRUCTION model                                                 │
+   │       trained on:  pretraining objective + SFT pairs                │
+   │       behavior:    answers in turn-shaped format on prompt          │
+   │       knowledge:   ALMOST IDENTICAL to base — SFT moves behavior,    │
+   │                    not facts                                        │
+   │                                                                     │
+   └────────────────────────────────────────────────────────────────────┘
+```
+
+### Loss masking
+
+In pretraining, every token in every window is a training target — the model learns to predict the next token uniformly across the whole corpus. In SFT, the model should *not* learn to predict the user's tokens; those tokens come from the user at inference time, and training to predict them actively damages behavior.
+
+The fix is the **loss mask**: a `(T-1,)` boolean tensor that's `1` at positions where loss should be applied and `0` elsewhere.
+
+![Loss Mask](13-sft/Module13-LossMask.png)
+*The shift-by-one between `mask` and `y` is the bug-prone seam — get it right once and the rest of the SFT pipeline follows.*
+
+A loose mnemonic: the response is *everything the assistant is responsible for emitting*, including the closing `<|end|>`. The loss mask is `1` exactly on those positions. The masked-loss formula is:
+
+```
+   per_pos_loss   = CE(logits, y, reduction='none')   # (B, T-1)
+   masked_total   = (per_pos_loss * loss_mask).sum()  # scalar
+   masked_count   = loss_mask.sum()                   # scalar
+   loss           = masked_total / masked_count       # scalar
+```
+
+The denominator is the *count of training-on positions*. If you accidentally divide by `B·(T-1)` (the full batch shape), the gradient magnitude will be mismatched.
 
 ### Format collapse and other failure modes
 
@@ -223,10 +236,8 @@ The top three are *training* problems — fixable by adjusting data or hyperpara
 - **SFT changes behavior, not knowledge.** A 20M model that didn't know X before SFT doesn't know X after SFT either. What changed is *response style*.
 - **The chat template is part of the model.** Every system that calls the SFT'd model must use the exact same template the model was trained on. A typo in `<|user|>` is enough to revert behavior to base-model output.
 - **Loss masking is the critical implementation trick.** Without it, the model also learns to predict user text, which is wrong. With it, the model only learns to generate assistant text, which is right. 
-- **At toy scale, 50–500 examples.** Not 5; not 5000. The dataset is small enough to read end-to-end and audit; large enough to teach a stable convention.
-- **SFT step count is 500-1000.** Each example is seen many times. Over-training 50 examples for 5000 steps is the textbook recipe for memorization without generalization.
+- **50–500 examples.** Not 5; not 5000. The dataset is small enough to read end-to-end and audit; large enough to teach a stable convention.
 - **Data quality dominates data quantity.** Inconsistent examples teach inconsistent format. Spend the curation effort.
-- **SFT lr is ~0.1× pretraining lr.** Fine-tuning at the pretraining rate destroys the learned weights and causes catastrophic forgetting.
 - **The model may answer perfectly and still be wrong.** Format compliance is not truth. A SFT'd toy model is the best demonstration of this distinction in the course — it answers questions confidently in well-formatted prose, and almost everything it says is invented.
 
 ### What we don't cover
