@@ -417,6 +417,14 @@ def test_generate_outputs_valid_token_ids():
     assert (out >= 0).all() and (out < m.vocab_size).all()
 
 
+def test_generate_rejects_prompt_ids_outside_model_vocab():
+    """Bad tokenizer/model pairings should fail before an accelerator kernel runs."""
+    m = _tiny_model()
+    prompt = torch.tensor([0, 1, m.vocab_size], dtype=torch.long)
+    with pytest.raises(ValueError, match="outside the model vocab"):
+        generate(m, prompt, max_new_tokens=1, temperature=1.0)
+
+
 def test_generate_greedy_is_deterministic():
     """temperature=0 (greedy) must produce identical outputs across calls,
     independent of any `generator` state.

@@ -205,6 +205,17 @@ def generate(
         raise ValueError(f'prompt_ids must be a non-empty 1-D tensor, got {prompt_ids}')
     if temperature < 0:
         raise ValueError(f'Temperature must be non-negative, got {temperature}')
+    vocab_size = getattr(model, "vocab_size", None)
+    if vocab_size is not None:
+        min_id = int(prompt_ids.min().item())
+        max_id = int(prompt_ids.max().item())
+        if min_id < 0 or max_id >= vocab_size:
+            raise ValueError(
+                "prompt_ids contain token IDs outside the model vocab: "
+                f"min={min_id}, max={max_id}, model.vocab_size={vocab_size}. "
+                "Encode prompts with tokenizer.encode_with_vocab_size(..., "
+                "model.vocab_size)."
+            )
     
     greedy = (temperature == 0.0)
     full_ids = prompt_ids.detach().cpu().clone()

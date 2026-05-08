@@ -9,12 +9,16 @@ import torch
 from g2c.artifacts import (
     TokenizerArtifactConfig,
     atomic_torch_save,
+    available_model_artifacts,
+    best_model_artifact,
     checkpoint_backup_path,
     default_text_chunks,
     encode_text_to_tensor,
     find_repo_root,
+    load_best_model_artifact,
     load_corpus_bytes,
     load_corpus_text,
+    load_model_artifact_with_tokenizer,
     load_or_encode_tokenized_corpus,
     load_or_encode_tokenized_pair,
     load_required_tokenizer,
@@ -23,6 +27,7 @@ from g2c.artifacts import (
     load_tokenizer_artifact,
     load_tokenizer_source_text,
     load_torch_checkpoint,
+    save_model_artifact,
     tokenizer_artifact_exists,
     train_or_load_tokenizer_artifact,
 )
@@ -500,6 +505,70 @@ def test_fast_tokenizer_artifact_skips_full_training_text_encode(tmp_path):
     assert "fast_encode_start" not in phases
 
 
+def test_available_model_artifacts_resolves_aliases_by_tier(tmp_path):
+    repo = make_repo(tmp_path)
+    _save_tiny_tokenizer_artifact(repo, "TinyTok")
+    _save_tiny_model_artifact(repo, "StoryLM-Small", tokenizer_name="TinyTok")
+    _save_tiny_model_artifact(repo, "ShakespeareLM-1M", tokenizer_name="TinyTok")
+
+    available = available_model_artifacts(repo_root=repo)
+
+    assert [artifact.name for artifact in available] == [
+        "ShakespeareLM-1M",
+        "StoryLM-Small",
+    ]
+    assert available[-1].canonical_name == "StoryLM-5M"
+    assert available[-1].display_name == "StoryLM 5M"
+
+
+def test_best_model_artifact_prefers_strongest_available_alias(tmp_path):
+    repo = make_repo(tmp_path)
+    _save_tiny_tokenizer_artifact(repo, "TinyTok")
+    _save_tiny_model_artifact(repo, "StoryLM-Small", tokenizer_name="TinyTok")
+    _save_tiny_model_artifact(repo, "TinyLLM", tokenizer_name="TinyTok")
+
+    best = best_model_artifact(repo_root=repo)
+
+    assert best is not None
+    assert best.name == "TinyLLM"
+    assert best.canonical_name == "TinyLLM-30M"
+    assert best.display_name == "TinyLLM 30M"
+
+
+def test_load_best_model_artifact_loads_model_and_tokenizer(tmp_path):
+    repo = make_repo(tmp_path)
+    _save_tiny_tokenizer_artifact(repo, "TinyTok")
+    _save_tiny_model_artifact(repo, "TinyLLM", tokenizer_name="TinyTok")
+
+    loaded = load_best_model_artifact(repo_root=repo, required=True)
+
+    assert loaded is not None
+    assert loaded.name == "TinyLLM"
+    assert loaded.model.vocab_size == 256
+    assert loaded.tokenizer.encode_fast("abc") == list(b"abc")
+    assert loaded.manifest["tokenizer_artifact"] == "TinyTok"
+
+
+def test_load_model_artifact_with_tokenizer_loads_named_alias(tmp_path):
+    repo = make_repo(tmp_path)
+    _save_tiny_tokenizer_artifact(repo, "TinyTok")
+    _save_tiny_model_artifact(repo, "StoryLM-Small", tokenizer_name="TinyTok")
+
+    loaded = load_model_artifact_with_tokenizer("StoryLM-Small", repo_root=repo)
+
+    assert loaded.name == "StoryLM-Small"
+    assert loaded.canonical_name == "StoryLM-5M"
+    assert loaded.display_name == "StoryLM 5M"
+    assert loaded.model.vocab_size == 256
+    assert loaded.tokenizer.encode_fast("abc") == list(b"abc")
+
+
+def test_load_best_model_artifact_optional_none_when_missing(tmp_path):
+    repo = make_repo(tmp_path)
+
+    assert load_best_model_artifact(repo_root=repo, required=False) is None
+
+
 def test_train_or_load_tokenizer_artifact_missing_source_returns_none(tmp_path):
     repo = make_repo(tmp_path)
     config = TokenizerArtifactConfig(
@@ -510,6 +579,46 @@ def test_train_or_load_tokenizer_artifact_missing_source_returns_none(tmp_path):
     )
 
     assert train_or_load_tokenizer_artifact(config, repo_root=repo) is None
+
+
+def _save_tiny_tokenizer_artifact(repo: Path, name: str) -> None:
+    data_path = repo / "data" / "tinyshakespeare.txt"
+    data_path.parent.mkdir(parents=True, exist_ok=True)
+    data_path.write_text("abcdefghijklmnopqrstuvwxyz", encoding="utf-8")
+    config = TokenizerArtifactConfig(
+        name=name,
+        source="tinyshakespeare",
+        vocab_size=256,
+        max_chars=26,
+        special_tokens=(),
+    )
+    artifact = train_or_load_tokenizer_artifact(config, repo_root=repo)
+    assert artifact is not None
+
+
+def _save_tiny_model_artifact(
+    repo: Path,
+    name: str,
+    *,
+    tokenizer_name: str,
+) -> None:
+    model_config = {
+        "embedding_dim": 8,
+        "num_layers": 1,
+        "num_heads": 2,
+        "max_seq_len": 16,
+        "hidden_dim": 32,
+    }
+    model = TransformerLM(vocab_size=256, **model_config)
+    save_model_artifact(
+        name,
+        model=model,
+        model_config=model_config,
+        training_config={"max_steps": 1},
+        tokenizer_artifact_name=tokenizer_name,
+        source="unit",
+        repo_root=repo,
+    )
 
 
 def _write_g2c_manifested_shard(corpus_dir: Path, source: str, text: str) -> None:

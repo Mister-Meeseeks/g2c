@@ -4,7 +4,7 @@
 
 ![Sampling and decoding on one page: the trained TransformerLM (left) emits (B, T, V) logits at every step; only the last position's row, (1, V), is used. Four logit warpers — repetition penalty, temperature, top-k, top-p — apply in that order, each transforming logits to logits and setting dropped tokens to -inf. The warped logits go through softmax and multinomial to sample one new token id, which is appended to the running sequence. A side panel contrasts greedy decoding (skip every warper, take argmax — deterministic) with sampled decoding (full pipeline). The whole loop repeats max_new_tokens times.](11-sampling/Module11-Hero.png)
 
-You trained a model in Module 10, and now you need to actually generate text from it. Sampling is just the loop that calls the model. Four small "warper"functions that reshape the model's native distribution before each draw. Internalizing those four warpers and the eight-step loop *is* the module
+You trained a model in Module 10, and now you need to actually generate text from it. Sampling is just the loop that calls the model. Four small "warper" functions reshape the model's native distribution before each draw. Internalizing those four warpers and the eight-step loop *is* the module.
 
 ---
 ## Before you start
@@ -332,9 +332,9 @@ pytest tests/test_sampling.py -v               # verbose
 
 ## Exercises
 
-1. **Sweep temperature on TinyShakespeare.** Load your Module 10 checkpoint, decode a 200-token sample at `temperature ∈ {0.1, 0.5, 0.7, 1.0, 1.3, 2.0}` from the same prompt with the same seed (`generator=torch.Generator().manual_seed(0)`). Print all six samples side by side. 
+1. **Sweep temperature on your strongest saved model.** The notebook auto-loads the strongest reusable artifact it can find, in this order: `ShakespeareLM-1M`, `StoryLM-5M`, `StoryLM-10M`, `StoryLM-30M`, `TinyLLM-30M`, `TinyLLM-100M`. Decode a 200-token sample at `temperature ∈ {0.1, 0.5, 0.7, 1.0, 1.3, 2.0}` from the same prompt with the same seed (`generator=torch.Generator().manual_seed(0)`). Print all six samples side by side.
 
-2. **Compare top-k vs top-p.** Same checkpoint, same prompt, same seed. At fixed `temperature=0.8`, decode 200 tokens with:
+2. **Compare top-k vs top-p.** Same loaded artifact, same prompt, same seed. At fixed `temperature=0.8`, decode 200 tokens with:
 
      - No filter (baseline)
      - `top_k=10`
@@ -372,7 +372,7 @@ pytest tests/test_sampling.py -v               # verbose
 
 7. **Forced first token.** Same idea, opposite direction: add a `force_first_id` argument that, on the very first generation step, replaces the model's argmax with the forced id and continues from there. Use it to seed the model's continuation with a particular word; observe how strongly the prefix steers the rest of the generation. This is a baby version of what classifier-free guidance and logit-bias APIs do in real systems.
 
-8. **Compare `(T=0.7, top_p=0.9)` against `(T=0.0)` on a held-out set.** Tokenize a held-out passage of TinyShakespeare. Use your model and `generate` to *complete* the first 32 tokens of that passage with each setting. Compute the per-token cross-entropy between the model's continuation and the actual continuation (treating the actual continuation as ground truth). 
+8. **Compare `(T=0.7, top_p=0.9)` against `(T=0.0)` on a held-out set.** Tokenize a held-out passage from the same corpus family as your loaded artifact. Use your model and `generate` to *complete* the first 32 tokens of that passage with each setting. Compute the per-token cross-entropy between the model's continuation and the actual continuation (treating the actual continuation as ground truth).
 
 ## Pitfalls to expect
 
@@ -396,7 +396,7 @@ pytest tests/test_sampling.py -v               # verbose
 
 ## M-series notes
 
-- **Exercise 1 (temperature sweep, 6 × 200 tokens):** roughly 10–30 seconds on MPS, 30–90 seconds on CPU with a 1M-param TinyShakespeare model. Trivial.
+- **Exercise 1 (temperature sweep, 6 × 200 tokens):** runtime depends on the artifact the notebook finds. `ShakespeareLM-1M` is trivial; larger `StoryLM` / `TinyLLM` artifacts can take noticeably longer, especially on CPU.
 - `generate` should run the model forward on `model.device` while keeping the growing token ID sequence on CPU. That keeps decoding and `torch.multinomial(..., generator=...)` simple, and avoids handing Matplotlib/tokenizer code MPS tensors later.
 - **Exercise 4 (interactive playground):** every prompt should feel instantaneous. The `O(T²)` attention cost is negligible at context lengths up to a few hundred.
 
@@ -423,9 +423,8 @@ Optional:
 ## Deliverable checklist
 
 - [ ] All tests in `tests/test_sampling.py` pass.
-- [ ] Notebook: `notebooks/11-sampling-playground.ipynb`. Load your Module 10 TinyShakespeare checkpoint and run exercise 1 (temperature sweep) and exercise 2 (top-k vs top-p comparison). Commit the notebook with the outputs visible.
-- [ ] Notebook: `notebooks/11-repetition-penalty.ipynb`. Run exercise 3 (type-token ratio under varying penalty); commit with the plot rendered.
-- [ ] Interactive CLI playground from exercise 4 in `scripts/` or embedded in the playground notebook.
+- [ ] Notebook: `notebooks/solutions/11-sampling.ipynb`. Load the strongest available model artifact and run exercise 1 (temperature sweep), exercise 2 (top-k vs top-p comparison), and exercise 3 (type-token ratio under varying penalty). Commit the notebook with outputs visible.
+- [ ] Interactive playground from exercise 4 embedded in the notebook, or expanded into a small `scripts/` CLI if you want a terminal version.
 - [ ] You can explain — out loud, without notes — the diversity-vs-quality tradeoff and where each warper sits along that axis.
 - [ ] You can explain — out loud, without notes — why the argmax always survives both top-k and top-p, and what bug each pattern catches.
 - [ ] You can explain — out loud, without notes — the eight-step decode loop, with cropping, and what breaks if you reorder it.

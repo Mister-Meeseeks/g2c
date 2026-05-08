@@ -16,6 +16,7 @@ import os
 import pickle
 import subprocess
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from os import PathLike
 from pathlib import Path
@@ -30,6 +31,86 @@ from .paths import artifacts_root
 CHECKPOINT_BACKUP_SUFFIX = ".bak"
 
 
+@dataclass(frozen=True)
+class ModelArtifactSpec:
+    """One known reusable model tier for downstream notebooks."""
+
+    canonical_name: str
+    display_name: str
+    rank: int
+    aliases: tuple[str, ...] = ()
+
+    @property
+    def names(self) -> tuple[str, ...]:
+        """Return artifact names to search, canonical first."""
+        return (self.canonical_name, *self.aliases)
+
+
+DEFAULT_MODEL_ARTIFACT_SPECS: tuple[ModelArtifactSpec, ...] = (
+    ModelArtifactSpec(
+        canonical_name="ShakespeareLM-1M",
+        display_name="ShakespeareLM",
+        rank=10,
+        aliases=("ShakespeareLM",),
+    ),
+    ModelArtifactSpec(
+        canonical_name="StoryLM-5M",
+        display_name="StoryLM 5M",
+        rank=20,
+        aliases=("StoryLM-Small",),
+    ),
+    ModelArtifactSpec(
+        canonical_name="StoryLM-10M",
+        display_name="StoryLM 10M",
+        rank=30,
+    ),
+    ModelArtifactSpec(
+        canonical_name="StoryLM-30M",
+        display_name="StoryLM 30M",
+        rank=35,
+        aliases=("StoryLM",),
+    ),
+    ModelArtifactSpec(
+        canonical_name="TinyLLM-30M",
+        display_name="TinyLLM 30M",
+        rank=40,
+        aliases=("TinyLLM",),
+    ),
+    ModelArtifactSpec(
+        canonical_name="TinyLLM-100M",
+        display_name="TinyLLM 100M",
+        rank=50,
+    ),
+)
+
+
+@dataclass(frozen=True)
+class AvailableModelArtifact:
+    """Resolved model artifact candidate on disk."""
+
+    name: str
+    canonical_name: str
+    display_name: str
+    rank: int
+    artifact_dir: Path
+
+
+@dataclass(frozen=True)
+class LoadedModelArtifact:
+    """Model artifact plus its tokenizer, ready for downstream notebooks."""
+
+    name: str
+    canonical_name: str
+    display_name: str
+    rank: int
+    artifact_dir: Path
+    model: TransformerLM
+    tokenizer: Any
+    tokenizer_artifact: Any
+    manifest: dict[str, Any]
+    training_config: dict[str, Any]
+
+
 def model_artifact_dir(name: str, repo_root: str | Path | None = None) -> Path:
     if not name:
         raise ValueError("model artifact name must be non-empty")
@@ -38,7 +119,143 @@ def model_artifact_dir(name: str, repo_root: str | Path | None = None) -> Path:
 
 def model_artifact_exists(name: str, repo_root: str | Path | None = None) -> bool:
     root = model_artifact_dir(name, repo_root)
-    return (root / "model.pt").exists() and (root / "manifest.json").exists()
+    return (
+        (root / "model.pt").exists()
+        and (root / "config.json").exists()
+        and (root / "manifest.json").exists()
+    )
+
+
+def available_model_artifacts(
+    *,
+    repo_root: str | Path | None = None,
+    specs: tuple[ModelArtifactSpec, ...] = DEFAULT_MODEL_ARTIFACT_SPECS,
+) -> list[AvailableModelArtifact]:
+    """Return known reusable model artifacts present on disk.
+
+    The returned list is sorted from smallest/earliest course artifact to the
+    strongest downstream candidate. Aliases let older notebooks keep working:
+    for example ``StoryLM-Small`` resolves as the ``StoryLM-5M`` tier, and
+    ``TinyLLM`` resolves as the ``TinyLLM-30M`` tier.
+    """
+    found: list[AvailableModelArtifact] = []
+    for spec in specs:
+        for name in spec.names:
+            if model_artifact_exists(name, repo_root=repo_root):
+                found.append(
+                    AvailableModelArtifact(
+                        name=name,
+                        canonical_name=spec.canonical_name,
+                        display_name=spec.display_name,
+                        rank=spec.rank,
+                        artifact_dir=model_artifact_dir(name, repo_root),
+                    )
+                )
+                break
+    return sorted(found, key=lambda artifact: artifact.rank)
+
+
+def best_model_artifact(
+    *,
+    repo_root: str | Path | None = None,
+    specs: tuple[ModelArtifactSpec, ...] = DEFAULT_MODEL_ARTIFACT_SPECS,
+) -> AvailableModelArtifact | None:
+    """Return the strongest known reusable model artifact, if any exist."""
+    available = available_model_artifacts(repo_root=repo_root, specs=specs)
+    return available[-1] if available else None
+
+
+def artifact_spec_for_name(
+    name: str,
+    *,
+    specs: tuple[ModelArtifactSpec, ...] = DEFAULT_MODEL_ARTIFACT_SPECS,
+) -> ModelArtifactSpec | None:
+    """Return the known artifact tier for ``name`` or one of its aliases."""
+    for spec in specs:
+        if name in spec.names:
+            return spec
+    return None
+
+
+def load_model_artifact_with_tokenizer(
+    name: str,
+    *,
+    repo_root: str | Path | None = None,
+    device: str | torch.device | None = None,
+    specs: tuple[ModelArtifactSpec, ...] = DEFAULT_MODEL_ARTIFACT_SPECS,
+) -> LoadedModelArtifact:
+    """Load one named model artifact plus its referenced tokenizer artifact."""
+    loaded = load_model_artifact(
+        name,
+        repo_root=repo_root,
+        map_location="cpu",
+    )
+    model = loaded["model"]
+    if device is not None:
+        model.to(device)
+
+    from .tokenizers import load_tokenizer_artifact
+
+    tokenizer_name = loaded["manifest"].get("tokenizer_artifact")
+    if not isinstance(tokenizer_name, str) or not tokenizer_name:
+        raise ValueError(
+            f"Model artifact {name!r} has no tokenizer_artifact in manifest"
+        )
+    tokenizer_artifact = load_tokenizer_artifact(tokenizer_name, repo_root=repo_root)
+
+    spec = artifact_spec_for_name(name, specs=specs)
+    canonical_name = spec.canonical_name if spec is not None else name
+    display_name = spec.display_name if spec is not None else name
+    rank = spec.rank if spec is not None else 0
+
+    return LoadedModelArtifact(
+        name=name,
+        canonical_name=canonical_name,
+        display_name=display_name,
+        rank=rank,
+        artifact_dir=model_artifact_dir(name, repo_root),
+        model=model,
+        tokenizer=tokenizer_artifact.tokenizer,
+        tokenizer_artifact=tokenizer_artifact,
+        manifest=loaded["manifest"],
+        training_config=loaded["training_config"],
+    )
+
+
+def load_best_model_artifact(
+    *,
+    repo_root: str | Path | None = None,
+    device: str | torch.device | None = None,
+    specs: tuple[ModelArtifactSpec, ...] = DEFAULT_MODEL_ARTIFACT_SPECS,
+    required: bool = True,
+) -> LoadedModelArtifact | None:
+    """Load the strongest available reusable model plus its tokenizer.
+
+    Downstream notebooks use this to avoid hard-coding one Module 10 artifact.
+    The search order is:
+
+    ``ShakespeareLM-1M -> StoryLM-5M -> StoryLM-10M -> StoryLM-30M ->
+    TinyLLM-30M -> TinyLLM-100M``.
+
+    Current legacy names such as ``StoryLM-Small``, ``StoryLM``, and
+    ``TinyLLM`` are treated as aliases for the explicit tier names.
+    """
+    candidate = best_model_artifact(repo_root=repo_root, specs=specs)
+    if candidate is None:
+        if not required:
+            return None
+        expected = ", ".join(spec.canonical_name for spec in specs)
+        raise FileNotFoundError(
+            "No reusable model artifact found under artifacts/models/. "
+            f"Expected one of: {expected}. Run Module 10 and save at least one model."
+        )
+
+    return load_model_artifact_with_tokenizer(
+        candidate.name,
+        repo_root=repo_root,
+        device=device,
+        specs=specs,
+    )
 
 
 def _try_git_commit(repo_root: str | Path | None) -> str | None:
