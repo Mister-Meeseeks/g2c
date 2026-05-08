@@ -396,9 +396,7 @@ pytest tests/test_sampling.py -v               # verbose
 
 ## M-series notes
 
-- **Exercise 1 (temperature sweep, 6 × 200 tokens):** runtime depends on the artifact the notebook finds. `ShakespeareLM-1M` is trivial; larger `StoryLM` / `TinyLLM` artifacts can take noticeably longer, especially on CPU.
-- `generate` should run the model forward on `model.device` while keeping the growing token ID sequence on CPU. That keeps decoding and `torch.multinomial(..., generator=...)` simple, and avoids handing Matplotlib/tokenizer code MPS tensors later.
-- **Exercise 4 (interactive playground):** every prompt should feel instantaneous. The `O(T²)` attention cost is negligible at context lengths up to a few hundred.
+Inference requires relatively minimal compute next to training. Since the notebook uses the largest model you trained in Module 10, your machine will have no problem handling inference on it.  Expect to take anywhere between a few seconds to one minute per sequence, depending on length and model size. We still strongly recommend using MPS over CPU regardless.
 
 ---
 ## Reading

@@ -25,7 +25,7 @@ What is the largest city in Spain?
 <|assistant|>
 ```
 
-The 20M SFT'd model produces:
+The 30M SFT'd model produces:
 
 ```
 Lisbon.<|end|>
