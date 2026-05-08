@@ -29,7 +29,24 @@ by-one is the conceptual core; everything else is index arithmetic.
 """
 from __future__ import annotations
 
+from typing import Protocol, runtime_checkable
+
 import torch
+
+
+@runtime_checkable
+class SupportsLMBatch(Protocol):
+    """Minimal protocol for disk-backed token streams."""
+
+    def __len__(self) -> int: ...
+
+    def get_lm_batch(
+        self,
+        batch_size: int,
+        context_length: int,
+        *,
+        generator: torch.Generator | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]: ...
 
 
 def split_token_stream(
@@ -60,7 +77,7 @@ def split_token_stream(
 
 
 def get_lm_batch(
-    ids: torch.Tensor,
+    ids: torch.Tensor | SupportsLMBatch,
     batch_size: int,
     context_length: int,
     *,
@@ -93,6 +110,15 @@ def get_lm_batch(
         x = stack of ids[s : s + T]
         y = stack of ids[s + 1 : s + T + 1]
     """
+    if not isinstance(ids, torch.Tensor):
+        if isinstance(ids, SupportsLMBatch):
+            return ids.get_lm_batch(
+                batch_size,
+                context_length,
+                generator=generator,
+            )
+        raise TypeError("ids must be a 1-D tensor or disk-backed token stream")
+
     n = ids.shape[0]
     if n <= context_length:
         raise ValueError(

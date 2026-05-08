@@ -31,3 +31,18 @@ def tokenizer_artifact_dir(name: str, repo_root: str | Path | None = None) -> Pa
     if not name:
         raise ValueError("tokenizer artifact name must be non-empty")
     return tokenizer_artifacts_root(repo_root) / name
+
+
+def tokenized_corpora_root(repo_root: str | Path | None = None) -> Path:
+    """Return the directory containing tokenized corpus artifacts."""
+    return artifacts_root(repo_root) / "tokenized-corpora"
+
+
+def tokenized_corpus_artifact_dir(
+    name: str,
+    repo_root: str | Path | None = None,
+) -> Path:
+    """Return the directory for one named tokenized corpus artifact."""
+    if not name:
+        raise ValueError("tokenized corpus artifact name must be non-empty")
+    return tokenized_corpora_root(repo_root) / name

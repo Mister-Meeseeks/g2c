@@ -28,6 +28,7 @@ __all__ = [
     "format_training_start",
     "load_run_state",
     "make_encode_progress",
+    "make_tokenized_corpus_progress",
     "plot_training_history",
     "train_with_progress",
 ]
@@ -148,6 +149,61 @@ def make_encode_progress(label: str) -> Callable[[dict], None]:
             show(Markdown(
                 f"{label}: encoded `{info['token_count']:,}` tokens "
                 f"from `{info['chunks']:,}` chunks | elapsed `{elapsed:.1f}s`"
+            ))
+
+    return update
+
+
+def make_tokenized_corpus_progress(label: str) -> Callable[[dict], None]:
+    """Return a progress callback for disk-backed tokenized corpus artifacts."""
+    start = time.perf_counter()
+    handle = None
+
+    def show(message: Markdown) -> None:
+        nonlocal handle
+        if handle is None:
+            handle = display(message, display_id=True)
+        else:
+            handle.update(message)
+
+    def update(info: dict) -> None:
+        phase = info.get("phase")
+        elapsed = time.perf_counter() - start
+        if phase == "loaded":
+            show(Markdown(f"{label}: loaded existing tokenized corpus artifact."))
+        elif phase == "build_start":
+            show(Markdown(
+                f"{label}: building `{info['name']}` | "
+                f"vocab `{info['vocab_size']:,}` | dtype `{info['dtype']}` | "
+                f"workers `{info['workers']}`"
+            ))
+        elif phase == "stream_start":
+            byte_count = info.get("byte_count")
+            byte_text = "all" if byte_count is None else f"{int(byte_count):,}"
+            source_split = info.get("source_split", "train")
+            show(Markdown(
+                f"{label}: tokenizing `{source_split}` source split | "
+                f"bytes `{byte_text}`"
+            ))
+        elif phase == "stream_chunk":
+            source_split = info.get("source_split", "train")
+            show(Markdown(
+                f"{label}: `{source_split}` source split | "
+                f"chunk `{info['chunks']:,}` | "
+                f"chars `{info['chars_seen']:,}` | "
+                f"tokens `{info['token_count']:,}` | elapsed `{elapsed:.1f}s`"
+            ))
+        elif phase == "stream_done":
+            source_split = info.get("source_split", "train")
+            show(Markdown(
+                f"{label}: `{source_split}` done | "
+                f"chunks `{info['chunks']:,}` | "
+                f"tokens `{info['token_count']:,}` | elapsed `{elapsed:.1f}s`"
+            ))
+        elif phase == "build_done":
+            show(Markdown(
+                f"{label}: tokenized corpus ready | "
+                f"tokens `{info['token_count']:,}`"
             ))
 
     return update

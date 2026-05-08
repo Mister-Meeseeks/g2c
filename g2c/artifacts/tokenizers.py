@@ -34,7 +34,7 @@ from g2c.tokenizer.persistence import (
 )
 
 from .corpora import load_corpus_text
-from .paths import find_repo_root, tokenizer_artifact_dir
+from .paths import artifacts_root, find_repo_root, tokenizer_artifact_dir
 
 ArtifactProgressCallback = Callable[[dict[str, object]], None]
 ArtifactStatusCallback = Callable[[dict[str, object]], None]
@@ -325,8 +325,13 @@ def load_or_encode_tokenized_corpus(
         label, (text,), tokenizer_name, tokenizer,
         repo_root=root, vocab_size=vocab_size,
     )
-    if cache_path.exists():
-        state = _load_pickle(cache_path)
+    legacy_cache_path = _legacy_token_id_cache_path(
+        label, (text,), tokenizer_name, tokenizer,
+        repo_root=root, vocab_size=vocab_size,
+    )
+    existing_cache_path = _existing_cache_path(cache_path, legacy_cache_path)
+    if existing_cache_path is not None:
+        state = _load_pickle(existing_cache_path)
         return tokenizer, _as_long_tensor(state["ids"])
 
     ids = encode_text_to_tensor(
@@ -373,8 +378,17 @@ def load_or_encode_tokenized_pair(
         repo_root=root,
         vocab_size=vocab_size,
     )
-    if cache_path.exists():
-        state = _load_pickle(cache_path)
+    legacy_cache_path = _legacy_token_id_cache_path(
+        label,
+        (train_text, val_text),
+        tokenizer_name,
+        tokenizer,
+        repo_root=root,
+        vocab_size=vocab_size,
+    )
+    existing_cache_path = _existing_cache_path(cache_path, legacy_cache_path)
+    if existing_cache_path is not None:
+        state = _load_pickle(existing_cache_path)
         return (
             tokenizer,
             _as_long_tensor(state["train_ids"]),
@@ -544,6 +558,44 @@ def _token_id_cache_path(
     vocab_size: int | None = None,
 ) -> Path:
     root = find_repo_root(repo_root)
+    filename = _token_id_cache_filename(
+        label,
+        text_parts,
+        tokenizer_name,
+        tokenizer,
+        vocab_size=vocab_size,
+    )
+    return artifacts_root(root) / "tokenized-cache" / filename
+
+
+def _legacy_token_id_cache_path(
+    label: str,
+    text_parts: tuple[str, ...],
+    tokenizer_name: str,
+    tokenizer: BPETokenizer,
+    *,
+    repo_root: str | Path | None = None,
+    vocab_size: int | None = None,
+) -> Path:
+    root = find_repo_root(repo_root)
+    filename = _token_id_cache_filename(
+        label,
+        text_parts,
+        tokenizer_name,
+        tokenizer,
+        vocab_size=vocab_size,
+    )
+    return root / "data" / "tokenizer-cache" / filename
+
+
+def _token_id_cache_filename(
+    label: str,
+    text_parts: tuple[str, ...],
+    tokenizer_name: str,
+    tokenizer: BPETokenizer,
+    *,
+    vocab_size: int | None = None,
+) -> str:
     total_chars, text_digest = _text_parts_digest(text_parts)
     safe_label = label.replace("/", "-")
     safe_tokenizer = tokenizer_name.replace("/", "-")
@@ -551,10 +603,19 @@ def _token_id_cache_path(
     # separate. Without it a switch from full vocab to a truncated vocab
     # would silently serve a stale ID stream.
     vocab_tag = "vfull" if vocab_size is None else f"v{vocab_size}"
-    return root / "data" / "tokenizer-cache" / (
+    return (
         f"{safe_label}-{safe_tokenizer}-{total_chars}-"
         f"{text_digest}-{_tokenizer_digest(tokenizer)}-{vocab_tag}.pkl.gz"
     )
+
+
+def _existing_cache_path(primary: Path, legacy: Path) -> Path | None:
+    """Return the cache path to load, preferring the new artifact location."""
+    if primary.exists():
+        return primary
+    if legacy.exists():
+        return legacy
+    return None
 
 
 def _text_parts_digest(text_parts: tuple[str, ...]) -> tuple[int, str]:

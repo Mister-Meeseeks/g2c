@@ -20,7 +20,6 @@ import torch
 
 from g2c.pretraining import get_lm_batch, lm_cross_entropy, split_token_stream
 
-
 # ----------------------------------------------------------------------
 # split_token_stream — boilerplate (implemented)
 # ----------------------------------------------------------------------
@@ -100,6 +99,21 @@ def test_get_lm_batch_reproducible_with_generator():
     x2, y2 = get_lm_batch(ids, batch_size=4, context_length=6, generator=g2)
     assert torch.equal(x1, x2)
     assert torch.equal(y1, y2)
+
+
+def test_get_lm_batch_delegates_to_disk_backed_stream():
+    class FakeDiskBackedStream:
+        def __len__(self):
+            return 100
+
+        def get_lm_batch(self, batch_size, context_length, *, generator=None):
+            x = torch.zeros(batch_size, context_length, dtype=torch.long)
+            return x, x + 1
+
+    x, y = get_lm_batch(FakeDiskBackedStream(), batch_size=3, context_length=4)
+
+    assert x.shape == (3, 4)
+    assert torch.equal(y, x + 1)
 
 
 # ----------------------------------------------------------------------

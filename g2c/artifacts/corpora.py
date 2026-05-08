@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import gzip
 import json
+from codecs import getincrementaldecoder
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -71,6 +73,70 @@ def load_corpus_text(
     if data is None:
         return None
     return data.decode("utf-8", errors="replace")
+
+
+def iter_corpus_text_chunks(
+    corpus: str,
+    byte_count: int | None = None,
+    *,
+    chunk_offset: int = 0,
+    split: str = "train",
+    chunk_bytes: int = 1024 * 1024,
+    repo_root: str | Path | None = None,
+) -> Iterator[str]:
+    """Yield a byte-bounded corpus slice as decoded UTF-8 text chunks.
+
+    This is the streaming companion to ``load_corpus_text``. It preserves the
+    same corpus/source allocation rules, but avoids materializing the whole
+    requested slice in memory. Chunk boundaries may fall in the middle of a
+    multibyte UTF-8 sequence, so decoding uses an incremental decoder.
+    """
+    decoder = getincrementaldecoder("utf-8")(errors="replace")
+    for chunk in iter_corpus_byte_chunks(
+        corpus,
+        byte_count,
+        chunk_offset=chunk_offset,
+        split=split,
+        chunk_bytes=chunk_bytes,
+        repo_root=repo_root,
+    ):
+        text = decoder.decode(chunk, final=False)
+        if text:
+            yield text
+    tail = decoder.decode(b"", final=True)
+    if tail:
+        yield tail
+
+
+def iter_corpus_byte_chunks(
+    corpus: str,
+    byte_count: int | None = None,
+    *,
+    chunk_offset: int = 0,
+    split: str = "train",
+    chunk_bytes: int = 1024 * 1024,
+    repo_root: str | Path | None = None,
+) -> Iterator[bytes]:
+    """Yield a byte-bounded corpus slice without joining chunks in memory."""
+    if byte_count is not None and byte_count < 0:
+        raise ValueError("byte_count must be non-negative or None")
+    if chunk_bytes <= 0:
+        raise ValueError("chunk_bytes must be positive")
+
+    spec = resolve_corpus(corpus, split=split, repo_root=repo_root)
+    if spec is None or byte_count == 0:
+        return
+
+    allocations = _source_byte_allocations(spec, byte_count)
+    for source, source_bytes in allocations:
+        if source_bytes <= 0:
+            continue
+        yield from _iter_source_byte_chunks(
+            source,
+            source_bytes,
+            chunk_offset=chunk_offset,
+            chunk_bytes=chunk_bytes,
+        )
 
 
 def load_corpus_bytes(
@@ -312,24 +378,68 @@ def _read_source_bytes(
         return b""
 
     result = bytearray()
+    for chunk in _iter_source_byte_chunks(
+        source,
+        byte_count,
+        chunk_offset=chunk_offset,
+        chunk_bytes=1024 * 1024,
+    ):
+        result.extend(chunk)
+    return bytes(result)
+
+
+def _iter_source_byte_chunks(
+    source: CorpusSource,
+    byte_count: int,
+    *,
+    chunk_offset: int,
+    chunk_bytes: int,
+) -> Iterator[bytes]:
+    if byte_count <= 0 or not source.shards:
+        return
+
+    produced = 0
     start = chunk_offset % len(source.shards)
     index = start
     empty_reads = 0
-    while len(result) < byte_count and empty_reads < len(source.shards):
+    while produced < byte_count and empty_reads < len(source.shards):
         shard = source.shards[index]
-        needed = byte_count - len(result)
-        data = _read_shard_prefix(shard.path, needed)
-        if data:
-            result.extend(data)
-            empty_reads = 0
-        else:
-            empty_reads += 1
+        needed = byte_count - produced
+        wrote = False
+        for chunk in _iter_shard_prefix_chunks(
+            shard.path,
+            needed,
+            chunk_bytes=chunk_bytes,
+        ):
+            if not chunk:
+                continue
+            produced += len(chunk)
+            wrote = True
+            yield chunk
+            if produced >= byte_count:
+                break
+        empty_reads = 0 if wrote else empty_reads + 1
         index = (index + 1) % len(source.shards)
-
-    return bytes(result)
 
 
 def _read_shard_prefix(path: Path, byte_count: int) -> bytes:
     opener = gzip.open if path.suffix == ".gz" else open
     with opener(path, "rb") as f:
         return f.read(byte_count)
+
+
+def _iter_shard_prefix_chunks(
+    path: Path,
+    byte_count: int,
+    *,
+    chunk_bytes: int,
+) -> Iterator[bytes]:
+    opener = gzip.open if path.suffix == ".gz" else open
+    remaining = byte_count
+    with opener(path, "rb") as f:
+        while remaining > 0:
+            chunk = f.read(min(chunk_bytes, remaining))
+            if not chunk:
+                break
+            remaining -= len(chunk)
+            yield chunk

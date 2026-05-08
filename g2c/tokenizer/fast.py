@@ -130,22 +130,44 @@ def encode_fast(
     merges with `new_id < vocab_size` apply. This produces the same IDs as
     the slow `encode_at_vocab` path at Rust speed.
     """
-    if not text:
-        return []
-    if not tokenizer.merges or vocab_size == tokenizer.base_vocab_size:
-        return tokenizer._encode_initial_ids(text)
-    rust_tokenizer = _byte_level_tokenizer_from_bpe(tokenizer, vocab_size=vocab_size)
-    ids: list[int] = []
-    for segment in tokenizer._special_aware_segments(text):
-        if isinstance(segment, int):
-            ids.append(segment)
-        else:
-            encoding = rust_tokenizer.encode(segment)
-            ids.extend(encoding.ids)
-            del encoding
-    del rust_tokenizer
-    gc.collect()
-    return ids
+    encoder = FastBPEEncoder(tokenizer, vocab_size=vocab_size)
+    return encoder.encode(text)
+
+
+class FastBPEEncoder:
+    """Reusable Rust-backed encoder for many chunks with the same tokenizer."""
+
+    def __init__(
+        self,
+        tokenizer: BPETokenizer,
+        *,
+        vocab_size: int | None = None,
+    ) -> None:
+        self.tokenizer = tokenizer
+        self.vocab_size = vocab_size
+        self.rust_tokenizer = None
+        if tokenizer.merges and vocab_size != tokenizer.base_vocab_size:
+            self.rust_tokenizer = _byte_level_tokenizer_from_bpe(
+                tokenizer,
+                vocab_size=vocab_size,
+            )
+
+    def encode(self, text: str) -> list[int]:
+        """Encode one text chunk without rebuilding the Rust tokenizer."""
+        if not text:
+            return []
+        if self.rust_tokenizer is None:
+            return self.tokenizer._encode_initial_ids(text)
+
+        ids: list[int] = []
+        for segment in self.tokenizer._special_aware_segments(text):
+            if isinstance(segment, int):
+                ids.append(segment)
+            else:
+                encoding = self.rust_tokenizer.encode(segment)
+                ids.extend(encoding.ids)
+                del encoding
+        return ids
 
 
 def train_fast(

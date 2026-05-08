@@ -143,26 +143,26 @@ For a single preference example `(x, y_c, y_r)` with chosen `y_c` and rejected `
 
 ```
    ┌────────────────────────────────────────────────────────────────────┐
-   │                                                                     │
-   │              log π(c|x)  −  log π_ref(c|x)        ┌────────────┐    │
-   │              ─────────────────────────────  ──►   │  CHOSEN    │    │
-   │              policy / ref ratio for chosen        │  IMPLICIT  │    │
-   │                                                   │  REWARD    │    │
-   │                                                   └────────────┘    │
-   │                                                          │           │
-   │                                                          ▼           │
-   │                                                       (β · ·)        │
-   │                                                          │           │
-   │                                                          ▼           │
-   │   ┌────────────┐                                  ┌────────────┐    │
-   │   │  REJECTED  │   ◄──  ─────────────────────────  │  CHOSEN    │   │
-   │   │  IMPLICIT  │       log π(r|x)  − log π_ref(r|x)│  REWARD −  │   │
-   │   │  REWARD    │       (with same β · ·)            │  REJECTED  │   │
-   │   └────────────┘                                   └────────────┘    │
-   │                                                          │           │
-   │                                                          ▼           │
-   │                                          loss = − log σ(margin)      │
-   │                                                                       │
+   │                                                                    │
+   │              log π(c|x)  −  log π_ref(c|x)        ┌────────────┐   │
+   │              ─────────────────────────────  ──►   │  CHOSEN    │   │
+   │              policy / ref ratio for chosen        │  IMPLICIT  │   │
+   │                                                   │  REWARD    │   │
+   │                                                   └────────────┘   │
+   │                                                          │         │
+   │                                                          ▼         │
+   │                                                       (β · ·)      │
+   │                                                          │         │
+   │                                                          ▼         │
+   │   ┌────────────┐                                  ┌────────────┐   │
+   │   │  REJECTED  │   ◄────────────────────────────  │  CHOSEN    │   │
+   │   │  IMPLICIT  │    log π(r|x)  − log π_ref(r|x)  │  REWARD −  │   │
+   │   │  REWARD    │       (with same β · ·)          │  REJECTED  │   │
+   │   └────────────┘                                  └────────────┘   │
+   │                                                          │         │
+   │                                                          ▼         │
+   │                                          loss = − log σ(margin)    │
+   │                                                                    │
    └────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -175,7 +175,7 @@ For a single preference example `(x, y_c, y_r)` with chosen `y_c` and rejected `
 ### The frozen reference: what it does and why it must stay frozen
 
 ![Policy vs frozen reference. Both models start from the same SFT'd checkpoint produced by Module 13 — `ref_model = copy.deepcopy(model)`. The policy is trainable: gradients flow, weights update, it learns to prefer chosen over rejected. The reference is frozen: never gradients (`with torch.no_grad():` around its forwards), only used to score the same prompts under the original SFT distribution so the log-ratios `log π / log π_ref` have a fixed denominator. A single preference triple `(prompt, chosen, rejected)` is fed to both models; both compute scalar log-probabilities `log π_θ(c|x)`, `log π_θ(r|x)`, `log π_ref(c|x)`, `log π_ref(r|x)`. The DPO loss combines these into a margin and pushes the policy to widen it without drifting too far from the reference. A "key idea" panel: we don't care about the absolute probabilities, only how the policy moves relative to the reference. An "important" panel: the reference must not change, ever — the deepest invariant test of a DPO implementation is to snapshot reference params before/after training and assert byte-for-byte equality.](14-dpo/Module14-Policy.png)
-*The two-model setup. Module 13's SFT'd checkpoint plays both roles — once trainable, once frozen. The freeze invariant is what `test_dpo_trainer_ref_model_unchanged` enforces, and exercise 5 asks you to verify it on your real run.*
+*The two-model setup. Module 13's SFT'd checkpoint plays both roles — once trainable, once frozen.*
 
 The reference is the **anchor** for the implicit-reward computation. The whole DPO loss is a function of *log-ratios* between the policy and the reference; if both move together (e.g. you accidentally update both), the log-ratios stay zero and nothing changes.
 
@@ -397,7 +397,7 @@ class DPOTrainer:
     def train(self, eval_examples=None) -> dict[str, list]:   # implemented
 ```
 
-Total scaffolded code: roughly 60 lines across four locations. The math is light; the lesson is the closed-form derivation, the two-model bookkeeping, and the freeze invariant. The package ships three files: `data.py` (`PreferenceExample` boilerplate plus the scaffolded `pad_and_collate_pref`), `loss.py` (scaffolded `sequence_logprob` and `dpo_loss`), and `trainer.py` (`DPOTrainer` with constructor, `lr`, `_sample_batch`, `_logp_under`, `evaluate`, and `train` already implemented; `train_step` is the one scaffolded method).
+Total scaffolded code: roughly 60 lines across four locations. The math is light.
 
 ## How to run the tests
 
@@ -535,17 +535,11 @@ DPO is more compute-hungry than SFT but still tractable on M-series:
 
 - **Device.** `DPOTrainer(..., device="auto")` moves both the policy and reference model to MPS when available, then moves each chosen/rejected batch to that same device. Use `device="cpu"` when debugging the two-model bookkeeping.
 
-- **Dataset size.** 100–500 hand-authored preference pairs occupy KB to low MB on disk. The tokenized representation fits comfortably in memory.
-
 - **Evaluation cost.** Generating from the DPO'd model + computing implicit rewards over 100 (x, y) pairs takes 1–2 minutes at our model sizes. The deliverable comparison notebook is fast to iterate.
 
 - **Checkpoint sizes.** Same as Modules 12/13: 1M ≈ 4MB, 5M ≈ 20MB, 20M ≈ 80MB. Storing pretraining + SFT'd + DPO'd versions of the 20M model is ~240MB — comfortable.
 
-- **Mixed precision.** Same caveats as Modules 12/13 — stay in fp32 for DPO. The numerical tolerance for log-softmax + log-sigmoid is tight; fp16 has been a documented source of NaN losses in DPO implementations at production scale, and there's no compute reason to push it at our scale.
-
 - **Reproducibility.** Pass `torch.Generator().manual_seed(seed)` to `DPOTrainer`. Especially important for the β sweep: variance across runs at the same β is moderate at toy scale (1.5–2× the variance across β values), so you want to control the seed when comparing.
-
-- **Two-model debugging.** When debugging DPO, the most useful single trick is to call `_logp_under(self.model, ...)` and `_logp_under(self.ref_model, ...)` on the same `(x, y, mask)` and print both. At step 0 they should be equal (because the policy was just copied from the reference); after training they should diverge in the predicted direction (chosen log-prob diverges UP, rejected log-prob diverges DOWN). If you see them diverging together (both up or both down), that's implicit-reward collapse — lower lr or raise β.
 
 ---
 ## Reading

@@ -11,10 +11,12 @@ from g2c.artifacts import (
     atomic_torch_save,
     available_model_artifacts,
     best_model_artifact,
+    build_or_load_tokenized_corpus,
     checkpoint_backup_path,
     default_text_chunks,
     encode_text_to_tensor,
     find_repo_root,
+    iter_corpus_text_chunks,
     load_best_model_artifact,
     load_corpus_bytes,
     load_corpus_text,
@@ -28,11 +30,13 @@ from g2c.artifacts import (
     load_tokenizer_source_text,
     load_torch_checkpoint,
     save_model_artifact,
+    tokenized_corpus_artifact_exists,
     tokenizer_artifact_exists,
     train_or_load_tokenizer_artifact,
 )
 from g2c.tokenizer import COURSE_SPECIAL_TOKENS, BPETokenizer
 from g2c.transformer import TransformerLM
+from scripts.build_tokenized_corpus import default_jobs_for_available_tokenizers
 
 
 def make_repo(tmp_path: Path) -> Path:
@@ -222,6 +226,25 @@ def test_load_corpus_bytes_wraps_and_uses_chunk_offset(tmp_path):
     ) == b"bbbcccaaabb"
 
 
+def test_iter_corpus_text_chunks_streams_without_joining(tmp_path):
+    repo = make_repo(tmp_path)
+    data_dir = repo / "data" / "tinystories"
+    data_dir.mkdir(parents=True)
+    with gzip.open(data_dir / "TinyStories-train-0000.txt.gz", "wt", encoding="utf-8") as f:
+        f.write("abcdefghij")
+
+    chunks = list(
+        iter_corpus_text_chunks(
+            "tinystories",
+            byte_count=7,
+            chunk_bytes=3,
+            repo_root=repo,
+        )
+    )
+
+    assert chunks == ["abc", "def", "g"]
+
+
 def test_load_g2c_corpus_preserves_source_weights_and_prefers_full(tmp_path):
     repo = make_repo(tmp_path)
     small_dir = repo / "data" / "g2c-corpus-v1-small"
@@ -253,6 +276,31 @@ def test_load_tokenizer_source_text_uses_logical_g2c_source(tmp_path):
 
     assert load_tokenizer_source_text("g2c", 5, repo_root=repo) == "FFFCC"
     assert load_tokenizer_source_text("g2c-corpus-small", 5, repo_root=repo) == "FFFCC"
+
+
+def test_build_tokenized_corpus_default_jobs_follow_available_tokenizers(tmp_path):
+    repo = make_repo(tmp_path)
+    tokenizer_root = repo / "artifacts" / "tokenizers"
+    for name, source in (
+        ("ShakespeareTokenizer", "tinyshakespeare"),
+        ("StoryTokenizer", "tinystories"),
+        ("G2CTokenizer", "g2c"),
+    ):
+        artifact_dir = tokenizer_root / name
+        artifact_dir.mkdir(parents=True)
+        (artifact_dir / "tokenizer.json").write_text("{}", encoding="utf-8")
+        (artifact_dir / "manifest.json").write_text(
+            json.dumps({"name": name, "source": source}),
+            encoding="utf-8",
+        )
+
+    jobs = default_jobs_for_available_tokenizers(repo)
+
+    assert [job.name for job in jobs] == [
+        "TinyLLM-g2c-30000000-v8192",
+        "StoryLM-tinystories-500000000-v4096",
+    ]
+    assert [job.tokenizer for job in jobs] == ["G2CTokenizer", "StoryTokenizer"]
 
 
 def test_train_or_load_tokenizer_artifact_saves_and_reloads(tmp_path):
@@ -409,6 +457,8 @@ def test_load_or_encode_tokenized_corpus_uses_artifact_and_cache(tmp_path):
     assert tokenizer.vocab == cached_tokenizer.vocab
     assert torch.equal(ids, torch.tensor(list(b"abcdef"), dtype=torch.long))
     assert torch.equal(cached_ids, ids)
+    assert list((repo / "artifacts" / "tokenized-cache").glob("*.pkl.gz"))
+    assert not (repo / "data" / "tokenizer-cache").exists()
 
 
 def test_load_or_encode_tokenized_pair_uses_artifact_and_cache(tmp_path):
@@ -445,6 +495,128 @@ def test_load_or_encode_tokenized_pair_uses_artifact_and_cache(tmp_path):
     assert torch.equal(val_ids, torch.tensor(list(b"ef"), dtype=torch.long))
     assert torch.equal(cached_train_ids, train_ids)
     assert torch.equal(cached_val_ids, val_ids)
+
+
+def test_load_or_encode_tokenized_corpus_reads_legacy_data_cache(tmp_path):
+    repo = make_repo(tmp_path)
+    data_path = repo / "data" / "tinyshakespeare.txt"
+    data_path.parent.mkdir(parents=True)
+    data_path.write_text("hello artifact", encoding="utf-8")
+    config = TokenizerArtifactConfig(
+        name="LegacyCacheTokenizer",
+        source="tinyshakespeare",
+        vocab_size=256,
+        max_chars=20,
+        special_tokens=(),
+    )
+    train_or_load_tokenizer_artifact(config, repo_root=repo)
+
+    _, ids = load_or_encode_tokenized_corpus(
+        "abcdef",
+        "LegacyCacheTokenizer",
+        label="legacy-unit",
+        repo_root=repo,
+    )
+    new_cache_dir = repo / "artifacts" / "tokenized-cache"
+    legacy_cache_dir = repo / "data" / "tokenizer-cache"
+    legacy_cache_dir.mkdir(parents=True)
+    for path in new_cache_dir.glob("*.pkl.gz"):
+        path.rename(legacy_cache_dir / path.name)
+    new_cache_dir.rmdir()
+
+    _, cached_ids = load_or_encode_tokenized_corpus(
+        "abcdef",
+        "LegacyCacheTokenizer",
+        label="legacy-unit",
+        repo_root=repo,
+    )
+
+    assert torch.equal(cached_ids, ids)
+
+
+def test_tokenized_corpus_artifact_builds_uint16_memmap_and_batches(tmp_path):
+    repo = make_repo(tmp_path)
+    data_dir = repo / "data" / "tinystories"
+    data_dir.mkdir(parents=True)
+    with gzip.open(data_dir / "TinyStories-train-0000.txt.gz", "wt", encoding="utf-8") as f:
+        f.write("abcdefghijklmnopqrstuvwxyz")
+    config = TokenizerArtifactConfig(
+        name="DiskTok",
+        source="tinystories",
+        vocab_size=256,
+        max_chars=26,
+        special_tokens=(),
+    )
+    train_or_load_tokenizer_artifact(config, repo_root=repo)
+
+    artifact = build_or_load_tokenized_corpus(
+        "DiskCorpus",
+        corpus="tinystories",
+        tokenizer_name="DiskTok",
+        byte_count=12,
+        repo_root=repo,
+        workers=1,
+        chunk_bytes=3,
+    )
+    loaded = build_or_load_tokenized_corpus(
+        "DiskCorpus",
+        corpus="tinystories",
+        tokenizer_name="DiskTok",
+        byte_count=12,
+        repo_root=repo,
+        workers=1,
+        chunk_bytes=3,
+    )
+    pair = artifact.split(train_fraction=2 / 3)
+
+    assert tokenized_corpus_artifact_exists("DiskCorpus", repo_root=repo)
+    assert artifact.manifest["dtype"] == "uint16"
+    assert len(artifact.tokens) == 12
+    assert len(pair.train) == 8
+    assert len(pair.val) == 4
+    assert loaded.manifest == artifact.manifest
+    assert artifact.tokens.path.name == "tokens.uint16.bin"
+
+    generator = torch.Generator().manual_seed(0)
+    x, y = pair.train.get_lm_batch(
+        batch_size=4,
+        context_length=3,
+        generator=generator,
+    )
+
+    assert x.shape == (4, 3)
+    assert y.shape == (4, 3)
+    assert torch.equal(y, x + 1)
+
+
+def test_tokenized_corpus_artifact_preserves_special_tokens_across_chunks(tmp_path):
+    repo = make_repo(tmp_path)
+    data_dir = repo / "data" / "tinystories"
+    data_dir.mkdir(parents=True)
+    text = "aa<|endoftext|>bb"
+    with gzip.open(data_dir / "TinyStories-train-0000.txt.gz", "wt", encoding="utf-8") as f:
+        f.write(text)
+    config = TokenizerArtifactConfig(
+        name="SpecialDiskTok",
+        source="tinystories",
+        vocab_size=256 + len(COURSE_SPECIAL_TOKENS),
+        max_chars=len(text),
+    )
+    tokenizer_artifact = train_or_load_tokenizer_artifact(config, repo_root=repo)
+
+    artifact = build_or_load_tokenized_corpus(
+        "SpecialDiskCorpus",
+        corpus="tinystories",
+        tokenizer_name="SpecialDiskTok",
+        byte_count=len(text.encode("utf-8")),
+        repo_root=repo,
+        workers=1,
+        chunk_bytes=5,
+    )
+
+    special_id = tokenizer_artifact.tokenizer.special_to_id["<|endoftext|>"]
+    assert special_id in artifact.tokens.array.tolist()
+    assert artifact.tokens.array.tolist() == tokenizer_artifact.tokenizer.encode_fast(text)
 
 
 def test_train_or_load_tokenizer_artifact_saves_sample_ids(tmp_path):
