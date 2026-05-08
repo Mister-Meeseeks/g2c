@@ -241,6 +241,8 @@ def show_model_samples(
     model: Any,
     tokenizer: Any,
     prompt: str,
+    *,
+    seed: int = 1,
 ) -> None:
     """Print raw and readable samples for a Module 10 checkpoint."""
     raw = sample_model_text(
@@ -251,7 +253,7 @@ def show_model_samples(
         temperature=0.8,
         top_k=None,
         printable_only=False,
-        seed=1,
+        seed=seed,
     )
     readable = sample_model_text(
         model,
@@ -261,7 +263,7 @@ def show_model_samples(
         temperature=0.5,
         top_k=20,
         printable_only=True,
-        seed=1,
+        seed=seed,
     )
     print(f"{name} raw sample, escaped so control bytes do not wreck notebook output")
     print("-" * 72)

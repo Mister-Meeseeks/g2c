@@ -2,9 +2,9 @@
 
 > **Question this module answers:** *Why does the model confidently invent things, and how do we measure it?*
 
-![Module 15 on one page: the Module 13 SFT'd / Module 14 DPO'd TransformerLM under three eval lenses arranged in vertical strips. STRIP 1 (top): "FACTUAL Q&A — generation eval." Prompt: "What is the largest city in Spain?" Model emits "Lisbon.<|end|>" with confidence "exp(mean log-prob) = 0.34". The matcher (`normalized_match`) compares "lisbon" against references ["madrid"] → False. STRIP 2 (middle): "MULTIPLE CHOICE — closed-set eval." Same prompt, but with four candidate continuations: "Madrid.<|end|>", "Lisbon.<|end|>", "Barcelona.<|end|>", "Berlin.<|end|>". The harness scores each by sequence-log-probability, takes argmax, returns the predicted index plus its softmax confidence. The model picks index 1 (Lisbon) with confidence 0.42 — wrong, but only mildly confident. The right side of the strip shows the four option_logps as a small bar chart. STRIP 3 (bottom): "CALIBRATION — across the eval set." Reliability diagram: a 10-bin histogram on [0,1] confidence; for each bin, the bar is the bin's empirical accuracy and a red dot marks its mean confidence. The diagonal "y=x" is the perfectly-calibrated line. The model's bars sit BELOW the diagonal in the high-confidence bins (over-confident) and ABOVE in the low-confidence bins (under-confident) — the canonical signature of a small, under-trained LM. ECE printed below: 0.187. A right-edge sidebar lists the four matchers (`exact`, `normalized`, `numeric`, `contains`) and which task type each is best for. A bottom strip captions the headline: "Loss curves measure training; eval harnesses measure capability. Multiple choice is cheap and calibration-friendly; generation is realistic and matcher-dependent. ECE catches over-confidence that accuracy alone hides."](15-evaluation/Module15-Hero.png)
+![Hero](15-evaluation/Module15-Hero.png)
 
-The whole module on one page. Module 14's loss curve told you "DPO is doing something"; Module 15 tells you **what** it's doing. The two-pronged eval — closed-set scoring for capability ranking, open-set generation for behavior — plus a calibration metric for "how well does the model know what it doesn't know" — is the minimum viable harness for any serious model work. Loss alone doesn't suffice; this is the lens.
+Module 14's loss curve told you "DPO is doing something"; Module 15 tells you **what** it's doing. The two-pronged eval — closed-set scoring for capability ranking, open-set generation for behavior — plus a calibration metric for "how well does the model know what it doesn't know" — is the minimum viable harness for any serious model work. Loss alone doesn't suffice.
 
 ---
 ## Before you start
@@ -313,7 +313,7 @@ Generation eval doesn't expose a confidence by default — the harness sets `con
 ### Hallucination categories
 
 ![Hallucination taxonomy — not all wrongs are the same. Five columns. (1) Factual hallucination: the model states a fact that contradicts the real world ("the largest city in Spain is Lisbon"). Cause: gaps in pretraining knowledge, over-generalization. Detect with: ground-truth Q&A. (2) Contextual hallucination: the model contradicts a fact stated explicitly in the prompt ("Alice is 30. How old is Alice? → 25"). Cause: weak in-context attention, recency bias, insufficient reasoning capacity. Detect with: prompts containing explicit facts. (3) Intrinsic vs extrinsic: intrinsic — the wrong information was implied by but contradicts the prompt or training data; extrinsic — the wrong information has no support anywhere, the model invented it. (4) Refusal failure: the model answers a question it should refuse ("What's my mother's maiden name? → Smith"). Cause: training data lacks refusals; refusal behavior was never reinforced. (5) Format breakage: the model emits valid content but breaks the chat-template format (forgets `<|end|>`, emits stray `<|user|>`). A "key takeaway" panel below: a wrong answer is not one thing — labeling failure modes turns error analysis into a roadmap for better data, training, and evaluation.](15-evaluation/Module15-Hallucination.png)
-*The categorization grid you'll use in exercise 3. Naming the failure mode is more useful than reporting raw accuracy: a 30% accuracy with 90% factual hallucinations needs different fixes than a 30% accuracy with 90% refusal failures. Module 17 (RAG) targets factual hallucination; Module 19 (agent) targets refusal calibration; the lesson here is that "wrong" is multidimensional.*
+*Naming the failure mode is more useful than reporting raw accuracy: a 30% accuracy with 90% factual hallucinations needs different fixes than a 30% accuracy with 90% refusal failures.*
 
 When the eval harness flags a wrong answer, it's useful to classify *why* it was wrong. The categories below are loose but common:
 
@@ -392,7 +392,7 @@ Some failure modes are not hallucinations — they're capability gaps. A 20M-par
    └──────────────────────────────────────────────────────────────────────┘
 ```
 
-The deliverable for this module is a written *characterization* of these floors, not a number. "Accuracy = 0.42" is less informative than "the model can answer city-of-country questions if the country appears in pretraining, fails on arithmetic past single digits, and never refuses any question regardless of how impossible." The latter is what a reader (or future you) needs.
+The deliverable for this module is a written *characterization* of these floors, not a number. "Accuracy = 0.42" is less informative than "the model can answer city-of-country questions if the country appears in pretraining, fails on arithmetic past single digits, and never refuses any question regardless of how impossible."
 
 ## Concepts to internalize
 
@@ -411,11 +411,10 @@ The deliverable for this module is a written *characterization* of these floors,
 ### What we don't cover
 
 - **HELM-style multi-metric harnesses.** HELM (Liang et al. 2022) tracks ~7 metrics per task across 30+ tasks for hundreds of models. Our harness tracks accuracy + ECE on two task types over a hand-built dataset of 50–200 examples. The architecture you'd want to scale this is a "scenario / metric / model" three-way matrix; that's out of scope. The lesson is the loop, not the matrix.
-- **Model-graded ("LLM-as-judge") evaluation.** Zheng et al. 2023 argue (correctly) that for many open-ended tasks, asking a strong model to *judge* outputs is more useful than any string matcher. Our toy model isn't strong enough to be a judge, and the matchers we ship are sufficient for the kinds of probes the exercises ask for. We mention LLM-as-judge in "Reading"; you don't implement it.
+- **Model-graded ("LLM-as-judge") evaluation.** Zheng et al. 2023 argue (correctly) that for many open-ended tasks, asking a strong model to *judge* outputs is more useful than any string matcher. Our toy model isn't strong enough to be a judge, and the matchers we ship are sufficient for the kinds of probes the exercises ask for. 
 - **Adversarial robustness benchmarks.** AdvGLUE, RealToxicityPrompts, etc. expose models to adversarial inputs designed to elicit failures. At toy scale these are mostly noise — our model fails on plain inputs already. Read the papers; don't build the benchmarks.
 - **Full MMLU.** MMLU is 57 subjects × ~100 questions = ~14k multiple-choice questions. Running it takes hours even on a 7B model. We use a hand-built MC subset of 20–50 questions for the exercise.
 - **Calibration via Platt scaling or temperature scaling.** Guo et al. 2017 propose post-hoc calibration: train a one-parameter "temperature" on a held-out set so the model's confidences align better with empirical accuracy. Useful, well-known, and a clean follow-up to ECE — but it's recalibration, not measurement, and we're focused on measurement here.
-- **Perplexity-based eval at scale.** WikiText, The Pile, etc. give per-token cross-entropy on huge held-out corpora. We touched on per-token cross-entropy in Module 10; we don't reuse it here because it doesn't decompose into per-task scores. The point of this module is *per-task evaluation*, where loss curves don't help.
 
 ---
 ## What you'll build
@@ -507,11 +506,11 @@ def reliability_curve(
 ) -> tuple[list[float], list[float], list[int]]:                            # SCAFFOLDED
 ```
 
-Total scaffolded code: roughly 80 lines across seven functions in three files. The math is light; the lesson is the API surface and the closed-set/open-set split. The package ships six files in `g2c/eval/`: `data.py` (the four dataclass fixtures, all implemented as boilerplate), `match.py` (`exact_match` / `normalized_match` / `contains_match` / `numeric_match`, all scaffolded), `logprob.py` (`continuation_logprob`, scaffolded — the text-level analogue of DPO's `sequence_logprob`), `multiple_choice.py` (`score_multiple_choice` scaffolded; `run_multiple_choice_eval` implemented), `generation.py` (both `score_generation_example` and `run_generation_eval` implemented), and `calibration.py` (`expected_calibration_error` and `reliability_curve`, both scaffolded).
+Roughly 80 lines across seven functions in three files. 
 
 ## How to run the tests
 
-Tests live in `tests/test_eval.py`. Initial state: 19 tests pass (all the dataclass boilerplate plus the empty-input ValueError checks for the harnesses). 70 tests fail with `NotImplementedError` until you implement.
+Tests live in `tests/test_eval.py`. Initial state: 19 tests pass, 70 tests fail
 
 ```bash
 pytest tests/test_eval.py                          # all module-15 tests
@@ -525,27 +524,6 @@ pytest tests/test_eval.py -k Generation            # generation harness
 pytest tests/test_eval.py -v                       # verbose
 ```
 
-Implementation order — the five steps are independent until step 5:
-
-  1. **The four match functions** (`exact_match`, `normalized_match`, `contains_match`, `numeric_match`). Independent and small. Turns green: all matcher tests + `TestRunGenerationEval` (the generation harness uses these).
-  2. **`continuation_logprob`**. The text-level scoring primitive. Turns green: `TestContinuationLogprob`.
-  3. **`expected_calibration_error`**. The bucket loop. Turns green: `TestExpectedCalibrationError` + the ECE-aware tests in `TestRunMultipleChoiceEval` (once step 5 is done).
-  4. **`reliability_curve`**. Same binning as ECE. Turns green: `TestReliabilityCurve`.
-  5. **`score_multiple_choice`**. Depends on step 2. Turns green: `TestScoreMultipleChoice` + `TestRunMultipleChoiceEval` (the harness is implemented).
-
-Steps 1–4 are independent; step 5 depends on step 2. The boilerplate tests pass from the start as a sanity check on the test file itself.
-
-The end-to-end transformer test (`test_real_transformer_smoke`) pulls in `g2c.transformer.TransformerLM` — if Module 09 isn't filled in, this single test fails on a prerequisite. Same convention as the DPO/SFT trainer end-to-end tests.
-
-The headline tests to watch:
-
-- **`test_continuation_logprob_uniform_logits_value`** — pins down the log-prob math: with all-zero logits, sum over a 5-token continuation is exactly `−5 · log(V)`. If this fails, `log_softmax`, the gather, or the mask alignment is wrong.
-- **`test_score_multiple_choice_uniform_logits_indifferent`** — with uniform logits and equal-length options, all options score equally; confidence is exactly `1/N`. The "indifference baseline" sanity check.
-- **`test_score_multiple_choice_length_normalize_changes_decision`** — the cleanest demonstration that length normalization is doing what it claims: same model, same example, same prompt, but `length_normalize=True` flips the prediction. Hand-engineered so the math is verifiable.
-- **`test_ece_perfect_calibration_zero`** — when every prediction's confidence equals its bin's empirical accuracy, ECE is exactly 0. The "what does perfect calibration look like" sanity.
-- **`test_ece_always_correct_zero_confidence`** — the maximally miscalibrated case: confidence 0.0, accuracy 1.0. ECE = 1.0. Tests the upper bound of the metric.
-- **`test_ece_known_case_two_bins`** — a hand-computed case (ECE = 0.25) that pins the bin-weighting formula exactly.
-- **`test_run_multiple_choice_eval_real_transformer_smoke`** — the end-to-end check that the harness composes with a real `TransformerLM`. Depends on Module 09.
 
 ## Exercises
 

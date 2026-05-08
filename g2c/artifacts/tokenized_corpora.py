@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import random
 import time
 from codecs import getincrementaldecoder
 from collections.abc import Callable, Iterable, Iterator
@@ -50,17 +51,38 @@ class TokenizedCorpus:
     total_token_count: int
     start: int = 0
     end: int | None = None
+    spans: tuple[tuple[int, int], ...] | None = None
     _array: np.memmap | None = field(default=None, init=False, repr=False)
+    _length: int = field(default=0, init=False, repr=False)
+    _window_cache: dict[
+        int,
+        tuple[tuple[tuple[int, int, int], ...], tuple[int, ...], int],
+    ] = field(default_factory=dict, init=False, repr=False)
 
     def __post_init__(self) -> None:
-        end = self.total_token_count if self.end is None else self.end
-        if not 0 <= self.start <= end <= self.total_token_count:
-            raise ValueError("invalid tokenized corpus view bounds")
-        self.end = end
+        if self.spans is None:
+            end = self.total_token_count if self.end is None else self.end
+            if not 0 <= self.start <= end <= self.total_token_count:
+                raise ValueError("invalid tokenized corpus view bounds")
+            self.end = end
+            self.spans = ((self.start, end),)
+            self._length = end - self.start
+            return
+
+        normalized: list[tuple[int, int]] = []
+        for start, end in self.spans:
+            if not 0 <= start < end <= self.total_token_count:
+                raise ValueError("invalid tokenized corpus span bounds")
+            normalized.append((int(start), int(end)))
+        if not normalized:
+            raise ValueError("tokenized corpus span view must include at least one span")
+        self.spans = tuple(normalized)
+        self.start = min(start for start, _ in normalized)
+        self.end = max(end for _, end in normalized)
+        self._length = sum(end - start for start, end in normalized)
 
     def __len__(self) -> int:
-        assert self.end is not None
-        return self.end - self.start
+        return self._length
 
     @property
     def array(self) -> np.memmap:
@@ -87,6 +109,17 @@ class TokenizedCorpus:
             end=end,
         )
 
+    def span_view(self, split: str, spans: Iterable[tuple[int, int]]) -> TokenizedCorpus:
+        """Return a cheap multi-span view over this same token file."""
+        return TokenizedCorpus(
+            name=self.name,
+            split=split,
+            path=self.path,
+            dtype=self.dtype,
+            total_token_count=self.total_token_count,
+            spans=tuple(spans),
+        )
+
     def get_lm_batch(
         self,
         batch_size: int,
@@ -102,20 +135,54 @@ class TokenizedCorpus:
                 f"context_length+1 = {context_length + 1}."
             )
 
+        valid_spans, cumulative, total_windows = self._window_sampling_index(
+            context_length
+        )
         starts = torch.randint(
-            0,
-            n - context_length,
+            total_windows,
             (batch_size,),
             generator=generator,
         ).tolist()
         arr = self.array
         x = np.empty((batch_size, context_length), dtype=np.int64)
         y = np.empty((batch_size, context_length), dtype=np.int64)
-        for row, relative_start in enumerate(starts):
-            start = self.start + relative_start
+        for row, draw in enumerate(starts):
+            span_index = _bisect_right(cumulative, draw)
+            previous = 0 if span_index == 0 else cumulative[span_index - 1]
+            span_start, _, _ = valid_spans[span_index]
+            start = span_start + (draw - previous)
             x[row, :] = arr[start : start + context_length]
             y[row, :] = arr[start + 1 : start + context_length + 1]
         return torch.from_numpy(x), torch.from_numpy(y)
+
+    def _window_sampling_index(
+        self,
+        context_length: int,
+    ) -> tuple[tuple[tuple[int, int, int], ...], tuple[int, ...], int]:
+        cached = self._window_cache.get(context_length)
+        if cached is not None:
+            return cached
+
+        assert self.spans is not None
+        valid_spans: list[tuple[int, int, int]] = []
+        cumulative: list[int] = []
+        total_windows = 0
+        for start, end in self.spans:
+            window_count = end - start - context_length
+            if window_count <= 0:
+                continue
+            valid_spans.append((start, end, window_count))
+            total_windows += window_count
+            cumulative.append(total_windows)
+        if not valid_spans:
+            raise ValueError(
+                f"{self.name}/{self.split} has no span long enough for "
+                f"context_length+1 = {context_length + 1}."
+            )
+
+        result = (tuple(valid_spans), tuple(cumulative), total_windows)
+        self._window_cache[context_length] = result
+        return result
 
 
 @dataclass(frozen=True)
@@ -136,16 +203,85 @@ class TokenizedCorpusArtifact:
     manifest: dict[str, Any]
     tokenizer: BPETokenizer | None = None
 
-    def split(self, train_fraction: float = 0.9) -> TokenizedCorpusPair:
-        """Return train/validation views over the same disk-backed token file."""
+    def split(
+        self,
+        train_fraction: float = 0.9,
+        *,
+        chunk_tokens: int | None = None,
+        seed: int = 0,
+    ) -> TokenizedCorpusPair:
+        """Return train/validation views over the same disk-backed token file.
+
+        By default this preserves the traditional contiguous split. Pass
+        ``chunk_tokens`` to randomly assign fixed-size token spans to train and
+        validation with a stable seed. Chunked splits avoid the common failure
+        mode where validation is just the tail source of a concatenated corpus.
+        """
         if not 0.0 < train_fraction < 1.0:
             raise ValueError("train_fraction must be between 0 and 1")
+        if chunk_tokens is not None:
+            train_spans, val_spans = _chunked_split_spans(
+                len(self.tokens),
+                train_fraction=train_fraction,
+                chunk_tokens=chunk_tokens,
+                seed=seed,
+            )
+            train = self.tokens.span_view("train", train_spans)
+            val = self.tokens.span_view("val", val_spans)
+            return TokenizedCorpusPair(train=train, val=val)
+
         split_at = int(len(self.tokens) * train_fraction)
         if split_at == 0 or split_at == len(self.tokens):
             raise ValueError("split would produce an empty train or validation view")
         train = self.tokens.view("train", self.tokens.start, self.tokens.start + split_at)
         val = self.tokens.view("val", self.tokens.start + split_at, self.tokens.end)
         return TokenizedCorpusPair(train=train, val=val)
+
+
+def _chunked_split_spans(
+    token_count: int,
+    *,
+    train_fraction: float,
+    chunk_tokens: int,
+    seed: int,
+) -> tuple[tuple[tuple[int, int], ...], tuple[tuple[int, int], ...]]:
+    if chunk_tokens <= 0:
+        raise ValueError("chunk_tokens must be positive")
+    if token_count <= chunk_tokens:
+        raise ValueError("tokenized corpus is too small for a chunked split")
+
+    chunks = [
+        (start, min(start + chunk_tokens, token_count))
+        for start in range(0, token_count, chunk_tokens)
+    ]
+    if len(chunks) < 2:
+        raise ValueError("chunked split requires at least two chunks")
+
+    indices = list(range(len(chunks)))
+    rng = random.Random(seed)
+    rng.shuffle(indices)
+
+    val_chunk_count = round(len(chunks) * (1.0 - train_fraction))
+    val_chunk_count = min(max(1, val_chunk_count), len(chunks) - 1)
+    val_indices = set(indices[:val_chunk_count])
+
+    train_spans = tuple(chunk for index, chunk in enumerate(chunks) if index not in val_indices)
+    val_spans = tuple(chunk for index, chunk in enumerate(chunks) if index in val_indices)
+    if not train_spans or not val_spans:
+        raise ValueError("chunked split would produce an empty train or validation view")
+    return train_spans, val_spans
+
+
+def _bisect_right(values: list[int], item: int) -> int:
+    low = 0
+    high = len(values)
+    while low < high:
+        mid = (low + high) // 2
+        if item < values[mid]:
+            high = mid
+        else:
+            low = mid + 1
+    return low
 
 
 def tokenized_corpus_artifact_exists(

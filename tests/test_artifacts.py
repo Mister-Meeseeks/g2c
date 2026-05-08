@@ -4,9 +4,12 @@ import gzip
 import json
 from pathlib import Path
 
+import numpy as np
 import torch
 
 from g2c.artifacts import (
+    TokenizedCorpus,
+    TokenizedCorpusArtifact,
     TokenizerArtifactConfig,
     atomic_torch_save,
     available_model_artifacts,
@@ -771,6 +774,51 @@ def test_tokenized_corpus_artifact_builds_uint16_memmap_and_batches(tmp_path):
     assert x.shape == (4, 3)
     assert y.shape == (4, 3)
     assert torch.equal(y, x + 1)
+
+
+def test_tokenized_corpus_chunked_split_samples_inside_chunks(tmp_path):
+    path = tmp_path / "tokens.uint16.bin"
+    np.arange(60, dtype=np.dtype("<u2")).tofile(path)
+    tokens = TokenizedCorpus(
+        name="ChunkedCorpus",
+        split="all",
+        path=path,
+        dtype="uint16",
+        total_token_count=60,
+    )
+    artifact = TokenizedCorpusArtifact(
+        name="ChunkedCorpus",
+        artifact_dir=tmp_path,
+        tokens=tokens,
+        manifest={},
+    )
+
+    pair = artifact.split(train_fraction=2 / 3, chunk_tokens=10, seed=0)
+
+    assert len(pair.train) == 40
+    assert len(pair.val) == 20
+    assert set(pair.train.spans).isdisjoint(set(pair.val.spans))
+    assert sorted([*pair.train.spans, *pair.val.spans]) == [
+        (0, 10),
+        (10, 20),
+        (20, 30),
+        (30, 40),
+        (40, 50),
+        (50, 60),
+    ]
+
+    generator = torch.Generator().manual_seed(0)
+    x, y = pair.val.get_lm_batch(
+        batch_size=16,
+        context_length=4,
+        generator=generator,
+    )
+
+    assert torch.equal(y, x + 1)
+    for row in range(x.shape[0]):
+        first = int(x[row, 0])
+        last_target = int(y[row, -1])
+        assert first // 10 == last_target // 10
 
 
 def test_tokenized_corpus_artifact_preserves_special_tokens_across_chunks(tmp_path):
