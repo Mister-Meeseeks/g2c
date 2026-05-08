@@ -5,7 +5,7 @@ next-token prediction with the architecture you'll use for everything
 else in the course. It composes:
 
     token_ids  ──► TokenEmbedding   ──┐
-                                       ├─► +  ──► N × Block ──► LayerNorm ──► Linear(head) ──► logits
+                                       ├─► +  ──► N × Block ──► LayerNorm ──► unembedding ──► logits
     positions  ──► PositionalEmbed  ──┘
 
 Concretely:
@@ -15,30 +15,33 @@ Concretely:
     3. Add them.                                       (B, T, D)
     4. Pass through `num_layers` transformer blocks.   (B, T, D)
     5. Apply a final layer norm.                       (B, T, D)
-    6. Project to vocab logits via the unembedding head. (B, T, vocab_size)
+    6. Project to vocab logits via the unembedding.    (B, T, vocab_size)
 
 The output is `(B, T, vocab_size)` — one logit vector per position. At
 training time, position `t`'s logit predicts the token at position `t+1`,
 so the standard training objective is cross-entropy between the logits
-and the input shifted by one. (Module 10 wires that up.)
+and the input shifted by one. (Module 09B / Module 10 wire that up.)
 
 Two design choices to internalize:
 
   * **The final LayerNorm.** Modern transformers (GPT-2 onward) put one
-    extra LN after the last block, before the unembedding head. Without
-    it, the residual stream's scale is unconstrained at the output and
-    the unembedding's logits can drift. It's a small, cheap addition
-    that materially improves training stability.
+    extra LN after the last block, before the unembedding. Without it,
+    the residual stream's scale is unconstrained at the output and the
+    unembedding's logits can drift. It's a small, cheap addition that
+    materially improves training stability.
 
-  * **The unembedding `Linear(D, V)`.** This is the last weight matrix
-    in the model and is genuinely large — `D × V`. Some implementations
-    *tie* it to the input `TokenEmbedding` (same matrix, used in both
-    directions); we do NOT tie weights here for clarity. Module 10
-    discusses tied embeddings.
+  * **The unembedding is the input embedding, transposed (tied
+    embeddings).** Instead of a separate `Linear(D, V)` head, we reuse
+    `TokenEmbedding.weight` (shape `(V, D)`) and compute logits as
+    `x @ token_embed.weight.T + head_bias`. One matrix lives at both
+    ends of the model. The geometric story is direct: scoring token
+    `v` reduces to "how aligned is the residual stream with the
+    embedding row that *put* token `v` in." Tying saves one full
+    `(V, D)` matrix of parameters at no quality cost (Press & Wolf
+    2017) and is standard in GPT-2, T5, Gemma, and most modern LMs.
 
 Boilerplate (`__init__`, `parameters`) is implemented. The `forward`
-method — the six-step embed/blocks/norm/unembed pipeline — is
-scaffolded.
+method — the embed/blocks/norm/unembed pipeline — is scaffolded.
 """
 from __future__ import annotations
 
@@ -47,7 +50,7 @@ from collections.abc import Iterable
 import torch
 
 from g2c.embeddings import LearnedPositionalEmbedding, TokenEmbedding
-from g2c.nn import Linear, Module
+from g2c.nn import Module
 
 from .block import Block
 from .layer_norm import LayerNorm
@@ -78,7 +81,7 @@ class TransformerLM(Module):
     pos_embed: LearnedPositionalEmbedding
     blocks: list[Block]
     ln_final: LayerNorm
-    head: Linear
+    head_bias: torch.Tensor
 
     def __init__(
         self,
@@ -112,7 +115,12 @@ class TransformerLM(Module):
             for _ in range(num_layers)
         ]
         self.ln_final = LayerNorm(embedding_dim)
-        self.head = Linear(embedding_dim, vocab_size)
+        # The unembedding reuses `token_embed.weight` (transposed) — no
+        # separate `(D, V)` weight matrix lives here. We keep a learned
+        # per-token bias of shape `(V,)` on the output side.
+        head_bias = torch.zeros(vocab_size)
+        head_bias.requires_grad_(True)
+        self.head_bias = head_bias
 
     def parameters(self) -> Iterable[torch.Tensor]:
         params: list[torch.Tensor] = []
@@ -121,7 +129,7 @@ class TransformerLM(Module):
         for block in self.blocks:
             params.extend(block.parameters())
         params.extend(self.ln_final.parameters())
-        params.extend(self.head.parameters())
+        params.append(self.head_bias)
         return params
 
     def forward(self, token_ids: torch.Tensor) -> torch.Tensor:
@@ -164,15 +172,22 @@ class TransformerLM(Module):
 
             6. x = self.ln_final(x)                     # (B, T, D)
 
-               One last normalization before the unembedding head. This
-               is the GPT-2 / modern-transformer convention; the
-               original 2017 paper didn't have it.
+               One last normalization before the unembedding. This is
+               the GPT-2 / modern-transformer convention; the original
+               2017 paper didn't have it.
 
-            7. return self.head(x)                      # (B, T, V)
+            7. return x @ self.token_embed.weight.T + self.head_bias  # (B, T, V)
 
-               The unembedding head projects `D`-dim vectors to
-               `V`-dim logits. The student-facing softmax / cross-entropy
-               happens OUTSIDE this method, in the training loop.
+               The unembedding reuses the input embedding matrix —
+               `token_embed.weight` is `(V, D)`, so `weight.T` is
+               `(D, V)` and projects the residual stream to vocab
+               logits. The per-token `head_bias` adds a learned offset
+               for each vocabulary item. Autograd routes gradient back
+               into `token_embed.weight` from BOTH the input lookup
+               AND this matmul on every step.
+
+               The student-facing softmax / cross-entropy happens
+               OUTSIDE this method, in the training loop.
         """
         # TODO
         raise NotImplementedError

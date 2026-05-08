@@ -14,15 +14,25 @@ Boilerplate (constructor, base vocab) is implemented for you. Search for `# TODO
 """
 from __future__ import annotations
 
-import heapq
-import json
 from collections.abc import Callable
-from pathlib import Path
+from os import PathLike
 from time import perf_counter
+from typing import Self
 
 ProgressCallback = Callable[[dict[str, object]], None]
-TOKENIZER_FORMAT = "g2c.bpe"
-TOKENIZER_VERSION = 1
+
+"""Course-specific special tokens that later modules use for chat/document boundaries
+"""
+COURSE_SPECIAL_TOKENS: tuple[str, ...] = (
+    "<|endoftext|>",
+    "<|system|>",
+    "<|user|>",
+    "<|assistant|>",
+    "<|tool_call|>",
+    "<|tool_result|>",
+    "<|end|>",
+    "<|pad|>",
+)
 
 
 class BPETokenizer:
@@ -39,11 +49,57 @@ class BPETokenizer:
     merges: dict[tuple[int, int], int]
     vocab: dict[int, bytes]
 
-    def __init__(self) -> None:
-        # Base vocabulary: one ID for every possible byte value 0..255.
-        # No merges learned yet — `train` will populate them.
+    def __init__(self, special_tokens: tuple[str, ...] | list[str] = ()) -> None:
+        """Create a byte-level BPE tokenizer.
+
+        Args:
+            special_tokens: optional control-token strings that should encode as
+                single atomic IDs. Later course modules use these for document
+                boundaries, chat roles, and tool-call events. They are reserved
+                immediately after the byte IDs, and BPE training does not learn
+                merges that consume them.
+        """
+        self.special_tokens = tuple(special_tokens)
+        self.special_to_id: dict[str, int] = {}
+        self.id_to_special: dict[int, str] = {}
+        self.special_token_ids: set[int] = set()
+        self._special_tokens_by_length: tuple[str, ...] = ()
+        self._validate_special_tokens()
+        self._reset_to_base_vocab()
+
+    @property
+    def base_vocab_size(self) -> int:
+        """Return byte vocabulary size plus reserved special-token count."""
+        return 256 + len(self.special_tokens)
+
+    @classmethod
+    def with_course_special_tokens(cls) -> Self:
+        """Return a tokenizer with the course chat/tool control tokens reserved."""
+        return cls(special_tokens=COURSE_SPECIAL_TOKENS)
+
+    def _validate_special_tokens(self) -> None:
+        if len(set(self.special_tokens)) != len(self.special_tokens):
+            raise ValueError("special tokens must be unique")
+        for token in self.special_tokens:
+            if not token:
+                raise ValueError("special tokens must be non-empty")
+
+    def _reset_to_base_vocab(self) -> None:
+        """Reset learned merges while preserving byte IDs and special IDs."""
         self.merges = {}
         self.vocab = {i: bytes([i]) for i in range(256)}
+        self.special_to_id = {}
+        self.id_to_special = {}
+        self.special_token_ids = set()
+        for offset, token in enumerate(self.special_tokens):
+            token_id = 256 + offset
+            self.special_to_id[token] = token_id
+            self.id_to_special[token_id] = token
+            self.special_token_ids.add(token_id)
+            self.vocab[token_id] = token.encode("utf-8")
+        self._special_tokens_by_length = tuple(
+            sorted(self.special_tokens, key=len, reverse=True)
+        )
 
     # ------------------------------------------------------------------
     # Persistence — implemented boilerplate
@@ -51,137 +107,85 @@ class BPETokenizer:
 
     def to_dict(self) -> dict[str, object]:
         """Return a JSON-serializable representation of the learned tokenizer."""
-        return {
-            "format": TOKENIZER_FORMAT,
-            "version": TOKENIZER_VERSION,
-            "merges": [
-                [a, b, new_id]
-                for (a, b), new_id in sorted(
-                    self.merges.items(),
-                    key=lambda item: item[1],
-                )
-            ],
-        }
+        from .persistence import to_dict
+
+        return to_dict(self)
 
     @classmethod
     def from_dict(cls, payload: dict[str, object]) -> BPETokenizer:
         """Construct a tokenizer from `to_dict()` output."""
-        if payload.get("format") != TOKENIZER_FORMAT:
-            raise ValueError("not a g2c BPE tokenizer payload")
-        if payload.get("version") != TOKENIZER_VERSION:
-            raise ValueError("unsupported BPE tokenizer version")
+        from .persistence import from_dict
 
-        tok = cls()
-        merges = payload.get("merges")
-        if not isinstance(merges, list):
-            raise ValueError("tokenizer payload must contain a list of merges")
+        return from_dict(cls, payload)
 
-        for expected_id, merge in enumerate(merges, start=256):
-            if (
-                not isinstance(merge, list)
-                or len(merge) != 3
-                or not all(isinstance(part, int) for part in merge)
-            ):
-                raise ValueError("each tokenizer merge must be [a, b, new_id]")
-
-            a, b, new_id = merge
-            if new_id != expected_id:
-                raise ValueError("tokenizer merge IDs must be sequential from 256")
-            if a not in tok.vocab or b not in tok.vocab:
-                raise ValueError("tokenizer merge references an unknown token ID")
-
-            tok.merges[(a, b)] = new_id
-            tok.vocab[new_id] = tok.vocab[a] + tok.vocab[b]
-
-        return tok
-
-    def save(self, path: str | Path) -> None:
+    def save(self, path: str | PathLike[str]) -> None:
         """Save this tokenizer to a UTF-8 JSON file."""
-        path = Path(path)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(self.to_dict(), indent=2) + "\n", encoding="utf-8")
+        from .persistence import save
+
+        save(self, path)
 
     @classmethod
-    def load(cls, path: str | Path) -> BPETokenizer:
+    def load(cls, path: str | PathLike[str]) -> BPETokenizer:
         """Load a tokenizer saved by `save`."""
-        payload = json.loads(Path(path).read_text(encoding="utf-8"))
-        if not isinstance(payload, dict):
-            raise ValueError("tokenizer file must contain a JSON object")
-        return cls.from_dict(payload)
+        from .persistence import load
+
+        return load(cls, path)
 
     # ------------------------------------------------------------------
     # Fast path — implemented infrastructure
     # ------------------------------------------------------------------
 
-    def encode_fast(self, text: str) -> list[int]:
-        """Encode `text` with a priority queue over merge ranks.
+    def encode_fast(self, text: str, *, vocab_size: int | None = None) -> list[int]:
+        """Encode `text` with the Rust-backed BPE implementation.
 
-        This is the same BPE merge order as `encode`, but implemented as
-        infrastructure for larger corpus/tokenizer artifact work. Students
-        should implement `encode` first because it is easier to understand.
+        `vocab_size`, when set, restricts merges to those with new ID below
+        the cap — same semantics as `encode_at_vocab` but at Rust speed.
         """
-        token_ids = list(text.encode("utf-8"))
-        if len(token_ids) < 2 or not self.merges:
-            return token_ids
+        from .fast import encode_fast
 
-        n = len(token_ids)
-        prev = [-1] + list(range(n - 1))
-        next_ = list(range(1, n)) + [-1]
-        active = [True] * n
-        heap: list[tuple[int, int, int]] = []
+        return encode_fast(self, text, vocab_size=vocab_size)
 
-        def push_pair(left: int) -> None:
-            right = next_[left]
-            if right == -1:
-                return
-            new_id = self.merges.get((token_ids[left], token_ids[right]))
-            if new_id is not None:
-                heapq.heappush(heap, (new_id, left, right))
+    def train_fast(
+        self,
+        text: str,
+        vocab_size: int,
+        *,
+        show_progress: bool = True,
+        chunk_chars: int = 8_192,
+        encode_training_text: bool = True,
+        progress_callback: ProgressCallback | None = None,
+    ) -> list[int]:
+        """Train BPE with the Rust-backed implementation."""
+        from .fast import train_fast
 
-        for i in range(n - 1):
-            push_pair(i)
-
-        while heap:
-            new_id, left, right = heapq.heappop(heap)
-            if (
-                not active[left]
-                or not active[right]
-                or next_[left] != right
-                or self.merges.get((token_ids[left], token_ids[right])) != new_id
-            ):
-                continue
-
-            token_ids[left] = new_id
-            active[right] = False
-            after = next_[right]
-            next_[left] = after
-            if after != -1:
-                prev[after] = left
-
-            before = prev[left]
-            if before != -1:
-                push_pair(before)
-            push_pair(left)
-
-        encoded: list[int] = []
-        i = 0
-        while i != -1:
-            if active[i]:
-                encoded.append(token_ids[i])
-            i = next_[i]
-        return encoded
+        return train_fast(
+            self,
+            text,
+            vocab_size,
+            show_progress=show_progress,
+            chunk_chars=chunk_chars,
+            encode_training_text=encode_training_text,
+            progress_callback=progress_callback,
+        )
 
     # ------------------------------------------------------------------
     # Algorithmic helpers — STUDENT IMPLEMENTS
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _get_pair_counts(ids: list[int]) -> dict[tuple[int, int], int]:
+    def _get_pair_counts(
+        ids: list[int],
+        *,
+        barrier_ids: set[int] | None = None,
+    ) -> dict[tuple[int, int], int]:
         """Return the frequency of each adjacent pair in `ids`.
 
         Example:
             _get_pair_counts([1, 2, 1, 2, 3])
               -> {(1, 2): 2, (2, 1): 1, (2, 3): 1}
+
+        Optional `barrier_ids` are excluded from pair counting. This is how
+        reserved special tokens remain atomic during training.
 
         Hint: a single pass with a sliding window of size 2.
         """
@@ -247,34 +251,48 @@ class BPETokenizer:
         *,
         progress_callback: ProgressCallback | None = None,
         progress_every: int = 100,
-    ) -> None:
+        on_progress: ProgressCallback | None = None,
+    ) -> list[int]:
         """Learn merges from `text` until the vocabulary reaches `vocab_size`.
 
-        The outer training loop is implemented scaffold. Students implement
-        `train_step`, which performs the conceptual one-merge BPE operation.
+        The outer training loop is implemented scaffold. `train_step` performs
+        the conceptual one-merge BPE operation.
 
         Args:
             text: training corpus.
-            vocab_size: target vocabulary size. Must be ≥ 256 (the byte base);
-                        exactly 256 means "no merges, just the base vocab."
+            vocab_size: target vocabulary size. Must be at least
+                        `self.base_vocab_size` (the byte base plus any reserved
+                        special tokens). Exactly `self.base_vocab_size` means
+                        "no merges, just the base vocab."
             progress_callback: optional function called with a progress dict
                                every `progress_every` merge steps and at the
-                               end of training. Notebook/script code can use
-                               this to print progress without changing the BPE
-                               algorithm students implement.
+                               end of training.
             progress_every: callback cadence, in merge steps.
+            on_progress: backward-compatible alias for `progress_callback`.
+
+        Returns:
+            The final token IDs for `text` after all learned merges have been
+            applied.
 
         Raises:
-            ValueError: if `vocab_size < 256`.
+            ValueError: if `vocab_size` is smaller than the byte + special-token
+                base vocabulary.
+            ValueError: if `progress_every < 1`.
         """
-        if vocab_size < 256:
-            raise ValueError("vocab_size must be at least 256")
+        if vocab_size < self.base_vocab_size:
+            raise ValueError(
+                f"vocab_size must be at least {self.base_vocab_size} "
+                "for this tokenizer's byte + special-token base vocabulary"
+            )
         if progress_every < 1:
             raise ValueError("progress_every must be at least 1")
+        if progress_callback is not None and on_progress is not None:
+            raise ValueError("pass either progress_callback or on_progress, not both")
 
-        ids = list(text.encode("utf-8"))
+        callback = progress_callback if progress_callback is not None else on_progress
+        ids = self._encode_initial_ids(text)
         target_vocab_size = vocab_size
-        target_merges = max(0, target_vocab_size - 256)
+        target_merges = max(0, target_vocab_size - self.base_vocab_size)
         start = perf_counter()
         steps = 0
         last_pair: tuple[int, int] | None = None
@@ -283,7 +301,7 @@ class BPETokenizer:
 
         def report(done: bool) -> None:
             nonlocal reported_done
-            if progress_callback is None:
+            if callback is None:
                 return
             if done:
                 reported_done = True
@@ -298,7 +316,7 @@ class BPETokenizer:
                 if last_token_bytes is not None
                 else None
             )
-            progress_callback(
+            callback(
                 {
                     "vocab_size": len(self.vocab),
                     "target_vocab_size": target_vocab_size,
@@ -316,6 +334,10 @@ class BPETokenizer:
                     "last_merge_count": last_merge_count,
                     "elapsed_seconds": perf_counter() - start,
                     "done": done,
+                    # Legacy metric names used by earlier solutions notebooks.
+                    "num_merges": len(self.merges),
+                    "token_count": len(ids),
+                    "last_pair_count": last_merge_count or 0,
                 }
             )
 
@@ -332,6 +354,7 @@ class BPETokenizer:
 
         if not reported_done:
             report(done=True)
+        return ids
 
     def encode(self, text: str) -> list[int]:
         """Encode `text` into a list of token IDs using the learned merges.
@@ -355,6 +378,96 @@ class BPETokenizer:
         # TODO
         raise NotImplementedError
 
+    def encode_base(self, text: str) -> list[int]:
+        """Encode `text` using only the byte base and reserved special tokens.
+
+        No learned merges are applied. Special tokens still encode as atomic IDs;
+        everything else lands as raw UTF-8 byte IDs. Equivalent to what `encode`
+        returns before any merges have been learned.
+        """
+        return self._encode_initial_ids(text)
+
+    def encode_at_vocab(self, text: str, vocab_size: int) -> list[int]:
+        """Encode `text` as a tokenizer trained to `vocab_size` would have done.
+
+        BPE merges are added to `self.merges` in priority order, so applying only
+        those whose new ID is `< vocab_size` produces the same output a tokenizer
+        trained to `vocab_size` on the same corpus would produce — no retraining
+        required.
+
+        `vocab_size` must be at least `self.base_vocab_size`. Values larger than
+        `len(self.vocab)` simply use every learned merge.
+        """
+        if vocab_size < self.base_vocab_size:
+            raise ValueError(
+                f"vocab_size must be at least {self.base_vocab_size} "
+                "for this tokenizer's byte + special-token base vocabulary"
+            )
+
+        ids = self._encode_initial_ids(text)
+        while True:
+            merge_candidates: list[tuple[int, int]] = []
+            for i in range(len(ids) - 1):
+                pair = (ids[i], ids[i + 1])
+                new_id = self.merges.get(pair)
+                if new_id is not None and new_id < vocab_size:
+                    merge_candidates.append(pair)
+
+            if not merge_candidates:
+                break
+
+            best_pair = min(merge_candidates, key=lambda pair: self.merges[pair])
+            ids = self._merge(ids, best_pair, self.merges[best_pair])
+
+        return ids
+
+    def encode_with_vocab_size(
+        self,
+        text: str,
+        vocab_size: int | None,
+    ) -> list[int]:
+        """Encode `text` at a requested effective vocab size.
+
+        Single entry point for the three encoding modes the course exposes:
+          - ``vocab_size=None``: full trained vocab (``encode_fast``).
+          - ``vocab_size=0``: byte + reserved special tokens only (``encode_base``).
+          - ``0 < vocab_size <= len(self.vocab)``: only merges with new ID
+            ``< vocab_size``. Routed through the Rust fast path with a
+            truncated merge list — byte-identical to ``encode_at_vocab``.
+
+        Raises ``ValueError`` if ``vocab_size`` exceeds the trained vocab.
+        """
+        full = len(self.vocab)
+        if vocab_size is None or vocab_size == full:
+            return self.encode_fast(text)
+        if vocab_size > full:
+            raise ValueError(
+                f"requested vocab_size={vocab_size} exceeds tokenizer's "
+                f"trained vocab size {full}"
+            )
+        if vocab_size == 0:
+            return self.encode_base(text)
+        return self.encode_fast(text, vocab_size=vocab_size)
+
+    def effective_vocab_size(self, vocab_size: int | None) -> int:
+        """Return the model vocab size implied by a requested ``vocab_size``.
+
+        Companion to ``encode_with_vocab_size``: maps the user-facing knob
+        (``None``/``0``/``N``) to the actual integer the embedding table
+        should be sized for.
+        """
+        full = len(self.vocab)
+        if vocab_size is None:
+            return full
+        if vocab_size == 0:
+            return self.base_vocab_size
+        if vocab_size > full:
+            raise ValueError(
+                f"requested vocab_size={vocab_size} exceeds tokenizer's "
+                f"trained vocab size {full}"
+            )
+        return vocab_size
+
     def decode(self, ids: list[int]) -> str:
         """Reverse of `encode`: reconstruct the original text from IDs.
 
@@ -371,3 +484,45 @@ class BPETokenizer:
         """
         # TODO
         raise NotImplementedError
+
+    # ------------------------------------------------------------------
+    # Special-token segmentation — implemented boilerplate
+    # ------------------------------------------------------------------
+
+    def _special_aware_segments(self, text: str):
+        """Yield text spans and special token IDs in left-to-right order."""
+        if not self.special_tokens:
+            if text:
+                yield text
+            return
+
+        span_start = 0
+        i = 0
+        while i < len(text):
+            matched = None
+            for token in self._special_tokens_by_length:
+                if text.startswith(token, i):
+                    matched = token
+                    break
+            if matched is None:
+                i += 1
+                continue
+
+            if span_start < i:
+                yield text[span_start:i]
+            yield self.special_to_id[matched]
+            i += len(matched)
+            span_start = i
+
+        if span_start < len(text):
+            yield text[span_start:]
+
+    def _encode_initial_ids(self, text: str) -> list[int]:
+        """Encode text to byte IDs while preserving atomic special tokens."""
+        ids: list[int] = []
+        for segment in self._special_aware_segments(text):
+            if isinstance(segment, int):
+                ids.append(segment)
+            else:
+                ids.extend(segment.encode("utf-8"))
+        return ids

@@ -46,6 +46,8 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
+from os import PathLike
+from pathlib import Path
 
 import torch
 
@@ -54,6 +56,18 @@ from g2c.training import AdamW, clip_grad_norm_, cosine_with_warmup
 
 from .data import get_lm_batch
 from .loss import lm_cross_entropy
+
+
+def empty_training_history() -> dict[str, list]:
+    """Return the standard history container used by `Trainer.train`."""
+    return {
+        "step": [],
+        "train_loss": [],
+        "lr": [],
+        "grad_norm": [],
+        "val_step": [],
+        "val_loss": [],
+    }
 
 
 class Trainer:
@@ -85,6 +99,8 @@ class Trainer:
             the adaptive optimizer introduced in Module 03B.
 
     Attributes:
+        device: resolved `torch.device` used for model parameters and
+            training/evaluation batches.
         optimizer_name: `"sgd"` or `"adamw"`.
         optimizer: the inner optimizer instance. The trainer mutates
             `optimizer.lr` once per step from the cosine schedule.
@@ -157,6 +173,161 @@ class Trainer:
         else:
             raise ValueError("optimizer must be 'sgd' or 'adamw'")
         self.step = 0
+
+    def checkpoint_state(
+        self,
+        *,
+        history: dict[str, list] | None = None,
+        extra: dict | None = None,
+    ) -> dict:
+        """Return a serializable snapshot for pausing and resuming training.
+
+        The snapshot intentionally stores raw parameter tensors rather than a
+        high-level `state_dict` because the course's `Module` abstraction is
+        deliberately minimal. Restoring copies these tensors back into the
+        existing model object.
+        """
+        checkpoint = {
+            "version": 1,
+            "trainer": {
+                "step": self.step,
+                "batch_size": self.batch_size,
+                "context_length": self.context_length,
+                "max_steps": self.max_steps,
+                "max_lr": self.max_lr,
+                "min_lr": self.min_lr,
+                "warmup_steps": self.warmup_steps,
+                "weight_decay": self.weight_decay,
+                "grad_clip": self.grad_clip,
+                "eval_every": self.eval_every,
+                "eval_iters": self.eval_iters,
+                "log_every": self.log_every,
+                "optimizer_name": self.optimizer_name,
+            },
+            "model_params": [p.detach().cpu().clone() for p in self.model.parameters()],
+            "optimizer": self._optimizer_state(),
+            "generator_state": (
+                self.generator.get_state() if self.generator is not None else None
+            ),
+            "history": history if history is not None else empty_training_history(),
+            "extra": extra or {},
+        }
+        return checkpoint
+
+    def save_checkpoint(
+        self,
+        path: str | PathLike[str],
+        *,
+        history: dict[str, list] | None = None,
+        extra: dict | None = None,
+    ) -> Path:
+        """Save model, optimizer, RNG, step counter, and history to `path`."""
+        from g2c.artifacts.models import save_training_checkpoint
+
+        return save_training_checkpoint(
+            self,
+            path,
+            history=history,
+            extra=extra,
+        )
+
+    def load_checkpoint(self, path: str | PathLike[str]) -> dict:
+        """Restore a checkpoint saved by `save_checkpoint` and return it."""
+        from g2c.artifacts.models import load_training_checkpoint
+
+        checkpoint = load_training_checkpoint(path, map_location="cpu")
+        self.restore_checkpoint_state(checkpoint)
+        return checkpoint
+
+    def restore_checkpoint_state(self, checkpoint: dict) -> None:
+        """Restore model, optimizer, RNG, and step counter from `checkpoint`."""
+        trainer_state = checkpoint["trainer"]
+        self.step = int(trainer_state["step"])
+        self._load_model_params(checkpoint["model_params"])
+        self._load_optimizer_state(checkpoint["optimizer"])
+        generator_state = checkpoint.get("generator_state")
+        if generator_state is not None and self.generator is not None:
+            self.generator.set_state(generator_state)
+
+    def _optimizer_state(self) -> dict:
+        state = {
+            "name": self.optimizer_name,
+            "lr": self.optimizer.lr,
+            "weight_decay": self.optimizer.weight_decay,
+        }
+        if isinstance(self.optimizer, AdamW):
+            state.update(
+                {
+                    "beta1": self.optimizer.beta1,
+                    "beta2": self.optimizer.beta2,
+                    "eps": self.optimizer.eps,
+                    "step_count": self.optimizer.step_count,
+                    "m": [t.detach().cpu().clone() for t in self.optimizer.m],
+                    "v": [t.detach().cpu().clone() for t in self.optimizer.v],
+                }
+            )
+        return state
+
+    def _load_model_params(self, saved_params: list[torch.Tensor]) -> None:
+        params = list(self.model.parameters())
+        if len(saved_params) != len(params):
+            raise ValueError(
+                f"checkpoint has {len(saved_params)} model params, "
+                f"but model has {len(params)}"
+            )
+        with torch.no_grad():
+            for i, (param, saved) in enumerate(zip(params, saved_params, strict=True)):
+                if tuple(param.shape) != tuple(saved.shape):
+                    raise ValueError(
+                        f"checkpoint model param {i} has shape {tuple(saved.shape)}, "
+                        f"but model param has shape {tuple(param.shape)}"
+                    )
+                param.copy_(saved.to(device=param.device, dtype=param.dtype))
+
+    def _load_optimizer_state(self, state: dict) -> None:
+        if state["name"] != self.optimizer_name:
+            raise ValueError(
+                f"checkpoint optimizer is {state['name']!r}, "
+                f"but trainer optimizer is {self.optimizer_name!r}"
+            )
+        self.optimizer.lr = float(state["lr"])
+        self.optimizer.weight_decay = float(state["weight_decay"])
+
+        if isinstance(self.optimizer, AdamW):
+            self.optimizer.beta1 = float(state["beta1"])
+            self.optimizer.beta2 = float(state["beta2"])
+            self.optimizer.eps = float(state["eps"])
+            self.optimizer.step_count = int(state["step_count"])
+            self._copy_optimizer_tensors(self.optimizer.m, state["m"], "m")
+            self._copy_optimizer_tensors(self.optimizer.v, state["v"], "v")
+
+    def _copy_optimizer_tensors(
+        self,
+        target: list[torch.Tensor],
+        saved: list[torch.Tensor],
+        name: str,
+    ) -> None:
+        if len(saved) != len(target):
+            raise ValueError(
+                f"checkpoint optimizer.{name} has {len(saved)} tensors, "
+                f"but optimizer has {len(target)}"
+            )
+        with torch.no_grad():
+            for i, (target_tensor, saved_tensor) in enumerate(
+                zip(target, saved, strict=True)
+            ):
+                if tuple(target_tensor.shape) != tuple(saved_tensor.shape):
+                    raise ValueError(
+                        f"checkpoint optimizer.{name}[{i}] has shape "
+                        f"{tuple(saved_tensor.shape)}, but optimizer tensor has "
+                        f"shape {tuple(target_tensor.shape)}"
+                    )
+                target_tensor.copy_(
+                    saved_tensor.to(
+                        device=target_tensor.device,
+                        dtype=target_tensor.dtype,
+                    )
+                )
 
     def lr(self, step: int | None = None) -> float:
         """Return the learning rate the schedule prescribes at `step`.
@@ -284,9 +455,13 @@ class Trainer:
         train_ids: torch.Tensor,
         val_ids: torch.Tensor | None = None,
         *,
+        history: dict[str, list] | None = None,
         on_log: Callable[[dict[str, float | int | None]], None] | None = None,
+        checkpoint_path: str | PathLike[str] | None = None,
+        checkpoint_every: int | None = None,
+        checkpoint_extra: dict | None = None,
     ) -> dict[str, list]:
-        """Run the full training loop for `max_steps` steps.
+        """Run the full training loop until `self.step == max_steps`.
 
         Implemented for you. Calls `train_step` once per step and
         records metrics into a history dict every `log_every` steps;
@@ -296,12 +471,20 @@ class Trainer:
         Args:
             train_ids: 1-D LongTensor of training token IDs.
             val_ids: optional 1-D LongTensor for periodic validation.
+            history: optional existing history to append to. Pass the history
+                loaded from a checkpoint when continuing a run.
             on_log: optional callback called whenever training logs or
                 evaluates. The callback receives a small metrics dict with
                 `step`, `train_loss`, `val_loss`, `lr`, `grad_norm`,
                 `elapsed_s`, and `steps_per_s`. This is useful for live
                 notebook progress displays without baking print behavior into
                 the trainer.
+            checkpoint_path: optional path for a rolling training checkpoint.
+            checkpoint_every: if `checkpoint_path` is set, save every N
+                completed steps and also at the final step. If the run is
+                interrupted, the trainer saves once before re-raising.
+            checkpoint_extra: optional metadata stored alongside the
+                checkpoint (for example model config or tokenizer name).
 
         Returns:
             A dict with six lists, each indexed by logging
@@ -312,53 +495,73 @@ class Trainer:
                     appended every `eval_every` steps (empty if no
                     `val_ids` was given).
         """
-        history: dict[str, list] = {
-            "step": [],
-            "train_loss": [],
-            "lr": [],
-            "grad_norm": [],
-            "val_step": [],
-            "val_loss": [],
-        }
+        if checkpoint_every is not None and checkpoint_every <= 0:
+            raise ValueError("checkpoint_every must be positive or None")
+        if history is None:
+            history = empty_training_history()
+
         start_time = time.perf_counter()
-        for _ in range(self.max_steps):
-            metrics = self.train_step(train_ids)
-            # `self.step` was just incremented inside `train_step`; the
-            # metrics correspond to the step that ran with self.step-1.
-            step_index = self.step - 1
-            done = self.step == self.max_steps
-            log_event: dict[str, float | int | None] | None = None
-            if step_index % self.log_every == 0 or done:
-                history["step"].append(step_index)
-                history["train_loss"].append(metrics["loss"])
-                history["lr"].append(metrics["lr"])
-                history["grad_norm"].append(metrics["grad_norm"])
-                log_event = {
-                    "step": step_index,
-                    "train_loss": metrics["loss"],
-                    "val_loss": None,
-                    "lr": metrics["lr"],
-                    "grad_norm": metrics["grad_norm"],
-                }
-            if val_ids is not None and (step_index % self.eval_every == 0 or done):
-                val_loss = self.evaluate(val_ids)
-                history["val_step"].append(step_index)
-                history["val_loss"].append(val_loss)
-                if log_event is None:
+        start_step = self.step
+        try:
+            while self.step < self.max_steps:
+                metrics = self.train_step(train_ids)
+                # `self.step` was just incremented inside `train_step`; the
+                # metrics correspond to the step that ran with self.step-1.
+                step_index = self.step - 1
+                done = self.step >= self.max_steps
+                log_event: dict[str, float | int | None] | None = None
+                if step_index % self.log_every == 0 or done:
+                    history["step"].append(step_index)
+                    history["train_loss"].append(metrics["loss"])
+                    history["lr"].append(metrics["lr"])
+                    history["grad_norm"].append(metrics["grad_norm"])
                     log_event = {
                         "step": step_index,
                         "train_loss": metrics["loss"],
-                        "val_loss": val_loss,
+                        "val_loss": None,
                         "lr": metrics["lr"],
                         "grad_norm": metrics["grad_norm"],
                     }
-                else:
-                    log_event["val_loss"] = val_loss
-            if on_log is not None and log_event is not None:
-                elapsed_s = time.perf_counter() - start_time
-                log_event["elapsed_s"] = elapsed_s
-                log_event["steps_per_s"] = (
-                    (step_index + 1) / elapsed_s if elapsed_s > 0 else 0.0
+                if val_ids is not None and (
+                    step_index % self.eval_every == 0 or done
+                ):
+                    val_loss = self.evaluate(val_ids)
+                    history["val_step"].append(step_index)
+                    history["val_loss"].append(val_loss)
+                    if log_event is None:
+                        log_event = {
+                            "step": step_index,
+                            "train_loss": metrics["loss"],
+                            "val_loss": val_loss,
+                            "lr": metrics["lr"],
+                            "grad_norm": metrics["grad_norm"],
+                        }
+                    else:
+                        log_event["val_loss"] = val_loss
+                if on_log is not None and log_event is not None:
+                    elapsed_s = time.perf_counter() - start_time
+                    steps_this_call = self.step - start_step
+                    log_event["elapsed_s"] = elapsed_s
+                    log_event["steps_per_s"] = (
+                        steps_this_call / elapsed_s if elapsed_s > 0 else 0.0
+                    )
+                    on_log(log_event)
+                if (
+                    checkpoint_path is not None
+                    and checkpoint_every is not None
+                    and (self.step % checkpoint_every == 0 or done)
+                ):
+                    self.save_checkpoint(
+                        checkpoint_path,
+                        history=history,
+                        extra=checkpoint_extra,
+                    )
+        except KeyboardInterrupt:
+            if checkpoint_path is not None:
+                self.save_checkpoint(
+                    checkpoint_path,
+                    history=history,
+                    extra=checkpoint_extra,
                 )
-                on_log(log_event)
+            raise
         return history

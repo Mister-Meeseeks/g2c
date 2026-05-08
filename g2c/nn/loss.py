@@ -60,5 +60,12 @@ class CrossEntropyLoss(Module):
     """
 
     def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        """Return the mean cross-entropy loss between logits and targets.
+
+        See the docstring for the mathematical definition and numerical stability
+        trick.
+
+        Hint: follow the implementation outline in the docstring, step by step.
+        """
         # TODO
         raise NotImplementedError
