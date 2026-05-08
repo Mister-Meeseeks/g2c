@@ -26,17 +26,17 @@ After Module 08, you have multi-head attention as a standalone mechanism — a l
 A transformer is attention *embedded inside* a specific architectural sandwich that makes it trainable at depth. The building block of the transformer is the block. Once you have it, scaling up is "use a larger `D`, larger `T`, more blocks." 
 
 ```
-  ┌─ Multi-head attention sublayer ────┐
+  ┌─ Multi-head attention sublayer ─────┐
   │                                     │
   x ──► LayerNorm ──► MHA ──► + ──┐
-  │                              │
-  └──── residual connection ─────┘
+  │                               │
+  └──── residual connection ──────┘
                                   │
-  ┌─ Feed-forward sublayer ──────┘─────┐
+  ┌─ Feed-forward sublayer ───────┘─────┐
   │                                     │
   x ──► LayerNorm ──► FFN ──► + ──┐
-  │                              │
-  └──── residual connection ─────┘
+  │                               │
+  └──── residual connection ──────┘
 ```
 
 Three new ideas wrap around the attention you already have:
@@ -75,7 +75,7 @@ def forward(self, x):
 
 Everything important about the transformer architecture is encoded in those two lines.
 
-### Why residual connections matter
+### Residual connections
 
 The headline empirical fact: without residual connections, transformers deeper than a handful of layers fail to train. With them, training scales to hundreds of layers. The intuition has two complementary flavors:
 
@@ -97,7 +97,7 @@ The headline empirical fact: without residual connections, transformers deeper t
 ![The residual stream as a horizontal "bus" that threads through every block. The embedding sum enters on the left; each block reads the stream, computes a small update Δᵢ via its sublayer (attention or FFN), and adds it back onto the stream. Δ₁ might do "communication across tokens" (attention), Δ₂ might do "per-token computation" (the FFN), Δ₃ might be "feature refinement" — each block specializes in what it adds. After N blocks, the stream is x_N = x + Σᵢ Δᵢ; the final layer norm and unembedding head consume that sum.](09-transformer-block/Module09-ResidualBus.png)
 *Sublayers make incremental edits, not replacements. This is the property that makes deep transformers trainable (gradient-flow view)
 
-### Why LayerNorm specifically
+### LayerNorm
 
 Three properties of LayerNorm are worth internalizing:
 
@@ -176,7 +176,7 @@ Three things to internalize:
 ![The position-wise FFN: the SAME two-layer MLP applied independently to every position. Per-position view: x_t (D channels) → Linear up to 4D → GELU → Linear back down to D. Block view: attention writes a per-token update into the residual stream, then LayerNorm + FFN compute a second per-token update. Side panels show the parameter counts (2 · 4D² = 8D² weights, dominating the block's parameter budget) and the per-position independence (mutate one token, no others change).](09-transformer-block/Module09-FFN.png)
 *The FFN is the "compute" half of the block. Attention mixes information, the FFN is what the model does with that mixture.
 
-### Tied embeddings: one matrix at both ends
+### Tied embeddings
 
 The model has two natural `(V, D)`-sized matrices: the input `TokenEmbedding` that maps each token id to a vector, and the unembedding that maps the final residual stream back to `V` logits. We make them the *same matrix*.
 

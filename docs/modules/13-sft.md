@@ -38,11 +38,11 @@ Once upon a time there was a girl nemed Lily who loved to pick flowers...
 
 It doesn't matter how big you make it — at any size, a base model trained on prose continues prose. This is *correct behavior under the training objective*. The model isn't broken. It's just not an assistant.
 
-The journey from prose autocomplete to helpful assistant can be broken down into two components: one is *style* and the other is *capabilities*. The techniques covered this week will focus on the former — tuning the model to generate assistant like responses (that are still frequently confidently wrong). The latter will be addressed in later modules. 
+The journey from prose autocomplete to helpful assistant can be broken down into two components: one is *style* and the other is *capabilities*. This week will focus on the former — tuning the model to generate assistant like responses (that are still frequently confidently wrong). The latter will be addressed in later modules. 
 
 ## The big idea
 
-Going from "continues text" to "answers questions in a turn-shaped format" can be achieved with supervised fine-tuning (SFT) does.  The recipe:
+Going from "continues text" to "answers questions in a turn-shaped format" can be achieved with supervised fine-tuning (SFT).  The recipe:
 
 1. Collect or hand-author a few hundred (instruction, response) pairs.
 2. Wrap each pair in a *chat template* — a literal-text format with role markers.

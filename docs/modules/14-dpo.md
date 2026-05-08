@@ -489,23 +489,23 @@ pytest tests/test_dpo.py -v                    # verbose
 
 - **Forgetting `torch.no_grad()` on the reference forwards.** Doesn't break correctness — roughly doubles peak memory. Always wrap reference forwards in `with torch.no_grad():`.
 
-- **Reference and policy share the same model object.** A subtle bug: `ref_model = model` (assignment, not copy). Now both names point to the same params and updating `model` updates `ref_model` in lockstep. Symptom: log-ratios stay zero, loss stays at log(2). Fix: `ref_model = copy.deepcopy(model)`.
+- **Reference and policy share the same model object.** A subtle bug: `ref_model = model` (assignment, not copy). Now both names point to the same params and updating `model` updates `ref_model` in lockstep. Symptom: log-ratios stay zero, loss stays at log(2).
 
-- **The mask covers prompt tokens.** If the loss-mask is `1` on prompt tokens (because of a Module 13 cut-and-paste error), the chosen/rejected log-prob "sums" include the prompt's log-probability. Since the prompt is identical for chosen and rejected, this *cancels in the log-ratio* — the DPO loss is exactly the same. So a mask bug here is silent at the loss level but wastes compute.
+- **The mask covers prompt tokens.** If the loss-mask is `1` on prompt tokens, the log-prob "sums" include the prompt's log-probability. Since the prompt are identical, this *cancels in the log-ratio*. So a bug here is silent but wastes compute.
 
-- **The mask doesn't cover `<|end|>`.** Symmetric to Module 13: if `<|end|>` is masked out, the model never has gradient signal to push its probability up (on chosen) or down (on rejected). Symptom: model never learns to stop — runs to `max_new_tokens` after DPO. Fix: ensure mask covers every response token *including* `<|end|>`.
+- **The mask doesn't cover `<|end|>`.** Similar to Module 13: if `<|end|>` is masked out, the model never learns to stop.
 
 - **β = 0.** The DPO logits are identically zero, the loss is constant `log 2`, and the gradient is zero. Training is a complete no-op. The trainer's input validation rejects β=0 explicitly, but if you sweep over β values programmatically and accidentally include 0, you'll see "perfectly flat loss curve" — which is its own diagnostic.
 
 - **Length bias.** If your dataset's chosen completions are systematically longer than rejected, DPO learns "be longer." This is the headline DPO failure mode at every scale. Audit before training over the dataset; they should be within 10–20% of each other.
 
-- **`sequence_logprob` returns a scalar instead of `(B,)`.** Common copy-paste error from Module 13's `masked_cross_entropy` (which DOES return a scalar). DPO needs per-example log-probs because the dpo_loss formula does *per-example* log-ratios before averaging. Symptom: `dpo_loss` raises a shape error or, worse, broadcasts silently and produces nonsense.
+- **`sequence_logprob` returns a scalar instead of `(B,)`.** DPO needs per-example log-probs because the formula does *per-example* log-ratios before averaging. Symptom: `dpo_loss` raises a shape error or, worse, broadcasts silently and produces nonsense.
 
 - **Mean-pooling instead of sum.** `sequence_logprob` is `Σ_t mask[t] · log p(target_t)`. NOT `Σ_t mask[t] · log p(target_t) / mask.sum()`. The latter is length-normalized log-prob, which is fine for some applications but is a different objective from DPO. The DPO derivation depends on log-probabilities being SUMS — the joint log-probability of the response under the autoregressive factorization. Length-normalizing changes the objective.
 
 - **Reference forgetting between sessions.** If you save and reload checkpoints between training sessions, make sure you re-establish the reference correctly. A common mistake: load the SFT'd checkpoint into `model`, train for 100 steps, save `model`, restart, load saved `model` into both `model` and `ref_model`. Now your reference is the *partially-DPO'd* model, not the SFT'd one. The implicit reward is computed against the wrong baseline. Always reload the original SFT'd checkpoint for the reference, even when resuming.
 
-- **lr too high.** DPO's gradient signal is sequence-level (one log-ratio per example) so the effective magnitude per step is larger than SFT's per-token signal. Default to `max_lr=1e-4` for DPO — about 10× lower than SFT's `3e-4`, and 100× lower than pretraining's `3e-3`. Higher than 1e-3 produces visible drift in 50 steps even at modest β.
+- **lr too high.** DPO's gradient signal is sequence-level (one log-ratio per example) so the effective magnitude per step is larger than SFT's per-token signal. Default to `max_lr=1e-4` for DPO.
 
 - **Implicit-reward collapse.** Both `chosen_reward` and `rejected_reward` go to large negatives; the policy is making both completions much less likely than the reference does. The margin still grows positive (chosen drops less than rejected), so the loss looks fine. But generation is gibberish — the policy has lost most of its base capacity. This is the hardest DPO failure to debug because the loss curve hides it. Always log both `chosen_reward` and `rejected_reward` separately, not just the margin; if both are very negative, lower lr or raise β.
 
