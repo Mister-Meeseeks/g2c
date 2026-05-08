@@ -4,11 +4,11 @@
 Example:
 
     python scripts/build_tokenized_corpus.py \
-      --name TinyLLM-g2c-30M-v8192 \
+      --name TinyLLM-g2c-full-v8192 \
       --corpus g2c \
       --tokenizer G2CTokenizer \
       --vocab-size 8192 \
-      --bytes 30M \
+      --bytes all \
       --workers 4
 """
 from __future__ import annotations
@@ -70,7 +70,7 @@ def main() -> int:
     parser.add_argument(
         "--bytes",
         default=None,
-        help="Corpus bytes to stream, e.g. 30M, 1G, or all.",
+        help="Corpus bytes to stream, e.g. 30M, 1G, or all. Default: all.",
     )
     parser.add_argument(
         "--source-split",
@@ -186,14 +186,13 @@ def _custom_job_from_args(
             ("--name", args.name),
             ("--corpus", args.corpus),
             ("--tokenizer", args.tokenizer),
-            ("--bytes", args.bytes or args.train_bytes),
         )
         if value is None
     ]
     if missing:
         parser.error(
             "custom builds must provide all of: "
-            "--name, --corpus, --tokenizer, --bytes "
+            "--name, --corpus, --tokenizer "
             f"(missing {', '.join(missing)})"
         )
     if args.val_bytes is not None:
@@ -246,19 +245,19 @@ def standard_job_for_tokenizer(
 
     if tokenizer_name == "StoryTokenizer" or source == "tinystories":
         return TokenizedCorpusJob(
-            name="StoryLM-tinystories-500000000-v4096",
+            name="StoryLM-tinystories-full-v4096",
             corpus="tinystories",
             tokenizer=tokenizer_name,
             vocab_size=4096,
-            byte_count=500_000_000,
+            byte_count=None,
         )
     if tokenizer_name == "G2CTokenizer" or source == "g2c":
         return TokenizedCorpusJob(
-            name="TinyLLM-g2c-30000000-v8192",
+            name="TinyLLM-g2c-full-v8192",
             corpus="g2c",
             tokenizer=tokenizer_name,
             vocab_size=8192,
-            byte_count=30_000_000,
+            byte_count=None,
         )
     if tokenizer_name == "ShakespeareTokenizer" or source == "tinyshakespeare":
         print(

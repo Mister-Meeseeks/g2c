@@ -297,10 +297,11 @@ def test_build_tokenized_corpus_default_jobs_follow_available_tokenizers(tmp_pat
     jobs = default_jobs_for_available_tokenizers(repo)
 
     assert [job.name for job in jobs] == [
-        "TinyLLM-g2c-30000000-v8192",
-        "StoryLM-tinystories-500000000-v4096",
+        "TinyLLM-g2c-full-v8192",
+        "StoryLM-tinystories-full-v4096",
     ]
     assert [job.tokenizer for job in jobs] == ["G2CTokenizer", "StoryTokenizer"]
+    assert [job.byte_count for job in jobs] == [None, None]
 
 
 def test_train_or_load_tokenizer_artifact_saves_and_reloads(tmp_path):
