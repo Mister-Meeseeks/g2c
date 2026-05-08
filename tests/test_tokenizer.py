@@ -264,7 +264,8 @@ def test_fast_merge_import_handles_out_of_order_composite_operand():
 
     _import_merge_lines(tok, byte_to_id, merge_lines)
 
-    assert tok.decode(tok.encode_fast("abcabc")) == "abcabc"
+    ids = tok.encode_fast("abcabc")
+    assert b"".join(tok.vocab[token_id] for token_id in ids).decode("utf-8") == "abcabc"
     assert b"ab" in tok.vocab.values()
     assert b"abc" in tok.vocab.values()
 

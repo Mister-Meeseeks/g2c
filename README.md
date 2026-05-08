@@ -168,7 +168,19 @@ Begin with `docs/syllabus.md`, then `docs/modules/00-prerequisite-review.md`, th
 
 The repo is structured for two audiences at once: anyone working through the course, and the author maintaining a worked-out reference. Two long-running branches:
 
-- **`main`** — pristine course material. Lesson pages, scaffolded `Value` classes with `# TODO` markers, tests that fail until the student fills things in. Clone this branch to take the course.
+- **`master`** — pristine course material. Lesson pages, scaffolded `g2c` methods with `# TODO` markers, tests that fail until the student fills things in. Clone this branch to take the course.
 - **`solutions`** — the author's working branch with everything filled in. Doubles as a reference answer key.
 
-Updates flow `main → solutions` only. When course material improves (a clearer lesson, a better scaffold), commits land on `main`, then `git merge main` into `solutions` brings the improvement forward without leaking solutions back to `main`. If you fork the course to do your own work, branch off `main` and use whatever name you like (`student/<name>` is a reasonable convention).
+Most updates still flow `master → solutions`: course improvements land on `master`, then `git merge master` into `solutions` brings them forward.
+
+Some authoring happens on `solutions`, especially notebook-heavy work that needs implemented `g2c` code. When backporting those changes to `master`, do not merge `notebooks/solutions/`, and strip worked pedagogical code before committing:
+
+```bash
+python scripts/strip_solutions.py --reference HEAD g2c
+python scripts/check_scaffold.py --reference HEAD g2c
+python scripts/test_clean.py
+```
+
+`strip_solutions.py` rewrites filled-in exercise bodies back to `# TODO` / `raise NotImplementedError` while preserving API, docstring, helper, artifact, and infrastructure changes. `check_scaffold.py` is the non-mutating invariant check: it fails if anything that was scaffolded in the reference ref is no longer scaffolded in the working tree. For new solution implementations that do not yet exist as scaffolded functions on `master`, put a `# SOLUTION` marker somewhere inside the function body on `solutions`; the strip script will remove the whole body when backporting, and the scaffold check will fail if the marker remains.
+
+If you fork the course to do your own work, branch off `master` and use whatever name you like (`student/<name>` is a reasonable convention).

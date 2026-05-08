@@ -508,6 +508,96 @@ class BPETokenizer:
             )
         return vocab_size
 
+    def encode_base(self, text: str) -> list[int]:
+        """Encode `text` using only the byte base and reserved special tokens.
+
+        No learned merges are applied. Special tokens still encode as atomic IDs;
+        everything else lands as raw UTF-8 byte IDs. Equivalent to what `encode`
+        returns before any merges have been learned.
+        """
+        return self._encode_initial_ids(text)
+
+    def encode_at_vocab(self, text: str, vocab_size: int) -> list[int]:
+        """Encode `text` as a tokenizer trained to `vocab_size` would have done.
+
+        BPE merges are added to `self.merges` in priority order, so applying only
+        those whose new ID is `< vocab_size` produces the same output a tokenizer
+        trained to `vocab_size` on the same corpus would produce — no retraining
+        required.
+
+        `vocab_size` must be at least `self.base_vocab_size`. Values larger than
+        `len(self.vocab)` simply use every learned merge.
+        """
+        if vocab_size < self.base_vocab_size:
+            raise ValueError(
+                f"vocab_size must be at least {self.base_vocab_size} "
+                "for this tokenizer's byte + special-token base vocabulary"
+            )
+
+        ids = self._encode_initial_ids(text)
+        while True:
+            merge_candidates: list[tuple[int, int]] = []
+            for i in range(len(ids) - 1):
+                pair = (ids[i], ids[i + 1])
+                new_id = self.merges.get(pair)
+                if new_id is not None and new_id < vocab_size:
+                    merge_candidates.append(pair)
+
+            if not merge_candidates:
+                break
+
+            best_pair = min(merge_candidates, key=lambda pair: self.merges[pair])
+            ids = self._merge(ids, best_pair, self.merges[best_pair])
+
+        return ids
+
+    def encode_with_vocab_size(
+        self,
+        text: str,
+        vocab_size: int | None,
+    ) -> list[int]:
+        """Encode `text` at a requested effective vocab size.
+
+        Single entry point for the three encoding modes the course exposes:
+          - ``vocab_size=None``: full trained vocab (``encode_fast``).
+          - ``vocab_size=0``: byte + reserved special tokens only (``encode_base``).
+          - ``0 < vocab_size <= len(self.vocab)``: only merges with new ID
+            ``< vocab_size``. Routed through the Rust fast path with a
+            truncated merge list — byte-identical to ``encode_at_vocab``.
+
+        Raises ``ValueError`` if ``vocab_size`` exceeds the trained vocab.
+        """
+        full = len(self.vocab)
+        if vocab_size is None or vocab_size == full:
+            return self.encode_fast(text)
+        if vocab_size > full:
+            raise ValueError(
+                f"requested vocab_size={vocab_size} exceeds tokenizer's "
+                f"trained vocab size {full}"
+            )
+        if vocab_size == 0:
+            return self.encode_base(text)
+        return self.encode_fast(text, vocab_size=vocab_size)
+
+    def effective_vocab_size(self, vocab_size: int | None) -> int:
+        """Return the model vocab size implied by a requested ``vocab_size``.
+
+        Companion to ``encode_with_vocab_size``: maps the user-facing knob
+        (``None``/``0``/``N``) to the actual integer the embedding table
+        should be sized for.
+        """
+        full = len(self.vocab)
+        if vocab_size is None:
+            return full
+        if vocab_size == 0:
+            return self.base_vocab_size
+        if vocab_size > full:
+            raise ValueError(
+                f"requested vocab_size={vocab_size} exceeds tokenizer's "
+                f"trained vocab size {full}"
+            )
+        return vocab_size
+
     def decode(self, ids: list[int]) -> str:
         """Reverse of `encode`: reconstruct the original text from IDs.
 

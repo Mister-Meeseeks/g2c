@@ -443,7 +443,7 @@ def train_or_load_tokenizer_artifact(
     encoded_text = text[: min(len(text), config.encoded_sample_chars)]
     start = perf_counter()
     if config.vocab_size == tokenizer.base_vocab_size:
-        ids = tokenizer.encode(encoded_text)
+        ids = tokenizer.encode_base(encoded_text)
     elif config.use_fast:
         effective_chunk_chars = min(config.chunk_chars, MAX_FAST_TRAIN_CHUNK_CHARS)
         chunks = _num_text_chunks(text, effective_chunk_chars)
@@ -501,7 +501,11 @@ def train_or_load_tokenizer_artifact(
             progress_callback=progress_callback,
             progress_every=_tokenizer_progress_every(config.vocab_size),
         )
-        ids = trained_ids if len(encoded_text) == len(text) else tokenizer.encode(encoded_text)
+        ids = (
+            trained_ids
+            if len(encoded_text) == len(text)
+            else tokenizer.encode_fast(encoded_text)
+        )
 
     manifest = _build_manifest(
         config,

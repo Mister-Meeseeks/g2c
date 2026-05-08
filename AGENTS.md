@@ -180,6 +180,19 @@ Place diagrams according to the role they play in the reader's understanding, no
 
 The top of each test file should have a docstring with a numbered "Suggested order to implement & turn green" — mapping each implementation step to the tests it unblocks. The student should be able to read this once and know exactly where to start. Construction / repr / boilerplate tests pass from the start (since the boilerplate is implemented), serving as a sanity check on the test file itself; the rest fail with `NotImplementedError` until the student implements.
 
+## Backporting from `solutions` to `master`
+
+The `solutions` branch intentionally has filled-in pedagogical implementations in root `g2c/` so worked notebooks can import the same package students edit. The `master` branch must keep those same functions scaffolded.
+
+When course edits made on `solutions` need to flow back to `master`:
+
+- Do not merge `notebooks/solutions/`.
+- Preserve structural/API/helper changes in `g2c/`, but strip worked exercise bodies before committing.
+- Run `python scripts/strip_solutions.py --reference HEAD g2c` after the merge while `HEAD` is still the pre-merge scaffold reference.
+- Run `python scripts/check_scaffold.py --reference HEAD g2c`; it must report that all reference scaffold functions are still scaffolded.
+- Run `python scripts/test_clean.py`; clean scaffold tests must pass.
+- For new solution-only implementations that do not yet exist as scaffolded functions in `master`, put `# SOLUTION` inside the function body on `solutions` so `strip_solutions.py` can identify it during backport.
+
 ### Visual aids in lesson pages
 
 Use small ASCII diagrams to crack genuinely dense conceptual sections — particularly anything involving graph topology, shape arithmetic, alignment rules, or memory layout — where prose alone makes the structural relationship hard to see. The bar is "would a reader struggle to picture this without it?" Don't add diagrams for visual flair or because diagrams seem like a nice idea. Roughly a handful per module is the ceiling; some modules may have zero, which is fine. Reserve image assets in `docs/modules/NN-name/` for content that genuinely needs full graphics; for everything else, ASCII inside a fenced code block reads cleanly in every markdown viewer the student is likely to use.
