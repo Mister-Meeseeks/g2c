@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import time
+from codecs import getincrementaldecoder
 from collections.abc import Callable, Iterable, Iterator
 from concurrent.futures import FIRST_COMPLETED, Future, ProcessPoolExecutor, wait
 from dataclasses import dataclass, field
@@ -23,7 +24,7 @@ import torch
 from g2c.tokenizer import BPETokenizer
 from g2c.tokenizer.fast import FastBPEEncoder
 
-from .corpora import iter_corpus_text_chunks, resolve_corpus
+from .corpora import iter_corpus_byte_chunks, resolve_corpus
 from .models import atomic_json_save
 from .paths import find_repo_root, tokenized_corpus_artifact_dir
 from .tokenizers import load_required_tokenizer
@@ -315,8 +316,10 @@ def _write_tokenized_stream(
     workers: int,
     progress_callback: TokenizedCorpusProgressCallback | None,
 ) -> tuple[int, int]:
-    if resolve_corpus(corpus, split=source_split, repo_root=repo_root) is None:
+    spec = resolve_corpus(corpus, split=source_split, repo_root=repo_root)
+    if spec is None:
         raise FileNotFoundError(f"local corpus {corpus!r} has no {source_split!r} split")
+    byte_target = byte_count if byte_count is not None else spec.uncompressed_bytes
 
     path = artifact_dir / f"tokens.{dtype}.bin"
     tmp_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
@@ -328,43 +331,50 @@ def _write_tokenized_stream(
         progress_callback,
         phase="stream_start",
         name=name,
+        corpus=corpus,
         source_split=source_split,
         byte_count=byte_count,
+        byte_target=byte_target,
+        bytes_seen=0,
         path=path,
     )
 
-    chunks = iter_corpus_text_chunks(
+    chunks = _iter_text_chunks_with_byte_progress(
         corpus,
         byte_count,
         chunk_offset=chunk_offset,
         split=source_split,
         chunk_bytes=chunk_bytes,
         repo_root=repo_root,
+        special_tokens=tokenizer.special_tokens,
     )
-    chunks = _preserve_special_token_boundaries(chunks, tokenizer.special_tokens)
     token_count = 0
     chunk_count = 0
     chars_seen = 0
+    bytes_seen = 0
 
     try:
         with tmp_path.open("wb") as f:
             if workers <= 1:
                 encoder = FastBPEEncoder(tokenizer, vocab_size=vocab_size)
-                for chunk_count, text in enumerate(chunks, start=1):
+                for chunk_count, (text, bytes_seen) in enumerate(chunks, start=1):
                     ids = encoder.encode(text)
                     chars_seen += len(text)
                     token_count += _write_ids(f, ids, dtype=dtype)
                     _emit_stream_chunk(
                         progress_callback,
                         name=name,
+                        corpus=corpus,
                         source_split=source_split,
                         chunk_count=chunk_count,
+                        byte_target=byte_target,
+                        bytes_seen=bytes_seen,
                         chars_seen=chars_seen,
                         token_count=token_count,
                         start=start,
                     )
             else:
-                for chunk_count, chars, written in _encode_parallel_in_order(
+                for chunk_count, chars, bytes_seen, written in _encode_parallel_in_order(
                     chunks,
                     tokenizer=tokenizer,
                     vocab_size=vocab_size,
@@ -376,8 +386,11 @@ def _write_tokenized_stream(
                     _emit_stream_chunk(
                         progress_callback,
                         name=name,
+                        corpus=corpus,
                         source_split=source_split,
                         chunk_count=chunk_count,
+                        byte_target=byte_target,
+                        bytes_seen=bytes_seen,
                         chars_seen=chars_seen,
                         token_count=token_count,
                         start=start,
@@ -391,8 +404,11 @@ def _write_tokenized_stream(
         progress_callback,
         phase="stream_done",
         name=name,
+        corpus=corpus,
         source_split=source_split,
         chunks=chunk_count,
+        byte_target=byte_target,
+        bytes_seen=bytes_seen,
         chars_seen=chars_seen,
         token_count=token_count,
         elapsed_seconds=time.perf_counter() - start,
@@ -403,15 +419,15 @@ def _write_tokenized_stream(
 
 
 def _encode_parallel_in_order(
-    chunks: Iterable[str],
+    chunks: Iterable[tuple[str, int]],
     *,
     tokenizer: BPETokenizer,
     vocab_size: int | None,
     workers: int,
     max_in_flight: int,
-) -> Iterator[tuple[int, int, list[int]]]:
-    futures: dict[Future[tuple[int, int, list[int]]], int] = {}
-    pending: dict[int, tuple[int, list[int]]] = {}
+) -> Iterator[tuple[int, int, int, list[int]]]:
+    futures: dict[Future[tuple[int, int, int, list[int]]], int] = {}
+    pending: dict[int, tuple[int, int, list[int]]] = {}
     next_index = 1
     next_write = 1
     tokenizer_payload = tokenizer.to_dict()
@@ -421,58 +437,97 @@ def _encode_parallel_in_order(
         initializer=_init_worker,
         initargs=(tokenizer_payload, vocab_size),
     ) as executor:
-        for text in chunks:
+        for text, bytes_seen in chunks:
             while len(futures) >= max_in_flight:
                 _collect_completed(futures, pending)
                 while next_write in pending:
-                    chars, ids = pending.pop(next_write)
-                    yield next_write, chars, ids
+                    chars, chunk_bytes_seen, ids = pending.pop(next_write)
+                    yield next_write, chars, chunk_bytes_seen, ids
                     next_write += 1
 
-            future = executor.submit(_encode_chunk_in_worker, next_index, text)
+            future = executor.submit(
+                _encode_chunk_in_worker,
+                next_index,
+                text,
+                bytes_seen,
+            )
             futures[future] = next_index
             next_index += 1
 
         while futures:
             _collect_completed(futures, pending)
             while next_write in pending:
-                chars, ids = pending.pop(next_write)
-                yield next_write, chars, ids
+                chars, chunk_bytes_seen, ids = pending.pop(next_write)
+                yield next_write, chars, chunk_bytes_seen, ids
                 next_write += 1
 
 
-def _preserve_special_token_boundaries(
-    chunks: Iterable[str],
+def _iter_text_chunks_with_byte_progress(
+    corpus: str,
+    byte_count: int | None,
+    *,
+    chunk_offset: int,
+    split: str,
+    chunk_bytes: int,
+    repo_root: Path,
     special_tokens: tuple[str, ...],
-) -> Iterator[str]:
-    """Carry a small suffix so chunking does not split atomic control tokens."""
-    if not special_tokens:
-        yield from chunks
-        return
-
-    carry_len = max(len(token) for token in special_tokens)
+) -> Iterator[tuple[str, int]]:
+    """Yield decoded text chunks and cumulative raw bytes consumed."""
+    decoder = getincrementaldecoder("utf-8")(errors="replace")
+    carry_len = max((len(token) for token in special_tokens), default=0)
     carry = ""
-    for chunk in chunks:
-        text = carry + chunk
+    bytes_seen = 0
+
+    for byte_chunk in iter_corpus_byte_chunks(
+        corpus,
+        byte_count,
+        chunk_offset=chunk_offset,
+        split=split,
+        chunk_bytes=chunk_bytes,
+        repo_root=repo_root,
+    ):
+        bytes_seen += len(byte_chunk)
+        decoded = decoder.decode(byte_chunk, final=False)
+        if not decoded:
+            continue
+        text = carry + decoded
+        if carry_len == 0:
+            yield text, bytes_seen
+            carry = ""
+            continue
         if len(text) <= carry_len:
             carry = text
             continue
         emit_until = len(text) - carry_len
-        yield text[:emit_until]
+        yield text[:emit_until], bytes_seen
         carry = text[emit_until:]
+
+    tail = decoder.decode(b"", final=True)
+    if tail:
+        text = carry + tail
+        if carry_len == 0:
+            yield text, bytes_seen
+            carry = ""
+        elif len(text) <= carry_len:
+            carry = text
+        else:
+            emit_until = len(text) - carry_len
+            yield text[:emit_until], bytes_seen
+            carry = text[emit_until:]
+
     if carry:
-        yield carry
+        yield carry, bytes_seen
 
 
 def _collect_completed(
-    futures: dict[Future[tuple[int, int, list[int]]], int],
-    pending: dict[int, tuple[int, list[int]]],
+    futures: dict[Future[tuple[int, int, int, list[int]]], int],
+    pending: dict[int, tuple[int, int, list[int]]],
 ) -> None:
     done, _ = wait(futures, return_when=FIRST_COMPLETED)
     for future in done:
         futures.pop(future)
-        index, chars, ids = future.result()
-        pending[index] = (chars, ids)
+        index, chars, bytes_seen, ids = future.result()
+        pending[index] = (chars, bytes_seen, ids)
 
 
 def _init_worker(tokenizer_payload: dict[str, object], vocab_size: int | None) -> None:
@@ -481,10 +536,14 @@ def _init_worker(tokenizer_payload: dict[str, object], vocab_size: int | None) -
     _WORKER_ENCODER = FastBPEEncoder(tokenizer, vocab_size=vocab_size)
 
 
-def _encode_chunk_in_worker(index: int, text: str) -> tuple[int, int, list[int]]:
+def _encode_chunk_in_worker(
+    index: int,
+    text: str,
+    bytes_seen: int,
+) -> tuple[int, int, int, list[int]]:
     if _WORKER_ENCODER is None:
         raise RuntimeError("tokenized corpus worker encoder is not initialized")
-    return index, len(text), _WORKER_ENCODER.encode(text)
+    return index, len(text), bytes_seen, _WORKER_ENCODER.encode(text)
 
 
 def _write_ids(f, ids: list[int], *, dtype: str) -> int:
@@ -521,8 +580,11 @@ def _emit_stream_chunk(
     callback: TokenizedCorpusProgressCallback | None,
     *,
     name: str,
+    corpus: str,
     source_split: str,
     chunk_count: int,
+    byte_target: int,
+    bytes_seen: int,
     chars_seen: int,
     token_count: int,
     start: float,
@@ -531,8 +593,11 @@ def _emit_stream_chunk(
         callback,
         phase="stream_chunk",
         name=name,
+        corpus=corpus,
         source_split=source_split,
         chunks=chunk_count,
+        byte_target=byte_target,
+        bytes_seen=bytes_seen,
         chars_seen=chars_seen,
         token_count=token_count,
         elapsed_seconds=time.perf_counter() - start,

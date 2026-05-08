@@ -36,7 +36,10 @@ from g2c.artifacts import (
 )
 from g2c.tokenizer import COURSE_SPECIAL_TOKENS, BPETokenizer
 from g2c.transformer import TransformerLM
-from scripts.build_tokenized_corpus import default_jobs_for_available_tokenizers
+from scripts.build_tokenized_corpus import (
+    default_jobs_for_available_tokenizers,
+    make_progress_printer,
+)
 
 
 def make_repo(tmp_path: Path) -> Path:
@@ -302,6 +305,131 @@ def test_build_tokenized_corpus_default_jobs_follow_available_tokenizers(tmp_pat
     ]
     assert [job.tokenizer for job in jobs] == ["G2CTokenizer", "StoryTokenizer"]
     assert [job.byte_count for job in jobs] == [None, None]
+
+
+def test_tokenized_corpus_cli_progress_bar_shows_dataset_and_percent(capsys):
+    progress = make_progress_printer(progress_every=1, terminal_width=140)
+    progress(
+        {
+            "phase": "stream_start",
+            "name": "UnitCorpus",
+            "corpus": "tinystories",
+            "source_split": "train",
+            "bytes_seen": 0,
+            "byte_target": 100,
+            "token_count": 0,
+            "chunks": 0,
+            "elapsed_seconds": 0.0,
+        }
+    )
+    progress(
+        {
+            "phase": "stream_chunk",
+            "name": "UnitCorpus",
+            "corpus": "tinystories",
+            "source_split": "train",
+            "bytes_seen": 50,
+            "byte_target": 100,
+            "token_count": 25,
+            "chunks": 1,
+            "elapsed_seconds": 2.0,
+        }
+    )
+    progress(
+        {
+            "phase": "stream_done",
+            "name": "UnitCorpus",
+            "corpus": "tinystories",
+            "source_split": "train",
+            "bytes_seen": 100,
+            "byte_target": 100,
+            "token_count": 50,
+            "chunks": 2,
+            "elapsed_seconds": 4.0,
+        }
+    )
+
+    out = capsys.readouterr().out
+
+    assert "UnitCorpus | tinystories:train" in out
+    assert "50.00%" in out
+    assert "100.00%" in out
+    assert "[##############--------------]" in out
+
+
+def test_tokenized_corpus_cli_progress_defaults_to_single_line_updates(capsys):
+    progress = make_progress_printer(progress_every=1, terminal_width=80)
+    progress(
+        {
+            "phase": "stream_start",
+            "name": "TinyLLM-g2c-full-v8192",
+            "corpus": "g2c",
+            "source_split": "train",
+            "bytes_seen": 0,
+            "byte_target": 9_010_000_000,
+            "token_count": 0,
+            "chunks": 0,
+            "elapsed_seconds": 0.0,
+        }
+    )
+    progress(
+        {
+            "phase": "stream_chunk",
+            "name": "TinyLLM-g2c-full-v8192",
+            "corpus": "g2c",
+            "source_split": "train",
+            "bytes_seen": 40_000_000,
+            "byte_target": 9_010_000_000,
+            "token_count": 9_246_874,
+            "chunks": 1,
+            "elapsed_seconds": 7.9,
+        }
+    )
+
+    out = capsys.readouterr().out
+    visible_segments = [
+        segment.replace("\033[2K", "") for segment in out.split("\r") if segment
+    ]
+
+    assert "\r" in out
+    assert "\n" not in out
+    assert visible_segments
+    assert all(len(segment) <= 79 for segment in visible_segments)
+
+
+def test_tokenized_corpus_cli_progress_log_style_prints_lines(capsys):
+    progress = make_progress_printer(progress_every=1, style="log")
+    progress(
+        {
+            "phase": "stream_start",
+            "name": "UnitCorpus",
+            "corpus": "tinystories",
+            "source_split": "train",
+            "bytes_seen": 0,
+            "byte_target": 100,
+            "token_count": 0,
+            "chunks": 0,
+            "elapsed_seconds": 0.0,
+        }
+    )
+    progress(
+        {
+            "phase": "stream_chunk",
+            "name": "UnitCorpus",
+            "corpus": "tinystories",
+            "source_split": "train",
+            "bytes_seen": 50,
+            "byte_target": 100,
+            "token_count": 25,
+            "chunks": 1,
+            "elapsed_seconds": 2.0,
+        }
+    )
+
+    out = capsys.readouterr().out
+
+    assert out.count("\n") == 2
+    assert "\r" not in out
 
 
 def test_train_or_load_tokenizer_artifact_saves_and_reloads(tmp_path):
