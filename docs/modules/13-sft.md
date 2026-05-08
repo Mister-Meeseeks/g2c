@@ -17,8 +17,8 @@ This week is about how to shape model **behavior**. The mechanics are minimal bu
 	* `g2c/training` from [[03b-training]]
 	* `g2c/tokenizer` from [[04-tokenizer]]
 	* At least one trained model from [[10-tinyllm]] notebook (`ShakespeareLM`, `StoryLM`, or `TinyLLM`)
-	* Trained tokenizer from [[04-tokenizer]] (alternatively run `dataset.sh` to preload a tokenizer)
-* *Run* `datasets.sh` to make sure you have a tokenizer setup.
+	* Trained tokenizer from [[04-tokenizer]] (alternatively run `./datasets.sh --tiny` or `./datasets.sh --small` to preload tokenizer artifacts)
+* *Run* `.venv/bin/python scripts/artifact_status.py --module 13` to see whether you should use a self-trained model or the BaseLM path.
 
 ---
 ## Where this fits in
@@ -453,4 +453,3 @@ Optional:
 - [ ] You can explain — out loud, without notes — what the chat template's role markers are, and what the asymmetry between user-turn-ends and assistant-turn-ends is.
 - [ ] You can explain — out loud, without notes — why "data quality dominates data quantity" applies more strongly at toy scale than at production scale.
 - [ ] You can explain — out loud, without notes — why an SFT'd model that confidently invents factual answers is not a *training* failure — it's a *capability* limit, and SFT alone can't fix it.
-

@@ -23,11 +23,14 @@ Usage:
     ./datasets.sh [--small|--tiny|all|glove|tinystories|g2c-corpus-small|g2c-corpus-full]
 
 Modes:
-    ./datasets.sh        Download GloVe, full TinyStories, and full G2C Corpus v1.
-    ./datasets.sh all    Same as no args.
+    ./datasets.sh --tiny Tiny track: download a 100MB TinyStories sample and
+                         build matching StoryTokenizer/tokenized artifacts.
     ./datasets.sh --small
-                         Download GloVe, full TinyStories, and small G2C Corpus v1.
-    ./datasets.sh --tiny Download only a 100MB TinyStories sample.
+                         Standard track: download GloVe, full TinyStories, and
+                         small G2C Corpus v1; build matching artifacts.
+    ./datasets.sh        Full track: download GloVe, full TinyStories, and full
+                         G2C Corpus v1; build matching artifacts.
+    ./datasets.sh all    Same as no args.
 
 Individual targets:
     glove             Download Stanford GloVe 6B and extract glove.6B.50d.txt.
@@ -44,9 +47,9 @@ stored as gzip shards split by 100MB of uncompressed text per shard.
 
 After each corpus is downloaded, scripts/build_tokenizers.py builds the
 matching tokenizer artifact (StoryTokenizer for tinystories, G2CTokenizer for
-the G2C corpus) so Module 10 can load them by name. Idempotent: builds are
-skipped when the artifact already exists. The Shakespeare tokenizer artifact
-is built by setup.sh.
+the G2C corpus), then scripts/build_tokenized_corpus.py builds the matching
+disk-backed tokenized corpus artifact. Both steps are idempotent and skipped
+when complete. The Shakespeare tokenizer artifact is built by setup.sh.
 EOF
 }
 
@@ -157,6 +160,11 @@ download_tinystories() {
         "TinyStories validation text (~20MB)"
 
     build_tokenizer_artifact "story"
+    build_tokenized_corpus_artifact \
+        "StoryLM-tinystories-full-v4096" \
+        "tinystories" \
+        "StoryTokenizer" \
+        "4096"
 }
 
 download_tinystories_sample() {
@@ -206,6 +214,11 @@ download_tinystories_sample() {
     fi
 
     build_tokenizer_artifact "story"
+    build_tokenized_corpus_artifact \
+        "StoryLM-tinystories-100MB-v4096" \
+        "tinystories-100MB" \
+        "StoryTokenizer" \
+        "4096"
 }
 
 tinystories_shards_ready() {
@@ -299,6 +312,23 @@ build_tokenizer_artifact() {
     "$(python_bin)" scripts/build_tokenizers.py "$name"
 }
 
+build_tokenized_corpus_artifact() {
+    # Build one disk-backed token-ID corpus artifact. Idempotent — skips when
+    # the artifact already exists. Later notebooks load these instead of
+    # re-tokenizing large corpora in the kernel.
+    local name="$1"
+    local corpus="$2"
+    local tokenizer="$3"
+    local vocab_size="$4"
+
+    info "Building $name tokenized corpus artifact (skipped if it already exists)"
+    "$(python_bin)" scripts/build_tokenized_corpus.py \
+        --name "$name" \
+        --corpus "$corpus" \
+        --tokenizer "$tokenizer" \
+        --vocab-size "$vocab_size"
+}
+
 has_arg() {
     local needle="$1"
     shift
@@ -328,6 +358,11 @@ build_g2c_corpus() {
 
     if ! has_arg "--dry-run" "$@"; then
         build_tokenizer_artifact "g2c"
+        build_tokenized_corpus_artifact \
+            "TinyLLM-g2c-$preset-v8192" \
+            "g2c-corpus-$preset" \
+            "G2CTokenizer" \
+            "8192"
     fi
 }
 

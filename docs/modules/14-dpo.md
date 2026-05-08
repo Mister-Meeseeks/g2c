@@ -15,7 +15,7 @@ Last week we taught the model to **format** an answer. This week we teach it to 
 	* `g2c/nn` from [[03-nn]] 
 	* `g2c/training` from [[03b-training]] 
 	* A post-SFT instruct model from the [[13-sft.md]] exercise notebook
-* *Run* `datasets.sh` to make sure you have a tokenizer setup.
+* *Run* `.venv/bin/python scripts/artifact_status.py --module 14` to confirm you have a usable self-trained model artifact or should use the BaseLM path.
 
 ---
 ## Where this fits in

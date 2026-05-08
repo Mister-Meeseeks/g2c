@@ -299,10 +299,19 @@ Run the setup script once:
 That prepares the Python environment, the small TinyShakespeare corpus, and the smoke test. Larger datasets are optional and are not part of normal setup. If you want to preload the larger local data files used later in the course, run:
 
 ```bash
-./datasets.sh
+./datasets.sh --tiny   # fastest local artifact path
+./datasets.sh --small  # recommended local course path
+./datasets.sh          # full/stretch local data path
 ```
 
-You can also wait until a module asks for a dataset and download only that target, such as `./datasets.sh glove` for Module 05 or `./datasets.sh tinystories` for Module 10. TinyStories is stored as compressed 100MB-uncompressed text shards. The script is idempotent, so repeated runs skip files that are already present.
+You can also wait until a module asks for a dataset and download only that target, such as `./datasets.sh glove` for Module 05 or `./datasets.sh tinystories` for Module 10. TinyStories is stored as compressed 100MB-uncompressed text shards. The script is idempotent, so repeated runs skip files and artifacts that are already present.
+
+For the complete track guide, including download sizes, disk expectations, and heavy artifact-generation steps, read [Course Tracks and Artifacts](../tracks.md). To inspect what this checkout already has, run:
+
+```bash
+.venv/bin/python scripts/artifact_status.py
+.venv/bin/python scripts/artifact_status.py --module 10
+```
 
 If feedback shows a weak spot, ask the agent for a few focused practice problems in chat. You can answer one, some, or all of them, and the agent should grade only what you attempt.
 

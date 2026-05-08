@@ -15,6 +15,7 @@ You trained a model in Module 10, and now you need to actually generate text fro
 * *Finish* 
 	* `g2c/transformer` ([[09-transformer-block]]) 
 	* At least one trained model from [[10-tinyllm]] notebook (`ShakespeareLM`, `StoryLM`, or `TinyLLM`)
+* *Run* `.venv/bin/python scripts/artifact_status.py --module 11` if you are not sure which saved model the notebook will auto-load
 
 ---
 ## Where this fits in

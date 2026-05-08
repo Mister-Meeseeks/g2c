@@ -181,12 +181,27 @@ def resolve_corpus(
     """Resolve a named corpus to local shard metadata.
 
     The logical `g2c` corpus prefers the full corpus when both full and small
-    builds are present, and falls back to the small build otherwise.
+    builds are present, and falls back to the small build otherwise. Explicit
+    `g2c-corpus-full` and `g2c-corpus-small` requests resolve only that local
+    corpus variant.
     """
     root = find_repo_root(repo_root)
-    normalized = _normalize_corpus_name(corpus)
     normalized_split = _normalize_split(split)
 
+    if corpus == "g2c-corpus-full":
+        return _resolve_g2c_dir(
+            root / "data" / "g2c-corpus-v1",
+            split=normalized_split,
+            repo_root=root,
+        )
+    if corpus == "g2c-corpus-small":
+        return _resolve_g2c_dir(
+            root / "data" / "g2c-corpus-v1-small",
+            split=normalized_split,
+            repo_root=root,
+        )
+
+    normalized = _normalize_corpus_name(corpus)
     if normalized == "tinyshakespeare":
         return _resolve_single_file_corpus(
             name="tinyshakespeare",
@@ -194,6 +209,8 @@ def resolve_corpus(
             path=root / "data" / "tinyshakespeare.txt",
             split=normalized_split,
         )
+    if normalized == "tinystories-100MB":
+        return _resolve_tinystories(root, normalized_split, sample_only=True)
     if normalized == "tinystories":
         return _resolve_tinystories(root, normalized_split)
     if normalized == "g2c":
@@ -202,8 +219,6 @@ def resolve_corpus(
 
 
 def _normalize_corpus_name(corpus: str) -> str:
-    if corpus in {"g2c", "g2c-corpus-small", "g2c-corpus-full"}:
-        return "g2c"
     return corpus
 
 
@@ -229,15 +244,27 @@ def _resolve_single_file_corpus(
     return CorpusSpec(name=name, sources=(source,), split=split, root=root)
 
 
-def _resolve_tinystories(root: Path, split: str) -> CorpusSpec | None:
+def _resolve_tinystories(
+    root: Path,
+    split: str,
+    *,
+    sample_only: bool = False,
+) -> CorpusSpec | None:
     tinystories_dir = root / "data" / "tinystories"
-    if split == "train":
+    if split == "train" and sample_only:
+        candidate_groups = (
+            _tinystories_shards(tinystories_dir, "TinyStories-train-100MB"),
+            _single_path_shards(tinystories_dir / "TinyStories-train-100MB.txt"),
+        )
+    elif split == "train":
         candidate_groups = (
             _tinystories_shards(tinystories_dir, "TinyStories-train"),
             _single_path_shards(tinystories_dir / "TinyStories-train.txt"),
             _tinystories_shards(tinystories_dir, "TinyStories-train-100MB"),
             _single_path_shards(tinystories_dir / "TinyStories-train-100MB.txt"),
         )
+    elif sample_only:
+        candidate_groups = ()
     else:
         candidate_groups = (
             _tinystories_shards(tinystories_dir, "TinyStories-valid"),

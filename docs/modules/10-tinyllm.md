@@ -17,7 +17,8 @@ This is the payoff week for Phase III. Module 09 built the architecture. Module 
 	* `g2c/pretraining` from  [[09b-pretraining]]
 	* `g2c/training` from [[03b-training]]. 
 	* The trained tokenizers from [[04-tokenizer]] notebook (optional; `datasets.sh` will generate if missing)
-*  *Run* `./datasets.sh` if you plan to do the optional scale-up runs
+*  *Run* `.venv/bin/python scripts/artifact_status.py --module 10` to see which local artifact path is ready
+*  *Run* `./datasets.sh --tiny`, `./datasets.sh --small`, or `./datasets.sh` if you want to prepare a larger track before the optional scale-up runs
 
 ---
 ## Where this fits in
@@ -156,7 +157,7 @@ pytest tests/test_pretraining.py -k trainer -v
 
 Open the working notebook with `.venv/bin/python scripts/open_notebook.py 10`. Each exercise has `Question:` / `Answer:` cells inside the notebook. If you'd like a hint instead of a grade, write the request in the answer string and ask a coding agent for help. Blank answers are skipped rather than counted wrong.
 
-The default notebook run uses `data/tinyshakespeare.txt` (downloaded by `./setup.sh`) and loads the Module 04 `ShakespeareTokenizer` artifact. The optional scale-up runs use TinyStories and the `StoryTokenizer` artifact; the notebook skips those cells gracefully if either is missing. StoryLM scale-up runs save rolling checkpoints under `data/checkpoints/storylm/` every 100 steps — interrupt and re-run the same training cell to resume from the last checkpoint.
+The default notebook run uses `data/tinyshakespeare.txt` (downloaded by `./setup.sh`) and loads the Module 04 `ShakespeareTokenizer` artifact. The optional scale-up runs use the best prepared local track: `./datasets.sh --tiny` for a 100MB StoryLM path, `./datasets.sh --small` for full TinyStories plus small G2C, or `./datasets.sh` for the full G2C path. The notebook skips missing scale-up cells gracefully. StoryLM and TinyLLM scale-up runs save rolling checkpoints every 100 steps — interrupt and re-run the same training cell to resume from the last checkpoint.
 
 1. **Implement `Trainer.train_step`.** Follow the method docstring exactly. Run `pytest tests/test_pretraining.py -k train_step -x`, then the full `tests/test_pretraining.py`.
 
@@ -166,7 +167,7 @@ The default notebook run uses `data/tinyshakespeare.txt` (downloaded by `./setup
 
 4. **Sample from checkpoints or training milestones.** Generate text from the initial model and the trained model using the Module 11-style local sampler in the notebook. Record what improves first: character legality, word fragments, punctuation, line breaks, local phrases, or longer coherence.
 
-5. **Run controlled TinyStories scale-ups.** After `./datasets.sh tinystories` and the Module 04 `StoryTokenizer` artifact, run the notebook's ~5M-parameter TinyStories experiment, then optionally the ~30M-parameter experiment. These longer runs checkpoint every 100 steps and can be resumed by re-running the training cell. Compare validation loss and samples against the TinyShakespeare baseline. The notebook skips these cells gracefully if TinyStories or the tokenizer artifact is not available.
+5. **Run controlled TinyStories scale-ups.** After `./datasets.sh --tiny` or `./datasets.sh --small`, run the notebook's ~5M-parameter TinyStories experiment, then optionally the ~30M-parameter experiment. These longer runs checkpoint every 100 steps and can be resumed by re-running the training cell. Compare validation loss and samples against the TinyShakespeare baseline. The notebook skips these cells gracefully if TinyStories or the tokenizer artifact is not available.
 
 6. **Diagnose the run.** Write a short post-run note: final train loss, final validation loss, final validation perplexity, whether validation tracked training, whether the learning rate looked sane, and one next experiment you would run.
 

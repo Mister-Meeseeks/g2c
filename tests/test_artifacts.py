@@ -39,6 +39,7 @@ from g2c.transformer import TransformerLM
 from scripts.build_tokenized_corpus import (
     default_jobs_for_available_tokenizers,
     make_progress_printer,
+    standard_job_for_tokenizer,
 )
 
 
@@ -266,6 +267,35 @@ def test_load_g2c_corpus_preserves_source_weights_and_prefers_full(tmp_path):
     assert text == ("F" * 40) + ("C" * 10)
 
 
+def test_load_g2c_corpus_explicit_small_ignores_full(tmp_path):
+    repo = make_repo(tmp_path)
+    small_dir = repo / "data" / "g2c-corpus-v1-small"
+    full_dir = repo / "data" / "g2c-corpus-v1"
+    _write_g2c_manifested_shard(small_dir, "tinystories", "S" * 100)
+    _write_g2c_manifested_shard(full_dir, "tinystories", "F" * 100)
+
+    assert load_corpus_text("g2c", byte_count=5, repo_root=repo) == "F" * 5
+    assert load_corpus_text("g2c-corpus-full", byte_count=5, repo_root=repo) == "F" * 5
+    assert load_corpus_text("g2c-corpus-small", byte_count=5, repo_root=repo) == "S" * 5
+
+
+def test_load_tinystories_sample_alias_ignores_full(tmp_path):
+    repo = make_repo(tmp_path)
+    data_dir = repo / "data" / "tinystories"
+    data_dir.mkdir(parents=True)
+    with gzip.open(data_dir / "TinyStories-train-0000.txt.gz", "wt", encoding="utf-8") as f:
+        f.write("full")
+    with gzip.open(
+        data_dir / "TinyStories-train-100MB-0000.txt.gz",
+        "wt",
+        encoding="utf-8",
+    ) as f:
+        f.write("sample")
+
+    assert load_corpus_text("tinystories", byte_count=6, repo_root=repo) == "fullfu"
+    assert load_corpus_text("tinystories-100MB", byte_count=6, repo_root=repo) == "sample"
+
+
 def test_load_tokenizer_source_text_uses_logical_g2c_source(tmp_path):
     repo = make_repo(tmp_path)
     corpus_dir = repo / "data" / "g2c-corpus-v1-small"
@@ -305,6 +335,31 @@ def test_build_tokenized_corpus_default_jobs_follow_available_tokenizers(tmp_pat
     ]
     assert [job.tokenizer for job in jobs] == ["G2CTokenizer", "StoryTokenizer"]
     assert [job.byte_count for job in jobs] == [None, None]
+
+
+def test_build_tokenized_corpus_standard_jobs_reflect_local_corpus_variant(tmp_path):
+    repo = make_repo(tmp_path)
+    _write_tokenizer_manifest(repo, "StoryTokenizer", "tinystories")
+    _write_tokenizer_manifest(repo, "G2CTokenizer", "g2c")
+    data_dir = repo / "data" / "tinystories"
+    data_dir.mkdir(parents=True)
+    with gzip.open(
+        data_dir / "TinyStories-train-100MB-0000.txt.gz",
+        "wt",
+        encoding="utf-8",
+    ) as f:
+        f.write("sample")
+    _write_g2c_manifested_shard(repo / "data" / "g2c-corpus-v1-small", "tinystories", "S")
+
+    story_job = standard_job_for_tokenizer("StoryTokenizer", repo)
+    g2c_job = standard_job_for_tokenizer("G2CTokenizer", repo)
+
+    assert story_job is not None
+    assert story_job.name == "StoryLM-tinystories-100MB-v4096"
+    assert story_job.corpus == "tinystories"
+    assert g2c_job is not None
+    assert g2c_job.name == "TinyLLM-g2c-small-v8192"
+    assert g2c_job.corpus == "g2c-corpus-small"
 
 
 def test_tokenized_corpus_cli_progress_bar_shows_dataset_and_percent(capsys):
@@ -924,6 +979,16 @@ def _save_tiny_model_artifact(
 
 def _write_g2c_manifested_shard(corpus_dir: Path, source: str, text: str) -> None:
     _write_g2c_manifested_shards(corpus_dir, {source: text})
+
+
+def _write_tokenizer_manifest(repo: Path, name: str, source: str) -> None:
+    artifact_dir = repo / "artifacts" / "tokenizers" / name
+    artifact_dir.mkdir(parents=True)
+    (artifact_dir / "tokenizer.json").write_text("{}", encoding="utf-8")
+    (artifact_dir / "manifest.json").write_text(
+        json.dumps({"name": name, "source": source}),
+        encoding="utf-8",
+    )
 
 
 def _write_g2c_manifested_shards(corpus_dir: Path, source_texts: dict[str, str]) -> None:

@@ -42,10 +42,11 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 ## Ground rules
 
 - **From-scratch through the architecture (weeks 1–11).** When the topic of the week is the thing — autograd, attention, the transformer block — build it. Don't import a high-level abstraction that does the work for you.
-- **Use your own model through behavior shaping (weeks 12–15).** Scaling experiments, SFT, DPO, and eval all run against the model you trained yourself. Quality will be visibly toy. That is the point.
-- **Pivot to a pretrained open model for the assistant phase (weeks 16–20).** RAG, tools, agents, and the capstone use a 7–8B-class quantized model so the system is actually usable.
+- **Use your own model through behavior shaping when it is useful (weeks 12–15).** Scaling experiments, SFT, DPO, and eval should support your self-trained StoryLM/TinyLLM artifacts. If those artifacts are too weak for the post-training lesson, use the small pretrained BaseLM path.
+- **Pivot to a pretrained open model for the assistant phase (weeks 16–20).** RAG, tools, agents, and the capstone use a local pretrained instruct model, called ProdLM in the course, so the system is actually usable.
 - **Pedagogy beats performance.** Code should be legible. Optimization is a separate concern.
 - **Tiny everything.** Tiny corpora, tiny models. The whole course thesis is that the tiny version teaches the idea.
+- **Tracks are artifact choices, not separate courses.** Start with Tiny, Standard, or Full depending on your machine and time. See [Course Tracks and Artifacts](tracks.md).
 
 ## Phase overview
 

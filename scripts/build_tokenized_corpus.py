@@ -24,6 +24,7 @@ from pathlib import Path
 from g2c.artifacts import (
     build_or_load_tokenized_corpus,
     find_repo_root,
+    resolve_corpus,
     tokenizer_artifacts_root,
 )
 
@@ -56,7 +57,10 @@ def main() -> int:
     parser.add_argument(
         "--corpus",
         default=None,
-        help="Corpus name: tinystories or g2c",
+        help=(
+            "Corpus name: tinystories, tinystories-100MB, g2c, "
+            "g2c-corpus-small, or g2c-corpus-full."
+        ),
     )
     parser.add_argument(
         "--tokenizer",
@@ -259,22 +263,25 @@ def standard_job_for_tokenizer(
     repo_root: str | Path | None = None,
 ) -> TokenizedCorpusJob | None:
     """Map known course tokenizer artifacts to standard tokenized corpora."""
-    root = tokenizer_artifacts_root(repo_root) / tokenizer_name
-    manifest = _read_json(root / "manifest.json")
+    repo = find_repo_root(repo_root)
+    artifact_dir = tokenizer_artifacts_root(repo) / tokenizer_name
+    manifest = _read_json(artifact_dir / "manifest.json")
     source = manifest.get("source")
 
     if tokenizer_name == "StoryTokenizer" or source == "tinystories":
+        preset = _tinystories_preset(repo)
         return TokenizedCorpusJob(
-            name="StoryLM-tinystories-full-v4096",
+            name=f"StoryLM-tinystories-{preset}-v4096",
             corpus="tinystories",
             tokenizer=tokenizer_name,
             vocab_size=4096,
             byte_count=None,
         )
     if tokenizer_name == "G2CTokenizer" or source == "g2c":
+        preset, corpus = _g2c_preset_and_corpus(repo)
         return TokenizedCorpusJob(
-            name="TinyLLM-g2c-full-v8192",
-            corpus="g2c",
+            name=f"TinyLLM-g2c-{preset}-v8192",
+            corpus=corpus,
             tokenizer=tokenizer_name,
             vocab_size=8192,
             byte_count=None,
@@ -287,6 +294,25 @@ def standard_job_for_tokenizer(
         return None
     print(f"skipping {tokenizer_name}: no standard tokenized corpus preset")
     return None
+
+
+def _tinystories_preset(repo_root: Path) -> str:
+    spec = resolve_corpus("tinystories", repo_root=repo_root)
+    if spec is None:
+        return "full"
+    for source in spec.sources:
+        for shard in source.shards:
+            if "100MB" in shard.path.name:
+                return "100MB"
+    return "full"
+
+
+def _g2c_preset_and_corpus(repo_root: Path) -> tuple[str, str]:
+    if resolve_corpus("g2c-corpus-full", repo_root=repo_root) is not None:
+        return "full", "g2c-corpus-full"
+    if resolve_corpus("g2c-corpus-small", repo_root=repo_root) is not None:
+        return "small", "g2c-corpus-small"
+    return "full", "g2c"
 
 
 def _read_json(path: Path) -> dict[str, object]:

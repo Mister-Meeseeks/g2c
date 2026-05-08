@@ -43,28 +43,28 @@ Start with the [syllabus](docs/syllabus.md) for the full 20-week arc plus the fa
 - **Pacing unit.** Each module is one "week" of effort at the level of a rigorous elite-college course. Calendar pace is whatever it ends up being.
 - **Framework.** PyTorch with the MPS backend (Apple Silicon GPU) is the primary framework throughout. MLX is used selectively for inference-heavy stages where Apple-native performance matters. Rationale: PyTorch has the deepest ecosystem and the broadest reference material; MLX is faster on M-series but is an optimization tool, not a pedagogical one.
 - **From-scratch boundary.** Weeks 1–11 (autodiff through pretraining + sampling) build the concept under study from scratch — no `torch.nn.MultiheadAttention` in the attention module, etc. Using PyTorch tensor primitives and autograd as substrate is fine once those layers are themselves established. Weeks 12–15 (scaling, SFT, DPO, eval) keep working with the model you trained yourself; quality is visibly toy and that's the point.
-- **Capstone pivot.** Weeks 16–20 (inference, RAG, tools, agents, capstone) pivot to a local pretrained instruct model sized to your machine. The course calls this role `ProdLLM`: the point is the backend contract, not one fixed model name.
+- **Capstone pivot.** Weeks 16–20 (inference, RAG, tools, agents, capstone) pivot to a local pretrained instruct model sized to your machine. The course calls this role `ProdLM`: the point is the backend contract, not one fixed model name.
 - **Repo style.** One monorepo. The `g2c/` Python package grows over the course; each module's submodule is consumed by later modules.
 
 ## Hardware tracks and saved artifacts
 
-The course is designed for M-series Macs, but not every student needs to run
-the same model sizes. The required path should work on smaller machines; larger
-runs are optional and mostly buy more satisfying local model artifacts.
+The course is designed for M-series Macs, but not every student needs the same
+download size, model size, or training time. The track system is artifact-based:
+prepare as much data as you want, and notebooks should load the strongest local
+artifact they can find.
 
-- **Small track:** smaller StoryLM/TinyLLM runs. This path teaches all core
-  mechanics, but samples and instruction following will be weak.
-- **Default track:** StoryLM-30M or similar local artifacts. This is the main
-  Module 10-15 experience when hardware and time allow.
-- **Stretch track:** larger local TinyLLM experiments. These are slower and
-  more satisfying, but never required for the core path.
-- **ProdLLM phase:** Modules 16-20 use a local pretrained instruct model chosen
-  to fit your machine. Smaller fallback models are acceptable; 7B-8B-class
-  models are the intended reference tier when they run comfortably.
+- **Tiny:** `./datasets.sh --tiny` prepares a 100MB TinyStories sample path.
+- **Standard:** `./datasets.sh --small` prepares full TinyStories plus the small
+  G2C corpus. This is the recommended local course experience.
+- **Full:** `./datasets.sh` prepares the full G2C corpus path for stretch runs.
+- **BaseLM:** Modules 13-15 can use a small external pretrained base model when
+  your self-trained model is too weak.
+- **ProdLM:** Modules 16-20 use a local pretrained instruct model sized to your
+  machine.
 
-Large datasets and checkpoints live outside normal setup. See
-[Model Artifacts and Course Tracks](docs/design/model-artifacts-and-tracks.md)
-for the durable artifact names, model-family roles, and reuse expectations.
+See [Course Tracks and Artifacts](docs/tracks.md) for download/storage/time
+estimates and artifact names. The deeper maintainer design note lives at
+[Model Artifacts and Course Tracks](docs/design/model-artifacts-and-tracks.md).
 
 ## Repository layout
 
@@ -115,9 +115,9 @@ The script is idempotent. It creates a project-local venv at `./.venv`, installs
 The first run may download `data/tinyshakespeare.txt` for language-model training. Larger optional datasets live behind `datasets.sh` so the normal setup stays fast. You can wait until a module asks for one, or preload all optional course data up front:
 
 ```bash
-./datasets.sh              # full preload: GloVe, TinyStories, full G2C Corpus v1
-./datasets.sh --small      # same, but build the ~1GB G2C corpus
-./datasets.sh --tiny       # only a compressed 100MB TinyStories sample shard
+./datasets.sh --tiny       # Tiny track: 100MB TinyStories + tokenizer/tokenized artifact
+./datasets.sh --small      # Standard track: GloVe, TinyStories, small G2C corpus + artifacts
+./datasets.sh              # Full track: GloVe, TinyStories, full G2C corpus + artifacts
 ./datasets.sh glove        # Module 05 pretrained vectors (~822MB download)
 ./datasets.sh tinystories  # Module 10 scale-up corpus as compressed 100MB text shards
 ./datasets.sh all          # same as ./datasets.sh
@@ -143,6 +143,9 @@ post-training datasets, belong under `artifacts/`.
 The download targets are idempotent: later runs skip files that already exist
 and resume partial downloads when possible. The G2C corpus builder refuses to
 overwrite an existing non-empty output directory unless you pass `--force`.
+`datasets.sh` also builds the matching tokenizer and disk-backed tokenized
+corpus artifacts, so later notebooks do not need to repeat those expensive
+steps in the kernel.
 
 After setup:
 
@@ -151,6 +154,7 @@ source .venv/bin/activate
 python scripts/test_clean.py    # tests that should pass on the pristine scaffold
 python -m pytest                # full suite; many tests intentionally fail until implemented
 python scripts/smoke_test.py    # re-run env health check
+python scripts/artifact_status.py # inspect local datasets, tokenizers, and model artifacts
 ```
 
 For notebook exercises, open the working copy through the launcher:

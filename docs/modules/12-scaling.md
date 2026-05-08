@@ -12,7 +12,8 @@ Scaling laws tell us how model quality varies with model size. We frame scaling 
 * *Review* power laws on log-log axes — `y = A · x^α` plots as a straight line with slope `α`
 * *Review* FLOPs as a unit of compute — used here to standardize comparisons across model sizes and training runs
 * *Finish* Modules 10–11 — you'll be training and sampling from three sizes of `TransformerLM` checkpoints
-* *Run* `./datasets.sh` if you haven't already, for the corpora the experiments train on
+* *Run* `.venv/bin/python scripts/artifact_status.py --module 12` to see which saved model artifacts are available
+* *Run* `./datasets.sh --small` or `./datasets.sh` only if you want larger scaling runs than your current artifacts support
 
 ---
 ## Where this fits in
@@ -333,4 +334,3 @@ Optional:
 - [ ] You can explain — out loud, without notes — what the difference between iso-step and iso-FLOP is, and why they answer different questions.
 - [ ] You can explain — out loud, without notes — why "loss falls as a power of N" is a *different* claim from "capability X emerges at N", and which of the two you can or can't see at MacBook scale.
 - [ ] You can explain — out loud, without notes — what the irreducible loss `L∞` is and why no model — of any size — can fall below it.
-

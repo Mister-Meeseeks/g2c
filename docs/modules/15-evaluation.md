@@ -12,6 +12,7 @@ The whole module on one page. Module 14's loss curve told you "DPO is doing some
 * *Review* [[14-dpo]] for `sequence_logprob` — multiple-choice scoring is its text-level analogue
 * *Review* [[11-sampling]] — the generation harness needs a `generate_fn` closure to call
 * *Finish* a Module 13 SFT'd or Module 14 DPO'd checkpoint — the eval harness measures whichever model you point it at
+* *Run* `.venv/bin/python scripts/artifact_status.py --module 15` if you are deciding between a self-trained model and the BaseLM path
 
 ---
 ## Where this fits in

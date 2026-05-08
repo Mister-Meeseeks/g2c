@@ -13,7 +13,7 @@ The main idea:
 
 ## Model Families
 
-The course uses three model families.
+The course uses four model-family roles.
 
 ### StoryLM
 
@@ -45,14 +45,14 @@ TinyLLM should demonstrate:
 - simple instruction following after SFT;
 - toy structured tool-call formatting;
 - meaningful failure modes in eval;
-- comparison against ProdLLM through the same runtime harness.
+- comparison against ProdLM through the same runtime harness.
 
 TinyLLM is still not a useful general assistant. It teaches mechanisms and
 failure modes; it does not replace a pretrained instruct model.
 
-### ProdLLM
+### ProdLM
 
-ProdLLM is the local pretrained instruct backend used in Modules 16-20. It is a
+ProdLM is the local pretrained instruct backend used in Modules 16-20. It is a
 conceptual role, not a fixed model name. Students should choose a local model
 that fits their machine through Ollama, MLX, llama.cpp, or a similar local
 runtime.
@@ -65,15 +65,26 @@ Examples by hardware tier:
 
 The course may use one reference model for tested examples, but module design
 should avoid hardcoding that choice. Later assistant-system code should talk to
-a `ProdLLM` backend interface.
+a `ProdLM` backend interface.
+
+### BaseLM
+
+BaseLM is the small external pretrained base-model fallback for Modules 13-15.
+It is not the main assistant-system backend and it is not trained from scratch
+inside the course. Its role is to make SFT, DPO, and eval pedagogically useful
+when a student's StoryLM/TinyLLM artifact is too weak to show the behavior.
+
+The current reference candidate is Qwen-0.6B, but the course should keep the
+role generic. A similar small base model can fill the same slot if it runs more
+comfortably on a student's machine.
 
 ## Hardware Tracks
 
 Modules 10-15 should support multiple local-compute tracks.
 
-### Small Track
+### Tiny Track
 
-The small track is the required-compatible path for weaker machines. It should
+The tiny track is the required-compatible path for weaker machines. It should
 run on modest M-series hardware and teach every mechanism, even if the samples
 are weak.
 
@@ -84,9 +95,9 @@ Typical artifacts:
 - `StoryLM-Instruct`
 - `StoryLM-DPO`
 
-### Default Track
+### Standard Track
 
-The default track is the main local experience. It should produce a satisfying
+The standard track is the main local experience. It should produce a satisfying
 from-scratch language model artifact without assuming cloud GPUs.
 
 Typical artifacts:
@@ -97,9 +108,9 @@ Typical artifacts:
 - `StoryLM-Instruct` or `TinyLLM-Instruct`
 - `StoryLM-DPO` or `TinyLLM-DPO`
 
-### Stretch Track
+### Full / Stretch Track
 
-The stretch track is optional. It is for students with more unified memory,
+The full/stretch track is optional. It is for students with more unified memory,
 more time, or a willingness to let local runs continue for hours.
 
 Typical artifacts:
@@ -287,7 +298,7 @@ It should produce:
 - `StoryLM-Instruct`; or
 - `TinyLLM-Instruct`.
 
-ProdLLM should not be the default training target for Module 13. Fine-tuning a
+ProdLM should not be the default training target for Module 13. Fine-tuning a
 production model can be optional later, but the core lesson is weight updates on
 the student's own small model.
 
@@ -325,14 +336,14 @@ The deliverable should include:
 - optional rerun instructions for students who want to close the loop by going
   back to Module 13 or 14.
 
-Qwen-class or other ProdLLM models may appear as a preview comparison, but the
+Qwen-class or other ProdLM models may appear as a preview comparison, but the
 main failure-analysis target should be the student's tiny model artifacts.
 
 ### Modules 16-20 - Assistant Systems
 
-Modules 16-20 pivot to ProdLLM for usable assistant behavior.
+Modules 16-20 pivot to ProdLM for usable assistant behavior.
 
-ProdLLM is not a trained artifact from this repo. It is a backend selection and
+ProdLM is not a trained artifact from this repo. It is a backend selection and
 runtime configuration. These modules should save system artifacts instead:
 
 - model backend config;
@@ -344,7 +355,7 @@ runtime configuration. These modules should save system artifacts instead:
 - eval reports.
 
 The runtime harness should make the contrast visible: the same messages, tools,
-and evals can run against TinyLLM/StoryLM when useful, but ProdLLM is the
+and evals can run against TinyLLM/StoryLM when useful, but ProdLM is the
 default backend for actually usable assistant behavior.
 
 ## Pedagogical Rules
@@ -355,6 +366,6 @@ default backend for actually usable assistant behavior.
 - Keep StoryLM tasks story-domain unless the module is explicitly demonstrating
   failure outside the model's domain.
 - Keep TinyLLM tasks assistant-shaped but honest about capability.
-- Use ProdLLM as a generic role, not as a fixed model name.
+- Use ProdLM as a generic role, not as a fixed model name.
 - Make larger local runs optional; never require cloud compute for the core
   path.

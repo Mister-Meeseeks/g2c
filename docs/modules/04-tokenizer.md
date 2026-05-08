@@ -10,7 +10,8 @@ The whole pipeline that turns `"The quick brown fox..."` into the integer list a
 ## Before you start
 
 * *Review* Python `bytes` and UTF-8 if either feels unfamiliar — `bytes` is a sequence of integers in `[0, 256)`; UTF-8 is variable-width (ASCII 1 byte, common European 2, emoji 4)
-* *Run* `./datasets.sh` to download the corpus we'll train the tokenizer on
+* *Run* `./datasets.sh --tiny` for the light tokenizer artifact path, or `./datasets.sh --small` for the recommended StoryLM/TinyLLM prep path
+* *Check* `.venv/bin/python scripts/artifact_status.py --module 04` if you are not sure which tokenizer artifacts already exist
 
 ---
 ## Where this fits in
