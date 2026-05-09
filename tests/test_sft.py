@@ -66,6 +66,20 @@ class _FakeTokenizer:
         return "".join(chr(i) for i in ids)
 
 
+class _VocabCappedTokenizer(_FakeTokenizer):
+    """Fake tokenizer whose full encode can exceed a small model vocab."""
+
+    def __init__(self) -> None:
+        self.caps_seen: list[int] = []
+
+    def encode(self, s: str) -> list[int]:
+        return [ord(c) + 10_000 for c in s]
+
+    def encode_with_vocab_size(self, s: str, vocab_size: int) -> list[int]:
+        self.caps_seen.append(vocab_size)
+        return [ord(c) % vocab_size for c in s]
+
+
 # ----------------------------------------------------------------------
 # ChatTemplate — boilerplate (constants implemented)
 # ----------------------------------------------------------------------
@@ -299,6 +313,25 @@ def test_render_with_mask_multi_turn_alternates():
         len(tok.encode(f"B{t.END}")) + len(tok.encode(f"D{t.END}"))
     )
     assert sum(ex.mask) == expected_one_count
+
+
+def test_render_with_mask_can_cap_to_model_vocab_size():
+    """A tokenizer artifact may have more learned merges than the model
+    was trained with. render_with_mask should be able to encode at the
+    model's effective vocab size so SFT targets fit the output head."""
+    t = ChatTemplate()
+    tok = _VocabCappedTokenizer()
+    ex = t.render_with_mask(
+        [
+            {"role": "user", "content": "Hi"},
+            {"role": "assistant", "content": "Yo"},
+        ],
+        tokenizer=tok,
+        vocab_size=128,
+    )
+    assert tok.caps_seen
+    assert max(ex.ids) < 128
+    assert len(ex.ids) == len(ex.mask)
 
 
 # ----------------------------------------------------------------------

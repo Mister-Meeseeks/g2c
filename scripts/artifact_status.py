@@ -11,6 +11,7 @@ from g2c.artifacts import (
     available_model_artifacts,
     baselm_artifact_exists,
     best_model_artifact,
+    best_model_artifact_with_suffix,
     find_repo_root,
     resolve_corpus,
     tokenized_corpus_artifact_exists,
@@ -307,7 +308,7 @@ def module_guidance(module: str, repo_root: str | Path | None = None) -> list[st
             lines.append(f"  ok strongest saved model: {best.display_name} ({best.name}).")
         return lines
 
-    if key in {"13", "14", "15"}:
+    if key == "13":
         best = best_model_artifact(repo_root=root)
         if best is None:
             if baselm_artifact_exists(repo_root=root):
@@ -320,6 +321,27 @@ def module_guidance(module: str, repo_root: str | Path | None = None) -> list[st
             lines.append(
                 "  fallback: run ./baselm.sh if this model is too weak."
             )
+        return lines
+
+    if key == "14":
+        best_sft = best_model_artifact_with_suffix("-SFT", repo_root=root)
+        if best_sft is not None:
+            lines.append(f"  ok SFT artifact available: {best_sft.name}.")
+        else:
+            lines.append("  next: finish Module 13 and save an SFT artifact first.")
+            lines.append("  expected artifact names look like TinyLLM-30M-SFT or BaseLM-SFT.")
+        return lines
+
+    if key == "15":
+        best_dpo = best_model_artifact_with_suffix("-DPO", repo_root=root)
+        best_sft = best_model_artifact_with_suffix("-SFT", repo_root=root)
+        if best_dpo is not None:
+            lines.append(f"  ok DPO artifact available: {best_dpo.name}.")
+        elif best_sft is not None:
+            lines.append(f"  ok SFT artifact available: {best_sft.name}.")
+            lines.append("  recommended: finish Module 14 and save a DPO artifact too.")
+        else:
+            lines.append("  next: finish Module 13 or Module 14 and save a post-trained artifact.")
         return lines
 
     if key in {"16", "17", "18", "19", "20"}:

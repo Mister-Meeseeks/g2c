@@ -158,7 +158,7 @@ The eval harness is what closes this loop. By scoring outputs against **what we 
 
 ### Calibration: the headline scalar
 
-![Calibration — reliability diagram and ECE. Three panels. Top-left: how to read a reliability plot. The blue bars are bin-empirical accuracy; the red dots are bin mean-confidence; the diagonal is the perfectly-calibrated line. Below the diagonal: over-confident (model says 0.95, gets it right 0.7 of the time). Above the diagonal: under-confident. Top-right: a worked example with 10 equal-width bins on [0, 1]. The model's bars sit BELOW the diagonal in the high-confidence bins and ABOVE in the low-confidence bins — the canonical signature of a small, under-trained LM. Bottom: the ECE formula `ECE = Σ_b (|B_b| / N) · |acc(B_b) − conf(B_b)|` printed in full, with each term annotated; this model's ECE is 0.187 (moderately miscalibrated). Side panels explain "what the bins mean," "why calibration matters" (the model doesn't tell you it's guessing — eval exposes overconfidence in high-confidence regions), and "how to improve" (more eval data, better-calibrated training, refusal behavior).](15-evaluation/Module15-Calibration.png)
+![Calibration](15-evaluation/Module15-Calibration.png)
 *The picture to internalize before implementing `expected_calibration_error` and `reliability_curve`. The bin-by-bin |acc − conf| visualization is what the test `test_ece_known_case_two_bins` hand-computes; reading this image first makes the test's expected value (0.25) visibly correct rather than mysterious.*
 
 ```

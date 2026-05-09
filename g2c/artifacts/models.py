@@ -174,6 +174,76 @@ def best_model_artifact(
     return available[-1] if available else None
 
 
+def available_model_artifacts_with_suffix(
+    suffix: str,
+    *,
+    repo_root: str | Path | None = None,
+    specs: tuple[ModelArtifactSpec, ...] = DEFAULT_MODEL_ARTIFACT_SPECS,
+    extra_base_names: tuple[str, ...] = ("BaseLM",),
+    extra_rank_start: int = 100,
+) -> list[AvailableModelArtifact]:
+    """Return known model artifacts with a post-training suffix.
+
+    Modules 13-15 save derived artifacts by appending suffixes to the base
+    artifact name, for example ``TinyLLM-30M-SFT`` or ``BaseLM-SFT``. This
+    helper mirrors ``available_model_artifacts`` while keeping the base-model
+    ranking, so downstream notebooks can load the strongest completed stage
+    without hard-coding one track.
+    """
+    if not suffix:
+        raise ValueError("suffix must be non-empty")
+
+    found: list[AvailableModelArtifact] = []
+    for spec in specs:
+        for base_name in spec.names:
+            name = f"{base_name}{suffix}"
+            if model_artifact_exists(name, repo_root=repo_root):
+                found.append(
+                    AvailableModelArtifact(
+                        name=name,
+                        canonical_name=f"{spec.canonical_name}{suffix}",
+                        display_name=f"{spec.display_name}{suffix}",
+                        rank=spec.rank,
+                        artifact_dir=model_artifact_dir(name, repo_root),
+                    )
+                )
+                break
+
+    for offset, base_name in enumerate(extra_base_names):
+        name = f"{base_name}{suffix}"
+        if model_artifact_exists(name, repo_root=repo_root):
+            found.append(
+                AvailableModelArtifact(
+                    name=name,
+                    canonical_name=name,
+                    display_name=name,
+                    rank=extra_rank_start + offset,
+                    artifact_dir=model_artifact_dir(name, repo_root),
+                )
+            )
+
+    return sorted(found, key=lambda artifact: artifact.rank)
+
+
+def best_model_artifact_with_suffix(
+    suffix: str,
+    *,
+    repo_root: str | Path | None = None,
+    specs: tuple[ModelArtifactSpec, ...] = DEFAULT_MODEL_ARTIFACT_SPECS,
+    extra_base_names: tuple[str, ...] = ("BaseLM",),
+    extra_rank_start: int = 100,
+) -> AvailableModelArtifact | None:
+    """Return the strongest known model artifact with ``suffix``."""
+    available = available_model_artifacts_with_suffix(
+        suffix,
+        repo_root=repo_root,
+        specs=specs,
+        extra_base_names=extra_base_names,
+        extra_rank_start=extra_rank_start,
+    )
+    return available[-1] if available else None
+
+
 def artifact_spec_for_name(
     name: str,
     *,

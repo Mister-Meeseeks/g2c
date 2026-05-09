@@ -36,6 +36,7 @@ SFT was the first layer of post-training in our LLM stack. SFT was a way to teac
 
 ## The big idea
 
+DPO is another form of *postraining*. Like SFT it starts with a "base model" and uses gradient descent based training to tune behavior. Like
 SFT trains the model to imitate one answer. Preference tuning trains it to **prefer one answer over another for the same prompt**.
 
 The training example is no longer:
@@ -62,7 +63,9 @@ The goal is not "memorize Madrid." The goal is "when the model is in this kind o
 
 ### Preference data
 
-A preference triple gives the model a comparison, not an absolute target. Both responses share the same prompt prefix; only the assistant response differs. During training we score only the response tokens just as Module 13 masked loss onto assistant tokens only.
+A *preference triple* (`prompt`, `chosen`, `rejected`) is a shared prompt prefix and two assistant responses. The grader chooses the best response, and rejects the other response. 
+
+The training process rewards the tokens in the chosen response and penalizes the tokens in the rejected response. Because they're identical between the responses, and therefore non-relevant for comparison, the prompt prefix tokens are *masked* to have no impact on the training.
 
 ```
    prompt_ids + chosen_ids       → score chosen response
@@ -77,7 +80,7 @@ This is why DPO can feel like SFT in code. But SFT asks "how likely is this targ
 ### RLHF as the historical baseline
 
 ![RLHF (traditional) vs DPO (this module). The classical InstructGPT pipeline runs three stages: SFT (Module 13's deliverable), then reward modeling on preference comparisons, then PPO reinforcement-learning to optimize the SFT model against the reward model with a KL penalty. DPO collapses the second and third stages into a single supervised loss using the SFT'd model as a frozen reference. A "what RLHF needs" panel lists rollouts, value heads, KL controllers, and PPO ratio clipping. A "what DPO needs" panel lists: a frozen reference, a trainable policy, β, and a preference dataset. A "bottom line" panel pins the framing: same goal — align the model with human preferences — same gradient, but no reward model, no PPO loop, no on-policy rollouts.](14-dpo/Module14-RLHF.png)
-*The headline simplification this module captures. The classical pipeline's middle and right stages are notoriously expensive and finicky at production scale; DPO's closed-form derivation makes them disappear, leaving a single forward+backward against an offline preference dataset.*
+*RLHF's middle and right stages are notoriously expensive and finicky . DPO's closed-form derivation makes them disappear.*
 
 The standard way to train from preferences is **RLHF** (reinforcement learning from human feedback). RLHF also starts with `(prompt, chosen, rejected)` comparisons, but takes three stages:
 
@@ -212,7 +215,7 @@ For a single preference example `(x, y_c, y_r)` with chosen `y_c` and rejected `
        L_DPO  =  − log σ( β · m̂ )
 ```
 
-`m̂` is the policy-vs-reference improvement. Multiplying by `β` converts that log-ratio margin into an implicit-reward margin. The DPO loss is the negative log-likelihood of "chosen beat rejected" under a Bradley-Terry preference model.
+`m̂` is the policy-vs-reference improvement. `β` scales that log-ratio margin into an implicit-reward margin. The DPO loss is the negative log-likelihood of "chosen beat rejected" under a Bradley-Terry preference model.
 
 ```
    ┌────────────────────────────────────────────────────────────────────┐

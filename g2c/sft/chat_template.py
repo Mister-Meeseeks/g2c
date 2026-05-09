@@ -48,6 +48,34 @@ if TYPE_CHECKING:
     from g2c.tokenizer import BPETokenizer
 
 
+def _encode_template_chunk(
+    tokenizer: "BPETokenizer",
+    text: str,
+    *,
+    vocab_size: int | None,
+) -> list[int]:
+    """Encode one rendered template chunk, optionally capped to model vocab.
+
+    This is compatibility plumbing, not the Module 13 concept. Some notebooks
+    load a model whose embedding/output tables use only a prefix of a larger
+    tokenizer artifact. When the tokenizer knows how to cap merges via
+    ``encode_with_vocab_size``, use it; otherwise encode normally and fail
+    loudly if an ID cannot fit in the loaded model.
+    """
+    if vocab_size is None:
+        return tokenizer.encode(text)
+    if hasattr(tokenizer, "encode_with_vocab_size"):
+        return tokenizer.encode_with_vocab_size(text, vocab_size)
+    ids = tokenizer.encode(text)
+    too_large = [token_id for token_id in ids if token_id >= vocab_size]
+    if too_large:
+        raise ValueError(
+            "rendered SFT example contains token IDs outside the model "
+            f"vocab: max={max(too_large)}, vocab_size={vocab_size}"
+        )
+    return ids
+
+
 class ChatTemplate:
     """The ChatML-lite chat template used throughout the course.
 
@@ -138,6 +166,8 @@ class ChatTemplate:
         self,
         messages: list[dict],
         tokenizer: "BPETokenizer",
+        *,
+        vocab_size: int | None = None,
     ) -> SFTExample:
         """Render `messages` AND build the assistant-only loss mask.
 
@@ -163,6 +193,11 @@ class ChatTemplate:
             messages: same shape as `render`'s argument.
             tokenizer: a `BPETokenizer` (or any object exposing
                 `.encode(str) -> list[int]`).
+            vocab_size: optional effective model vocabulary size. Use this
+                when the tokenizer artifact has more learned merges than the
+                model's embedding/output tables. Special tokens still remain
+                atomic; learned merges with IDs outside the model vocab are
+                skipped.
 
         Returns:
             `SFTExample(ids=[...], mask=[...])` with `len(mask) == len(ids)`.
@@ -172,10 +207,13 @@ class ChatTemplate:
                mask: list[int] = []
 
             2. Walk messages in order. For each turn:
+               `_encode_template_chunk` is pre-implemented plumbing;
+               the conceptual work is deciding which chunks get mask 0
+               and which chunks get mask 1.
 
                if role == "user":
                    chunk = f"{self.USER}\\n{content}\\n"
-                   chunk_ids = tokenizer.encode(chunk)
+                   chunk_ids = _encode_template_chunk(tokenizer, chunk, vocab_size=vocab_size)
                    ids.extend(chunk_ids)
                    mask.extend([0] * len(chunk_ids))
 
@@ -183,14 +221,14 @@ class ChatTemplate:
                    # The role marker + newline is part of the prompt
                    # — the model should NOT learn to emit it.
                    prefix = f"{self.ASSISTANT}\\n"
-                   prefix_ids = tokenizer.encode(prefix)
+                   prefix_ids = _encode_template_chunk(tokenizer, prefix, vocab_size=vocab_size)
                    ids.extend(prefix_ids)
                    mask.extend([0] * len(prefix_ids))
 
                    # The content + <|end|> IS the response — the
                    # model should learn to emit every token of this.
                    target = f"{content}{self.END}"
-                   target_ids = tokenizer.encode(target)
+                   target_ids = _encode_template_chunk(tokenizer, target, vocab_size=vocab_size)
                    ids.extend(target_ids)
                    mask.extend([1] * len(target_ids))
 
@@ -217,18 +255,30 @@ class ChatTemplate:
 
             if role == "user":
                 chunk = f"{self.USER}\n{content}\n"
-                chunk_ids = tokenizer.encode(chunk)
+                chunk_ids = _encode_template_chunk(
+                    tokenizer,
+                    chunk,
+                    vocab_size=vocab_size,
+                )
                 ids.extend(chunk_ids)
                 mask.extend([0] * len(chunk_ids))
 
             elif role == "assistant":
                 prefix = f"{self.ASSISTANT}\n"
-                prefix_ids = tokenizer.encode(prefix)
+                prefix_ids = _encode_template_chunk(
+                    tokenizer,
+                    prefix,
+                    vocab_size=vocab_size,
+                )
                 ids.extend(prefix_ids)
                 mask.extend([0] * len(prefix_ids))
 
                 target = f"{content}{self.END}"
-                target_ids = tokenizer.encode(target)
+                target_ids = _encode_template_chunk(
+                    tokenizer,
+                    target,
+                    vocab_size=vocab_size,
+                )
                 ids.extend(target_ids)
                 mask.extend([1] * len(target_ids))
 
