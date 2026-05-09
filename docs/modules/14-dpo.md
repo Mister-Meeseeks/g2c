@@ -312,6 +312,16 @@ Beyond the SFT failure modes inherited from Module 13:
 
 ```
    ┌────────────────────────────────────────────────────────────────┐
+   │   REFERENCE DRIFT                                              │
+   │   The reference model is not actually frozen — its parameters  │
+   │   update along with the policy. Symptom: loss curve looks      │
+   │   fine but the model behavior matches the SFT'd model exactly. │
+   │   Fix: verify ref_model.parameters() are unchanged after a few │
+   │   steps. Common cause: optimizer was constructed with both     │
+   │   models' params concatenated.                                 │
+   └────────────────────────────────────────────────────────────────┘
+
+   ┌────────────────────────────────────────────────────────────────┐
    │   LENGTH BIAS                                                  │
    │   Chosen completions are systematically longer than rejected   │
    │   ones in the dataset. DPO learns "longer is better" instead   │
