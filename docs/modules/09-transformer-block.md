@@ -75,9 +75,24 @@ def forward(self, x):
 
 Everything important about the transformer architecture is encoded in those two lines.
 
+### Feed forward network
+
+We covered attention in the past two modules. The second half of the transformer block is the feed-forward network (FFN). The FFN is just a 1-hidden layer MLP, like the ones we trained in Module 3. It uses a slightly version of ReLU (GELU) as the activation layer:
+
+```
+  FFN(x_t)  =  W_2 · GELU(W_1 · x_t + b_1) + b_2     for each position t
+```
+
+The most important thing to keep in mind is that the FFN is *per position*. There is no mixing between the token positions. The FFN is the "compute" half of the block, attention is the "communication" half. Position `t` and position `s` see the same `W_1, W_2` but process their own `x_t`, `x_s` independently.
+
+In practice, the convetion is to set `hidden_dim = 4 × embedding_dim` . The complete intermediate projection gives the GELU activation layer room to carve out nonlinear features. Because of this most of the parameters in a transformer actually live in the FFN, not the attention heads.
+
+![The position-wise FFN: the SAME two-layer MLP applied independently to every position. Per-position view: x_t (D channels) → Linear up to 4D → GELU → Linear back down to D. Block view: attention writes a per-token update into the residual stream, then LayerNorm + FFN compute a second per-token update. Side panels show the parameter counts (2 · 4D² = 8D² weights, dominating the block's parameter budget) and the per-position independence (mutate one token, no others change).](09-transformer-block/Module09-FFN.png)
+*The FFN is the "compute" half of the block. Attention mixes information, the FFN is what the model does with that mixture.
+
 ### Residual connections
 
-The headline empirical fact: without residual connections, transformers deeper than a handful of layers fail to train. With them, training scales to hundreds of layers. The intuition has two complementary flavors:
+Residual connections are how we "stack" layers of transformer blocks. Without residual connections, transformers deeper than a handful of layers fail to train. With them, training scales to hundreds of layers. The intuition has two complementary flavors:
 
 **Residual-stream view.** Think of `x` as a "communication bus" through the layers of the network. Each sublayer reads the bus, produces an update, and writes the update back onto the bus. Sublayers are *contributions* to the residual stream rather than *replacements* of it. The model's "no-op behavior" is to pass information through. Sublayers therefore *specialize* to make targeted edits.
 
@@ -99,7 +114,7 @@ The headline empirical fact: without residual connections, transformers deeper t
 
 ### LayerNorm
 
-Three properties of LayerNorm are worth internalizing:
+LayerNorm is what keeps the scale of the residual stream bounded as we move between layers. Without it, after a few blocks the residual may accumulate so many unnormalized sublayer outputs that its magnitude diverges, and training stop works.
 
 ```
   LayerNorm(x):
@@ -109,32 +124,30 @@ Three properties of LayerNorm are worth internalizing:
       return γ * x_hat + β
 ```
 
+Three properties of LayerNorm are worth internalizing:
+
   * **It normalizes per-token.** For input shape `(B, T, D)`, LayerNorm pools statistics over the `D` axis only. Each `(B, T)` position is normalized independently. That's why batch size doesn't affect the output, and train and inference behavior are identical.
 
   * **The learned affine `γ, β` is the escape hatch.** Pure standardization would lock every output's mean and variance to 0 and 1, which constrains the next layer. The affine parameters let the model freely choose any mean and variance, but initialized to start at `(1, 0)`
 
   * **The `ε` in the sqrt is structural, not cosmetic.** A near-constant input has near-zero variance, and dividing by `sqrt(0)` produces `NaN`. `ε = 1e-5` keeps the divisor away from zero with negligible effect on normal inputs.
 
-LayerNorm is what keeps the residual stream's scale bounded. Without it, after a few blocks the residual `x` has accumulated so many unnormalized sublayer outputs that its magnitude diverges, softmax saturate, and training stop works.
-
 ![LayerNorm worked through on a single token vector x ∈ ℝ^D: compute mean μ and variance σ² across the D channels of THIS token only (no pooling across batch or sequence positions); subtract μ and divide by √(σ²+ε); apply the learned per-channel affine γ * x̂ + β. A side panel contrasts what LayerNorm does NOT do (pool across batch — that's BatchNorm; pool across sequence positions — that doesn't exist as a standard layer) and pins down the headline: every token in every position is normalized independently with the same γ, β.](09-transformer-block/Module09-LayerNorm.png)
 *LayerNorm normalizes each token vector independently across channels, and learns scale/shfit. The key distinction from BatchNorm is "pool over channels, not over the batch."*
 
-### Pre-norm vs post-norm
-
-The original 2017 transformer (Vaswani et al.) used **post-norm**:
+One minor note for how LayerNorm is applied. The original 2017 transformer (Vaswani et al.) used **post-norm**:
 
 ```
   Post-norm:    x = LN(x + sublayer(x))
 ```
 
-The modern transformer (GPT-2 onward, every model since) uses **pre-norm**:
+The modern transformer uses **pre-norm**
 
 ```
   Pre-norm:     x = x + sublayer(LN(x))
 ```
 
-The difference is one of operation order, but it's load-bearing for training stability. Post-norm requires a careful learning-rate warmup schedule; pre-norm trains stably without warmup at much greater depths.
+The difference is one of operation order, but it's load-bearing for numerical stability during training and preventing vanishing gradients. Xiong (2020) go into more details on the reasons why. For this course it's sufficient to simply remember to always normalize first *then* apply the sublayer, rather than appying the sublayer first then normalizing.
 
 ```
   Pre-norm pipeline (this module):
@@ -150,35 +163,9 @@ The difference is one of operation order, but it's load-bearing for training sta
          └── residual ───┘             ← residual flows through LN
 ```
 
-The crucial difference: in pre-norm, the residual stream is *never normalized in place*. The unnormalized `x` flows from block to block. Gradients on the residual path are unobstructed by LayerNorm's nonlinearity — they propagate straight through, exactly the property that makes deep transformers trainable. In post-norm, the gradients on the residual path get repeatedly attenuated by each layer's Jacobian. The empirical result is that deep post-norm models need careful tuning of their warmup schedules. 
-
-In this course we exclusively use pre-norm. 
-
-![Pre-norm vs post-norm shown side by side as two block diagrams: pre-norm (used by GPT-2, Llama, PaLM, ...) — `x = x + sublayer(LN(x))` — has the residual stream flowing past LN, never normalized in place; post-norm (used by "Attention Is All You Need", 2017) — `x = LN(x + sublayer(x))` — has LN sitting ON the residual path so the stream IS normalized between blocks. A side caption explains the gradient-path difference: pre-norm's residual gradient is unobstructed by LN's Jacobian, so it propagates straight through deep stacks; post-norm's residual gradient gets attenuated layer by layer, which is why post-norm needs a learning-rate warmup hack to train at depth.](09-transformer-block/Module09-PrePostNorm.png)
-*Modern wisdom is that pre-norm is structurally better and removes the need for warmup tricks. Every modern transformer you read about uses pre-norm.*
-
-### The position-wise FFN
-
-After attention has mixed information across positions, the FFN does non-attention computation at each position:
-
-```
-  FFN(x_t)  =  W_2 · GELU(W_1 · x_t + b_1) + b_2     for each position t
-```
-
-Three things to internalize:
-
-  * **Per-position.** No mixing across positions — the FFN is the "compute" half of the block, attention is the "communication" half. Position `t` and position `s` see the same `W_1, W_2` but process their own `x_t`, `x_s` independently.
-
-  * **The `4×` expansion.** `hidden_dim = 4 × embedding_dim` is the Vaswani-original convention and is essentially universal. It's an overcomplete intermediate representation: the projection up to `4D` gives the GELU room to carve out useful nonlinear features.
-
-  * **Most parameters live here.** With `hidden_dim = 4D`, the FFN has `2 × 4 × D² = 8D²` weight parameters. Multi-head attention has `4 × D² = 4D²` weight parameters. So roughly two-thirds of a standard block's parameter count is in the FFN.
-
-![The position-wise FFN: the SAME two-layer MLP applied independently to every position. Per-position view: x_t (D channels) → Linear up to 4D → GELU → Linear back down to D. Block view: attention writes a per-token update into the residual stream, then LayerNorm + FFN compute a second per-token update. Side panels show the parameter counts (2 · 4D² = 8D² weights, dominating the block's parameter budget) and the per-position independence (mutate one token, no others change).](09-transformer-block/Module09-FFN.png)
-*The FFN is the "compute" half of the block. Attention mixes information, the FFN is what the model does with that mixture.
-
 ### Tied embeddings
 
-The model has two natural `(V, D)`-sized matrices: the input `TokenEmbedding` that maps each token id to a vector, and the unembedding that maps the final residual stream back to `V` logits. We make them the *same matrix*.
+The final part of our transformer stack are tied embeddings. This just means the model uses the same token embeddings at the initial input and final output. Transformers have *embedding weights* to convert tokens to vectors at input, and *unembedding weights* to convert vectors back to tokens at the the ouput. With tied embeddings we make both sides same matrix.
 
 ```
   TokenEmbedding.weight    (V, D)   ◄── input end of the tie
@@ -198,7 +185,7 @@ The model has two natural `(V, D)`-sized matrices: the input `TokenEmbedding` th
 
 The two roles are asking the same question. The input table is "the vector that *represents* token `v`." The output projection is "the direction that *scores* token `v`." Those are nearly the same object. In practice, training pulls them toward each other anyway. Tying just commits to the answer up front.
 
-Tying also saves on param count, reducing compute and data requirements. The accounting:
+Tying is useful because it conserves parameters, reducing compute and data requirements. The accounting:
 
 ```
   Untied:   V*D (input) + V*D (output) + V (output bias)  =  2*V*D + V
@@ -223,14 +210,12 @@ Tying also saves on param count, reducing compute and data requirements. The acc
     logits      (B, T, V)
 ```
 
-Three details worth pinning down:
+Two details worth pinning down:
 
   * **One logit per position.** Output is `(B, T, V)`, not `(B, V)`. Position `t`'s logit is the prediction for what comes at position `t+1`. At training time, you compute cross-entropy at every position in parallel — vastly more efficient than the one-position-per-step training of the Module 06 MLP.
 
   * **The final LayerNorm before unembedding.** Modern transformers add this; the original 2017 paper didn't. Without it, the residual stream's scale at the output is unbounded and the unembedding's logits can drift arbitrarily large or small. A small, cheap correction.
-
-  * **`max_seq_len` is enforced in `forward`.** The learned positional embedding table has a fixed size; sequences longer than that have no positional signal for the trailing positions. The constructor can't see the input length, so the bound check lives in `forward`.
-
+  
 ## Concepts to internalize
 
 - **The transformer block is two sublayers, each pre-normalized and residually wrapped.** That's the entire architectural delta from pure attention.
@@ -239,8 +224,8 @@ Three details worth pinning down:
 - **Pre-norm is the modern default.** Trains stably at depth without warmup; post-norm needs warmup or diverges.
 - **The FFN is per-position with a 4× hidden expansion.** Most of a transformer's parameters live here.
 - **Stacking blocks is straightforward.** `for block in self.blocks: x = block(x)`. The architecture has no positional encoding *between* blocks, no cross-block coupling, no per-block parameters that depend on layer index. Each block is a self-contained refinement step.
+- **Tied embeddings: one set of token weights is used for both input and output.** Reflects that "vector for token v" and "direction that scores token v" are nearly the same object.
 - **TransformerLM outputs (B, T, V) logits.** One next-token prediction per position, computed in parallel during training.
-- **Tied embeddings: one matrix lives at both ends of the model.** The unembedding is `token_embed.weight.T` plus a per-token bias. Saves `V*D` parameters; reflects that "vector for token v" and "direction that scores token v" are nearly the same object.
 
 ### What we don't cover
 
