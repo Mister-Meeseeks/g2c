@@ -52,6 +52,9 @@ def eos_id(artifact: LoadedModelArtifact) -> int | None:
         token_id = tokenizer.special_to_id.get(token)
         if token_id is not None:
             return token_id
+    token_id = getattr(tokenizer, "eos_token_id", None)
+    if token_id is not None:
+        return int(token_id)
     return None
 
 

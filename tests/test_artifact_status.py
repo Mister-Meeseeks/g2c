@@ -55,8 +55,18 @@ def test_artifact_status_module_13_recommends_baselm_without_model_artifact(tmp_
 
     guidance = module_guidance("13", repo)
 
+    assert guidance == ["  next: run ./baselm.sh or save a Module 10 model artifact first."]
+
+
+def test_artifact_status_module_13_accepts_baselm_artifact(tmp_path):
+    repo = make_repo(tmp_path)
+    _write_baselm_artifact(repo)
+
+    guidance = module_guidance("13", repo)
+
     assert guidance == [
-        "  next: use the BaseLM path or save a Module 10 model artifact first."
+        "  ok BaseLM is available for the pretrained fallback path.",
+        "  optional: save a Module 10 model artifact for comparison.",
     ]
 
 
@@ -120,5 +130,18 @@ def _write_tokenized_corpus_artifact(repo: Path, name: str) -> None:
     (artifact_dir / "tokens.uint16.bin").write_bytes(b"\x00\x00\x01\x00")
     (artifact_dir / "manifest.json").write_text(
         json.dumps({"name": name, "file": "tokens.uint16.bin"}),
+        encoding="utf-8",
+    )
+
+
+def _write_baselm_artifact(repo: Path) -> None:
+    artifact_dir = repo / "artifacts" / "models" / "BaseLM"
+    artifact_dir.mkdir(parents=True)
+    (artifact_dir / "config.json").write_text(
+        json.dumps({"kind": "huggingface_causal_lm", "model_id": "org/test"}),
+        encoding="utf-8",
+    )
+    (artifact_dir / "manifest.json").write_text(
+        json.dumps({"kind": "huggingface_causal_lm", "name": "BaseLM"}),
         encoding="utf-8",
     )

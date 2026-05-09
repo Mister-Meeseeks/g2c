@@ -13,6 +13,7 @@ from g2c.artifacts import (
     TokenizerArtifactConfig,
     atomic_torch_save,
     available_model_artifacts,
+    baselm_artifact_exists,
     best_model_artifact,
     build_or_load_tokenized_corpus,
     checkpoint_backup_path,
@@ -36,6 +37,7 @@ from g2c.artifacts import (
     tokenized_corpus_artifact_exists,
     tokenizer_artifact_exists,
     train_or_load_tokenizer_artifact,
+    write_baselm_manifest,
 )
 from g2c.tokenizer import COURSE_SPECIAL_TOKENS, BPETokenizer
 from g2c.transformer import TransformerLM
@@ -965,6 +967,65 @@ def test_load_model_artifact_with_tokenizer_loads_named_alias(tmp_path):
     assert loaded.display_name == "StoryLM 5M"
     assert loaded.model.vocab_size == 256
     assert loaded.tokenizer.encode_fast("abc") == list(b"abc")
+
+
+def test_baselm_manifest_registers_external_model_artifact(tmp_path):
+    repo = make_repo(tmp_path)
+
+    artifact_dir = write_baselm_manifest(
+        repo_root=repo,
+        model_id="org/test-base",
+        cache_dir="data/test-cache",
+    )
+
+    assert artifact_dir == repo / "artifacts" / "models" / "BaseLM"
+    assert baselm_artifact_exists(repo_root=repo)
+    assert (artifact_dir / "config.json").exists()
+    manifest = json.loads((artifact_dir / "manifest.json").read_text())
+    assert manifest["kind"] == "huggingface_causal_lm"
+    assert manifest["role"] == "BaseLM"
+    assert manifest["model_id"] == "org/test-base"
+
+
+def test_load_model_artifact_forwards_hf_dtype_override(tmp_path, monkeypatch):
+    repo = make_repo(tmp_path)
+    calls: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        "g2c.artifacts.baselm.huggingface_model_artifact_exists",
+        lambda name, *, repo_root=None: True,
+    )
+
+    def fake_load(name, *, repo_root=None, device=None, torch_dtype=None):
+        calls.update(
+            {
+                "name": name,
+                "repo_root": repo_root,
+                "device": device,
+                "torch_dtype": torch_dtype,
+            }
+        )
+        return "loaded"
+
+    monkeypatch.setattr(
+        "g2c.artifacts.baselm.load_huggingface_model_artifact",
+        fake_load,
+    )
+
+    loaded = load_model_artifact_with_tokenizer(
+        "BaseLM",
+        repo_root=repo,
+        device="cpu",
+        torch_dtype=torch.float16,
+    )
+
+    assert loaded == "loaded"
+    assert calls == {
+        "name": "BaseLM",
+        "repo_root": repo,
+        "device": "cpu",
+        "torch_dtype": torch.float16,
+    }
 
 
 def test_load_best_model_artifact_optional_none_when_missing(tmp_path):

@@ -34,6 +34,13 @@ Individual targets are still available:
 ./datasets.sh g2c-corpus-full
 ```
 
+BaseLM is prepared separately because it is a model artifact, not a dataset
+track:
+
+```bash
+./baselm.sh
+```
+
 All dataset commands are intended to be idempotent. Rerunning should skip
 completed downloads and completed artifacts.
 
@@ -82,7 +89,7 @@ Use these as planning ranges, not promises.
 | Tokenized G2C corpus | Standard/Full | minutes to tens of minutes | `artifacts/tokenized-corpora/TinyLLM-*` |
 | StoryLM 5M/30M training | Module 10 | minutes to about hour-class | checkpoints and model artifacts |
 | TinyLLM 30M-100M training | Module 10/12 | multi-hour or overnight | checkpoints and model artifacts |
-| BaseLM fetch | Modules 13-15 | model-size and network dependent | external model cache |
+| BaseLM fetch | Modules 13-15 | model-size and network dependent | `./baselm.sh`, HF cache under `data/baselm/` |
 | ProdLM fetch | Modules 16-20 | model-size and network dependent | external model cache |
 
 Downloads and tokenized corpora are one-time setup costs. Training runs are the
@@ -100,7 +107,7 @@ inspect, sample, and continue.
 | 10 | Main artifact fork: ShakespeareLM baseline, StoryLM, and optional TinyLLM. |
 | 11 | Uses the strongest saved Module 10 model it can find. |
 | 12 | Scaling lab. Extends Module 10 and can stay small or go stretch. |
-| 13-15 | Prefer a capable self-trained TinyLLM when available; otherwise use BaseLM. |
+| 13-15 | Prefer a capable self-trained TinyLLM when available; otherwise run `./baselm.sh` and use BaseLM. |
 | 16-20 | Use ProdLM for the main assistant path. Self-trained models are comparison backends. |
 
 ## Working Rule

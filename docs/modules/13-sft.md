@@ -18,7 +18,7 @@ This week is about how to shape model **behavior**. The mechanics are minimal bu
 	* `g2c/tokenizer` from [[04-tokenizer]]
 	* At least one trained model from [[10-tinyllm]] notebook (`ShakespeareLM`, `StoryLM`, or `TinyLLM`)
 	* Trained tokenizer from [[04-tokenizer]] (alternatively run `./datasets.sh`)
-* *Run* `.venv/bin/python scripts/artifact_status.py --module 13` to see whether you should use a self-trained model or the BaseLM path.
+* *Run* `.venv/bin/python scripts/artifact_status.py --module 13` to see whether you should use a self-trained model or the BaseLM path. If you need BaseLM, run `./baselm.sh`.
 
 ---
 ## Where this fits in

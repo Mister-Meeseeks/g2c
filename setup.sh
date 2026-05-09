@@ -4,8 +4,9 @@
 # Strategy:
 #   - SYSTEM-LEVEL tools (python, uv) are CHECKED, not installed. If missing,
 #     the script prints how to install them and exits.
-#   - PROJECT-LEVEL tools (torch, pytest, ruff, jupyter, the g2c package itself)
-#     are installed into a project-local venv at ./.venv via uv.
+#   - PROJECT-LEVEL tools (torch, pytest, ruff, jupyter, Hugging Face helpers,
+#     and the g2c package itself) are installed into a project-local venv at
+#     ./.venv via uv.
 #
 # Idempotent: safe to re-run.
 
@@ -90,11 +91,11 @@ if [[ -d .venv/bin ]]; then
 fi
 
 # ---- 4. Project deps ---------------------------------------------------------
-info "Installing g2c (editable) + dev deps"
+info "Installing g2c (editable) + dev/BaseLM deps"
 if [[ "$REINSTALL_DEV" == "1" ]]; then
-    uv pip install -e ".[dev]" --reinstall --quiet
+    uv pip install -e ".[dev,baselm]" --reinstall --quiet
 else
-    uv pip install -e ".[dev]" --quiet
+    uv pip install -e ".[dev,baselm]" --quiet
 fi
 ok "deps installed"
 
@@ -148,6 +149,9 @@ echo ""
 echo "Download optional large datasets with:"
 echo "    ./datasets.sh glove        # Module 05 pretrained vectors"
 echo "    ./datasets.sh tinystories  # Module 10 scale-up corpus"
+echo ""
+echo "Download/register the optional BaseLM model with:"
+echo "    ./baselm.sh                # Modules 13-15 pretrained base fallback"
 echo ""
 echo "Run the full suite with:"
 echo "    python -m pytest    # many tests intentionally fail on the scaffold branch"

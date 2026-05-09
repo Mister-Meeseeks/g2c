@@ -9,6 +9,7 @@ from pathlib import Path
 
 from g2c.artifacts import (
     available_model_artifacts,
+    baselm_artifact_exists,
     best_model_artifact,
     find_repo_root,
     resolve_corpus,
@@ -90,15 +91,18 @@ def render_artifact_status(
     lines.extend(["", "Tokenized corpora"])
     lines.extend(_render_items(tokenized))
     lines.extend(["", "Model artifacts"])
+    has_baselm = baselm_artifact_exists(repo_root=root)
     if models:
         for artifact in models:
             lines.append(
                 f"  ok {artifact.display_name:<18} {artifact.artifact_dir.relative_to(root)}"
             )
-    else:
+    elif not has_baselm:
         lines.append("  -- none yet")
     if best_model is not None:
         lines.append(f"  best: {best_model.display_name} ({best_model.name})")
+    if has_baselm:
+        lines.append("  ok BaseLM             artifacts/models/BaseLM")
 
     lines.extend(["", "Recommended commands"])
     lines.extend(_recommend_commands(datasets, tokenizers, tokenized))
@@ -292,7 +296,13 @@ def module_guidance(module: str, repo_root: str | Path | None = None) -> list[st
     if key in {"11", "12"}:
         best = best_model_artifact(repo_root=root)
         if best is None:
-            lines.append("  next: finish and save at least one Module 10 model artifact.")
+            if baselm_artifact_exists(repo_root=root):
+                lines.append("  ok BaseLM is available if you explicitly select it.")
+                lines.append("  recommended: finish and save a Module 10 model artifact too.")
+            else:
+                lines.append(
+                    "  next: finish and save at least one Module 10 model artifact."
+                )
         else:
             lines.append(f"  ok strongest saved model: {best.display_name} ({best.name}).")
         return lines
@@ -300,11 +310,15 @@ def module_guidance(module: str, repo_root: str | Path | None = None) -> list[st
     if key in {"13", "14", "15"}:
         best = best_model_artifact(repo_root=root)
         if best is None:
-            lines.append("  next: use the BaseLM path or save a Module 10 model artifact first.")
+            if baselm_artifact_exists(repo_root=root):
+                lines.append("  ok BaseLM is available for the pretrained fallback path.")
+                lines.append("  optional: save a Module 10 model artifact for comparison.")
+            else:
+                lines.append("  next: run ./baselm.sh or save a Module 10 model artifact first.")
         else:
             lines.append(f"  ok self-trained model available: {best.display_name} ({best.name}).")
             lines.append(
-                "  fallback: BaseLM is the small pretrained path if this model is too weak."
+                "  fallback: run ./baselm.sh if this model is too weak."
             )
         return lines
 

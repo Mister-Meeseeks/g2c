@@ -104,7 +104,7 @@ class LoadedModelArtifact:
     display_name: str
     rank: int
     artifact_dir: Path
-    model: TransformerLM
+    model: Any
     tokenizer: Any
     tokenizer_artifact: Any
     manifest: dict[str, Any]
@@ -119,10 +119,19 @@ def model_artifact_dir(name: str, repo_root: str | Path | None = None) -> Path:
 
 def model_artifact_exists(name: str, repo_root: str | Path | None = None) -> bool:
     root = model_artifact_dir(name, repo_root)
-    return (
+    if (
         (root / "model.pt").exists()
         and (root / "config.json").exists()
         and (root / "manifest.json").exists()
+    ):
+        return True
+    try:
+        manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return False
+    return (
+        manifest.get("kind") == "huggingface_causal_lm"
+        and (root / "config.json").exists()
     )
 
 
@@ -182,9 +191,20 @@ def load_model_artifact_with_tokenizer(
     *,
     repo_root: str | Path | None = None,
     device: str | torch.device | None = None,
+    torch_dtype: str | torch.dtype | None = None,
     specs: tuple[ModelArtifactSpec, ...] = DEFAULT_MODEL_ARTIFACT_SPECS,
 ) -> LoadedModelArtifact:
     """Load one named model artifact plus its referenced tokenizer artifact."""
+    from .baselm import huggingface_model_artifact_exists, load_huggingface_model_artifact
+
+    if huggingface_model_artifact_exists(name, repo_root=repo_root):
+        return load_huggingface_model_artifact(
+            name,
+            repo_root=repo_root,
+            device=device,
+            torch_dtype=torch_dtype,
+        )
+
     loaded = load_model_artifact(
         name,
         repo_root=repo_root,

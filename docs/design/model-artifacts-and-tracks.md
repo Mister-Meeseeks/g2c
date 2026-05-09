@@ -78,6 +78,12 @@ The current reference candidate is Qwen-0.6B, but the course should keep the
 role generic. A similar small base model can fill the same slot if it runs more
 comfortably on a student's machine.
 
+BaseLM setup is separate from `datasets.sh` because it is a model artifact:
+
+```bash
+./baselm.sh
+```
+
 ## Hardware Tracks
 
 Modules 10-15 should support multiple local-compute tracks.
@@ -169,6 +175,18 @@ artifacts/models/<artifact-name>/
   tokenizer.json
   manifest.json
 ```
+
+External Hugging Face model artifacts, such as `BaseLM`, keep the HF-native
+layout instead of `model.pt`:
+
+```text
+artifacts/models/BaseLM/
+  config.json
+  manifest.json
+  hf_tokenizer/
+```
+
+Fine-tuned external artifacts add `hf_model/` next to `hf_tokenizer/`.
 
 Tokenizer artifacts should be saved separately when they are reused by multiple
 models:

@@ -21,6 +21,10 @@ dev = [
     "torchvision>=0.19",
     "datasets>=3.0",
 ]
+baselm = [
+    "transformers>=4.51",
+    "safetensors>=0.4",
+]
 
 [build-system]
 requires = ["hatchling"]

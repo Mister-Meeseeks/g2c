@@ -123,6 +123,13 @@ The first run may download `data/tinyshakespeare.txt` for language-model trainin
 ./datasets.sh all          # same as ./datasets.sh
 ```
 
+Modules 13-15 can also use a small external pretrained base model when your
+self-trained model is too weak to make SFT/DPO behavior visible:
+
+```bash
+./baselm.sh                # registers the default BaseLM artifact
+```
+
 The broader TinyLLM track uses **G2C Corpus v1**, a generated local raw-text
 corpus built from streamed upstream datasets:
 
