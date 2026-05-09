@@ -5,9 +5,10 @@ messages to (a) a single string for tokenization, and (b) a label mask
 that says which token positions the loss should fire on.
 
 The format we use is `ChatML-lite` — the spirit of OpenAI's ChatML
-adapted to a from-scratch BPE tokenizer that has no reserved special
-tokens. The role markers are literal byte strings that the BPE encoder
-splits into ~3–8 sub-tokens each:
+adapted to the course-native special tokens reserved by Module 04's
+tokenizer. The role markers are still ordinary strings at the template
+level, but the course tokenizer treats each complete marker as one
+atomic token ID:
 
     <|user|>
     {user_content}
@@ -63,10 +64,10 @@ class ChatTemplate:
     Why these specific markers? They're rare enough in natural prose
     that a base model trained on TinyShakespeare or TinyStories has
     essentially never seen them — so SFT's job of associating them
-    with role-switching behavior starts from a clean slate. Real
-    systems use single reserved tokens (`<|im_start|>`, `<|eot_id|>`,
-    etc.) that don't fragment under BPE; we pay a small per-marker
-    token cost to avoid the bookkeeping of vocab extension.
+    with role-switching behavior starts from a clean slate. They are
+    also reserved as tokenizer special tokens, so the model sees one
+    stable ID for `<|user|>`, one stable ID for `<|assistant|>`, and
+    one stable ID for `<|end|>`.
     """
 
     USER: str = "<|user|>"

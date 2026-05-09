@@ -20,6 +20,8 @@ __all__ = [
     "encode_prompt",
     "eos_id",
     "next_token_rows",
+    "next_token_probability_rows",
+    "plot_next_token_probabilities",
     "print_sample",
     "printable",
     "readable_token_mask",
@@ -180,6 +182,94 @@ def readable_token_mask(tokenizer: Any, vocab_size: int) -> torch.Tensor:
         [token_is_readable(tokenizer, token_id) for token_id in range(vocab_size)],
         dtype=torch.bool,
     )
+
+
+@torch.no_grad()
+def next_token_probability_rows(
+    model: Any,
+    tokenizer: Any,
+    prompt: str,
+    *,
+    n: int = 15,
+    temperature: float = 1.0,
+    printable_only: bool = True,
+) -> list[tuple[int, str, float]]:
+    """Return top next-token IDs, decoded strings, and probabilities.
+
+    This is the Module 10 inspection path: it computes ``model(prompt)``,
+    reads the final-position logits, applies temperature, softmaxes, and
+    returns the largest probabilities. It intentionally avoids
+    ``g2c.sampling`` because Module 11 has not taught that package yet.
+    """
+    if temperature <= 0:
+        raise ValueError("temperature must be positive for a probability plot")
+    prompt_ids = tokenizer.encode_with_vocab_size(prompt, model.vocab_size)
+    if not prompt_ids:
+        raise ValueError("prompt encoded to no tokens")
+
+    device = next(iter(model.parameters())).device
+    ctx = torch.tensor(
+        prompt_ids[-model.max_seq_len:],
+        dtype=torch.long,
+        device=device,
+    ).unsqueeze(0)
+    logits = model(ctx)[0, -1].detach().cpu()
+    if printable_only:
+        mask = readable_token_mask(tokenizer, model.vocab_size)
+        logits = logits.masked_fill(~mask, float("-inf"))
+
+    probs = torch.softmax(logits / temperature, dim=-1)
+    values, indices = torch.topk(probs, k=min(n, probs.numel()))
+    rows: list[tuple[int, str, float]] = []
+    for token_id, prob in zip(indices.tolist(), values.tolist(), strict=True):
+        token_text = (
+            tokenizer.decode([int(token_id)])
+            .replace("\n", "\\n")
+            .replace("\t", "\\t")
+        )
+        rows.append((int(token_id), token_text, float(prob)))
+    return rows
+
+
+def plot_next_token_probabilities(
+    model: Any,
+    tokenizer: Any,
+    prompt: str,
+    *,
+    n: int = 15,
+    temperature: float = 1.0,
+    printable_only: bool = True,
+    title: str | None = None,
+) -> list[tuple[int, str, float]]:
+    """Plot a horizontal bar chart of the top next-token probabilities."""
+    import matplotlib.pyplot as plt
+
+    rows = next_token_probability_rows(
+        model,
+        tokenizer,
+        prompt,
+        n=n,
+        temperature=temperature,
+        printable_only=printable_only,
+    )
+    labels = [f"{text!r}  [{token_id}]" for token_id, text, _ in rows]
+    probs = [prob for _, _, prob in rows]
+
+    fig_height = max(4.0, 0.36 * len(rows))
+    fig, ax = plt.subplots(figsize=(9, fig_height))
+    y = list(range(len(rows)))
+    ax.barh(y, probs, color="#4c78a8")
+    ax.set_yticks(y, labels)
+    ax.invert_yaxis()
+    ax.set_xlabel("probability after softmax")
+    ax.set_title(title or f"Top next-token probabilities after {prompt!r}")
+    max_prob = max(probs) if probs else 1.0
+    ax.set_xlim(0, min(1.0, max_prob * 1.2 + 0.01))
+    for index, prob in enumerate(probs):
+        ax.text(prob, index, f" {prob:.3f}", va="center")
+    fig.tight_layout()
+    plt.show()
+    return rows
 
 
 def _apply_top_k_for_inspection(
