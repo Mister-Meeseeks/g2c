@@ -20,19 +20,19 @@ Module 14's loss curve told you "DPO is doing something"; Module 15 tells you **
 After Modules 13 and 14 you have a behavior-shaped model. The loss curves on both told you "training is doing something" — SFT loss decreased, DPO reward margin increased. But what does "something" cash out to in terms of capability?
 
 ```
-   ┌──────────────────────────────────────────────────────────────────────┐
+   ┌───────────────────────────────────────────────────────────────────────┐
    │  THE PROBLEM WITH LOSS CURVES                                         │
-   ├──────────────────────────────────────────────────────────────────────┤
+   ├───────────────────────────────────────────────────────────────────────┤
    │                                                                       │
    │   SFT loss   ────────┐                                                │
    │                       │                                               │
-   │                       └──►  "is the model formatting answers?"       │
+   │                       └──►  "is the model formatting answers?"        │
    │                                                                       │
    │   DPO margin ────────┐                                                │
    │                       │                                               │
-   │                       └──►  "is the chosen-vs-rejected gap growing?" │
+   │                       └──►  "is the chosen-vs-rejected gap growing?"  │
    │                                                                       │
-   │   ────────────────────────────────────────────────────────────────   │
+   │   ────────────────────────────────────────────────────────────────    │
    │                                                                       │
    │   But neither answers:                                                │
    │                                                                       │
@@ -43,7 +43,7 @@ After Modules 13 and 14 you have a behavior-shaped model. The loss curves on bot
    │                                                                       │
    │   These are eval questions. The loss curve doesn't see them.          │
    │                                                                       │
-   └──────────────────────────────────────────────────────────────────────┘
+   └───────────────────────────────────────────────────────────────────────┘
 ```
 
 A 20M-param Module-13 SFT'd model on the prompt:
@@ -162,22 +162,22 @@ The eval harness is what closes this loop. By scoring outputs against **what we 
 *The picture to internalize before implementing `expected_calibration_error` and `reliability_curve`. The bin-by-bin |acc − conf| visualization is what the test `test_ece_known_case_two_bins` hand-computes; reading this image first makes the test's expected value (0.25) visibly correct rather than mysterious.*
 
 ```
-   ┌──────────────────────────────────────────────────────────────────────┐
+   ┌───────────────────────────────────────────────────────────────────────┐
    │   ACCURACY vs CALIBRATION                                             │
-   ├──────────────────────────────────────────────────────────────────────┤
+   ├───────────────────────────────────────────────────────────────────────┤
    │                                                                       │
-   │     accuracy   =  fraction of predictions that are correct           │
-   │     confidence =  the model's stated probability for its prediction  │
+   │     accuracy   =  fraction of predictions that are correct            │
+   │     confidence =  the model's stated probability for its prediction   │
    │                                                                       │
    │     Calibrated:                                                       │
-   │       on the subset of predictions where confidence ≈ p,             │
-   │       the empirical accuracy is also ≈ p.                            │
-   │       — for ALL p in [0, 1].                                         │
+   │       on the subset of predictions where confidence ≈ p,              │
+   │       the empirical accuracy is also ≈ p.                             │
+   │       — for ALL p in [0, 1].                                          │
    │                                                                       │
    │     Over-confident: confidence > accuracy                             │
    │     Under-confident: confidence < accuracy                            │
    │                                                                       │
-   └──────────────────────────────────────────────────────────────────────┘
+   └───────────────────────────────────────────────────────────────────────┘
 ```
 
 A model can be:
@@ -258,36 +258,36 @@ A useful subtlety: **multiple-choice scoring is sensitive to surface forms.** If
 Generation eval is the more realistic of the two. Given a prompt, the model generates freely; a matcher decides if the generated string matches any reference.
 
 ```
-   ┌──────────────────────────────────────────────────────────────────────┐
+   ┌───────────────────────────────────────────────────────────────────────┐
    │   GENERATION EVAL — ONE EXAMPLE                                       │
-   ├──────────────────────────────────────────────────────────────────────┤
+   ├───────────────────────────────────────────────────────────────────────┤
    │                                                                       │
-   │     prompt:    "<|user|>\nWhat is 2+2?\n<|assistant|>\n"             │
+   │     prompt:    "<|user|>\nWhat is 2+2?\n<|assistant|>\n"              │
    │     references: ["4", "four"]                                         │
    │                                                                       │
    │           │                                                           │
    │           ▼                                                           │
    │                                                                       │
    │     generate_fn(prompt)                                               │
-   │       (under the hood: model, tokenizer, sampling settings,          │
-   │        cropping, decoding — but the harness sees only the result)    │
+   │       (under the hood: model, tokenizer, sampling settings,           │
+   │        cropping, decoding — but the harness sees only the result)     │
    │           │                                                           │
    │           ▼                                                           │
    │                                                                       │
-   │     prediction:  "4.<|end|>"     (or whatever the model produced)    │
+   │     prediction:  "4.<|end|>"     (or whatever the model produced)     │
    │           │                                                           │
    │           ▼                                                           │
    │                                                                       │
    │     numeric_match(prediction, references)                             │
-   │       extracts "4" from prediction (first number)                    │
-   │       extracts "4" from reference  "4"                               │
-   │       |4 - 4| <= 0.0  ──►  True                                      │
+   │       extracts "4" from prediction (first number)                     │
+   │       extracts "4" from reference  "4"                                │
+   │       |4 - 4| <= 0.0  ──►  True                                       │
    │           │                                                           │
    │           ▼                                                           │
    │                                                                       │
-   │     EvalResult(correct=True, prediction="4.<|end|>", confidence=None)│
+   │     EvalResult(correct=True, prediction="4.<|end|>", confidence=None) │
    │                                                                       │
-   └──────────────────────────────────────────────────────────────────────┘
+   └───────────────────────────────────────────────────────────────────────┘
 ```
 
 The matcher is the load-bearing decision. Choose well:
@@ -303,8 +303,8 @@ The matcher is the load-bearing decision. Choose well:
    │  Arithmetic / numeric answers             →  numeric_match          │
    │  Long-form outputs with target keywords   →  contains_match         │
    │  Refusal / safety probes                  →  contains_match (anchor!│
-   │                                              search for "I cannot",│
-   │                                              not just "no")        │
+   │                                              search for "I cannot", │
+   │                                              not just "no")         │
    └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -319,46 +319,46 @@ When the eval harness flags a wrong answer, it's useful to classify *why* it was
 
 ```
    ┌──────────────────────────────────────────────────────────────────────┐
-   │  FACTUAL HALLUCINATION                                                │
-   │  Model emits a fact that contradicts the world.                       │
+   │  FACTUAL HALLUCINATION                                               │
+   │  Model emits a fact that contradicts the world.                      │
    │  Example: "The largest city in Spain is Lisbon."                     │
    │  Detection: ground-truth Q&A; matcher must catch surface variations. │
    └──────────────────────────────────────────────────────────────────────┘
 
    ┌──────────────────────────────────────────────────────────────────────┐
-   │  CONTEXTUAL HALLUCINATION                                             │
-   │  Model contradicts something STATED in the prompt.                    │
+   │  CONTEXTUAL HALLUCINATION                                            │
+   │  Model contradicts something STATED in the prompt.                   │
    │  Example: prompt says "Alice is 30. How old is she?" → "She's 25."   │
-   │  Detection: probe with prompts that contain explicit facts.           │
-   │  Symptom of poor in-context attention.                                │
+   │  Detection: probe with prompts that contain explicit facts.          │
+   │  Symptom of poor in-context attention.                               │
    └──────────────────────────────────────────────────────────────────────┘
 
    ┌──────────────────────────────────────────────────────────────────────┐
-   │  INTRINSIC vs EXTRINSIC                                               │
-   │  Intrinsic: the wrong information was implied by, but contradicts,    │
-   │    the prompt or training data.                                       │
-   │  Extrinsic: the wrong information has no support anywhere — the       │
-   │    model made it up entirely.                                         │
-   │  Detection: look at the training corpus; is the wrong answer          │
+   │  INTRINSIC vs EXTRINSIC                                              │
+   │  Intrinsic: the wrong information was implied by, but contradicts,   │
+   │    the prompt or training data.                                      │
+   │  Extrinsic: the wrong information has no support anywhere — the      │
+   │    model made it up entirely.                                        │
+   │  Detection: look at the training corpus; is the wrong answer         │
    │    plausibly derivable from anything there?                          │
    └──────────────────────────────────────────────────────────────────────┘
 
    ┌──────────────────────────────────────────────────────────────────────┐
-   │  REFUSAL FAILURE                                                      │
-   │  Model answers a question it should refuse.                           │
-   │  Example: "What's my mother's maiden name?" → "Smith."                │
+   │  REFUSAL FAILURE                                                     │
+   │  Model answers a question it should refuse.                          │
+   │  Example: "What's my mother's maiden name?" → "Smith."               │
    │  Detection: probes designed to be unanswerable; expected response is │
-   │    "I don't know" or "I cannot determine."                            │
+   │    "I don't know" or "I cannot determine."                           │
    │  Tracked separately from accuracy — the failure mode is "responded   │
-   │    at all," not "responded incorrectly."                              │
+   │    at all," not "responded incorrectly."                             │
    └──────────────────────────────────────────────────────────────────────┘
 
    ┌──────────────────────────────────────────────────────────────────────┐
-   │  FORMAT BREAKAGE (carry-over from Modules 13–14)                      │
-   │  Model emits valid content but breaks the chat-template format.       │
-   │  Example: forgets the trailing <|end|>; emits a stray <|user|>.       │
-   │  Detection: regex on the raw output; not a "wrong answer" — a      │
-   │    "wrong shape." Track separately.                                   │
+   │  FORMAT BREAKAGE (carry-over from Modules 13–14)                     │
+   │  Model emits valid content but breaks the chat-template format.      │
+   │  Example: forgets the trailing <|end|>; emits a stray <|user|>.      │
+   │  Detection: regex on the raw output; not a "wrong answer" — a        │
+   │    "wrong shape." Track separately.                                  │
    └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -369,27 +369,27 @@ The taxonomy isn't important to get right; the *practice* of categorizing failur
 Some failure modes are not hallucinations — they're capability gaps. A 20M-param model trained on a few hundred MB of text **cannot** do multi-step arithmetic, multi-hop reasoning, or chain-of-thought-style introspection. These aren't bugs; they're the floor. The eval harness's job is to make this floor visible:
 
 ```
-   ┌──────────────────────────────────────────────────────────────────────┐
+   ┌───────────────────────────────────────────────────────────────────────┐
    │  CAPABILITY FLOOR (toy models)                                        │
-   ├──────────────────────────────────────────────────────────────────────┤
+   ├───────────────────────────────────────────────────────────────────────┤
    │                                                                       │
    │     What the model probably CAN do at toy scale:                      │
    │       ✓ pattern-match the chat format                                 │
    │       ✓ continue a sentence in the same register                      │
-   │       ✓ answer a simple factual question if it appears verbatim      │
+   │       ✓ answer a simple factual question if it appears verbatim       │
    │         (or close to it) in pretraining                               │
-   │       ✓ pick the more-likely of two completions                      │
+   │       ✓ pick the more-likely of two completions                       │
    │                                                                       │
    │     What the model probably CANNOT do:                                │
    │       ✗ multi-digit arithmetic                                        │
    │       ✗ multi-step reasoning                                          │
-   │       ✗ refusal of unanswerable questions                            │
+   │       ✗ refusal of unanswerable questions                             │
    │       ✗ recognize or correct its own errors                           │
    │       ✗ honestly admit uncertainty                                    │
    │                                                                       │
    │     The eval is what lets you tell which is which.                    │
    │                                                                       │
-   └──────────────────────────────────────────────────────────────────────┘
+   └───────────────────────────────────────────────────────────────────────┘
 ```
 
 The deliverable for this module is a written *characterization* of these floors, not a number. "Accuracy = 0.42" is less informative than "the model can answer city-of-country questions if the country appears in pretraining, fails on arithmetic past single digits, and never refuses any question regardless of how impossible."

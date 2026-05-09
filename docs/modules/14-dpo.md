@@ -612,11 +612,9 @@ Optional:
 ## Deliverable checklist
 
 - [ ] All tests in `tests/test_dpo.py` pass.
-- [ ] Hand-authored preference dataset of 100+ `(prompt, chosen, rejected)` triples in `data/dpo/preferences.json` (or similar). Length distribution audited; chosen and rejected within 2× of each other.
-- [ ] DPO'd checkpoint saved to disk, separate from the SFT'd checkpoint. The SFT'd checkpoint is preserved for re-runs and ablations.
-- [ ] Notebook: `notebooks/14-dpo-sft-vs-dpo.ipynb`. Loads SFT'd and DPO'd checkpoints, runs `generate` from each on the same 15 prompts (5 in-distribution, 5 transfer, 5 OOD), prints all comparisons side by side. Plots reward margin and accuracy across training. Commit with the outputs visible.
-- [ ] One paragraph on what DPO *did* (visible behavioral shift on in-distribution and transfer prompts, calibration of overconfident wrong answers) and what it *didn't* (give the model new factual knowledge, fix capability gaps, prevent format breakage on OOD prompts). The two-list framing is the deliverable; both lists should have at least three items.
-- [ ] You can explain — out loud, without notes — the closed-form derivation of the DPO loss from the RLHF objective: KL-constrained max-reward → optimal policy is `π_ref · exp(r/β) / Z` → invert for `r` → substitute into Bradley-Terry → DPO.
+- [ ] Hand-authored preference dataset of 100+ `(prompt, chosen, rejected)` triples in `data/dpo/preferences.json` (or similar). Length distribution audited
+- [ ]  DPO model checkpoint saved to disk, separate from the SFT checkpoint. The SFT checkpoint is preserved for re-runs and ablations.
+- [ ] One paragraph on what DPO *did* and what it *didn't*. The two-list framing is the deliverable; both lists should have at least three items.
 - [ ] You can explain — out loud, without notes — why the initial DPO loss is exactly `log 2`, regardless of architecture, data, or β.
 - [ ] You can explain — out loud, without notes — what the implicit reward is, why it equals `β · log[π/π_ref]`, and why the prompt's own log-probability cancels.
 - [ ] You can explain — out loud, without notes — why the reference model must stay frozen, what happens if it isn't, and how to verify the freeze invariant.
