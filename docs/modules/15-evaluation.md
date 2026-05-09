@@ -24,11 +24,11 @@ After Modules 13 and 14 you have a behavior-shaped model. The loss curves on bot
    │  THE PROBLEM WITH LOSS CURVES                                         │
    ├───────────────────────────────────────────────────────────────────────┤
    │                                                                       │
-   │   SFT loss   ────────┐                                                │
+   │   SFT loss   ─────────┐                                               │
    │                       │                                               │
    │                       └──►  "is the model formatting answers?"        │
    │                                                                       │
-   │   DPO margin ────────┐                                                │
+   │   DPO margin ─────────┐                                               │
    │                       │                                               │
    │                       └──►  "is the chosen-vs-rejected gap growing?"  │
    │                                                                       │
@@ -90,23 +90,23 @@ That's what Module 15 builds. Two harnesses (multiple-choice + generation), four
    │  TWO EVAL HARNESSES, FOUR MATCHERS, ONE CALIBRATION METRIC           │
    └──────────────────────────────────────────────────────────────────────┘
 
-      ┌──────────────────────────────────┐        ┌────────────────────────┐
-      │  CLOSED-SET (multiple choice)    │        │  OPEN-SET (generation) │
-      │                                  │        │                        │
-      │  prompt                          │        │  prompt                │
-      │    + N candidate continuations   │        │    + reference answers │
-      │                                  │        │                        │
-      │  ──► score each via              │        │  ──► generate_fn(prompt)│
-      │      continuation_logprob        │        │       returns one      │
-      │                                  │        │       generated string │
-      │  ──► argmax = prediction         │        │                        │
-      │  ──► softmax = confidence        │        │  ──► matcher(pred, refs)│
-      │                                  │        │       returns bool     │
-      │  ──► ECE over the eval set       │        │                        │
-      │      compares confidence to      │        │  (no confidence — open │
-      │      empirical accuracy          │        │   set, can't normalize)│
-      │                                  │        │                        │
-      └──────────────────────────────────┘        └────────────────────────┘
+    ┌────────────────────────────────┐    ┌────────────────────────────────┐
+    │  CLOSED-SET (multiple choice)  │    │  OPEN-SET (generation).        │
+    │                                │    │                                │
+    │  prompt                        │    │  prompt                        │
+    │    + N candidate continuations │    │    + reference answers         │
+    │                                │    │                                │
+    │  ──► score each via            │    │  ──► generate_fn(prompt).      │
+    │      continuation_logprob      │    │       returns one              │
+    │                                │    │       generated string         │
+    │  ──► argmax = prediction       │    │                                │
+    │  ──► softmax = confidence      │    │  ──► matcher(pred, refs).      │
+    │                                │    │       returns bool             │
+    │  ──► ECE over the eval set     │    │                                │
+    │      compares confidence to    │    │  (no confidence — open         │
+    │      empirical accuracy        │    │   set, can't normalize).       │
+    │                                │    │                                │
+    └────────────────────────────────┘    └────────────────────────────────┘
 
       Matchers (independent, swappable):
         exact_match       — character-identity
@@ -132,23 +132,23 @@ The deepest pathology of small LMs is that they're trained on **fluency** but ju
 
 ```
    ┌──────────────────────────────────────────────────────────────────────┐
-   │   THE TRAINING OBJECTIVE                                              │
+   │   THE TRAINING OBJECTIVE                                             │
    ├──────────────────────────────────────────────────────────────────────┤
-   │                                                                       │
+   │                                                                      │
    │     loss  =  − Σ_t log π(target_t | context)                         │
-   │                                                                       │
-   │   This rewards:                                                       │
+   │                                                                      │
+   │   This rewards:                                                      │
    │     ✓ matching the surface form of the training data                 │
    │     ✓ producing fluent, well-formed text                             │
    │     ✓ following the chat template (post-SFT)                         │
    │     ✓ preferring chosen over rejected (post-DPO)                     │
-   │                                                                       │
-   │   This does NOT reward:                                               │
-   │     ✗ being factually correct                                         │
-   │     ✗ admitting uncertainty                                           │
-   │     ✗ refusing to invent things                                       │
+   │                                                                      │
+   │   This does NOT reward:                                              │
+   │     ✗ being factually correct                                        │
+   │     ✗ admitting uncertainty                                          │
+   │     ✗ refusing to invent things                                      │
    │     ✗ stopping at the right time                                     │
-   │                                                                       │
+   │                                                                      │
    └──────────────────────────────────────────────────────────────────────┘
 ```
 

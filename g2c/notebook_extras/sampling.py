@@ -8,6 +8,8 @@ the student has not built ``g2c.sampling.generate`` yet.
 
 from __future__ import annotations
 
+from html import escape
+from time import perf_counter
 from typing import Any
 
 import torch
@@ -29,6 +31,7 @@ __all__ = [
     "sample_model_text",
     "sample_text",
     "show_model_samples",
+    "stream_sample_text",
     "token_is_readable",
     "type_token_ratio",
 ]
@@ -118,9 +121,172 @@ def sample_ids(
     )
 
 
-def sample_text(artifact: LoadedModelArtifact, prompt: str, **kwargs: Any) -> str:
+def sample_text(
+    artifact: LoadedModelArtifact,
+    prompt: str,
+    *,
+    stream: bool = False,
+    stream_title: str | None = None,
+    update_every: int = 4,
+    **kwargs: Any,
+) -> str:
     """Sample and decode text from a loaded artifact."""
+    if stream:
+        return stream_sample_text(
+            artifact,
+            prompt,
+            title=stream_title,
+            update_every=update_every,
+            **kwargs,
+        )
     return decode_ids(artifact, sample_ids(artifact, prompt, **kwargs))
+
+
+@torch.no_grad()
+def stream_sample_text(
+    artifact: LoadedModelArtifact,
+    prompt: str,
+    *,
+    max_new_tokens: int = 200,
+    temperature: float = 0.8,
+    top_k: int | None = None,
+    top_p: float | None = 0.9,
+    repetition_penalty: float = 1.1,
+    seed: int = 0,
+    title: str | None = None,
+    update_every: int = 4,
+) -> str:
+    """Sample text while updating one Jupyter output block.
+
+    This is a notebook ergonomics wrapper around the same loop students build
+    in ``g2c.sampling.generate``. It exists because external BaseLM artifacts
+    can take long enough that a live partial sample is easier to work with than
+    a blank cell followed by a large printout.
+    """
+    from g2c.sampling import (
+        apply_repetition_penalty,
+        apply_temperature,
+        top_k_filter,
+        top_p_filter,
+    )
+
+    if max_new_tokens < 0:
+        raise ValueError(f"max_new_tokens must be non-negative, got {max_new_tokens}")
+    if temperature < 0:
+        raise ValueError(f"temperature must be non-negative, got {temperature}")
+    if update_every <= 0:
+        raise ValueError(f"update_every must be positive, got {update_every}")
+
+    model = artifact.model
+    prompt_ids = encode_prompt(artifact, prompt)
+    generator = torch.Generator().manual_seed(seed)
+    greedy = temperature == 0.0
+    full_ids = prompt_ids.detach().cpu().clone()
+    stop_id = eos_id(artifact)
+    device = getattr(model, "device", torch.device("cpu"))
+    label = title or f"streaming sample after {prompt!r}"
+    start = perf_counter()
+    handle = _start_stream_display(label, decode_ids(artifact, full_ids), 0, max_new_tokens)
+
+    for step in range(max_new_tokens):
+        ctx = full_ids[-model.max_seq_len:].to(device).unsqueeze(0)
+        logits = model(ctx)
+        last_logits = logits[:, -1, :].cpu()
+
+        if greedy:
+            next_id = last_logits.argmax(dim=-1)
+        else:
+            if repetition_penalty != 1.0:
+                last_logits = apply_repetition_penalty(
+                    last_logits,
+                    full_ids,
+                    repetition_penalty,
+                )
+            last_logits = apply_temperature(last_logits, temperature)
+            if top_k is not None:
+                last_logits = top_k_filter(last_logits, top_k)
+            if top_p is not None:
+                last_logits = top_p_filter(last_logits, top_p)
+
+            probs = torch.softmax(last_logits, dim=-1)
+            next_id = torch.multinomial(
+                probs,
+                num_samples=1,
+                generator=generator,
+            ).squeeze(-1)
+
+        full_ids = torch.cat([full_ids, next_id], dim=0)
+        done = stop_id is not None and int(next_id.item()) == stop_id
+        if done or step + 1 == max_new_tokens or (step + 1) % update_every == 0:
+            _update_stream_display(
+                handle,
+                label,
+                decode_ids(artifact, full_ids),
+                step + 1,
+                max_new_tokens,
+                perf_counter() - start,
+                done=done,
+            )
+        if done:
+            break
+
+    text = decode_ids(artifact, full_ids)
+    if handle is None:
+        print_sample(label, text)
+    return text
+
+
+def _start_stream_display(
+    title: str,
+    text: str,
+    step: int,
+    total: int,
+) -> Any:
+    try:
+        from IPython.display import HTML, display
+    except ImportError:
+        return None
+    return display(
+        HTML(_stream_html(title, text, step, total, elapsed=0.0, done=False)),
+        display_id=True,
+    )
+
+
+def _update_stream_display(
+    handle: Any,
+    title: str,
+    text: str,
+    step: int,
+    total: int,
+    elapsed: float,
+    *,
+    done: bool,
+) -> None:
+    if handle is None:
+        return
+    from IPython.display import HTML
+
+    handle.update(HTML(_stream_html(title, text, step, total, elapsed=elapsed, done=done)))
+
+
+def _stream_html(
+    title: str,
+    text: str,
+    step: int,
+    total: int,
+    *,
+    elapsed: float,
+    done: bool,
+) -> str:
+    status = "done" if done or step >= total else "generating"
+    return (
+        "<div style='font-family: ui-monospace, SFMono-Regular, Menlo, monospace;'>"
+        f"<div><strong>{escape(title)}</strong> "
+        f"<span style='color:#666'>[{status} {step:,}/{total:,}; {elapsed:.1f}s]</span></div>"
+        "<pre style='white-space: pre-wrap; line-height: 1.35; "
+        "border-left: 3px solid #ccc; padding-left: 0.75rem;'>"
+        f"{escape(printable(text))}</pre></div>"
+    )
 
 
 def print_sample(title: str, text: str, *, width: int = 88) -> None:
