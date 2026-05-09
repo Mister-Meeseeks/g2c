@@ -403,9 +403,9 @@ Package: `g2c/dpo/`
 
 ```python
 class PreferenceExample(NamedTuple):
-    prompt_ids:   list[int]                                   # implemented (NamedTuple)
-    chosen_ids:   list[int]                                   # implemented (NamedTuple)
-    rejected_ids: list[int]                                   # implemented (NamedTuple)
+    prompt_ids:   list[int]                                   # implemented
+    chosen_ids:   list[int]                                   # implemented 
+    rejected_ids: list[int]                                   # implemented 
 
 
 def pad_and_collate_pref(
@@ -438,35 +438,14 @@ def dpo_loss(
 
 
 class DPOTrainer:
-    def __init__(
-        self,
-        model,                                # the trainable POLICY
-        *,
-        ref_model,                            # the FROZEN reference
-        examples: list[PreferenceExample],
-        max_seq_len: int,
-        pad_id: int,
-        beta: float,
-        batch_size: int,
-        max_steps: int,
-        max_lr: float,
-        min_lr: float = 0.0,
-        warmup_steps: int = 0,
-        weight_decay: float = 0.0,
-        grad_clip: float | None = None,
-        eval_every: int = 100,
-        eval_iters: int = 20,
-        log_every: int = 10,
-        generator: torch.Generator | None = None,
-        device: str | torch.device | None = "auto",
-    ) -> None:                                                # implemented
-
+	model: Module
+	ref_model: Module
+	examples: list[PreferenceExample]
+	beta: float
+	
     def lr(self, step: int | None = None) -> float:           # implemented
-
     def train_step(self) -> dict[str, float]:                 # SCAFFOLDED
-
     def evaluate(self, eval_examples) -> dict[str, float]:    # implemented
-
     def train(self, eval_examples=None) -> dict[str, list]:   # implemented
 ```
 
