@@ -815,7 +815,7 @@ def test_dpo_trainer_ref_model_unchanged():
     # Snapshot AFTER. Every parameter must be identical.
     ref_after = list(ref.parameters())
     for before, after in zip(ref_before, ref_after, strict=True):
-        assert torch.equal(before, after), (
+        assert torch.equal(before, after.detach().cpu()), (
             "Reference model parameter changed during DPO training. "
             "The optimizer must be attached only to the policy model."
         )

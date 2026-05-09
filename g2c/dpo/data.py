@@ -160,5 +160,52 @@ def pad_and_collate_pref(
         truncation and padding happen separately. The chosen sequence
         can have entirely different length than the rejected.
     """
-    # TODO
-    raise NotImplementedError
+    chosen_ids_rows: list[list[int]] = []
+    chosen_mask_rows: list[list[int]] = []
+    rejected_ids_rows: list[list[int]] = []
+    rejected_mask_rows: list[list[int]] = []
+
+    def fit(ids: list[int], mask: list[int]) -> tuple[list[int], list[int]]:
+        ids = ids[:max_seq_len]
+        mask = mask[:max_seq_len]
+        pad_count = max_seq_len - len(ids)
+        if pad_count > 0:
+            ids = ids + [pad_id] * pad_count
+            mask = mask + [0] * pad_count
+        return ids, mask
+
+    for ex in examples:
+        chosen_full = ex.prompt_ids + ex.chosen_ids
+        chosen_full_mask = [0] * len(ex.prompt_ids) + [1] * len(ex.chosen_ids)
+        chosen_ids, chosen_mask = fit(chosen_full, chosen_full_mask)
+
+        rejected_full = ex.prompt_ids + ex.rejected_ids
+        rejected_full_mask = [0] * len(ex.prompt_ids) + [1] * len(ex.rejected_ids)
+        rejected_ids, rejected_mask = fit(rejected_full, rejected_full_mask)
+
+        chosen_ids_rows.append(chosen_ids)
+        chosen_mask_rows.append(chosen_mask)
+        rejected_ids_rows.append(rejected_ids)
+        rejected_mask_rows.append(rejected_mask)
+
+    chosen_ids_b = torch.tensor(chosen_ids_rows, dtype=torch.long)
+    chosen_mask_b = torch.tensor(chosen_mask_rows, dtype=torch.long)
+    rejected_ids_b = torch.tensor(rejected_ids_rows, dtype=torch.long)
+    rejected_mask_b = torch.tensor(rejected_mask_rows, dtype=torch.long)
+
+    chosen_x = chosen_ids_b[:, :-1]
+    chosen_y = chosen_ids_b[:, 1:]
+    chosen_mask = chosen_mask_b[:, 1:]
+
+    rejected_x = rejected_ids_b[:, :-1]
+    rejected_y = rejected_ids_b[:, 1:]
+    rejected_mask = rejected_mask_b[:, 1:]
+
+    return (
+        chosen_x,
+        chosen_y,
+        chosen_mask,
+        rejected_x,
+        rejected_y,
+        rejected_mask,
+    )

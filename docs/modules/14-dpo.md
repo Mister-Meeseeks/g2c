@@ -32,26 +32,23 @@ Lisbon.<|end|>
 
 Confident. Format-perfect. Wrong. The SFT loss has no way to penalize this output — every syntactically valid `{single sentence}<|end|>` response with the format markets in the right place is equally good. The model "knows" the prompt is asking about a Spanish city; it picks city-shaped tokens that pretraining over-represented from the corpus. SFT taught it the *shape* of the answer; nothing taught it which answers is correct.
 
-SFT was the first layer of post-training in our LLM stack. SFT was a way to teach style. This week we're exploring another form of post-training which teaches human preferences. This is more powerful than it appears at first. Many criteria, including even factual accuracy, can be packaged into human preferences (with the right humans).
+SFT was the first layer of post-training in our LLM stack. This week we're exploring another form of post-training which teaches human preferences. This is more powerful than it appears at first. Many behavioral criteria, including factual accuracy, can be represented by asking the right humans the right questions.
 
 ## The big idea
 
-DPO is another form of *postraining*. Like SFT it starts with a "base model" and uses gradient descent based training to tune behavior. Like
-SFT trains the model to imitate one answer. Preference tuning trains it to **prefer one answer over another for the same prompt**.
-
-The training example is no longer:
+In classic SFT post-training, the training example is a prompt response pair:
 
 ```
 (prompt, response)
 ```
 
-It is:
+The limitation is 
 
 ```
 (prompt, chosen_response, rejected_response)
 ```
 
-For the Madrid/Lisbon example:
+For the Madrid/Lisbon example, the preference triple would be:
 
 ```
 prompt  : "<|user|>\nWhat is the largest city in Spain?\n<|assistant|>\n"
@@ -65,7 +62,7 @@ The goal is not "memorize Madrid." The goal is "when the model is in this kind o
 
 A *preference triple* (`prompt`, `chosen`, `rejected`) is a shared prompt prefix and two assistant responses. The grader chooses the best response, and rejects the other response. 
 
-The training process rewards the tokens in the chosen response and penalizes the tokens in the rejected response. Because they're identical between the responses, and therefore non-relevant for comparison, the prompt prefix tokens are *masked* to have no impact on the training.
+The training process rewards the tokens in the chosen response and penalizes the tokens in the rejected response. Prompt prefix tokens are identical between the responses, and therefore non-relevant for comparison. Therefore we *mask* them in the loss function.
 
 ```
    prompt_ids + chosen_ids       → score chosen response
@@ -75,7 +72,7 @@ The training process rewards the tokens in the chosen response and penalizes the
    mask = 1 on response tokens
 ```
 
-This is why DPO can feel like SFT in code. But SFT asks "how likely is this target response?" DPO asks "did the model improve the chosen response relative to the rejected response?"
+DPO can feel similar to SFT in code. But SFT asks "how likely is this target response?" DPO asks "did the model improve the chosen response relative to the rejected response?"
 
 ### RLHF as the historical baseline
 
@@ -242,9 +239,9 @@ For a single preference example `(x, y_c, y_r)` with chosen `y_c` and rejected `
    └────────────────────────────────────────────────────────────────────┘
 ```
 
-**At step 0** (policy is freshly copied from reference): both ratios are zero, the margin is zero, `σ(0) = 0.5`, and `loss = log 2 ≈ 0.6931`. This is always the canonical DPO sanity value. If you implement DPO and your initial loss is anything else, the implementation is wrong.
+**At initialization**: both ratios are zero, the margin is zero, `σ(0) = 0.5`, and `loss = log 2 ≈ 0.6931`. This is always the canonical DPO sanity value. If you implement DPO and your initial loss is anything else, the implementation is wrong.
 
-**As training proceeds**: the policy pushes `log π(y_c|x)` UP and `log π(y_r|x)` DOWN, the margin grows positive, the loss decreases below `log 2`. The implicit reward margin (`chosen_reward − rejected_reward`) is the headline diagnostic — it should grow monotonically across training. It's a more informative quantity than loss (which saturates as the sigmoid approaches 1).
+**As training proceeds**: the policy pushes `log π(y_c|x)` **up** and `log π(y_r|x)` **down** and loss falls. The reward margin (`chosen_reward − rejected_reward`) is the main number to pay attention to. If training is working it should increase over steps. (Loss itself will tend to saturate quickly because of the sigmoid.) 
 
 **β controls how far the policy can drift.** Mathematically, `β` is the KL coefficient in the original RLHF objective; intuitively, it's the "strength" of the policy's connection to the reference. Small β (e.g. 0.01) lets the policy diverge a long way for small preference signals. That invites risk of mode collapse, repetition, and gibberish. Large β (e.g. 1.0) pins the policy near the reference — safe but sometimes can't move enough to absorb the preference signal. The DPO paper and most follow-ups recommend `β ∈ [0.1, 0.5]` as the sweet spot. **At toy scale `β = 0.1` is a fine default**, though its always worth sweeping.
 
@@ -315,16 +312,6 @@ Beyond the SFT failure modes inherited from Module 13:
 
 ```
    ┌────────────────────────────────────────────────────────────────┐
-   │   REFERENCE DRIFT                                              │
-   │   The reference model is not actually frozen — its parameters  │
-   │   update along with the policy. Symptom: loss curve looks     │
-   │   fine but the model behavior matches the SFT'd model exactly. │
-   │   Fix: verify ref_model.parameters() are unchanged after a few │
-   │   steps. Common cause: optimizer was constructed with both     │
-   │   models' params concatenated.                                 │
-   └────────────────────────────────────────────────────────────────┘
-
-   ┌────────────────────────────────────────────────────────────────┐
    │   LENGTH BIAS                                                  │
    │   Chosen completions are systematically longer than rejected   │
    │   ones in the dataset. DPO learns "longer is better" instead   │
@@ -348,7 +335,7 @@ Beyond the SFT failure modes inherited from Module 13:
    │   BETA TOO SMALL                                               │
    │   The policy drifts arbitrarily far from the reference. Even   │
    │   if the preference signal is good, the model loses base       │
-   │   capacity. Symptom: format breaks, repetition increases,     │
+   │   capacity. Symptom: format breaks, repetition increases,      │
    │   responses get longer or shorter monotonically. Fix: raise β. │
    │   At toy scale β=0.1 is the floor; β=0.01 is too small.        │
    └────────────────────────────────────────────────────────────────┘
