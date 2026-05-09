@@ -32,9 +32,8 @@ from __future__ import annotations
 
 import torch
 
-from g2c.nn import SGD, Module, resolve_device
-from g2c.training.clip import clip_grad_norm_
-from g2c.training.schedule import cosine_with_warmup
+from g2c.nn import Module, resolve_device
+from g2c.training import AdamW, clip_grad_norm_, cosine_with_warmup
 
 from .data import SFTExample, pad_and_collate
 from .loss import masked_cross_entropy
@@ -66,7 +65,7 @@ class SFTTrainer:
             pretraining's `3e-3`.
         min_lr: floor learning rate at end of cosine decay.
         warmup_steps: linear-warmup steps. Often 10–50 for SFT.
-        weight_decay: L2 regularization (forwarded to SGD).
+        weight_decay: decoupled weight decay (forwarded to AdamW).
         grad_clip: optional global gradient-norm threshold. `None`
             disables clipping. `1.0` is a fine default.
         eval_every: run a validation pass every N steps.
@@ -80,7 +79,7 @@ class SFTTrainer:
             run.
 
     Attributes:
-        optimizer: the inner `SGD` instance. The trainer mutates
+        optimizer: the inner `AdamW` instance. The trainer mutates
             `optimizer.lr` once per step from the cosine schedule.
         step: current step counter (0-indexed). Advanced by 1 at the
             end of each `train_step`.
@@ -102,7 +101,7 @@ class SFTTrainer:
     log_every: int
     generator: torch.Generator | None
     device: torch.device
-    optimizer: SGD
+    optimizer: AdamW
     step: int
 
     def __init__(
@@ -150,7 +149,7 @@ class SFTTrainer:
         self.eval_iters = eval_iters
         self.log_every = log_every
         self.generator = generator
-        self.optimizer = SGD(
+        self.optimizer = AdamW(
             self.model.parameters(), lr=max_lr, weight_decay=weight_decay
         )
         self.step = 0

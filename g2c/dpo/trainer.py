@@ -50,9 +50,8 @@ from __future__ import annotations
 
 import torch
 
-from g2c.nn import SGD, Module, resolve_device
-from g2c.training.clip import clip_grad_norm_
-from g2c.training.schedule import cosine_with_warmup
+from g2c.nn import Module, resolve_device
+from g2c.training import AdamW, clip_grad_norm_, cosine_with_warmup
 
 from .data import PreferenceExample, pad_and_collate_pref
 from .loss import dpo_loss, sequence_logprob
@@ -97,7 +96,7 @@ class DPOTrainer:
         min_lr: floor learning rate at end of cosine decay.
         warmup_steps: linear-warmup steps. 10–50 is typical for DPO
             at our scale.
-        weight_decay: L2 regularization (forwarded to SGD).
+        weight_decay: decoupled weight decay (forwarded to AdamW).
         grad_clip: optional global gradient-norm threshold. `None`
             disables clipping. `1.0` is a fine default.
         eval_every: run a validation pass every N steps.
@@ -110,7 +109,7 @@ class DPOTrainer:
             force a CPU run.
 
     Attributes:
-        optimizer: the inner `SGD` instance, attached to `model`'s
+        optimizer: the inner `AdamW` instance, attached to `model`'s
             parameters only — never to `ref_model`'s.
         step: current step counter (0-indexed).
     """
@@ -133,7 +132,7 @@ class DPOTrainer:
     log_every: int
     generator: torch.Generator | None
     device: torch.device
-    optimizer: SGD
+    optimizer: AdamW
     step: int
 
     def __init__(
@@ -192,7 +191,7 @@ class DPOTrainer:
         self.generator = generator
         # Optimizer is attached to the policy ONLY. The reference is
         # never updated.
-        self.optimizer = SGD(
+        self.optimizer = AdamW(
             self.model.parameters(), lr=max_lr, weight_decay=weight_decay
         )
         self.step = 0
@@ -324,7 +323,7 @@ class DPOTrainer:
         Common reorderings to avoid (same as Modules 10/13):
 
           * Computing the reference forwards WITH gradient. The
-            optimizer would happily try to step them, but
+            optimizer would not step them, because
             `optimizer.params` doesn't include them — so it's a
             silent waste of memory, not a correctness bug. Still:
             wrap the ref forwards in `torch.no_grad()` so the autograd

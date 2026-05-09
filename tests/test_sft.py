@@ -40,6 +40,7 @@ from g2c.sft import (
     pad_and_collate,
 )
 from g2c.pretraining import lm_cross_entropy
+from g2c.training import AdamW
 from g2c.transformer import TransformerLM
 
 
@@ -584,7 +585,7 @@ def test_sft_trainer_construction_defaults():
     assert trainer.max_steps == 10
     assert trainer.batch_size == 2
     assert trainer.step == 0
-    assert trainer.optimizer is not None
+    assert isinstance(trainer.optimizer, AdamW)
     expected_device = torch.device(
         "mps" if torch.backends.mps.is_available() else "cpu"
     )

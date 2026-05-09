@@ -39,6 +39,7 @@ from g2c.dpo import (
     pad_and_collate_pref,
     sequence_logprob,
 )
+from g2c.training import AdamW
 from g2c.transformer import TransformerLM
 
 
@@ -543,7 +544,7 @@ def test_dpo_trainer_construction_defaults():
     assert trainer.max_steps == 10
     assert trainer.batch_size == 2
     assert trainer.step == 0
-    assert trainer.optimizer is not None
+    assert isinstance(trainer.optimizer, AdamW)
     expected_device = torch.device(
         "mps" if torch.backends.mps.is_available() else "cpu"
     )
@@ -574,7 +575,7 @@ def test_dpo_trainer_explicit_cpu_device_moves_model_params():
 
 def test_dpo_trainer_optimizer_only_on_policy():
     """The optimizer's params come from `model.parameters()`, NOT
-    from `ref_model.parameters()`. Otherwise SGD would happily try
+    from `ref_model.parameters()`. Otherwise AdamW would try
     to step the reference too."""
     model = _make_tiny_model()
     ref = _clone_model(model)
