@@ -242,8 +242,33 @@ class SFTTrainer:
             consumed; clipping is a no-op).
           * Forgetting `zero_grad` (PyTorch accumulates into .grad).
         """
-        # TODO
-        raise NotImplementedError
+        x, y, loss_mask = self._sample_batch(self.examples)
+        x = x.to(self.device)
+        y = y.to(self.device)
+        loss_mask = loss_mask.to(self.device)
+
+        lr = self.lr()
+        self.optimizer.lr = lr
+
+        self.optimizer.zero_grad()
+
+        logits = self.model(x)
+
+        loss = masked_cross_entropy(logits, y, loss_mask)
+
+        loss.backward()
+
+        if self.grad_clip is not None:
+            grad_norm = clip_grad_norm_(self.model.parameters(), self.grad_clip)
+        else:
+            grad_norm = 0.0
+
+        self.optimizer.step()
+
+        self.step += 1
+
+        return {"loss": loss.item(), "lr": lr, "grad_norm": grad_norm}
+    
 
     def evaluate(self, eval_examples: list[SFTExample]) -> float:
         """Average masked CE over `eval_iters` random batches.

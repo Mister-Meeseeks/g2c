@@ -117,8 +117,22 @@ class ChatTemplate:
               tokenization of the next role marker stays consistent
               with the training-time tokenization.
         """
-        # TODO
-        raise NotImplementedError
+        if not messages:
+            raise ValueError("messages must be non-empty")
+
+        parts: list[str] = []
+        for turn in messages:
+            role = turn["role"]
+            content = turn["content"]
+
+            if role == "user":
+                parts.append(f"{self.USER}\n{content}\n")
+            elif role == "assistant":
+                parts.append(f"{self.ASSISTANT}\n{content}{self.END}")
+            else:
+                raise ValueError(f"unknown role: {role!r}")
+
+        return "".join(parts)
 
     def render_with_mask(
         self,
@@ -194,5 +208,31 @@ class ChatTemplate:
             Without this, the model never learns to stop and inference
             loops to `max_new_tokens` every time.
         """
-        # TODO
-        raise NotImplementedError
+        ids: list[int] = []
+        mask: list[int] = []
+
+        for turn in messages:
+            role = turn["role"]
+            content = turn["content"]
+
+            if role == "user":
+                chunk = f"{self.USER}\n{content}\n"
+                chunk_ids = tokenizer.encode(chunk)
+                ids.extend(chunk_ids)
+                mask.extend([0] * len(chunk_ids))
+
+            elif role == "assistant":
+                prefix = f"{self.ASSISTANT}\n"
+                prefix_ids = tokenizer.encode(prefix)
+                ids.extend(prefix_ids)
+                mask.extend([0] * len(prefix_ids))
+
+                target = f"{content}{self.END}"
+                target_ids = tokenizer.encode(target)
+                ids.extend(target_ids)
+                mask.extend([1] * len(target_ids))
+
+            else:
+                raise ValueError(f"unknown role: {role!r}")
+
+        return SFTExample(ids=ids, mask=mask)
