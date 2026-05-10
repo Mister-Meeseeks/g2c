@@ -169,58 +169,58 @@ The masked-loss formula is the same familiar cross-validation formula, but only 
 The visible failure modes of toy-scale SFT, in roughly the order you'll encounter them:
 
 ```
-   ┌───────────────────────────────────────────────────────────────┐
+   ┌────────────────────────────────────────────────────────────────┐
    │   FORMAT COLLAPSE                                              │
    │   The model produces the right format on every prompt — even   │
    │   prompts where the format is wrong. Asked to continue a       │
    │   poem, it answers in a single sentence. Symptom: model is     │
    │   always assistant-shaped.                                     │
-   │   Fix: usually nothing — at this scale, format collapse is    │
+   │   Fix: usually nothing — at this scale, format collapse is     │
    │   inherent. At larger scale, mix in pretraining data.          │
-   └───────────────────────────────────────────────────────────────┘
+   └────────────────────────────────────────────────────────────────┘
 
-   ┌───────────────────────────────────────────────────────────────┐
+   ┌────────────────────────────────────────────────────────────────┐
    │   ROLE LEAKAGE                                                 │
-   │   The model emits "<|user|>" mid-response and pretends to be  │
+   │   The model emits "<|user|>" mid-response and pretends to be   │
    │   the user. Symptom: a third turn appears unprompted.          │
    │   Fix: ensure every training example ends cleanly with         │
    │   <|end|>; check the loss mask actually covers <|end|>.        │
-   └───────────────────────────────────────────────────────────────┘
+   └────────────────────────────────────────────────────────────────┘
 
-   ┌───────────────────────────────────────────────────────────────┐
+   ┌────────────────────────────────────────────────────────────────┐
    │   FORMAT FORGETTING                                            │
    │   After SFT, the model cannot complete a prose passage.        │
    │   "To be, or not to be, ..." gets answered with a definition   │
    │   instead of continued. Symptom: the base behavior is gone.    │
    │   Fix: reduce SFT step count, lower lr, mix in pretraining.    │
    │   At our scale, accept some forgetting.                        │
-   └───────────────────────────────────────────────────────────────┘
+   └────────────────────────────────────────────────────────────────┘
 
-   ┌───────────────────────────────────────────────────────────────┐
+   ┌────────────────────────────────────────────────────────────────┐
    │   CATASTROPHIC FORGETTING                                      │
    │   Model degrades at SFT objective AND base objective. Loss     │
    │   curve looks fine; outputs are gibberish. Symptom: too many   │
    │   SFT steps at too high lr. Fix: lower both; we recommend      │
-   │   500–1000 steps at 3e-4.                                       │
-   └───────────────────────────────────────────────────────────────┘
+   │   500–1000 steps at 3e-4.                                      │
+   └────────────────────────────────────────────────────────────────┘
 
-   ┌───────────────────────────────────────────────────────────────┐
+   ┌────────────────────────────────────────────────────────────────┐
    │   REPETITION / LOOPING                                         │
    │   The assistant never emits <|end|> and keeps going.           │
    │   Symptom: response runs to max_new_tokens. Fix: re-check      │
    │   the loss mask covers <|end|>; add a few examples with        │
    │   short responses to teach early stopping; sample with a       │
-   │   small repetition_penalty (Module 11).                         │
-   └───────────────────────────────────────────────────────────────┘
+   │   small repetition_penalty (Module 11).                        │
+   └────────────────────────────────────────────────────────────────┘
 
-   ┌───────────────────────────────────────────────────────────────┐
+   ┌────────────────────────────────────────────────────────────────┐
    │   CONFIDENT HALLUCINATION                                      │
    │   The format is perfect; the content is invented. The 20M      │
    │   model "knows" the capital of France is "Lyon." Symptom:      │
    │   fluent-sounding wrong answers. Fix: cannot — this is a       │
    │   capability problem, not a format problem. Module 15 returns  │
    │   to it as the headline failure mode of toy-scale models.      │
-   └───────────────────────────────────────────────────────────────┘
+   └────────────────────────────────────────────────────────────────┘
 ```
 
 The first three are *training* problems — fixable by adjusting data or hyperparameters. The bottom three are deeper. Catastrophic forgetting is fixable by stopping earlier. Repetition is fixable by checking your loss mask. Confident hallucination is *not fixable by SFT*. 
@@ -398,7 +398,7 @@ pytest tests/test_sft.py -v                    # verbose
 
 ## M-series notes
 
-SFT is much less compute-hungry than pretraining — typically minutes, not hours. If you can train the model from scratch, you can SFT it.
+SFT is much less compute-hungry than pretraining — typically minutes, not hours. 
 
 - **Total wall-clock estimates** at `max_steps=500`, on a Module-10-pretrained checkpoint:
 

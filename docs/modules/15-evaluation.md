@@ -4,20 +4,25 @@
 
 ![Hero](15-evaluation/Module15-Hero.png)
 
-Module 14's loss curve told you "DPO is doing something"; Module 15 tells you **what** it's doing. The two-pronged eval — closed-set scoring for capability ranking, open-set generation for behavior — plus a calibration metric for "how well does the model know what it doesn't know" — is the minimum viable harness for any serious model work. Loss alone doesn't suffice.
+The two weeks have been about tuning a base model's behavior. This week is about measuring how well we did. It's a three-pronged evaluation: closed-set scoring for capability ranking, open-set for behavior, and a calibration metric for "how well does the model know what it doesn't know". The minimum viable harness for any serious model work. A single loss number alone doesn't cut it for assistant grade models.
 
 ---
 ## Before you start
 
-* *Review* [[14-dpo]] for `sequence_logprob` — multiple-choice scoring is its text-level analogue
-* *Review* [[11-sampling]] — the generation harness needs a `generate_fn` closure to call
-* *Finish* a Module 13 SFT'd or Module 14 DPO'd checkpoint — the eval harness measures whichever model you point it at
+* *Review*
+	* [[11-sampling]] For the difference from logits and text completion
+	* [[13-sft]] For formatting targeting
+	* [[14-dpo]] For the framework of how to score comparison
+	* [[PyTorch Primer]] if any PyTorch code is unfamiliar or confusing
+* *Finish*
+	* `g2c/sampling` from [[11-sampling]]
+	* [[14-dpo]] The eval harness will use the post-trained model generated and saved in this notebook
 * *Run* `.venv/bin/python scripts/artifact_status.py --module 15` if you are deciding between a self-trained model and the BaseLM path. If you need BaseLM, run `./baselm.sh`.
 
 ---
 ## Where this fits in
 
-After Modules 13 and 14 you have a behavior-shaped model. The loss curves on both told you "training is doing something" — SFT loss decreased, DPO reward margin increased. But what does "something" cash out to in terms of capability?
+After Modules 13 and 14 you have a behavior-shaped model. The loss curves gave you a single coarse-grained metric — SFT loss decreased, DPO reward margin increased. But what does that cash out to in terms of capability?
 
 ```
    ┌───────────────────────────────────────────────────────────────────────┐
@@ -46,89 +51,27 @@ After Modules 13 and 14 you have a behavior-shaped model. The loss curves on bot
    └───────────────────────────────────────────────────────────────────────┘
 ```
 
-A 20M-param Module-13 SFT'd model on the prompt:
+A small model after post-training might emit:
 
 ```
 <|user|>
 What is 2 + 2?
 <|assistant|>
-```
-
-might emit:
-
-```
 4.<|end|>
 ```
 
-A grade-school correct answer. But:
+A grade-school correct answer. But when you try a slightly more complex prompt:
 
 ```
 <|user|>
 What is 13 + 28?
 <|assistant|>
-```
-
-might emit:
-
-```
 35.<|end|>
 ```
 
-Confidently wrong. The SFT loss never saw "13 + 28" specifically; it saw the *format*. The model learned the format but doesn't know arithmetic. To see this, you need an eval harness that:
+Confidently wrong. The model learned the format but doesn't know arithmetic.
 
-1. **Asks specific questions** — not "is the loss low" but "is *this answer* right."
-2. **Aggregates** — accuracy across many such questions, not anecdotes.
-3. **Measures calibration** — when the model says "35," does it actually believe 35, or is it just emitting a number-shaped string?
-
-That's what Module 15 builds. Two harnesses (multiple-choice + generation), four matchers (exact, normalized, numeric, contains), one calibration metric (ECE), one reliability curve. ~250 lines of code in `g2c/eval/`. The pedagogical content is small but load-bearing: every later module (capstone evals, agent task success, RAG retrieval quality) reuses these primitives.
-
-![Closed-set (multiple choice) vs open-set (generation) eval. Two complementary harnesses, side by side. Closed-set: the model chooses from a finite list of candidate continuations; we score each candidate by sequence-log-probability, take argmax for the prediction, and softmax over scores for confidence. Open-set: the model generates freely, and a matcher decides whether the generated string matches any reference answer. A "key differences at a glance" panel pins the trade-off: closed-set is fast and calibration-friendly but bounded by the candidate list; open-set is realistic and uncalibrated by default. Use both — they expose different aspects of the same model.](15-evaluation/Module15-Closed.png)
-*The two halves of the harness, on one slide. Closed-set scoring is what builds calibration; open-set generation is what surfaces hallucination. The exercises walk through both — see exercise 2 for closed-set on your DPO'd model and exercise 3 for hallucination probing through generation.*
-
-```
-   ┌──────────────────────────────────────────────────────────────────────┐
-   │  TWO EVAL HARNESSES, FOUR MATCHERS, ONE CALIBRATION METRIC           │
-   └──────────────────────────────────────────────────────────────────────┘
-
-    ┌────────────────────────────────┐    ┌────────────────────────────────┐
-    │  CLOSED-SET (multiple choice)  │    │  OPEN-SET (generation).        │
-    │                                │    │                                │
-    │  prompt                        │    │  prompt                        │
-    │    + N candidate continuations │    │    + reference answers         │
-    │                                │    │                                │
-    │  ──► score each via            │    │  ──► generate_fn(prompt).      │
-    │      continuation_logprob      │    │       returns one              │
-    │                                │    │       generated string         │
-    │  ──► argmax = prediction       │    │                                │
-    │  ──► softmax = confidence      │    │  ──► matcher(pred, refs).      │
-    │                                │    │       returns bool             │
-    │  ──► ECE over the eval set     │    │                                │
-    │      compares confidence to    │    │  (no confidence — open         │
-    │      empirical accuracy        │    │   set, can't normalize).       │
-    │                                │    │                                │
-    └────────────────────────────────┘    └────────────────────────────────┘
-
-      Matchers (independent, swappable):
-        exact_match       — character-identity
-        normalized_match  — case/punctuation/whitespace stripped, equality
-        contains_match    — any reference is a substring (case-insensitive)
-        numeric_match     — first number matches, within tolerance
-
-      Aggregation:
-        EvalReport(
-            n, accuracy, mean_confidence, ece, results
-        )
-```
-
-The two harnesses are 60 lines each, mostly bookkeeping. The math lives in `continuation_logprob` (text-level scoring), `score_multiple_choice` (the argmax + softmax over options), and `expected_calibration_error` (the bucket loop). Those are what you implement; the rest is plumbing.
-
-A non-obvious framing: **multiple-choice eval is a quiet diagnostic on the model's internal probability landscape.** When you ask the model `Madrid? Lisbon? Barcelona? Berlin?` and read its softmax over options, you're querying the *implicit world model* the network learned during pretraining and behavior shaping. A confident-and-correct model has world knowledge; a confident-and-wrong model has confidently-wrong world knowledge (the textbook hallucination case); an uncertain model is honest about not knowing. ECE tells you which of these regimes the model is in.
-
-## The big idea
-
-### Fluency vs truth as separate objectives
-
-The deepest pathology of small LMs is that they're trained on **fluency** but judged on **truth** (or helpfulness, or correctness, etc.). A model that emits well-formed sentences gets low cross-entropy loss. A model that emits *true* sentences gets... also low cross-entropy loss, *if* the training data was true. But the loss doesn't separate the two.
+The deepest pathology of language models is that they're trained on **fluency** but judged on **truth** (or helpfulness, or correctness, etc.). A model that emits well-formed sentences gets low cross-entropy loss. A model that emits *true* sentences gets... also low cross-entropy loss. But the loss curve doesn't separate the two.
 
 ```
    ┌──────────────────────────────────────────────────────────────────────┐
@@ -152,14 +95,65 @@ The deepest pathology of small LMs is that they're trained on **fluency** but ju
    └──────────────────────────────────────────────────────────────────────┘
 ```
 
-A fluent confident wrong answer is *exactly* what the loss rewards as much as a fluent confident right one — both are "low loss" if the surface form matches conventional patterns. Hallucination is the predictable consequence: the model emits the *shape* of an answer, but the *content* is whatever its training distribution most readily produced for prompts of that shape.
+A confident fluent wrong answer is rewarded as much as a confident fluent right one. Both are "low loss" if the surface form matches conventional patterns. The predictable consequence is **hallucination**: the model emits the *shape* of an answer, but the *content* is whatever its training distribution most readily produced for prompts of that shape.
 
-The eval harness is what closes this loop. By scoring outputs against **what we wanted, not what the loss measured**, we surface the gap. Most of the model's failures are *expected* given the training objective; eval makes them *visible*.
+## The big idea
 
-### Calibration: the headline scalar
+The **eval harness** closes this loop. By scoring outputs against what we want, not what the loss measures, we surface the gap. Most of the model's failures are expected given the training objective; eval makes them *visible*.
+
+An eval harness is a repeatable procedure to evaluate and score model behavior against specific questions or challenges. The harness abstracts and standardizes the grading procedure against arbitrary questions. Standardized scoring mean models can be cross-compared in an objective way. 
+
+The key steps in an evaluation harness are:
+
+1. Asks specific questions — not "is the loss low" but "is *this answer* right."
+2. Aggregates — accuracy across many such questions, not anecdotes.
+3. Measures calibration (optional) — when the model says "35," does it actually believe 35, or is it just emitting a number-shaped string?
+
+Evaluation harnesses come in two flavors:
+
+1. **Closed-set eval.** Asks a question, then evaluates against a pre-determined set of multiple-choice answers.
+2. **Open-set eval** Asks a question, then lets the model complete text normally. Grades the text response using a **matcher**. 
+
+![Closed-set (multiple choice) vs open-set (generation) eval. Two complementary harnesses, side by side. Closed-set: the model chooses from a finite list of candidate continuations; we score each candidate by sequence-log-probability, take argmax for the prediction, and softmax over scores for confidence. Open-set: the model generates freely, and a matcher decides whether the generated string matches any reference answer. A "key differences at a glance" panel pins the trade-off: closed-set is fast and calibration-friendly but bounded by the candidate list; open-set is realistic and uncalibrated by default. Use both — they expose different aspects of the same model.](15-evaluation/Module15-Closed.png)
+*The two halves of the harness. Closed-set scoring is what builds calibration; open-set generation is what surfaces hallucination.*
+
+### Closed-set eval
+
+Multiple-choice scoring is the cleanest eval primitive. Given a prompt and N candidate continuations, the model scores each based on sequence-log-probability. Up until now we've used models by *sampling*: enter the prompt, generate logits for next token, sample the next token, and repeat until the completion finishes. Multiple choice inverts this procedure. 
+
+![MultiChoice](15-evaluation/Module15-MultiChoice.png)
+*Tokenize each option, score, argmax for prediction, softmax for confidence.*
+
+We still generate logits for next token prediction. However instead of randomly sampling the next token, we already "know" the next tokens based on the pre-written answer. Let's say the question is "Who was the first president of the United States?". We start by generating the next token logits from the prompt, apply softmax, and find the probability assigned to the "George " token.
+
+We then append "Goerge " to the prompt, then repeat looking for the "Washington" token in the outputs. And repeat until the we reach the end of the answer. That gives us a series of log probabilities, the sum of which is the model's implied probability for the answer candidate:
+
+We do the same for all the pre-written answer candidates ("Thomas Jefferson", "George Bush", etc.). At the end we have an implied probability for each answers in the candidate set. Finally we derive relative probabilities for each choice by normalizing against the sum of all the answers in the candidate set:
+
+```
+score_i = sum_t(log softmax(logits_i_t))
+    
+P(candidate_i | candidate set)
+  = exp(score_i) / sum_j exp(score_j)
+```
+
+This recovers a "predictions weighted by certainty" measure. Not only do we know if the model chooses the right answer, but we have a metric of how *confident* it was.
+
+### Calibration
 
 ![Calibration](15-evaluation/Module15-Calibration.png)
-*The picture to internalize before implementing `expected_calibration_error` and `reliability_curve`. The bin-by-bin |acc − conf| visualization is what the test `test_ece_known_case_two_bins` hand-computes; reading this image first makes the test's expected value (0.25) visibly correct rather than mysterious.*
+*Calibration uses the model's internal logits to distinguish when the model is confidently wrong and when it's guessing*
+
+A non-obvious framing: multiple-choice is a diagnostic on the model's internal probability landscape. When you ask the model `Madrid? Lisbon? Barcelona? Berlin?` and read its softmax over options, you're querying the *implicit world model* the network has learned. A confident-and-correct model has world knowledge; a confident-and-wrong model has confidently-wrong world knowledge (the textbook hallucination case); an uncertain model is honest about not knowing. 
+
+**Calibration** is the process by which we quantify the model's confidence in its answer. This is only possible because closed-set eval probes the internal logits generated by the model. A model that picked the wrong choice but with low confidence should look like it's "guessing". The wrong choice selected with only marginally higher probability than the right answer. A confident hallucination not only picks the wrong choice, but picks it by a large probability margin over the right answer.
+
+A model can be:
+
+- **High accuracy, well calibrated.** Best case. Production-ready.
+- **High accuracy, miscalibrated.** Right often, but says "I'm sure" when it isn't. Dangerous in tool-using or agentic settings — the model takes high-stakes actions on weak beliefs.
+- **Low accuracy, well calibrated.** Wrong often, but knows it's wrong. Safer than the previous case — the user can attend to the confidence signal and fall back to verification.
+- **Low accuracy, miscalibrated.** Wrong and confident. Catastrophic. This is what *small over-trained LMs default to* — exactly the regime your toy model is in.
 
 ```
    ┌───────────────────────────────────────────────────────────────────────┐
@@ -180,14 +174,21 @@ The eval harness is what closes this loop. By scoring outputs against **what we 
    └───────────────────────────────────────────────────────────────────────┘
 ```
 
-A model can be:
+The metric we use to measure calibration is **expected calibration error (ECE)**. ECE measures how well confidence matches reality. If a model says “80% confident” on a group of examples, it should be right about 80% of the time; ECE averages the gap between confidence and observed accuracy across bins:
 
-- **High accuracy, well calibrated.** Best case. Production-ready.
-- **High accuracy, miscalibrated.** Right often, but says "I'm sure" when it isn't. Dangerous in tool-using or agentic settings — the model takes high-stakes actions on weakly-grounded beliefs.
-- **Low accuracy, well calibrated.** Wrong often, but knows it's wrong. Safer than the previous case — the user can attend to the confidence signal and fall back to verification.
-- **Low accuracy, miscalibrated.** Wrong and confident. Catastrophic. This is what *small over-trained LMs default to* — exactly the regime your toy model is in.
+```
+B_m       = set of examples whose predicted confidence falls in bin m
+|B_m|     = number of examples in that bin
+n         = total number of examples
 
-The reliability diagram makes this visible:
+acc(B_m)  = average correctness in bin m
+          = (1 / |B_m|) * sum_{i in B_m} 1[pred_i = y_i]
+
+conf(B_m) = average predicted confidence in bin m
+          = (1 / |B_m|) * sum_{i in B_m} confidence_i
+```
+
+A **reliability diagram** visualizes model calibration by grouping predictions into confidence bins and plotting each bin’s average confidence against its **empirical accuracy**. A perfectly calibrated model lies on the diagonal line: when it says 70% confidence, it is correct about 70% of the time. Bars below the diagonal indicate **overconfidence**; bars above it indicate **underconfidence**.
 
 ```
                        Reliability diagram (toy LM, 100 MC questions)
@@ -209,53 +210,13 @@ The reliability diagram makes this visible:
                                   0.0           0.5           1.0
                                           model confidence
 
-         Model is OVER-confident in high-confidence bins (dots BELOW the line)
-         and UNDER-confident in low-confidence bins (dots ABOVE the line).
-
          The horizontal distance from each dot to the diagonal at the same
          y-coordinate is the bin's contribution to ECE.
 ```
 
-The model's points sit on the diagonal in the middle bins (confidence ≈ accuracy ≈ 0.5) but drift below in the high-confidence bins (the model says 0.95, gets it right 0.7 of the time). That gap — across all bins, weighted by bin frequency — is ECE.
+### Open-set eval
 
-### Multiple choice: scoring continuations
-
-![Multiple choice — closed-set eval flow. Score each candidate continuation with sequence-log-probability. Step 1: the prompt is the shared `<|user|>...<|assistant|>` prefix; the four candidate continuations (Madrid, Lisbon, Barcelona, Berlin, each followed by `<|end|>`) are the choices. Step 2: model scoring — concatenate prompt + option, forward, log-softmax + gather + masked sum over the option's tokens only (NOT the prompt's). Each option produces one scalar log-probability (e.g., −2.34, −1.82, −3.41, −4.12). Step 3: prediction by argmax (Lisbon at −1.82) and confidence by softmax over scores (0.42 — mildly confident). Step 4: compare to the gold index; record correct/incorrect plus the per-option scores in `EvalResult.metadata`. A "length normalization (optional)" panel pins the knob: dividing each option's score by its token count makes the ranking length-invariant; lm-eval-harness exposes both as `acc` and `acc_norm`. A "why it's useful" panel: deterministic, fast, and confidence-calibration-friendly — exactly what the harness needs.](15-evaluation/Module15-MultiChoice.png)
-*The picture for `score_multiple_choice`. The four-step flow IS the implementation: tokenize each option, score each via `continuation_logprob`, argmax for prediction, softmax for confidence. The test `test_score_multiple_choice_uniform_logits_indifferent` asserts the degenerate case (all options score equally → confidence = 1/N) — read off this picture, that's the case where every score is the same.*
-
-Multiple-choice scoring is the most pedagogically clean eval primitive. Given a prompt and N candidate continuations, the model scores each by sequence-log-probability:
-
-```
-   prompt:                "<|user|>\nLargest city in Spain?\n<|assistant|>\n"
-   choices:               ["Madrid.<|end|>",                  ← score = -2.34
-                           "Lisbon.<|end|>",                  ← score = -1.82  ← argmax
-                           "Barcelona.<|end|>",               ← score = -3.41
-                           "Berlin.<|end|>"]                  ← score = -4.12
-   answer_idx (gold):     0
-                                                                       │
-                                                                       ▼
-   prediction = argmax(scores) = 1     (the model said "Lisbon")  ──►  WRONG
-                                                                       │
-   confidence = softmax(scores)[1]                                     ▼
-              = exp(-1.82) / Σ_i exp(-score_i)
-              = 0.42                            (mildly confident)
-```
-
-The softmax-over-options confidence is the calibration-friendly readout. A confidence-aware accuracy metric:
-
-```
-                  Σ_i 1[prediction_i correct] · weight_i
-   weighted_acc = ─────────────────────────────────────
-                            Σ_i weight_i
-```
-
-with `weight_i = confidence_i` recovers a "predictions weighted by certainty" measure. Useful when comparing model variants.
-
-A useful subtlety: **multiple-choice scoring is sensitive to surface forms.** If your gold answer is "Madrid." and a typo turns it into "Madrid", the scoring pipeline scores `Madrid` (a different token sequence, different log-prob). For benchmarks like MMLU where the answer is a literal letter `(A)`, `(B)`, `(C)`, `(D)`, the scoring is robust to this; for free-form continuations, the choice of trailing punctuation is its own small confound. We use the same convention as Module 13: every choice ends with `<|end|>` so the model sees the format consistently.
-
-### Generation: scoring open outputs
-
-Generation eval is the more realistic of the two. Given a prompt, the model generates freely; a matcher decides if the generated string matches any reference.
+If closed-set eval is a multiple choice, open-set eval is the essay section of the test. Open-set eval starts with a prompt, then generates a a normal completion in the same way we've been doing since Module 11. Because it doesn't have an internal accuracy metric like closed-set eval, we rely on external matchers to grade the answer. You can think of matchers as the "rubric" used to grade the test response.
 
 ```
    ┌───────────────────────────────────────────────────────────────────────┐
@@ -274,7 +235,7 @@ Generation eval is the more realistic of the two. Given a prompt, the model gene
    │           │                                                           │
    │           ▼                                                           │
    │                                                                       │
-   │     prediction:  "4.<|end|>"     (or whatever the model produced)     │
+   │     prediction:  "4.<|end|>"                                          │
    │           │                                                           │
    │           ▼                                                           │
    │                                                                       │
@@ -285,15 +246,15 @@ Generation eval is the more realistic of the two. Given a prompt, the model gene
    │           │                                                           │
    │           ▼                                                           │
    │                                                                       │
-   │     EvalResult(correct=True, prediction="4.<|end|>", confidence=None) │
+   │     EvalResult(correct=True, prediction="4.<|end|>")                  │
    │                                                                       │
    └───────────────────────────────────────────────────────────────────────┘
 ```
 
-The matcher is the load-bearing decision. Choose well:
+Selecting the right matcher is the load-bearing decision. Choose well:
 
 ![Matcher zoo — pick the right tool for the job. Four matchers, side by side. `exact_match`: character-equality, use for single-token answers and trailing-space sensitivity. `normalized_match`: case/punctuation/whitespace stripped, then equality — best for factual QA where surface form varies but content matches. `numeric_match`: extract first number from prediction, compare to first number in references within tolerance — best for arithmetic and quantitative answers. `contains_match`: any reference appears as a substring of the prediction (case-insensitive) — best for refusal probes and long-form outputs with target keywords. Each matcher has an "example: prediction vs references" panel showing one representative case with True/False; an "important" panel calls out asymmetric matchers like `contains_match` (search direction matters) and the silent-failure mode of using `numeric_match` with a regex that catches the wrong number.](15-evaluation/Module15-Matcher.png)
-*The lookup table for choosing a matcher. Exercise 3 asks you to categorize hallucinations using `contains_match` for refusal probes (anchor on `"I cannot"`); exercise 4 asks for `numeric_match` on arithmetic. Picking the right matcher is half the eval design problem — the wrong matcher silently produces the wrong accuracy.*
+*The lookup table for choosing a matcher. Picking the right matcher is half the eval design problem — the wrong matcher silently produces the wrong accuracy.*
 
 ```
                                      Best matcher for...
@@ -302,13 +263,11 @@ The matcher is the load-bearing decision. Choose well:
    │  Factual QA, hand-authored references     →  normalized_match       │
    │  Arithmetic / numeric answers             →  numeric_match          │
    │  Long-form outputs with target keywords   →  contains_match         │
-   │  Refusal / safety probes                  →  contains_match (anchor!│
-   │                                              search for "I cannot", │
-   │                                              not just "no")         │
+   │  Refusal / safety probes                  →  contains_match         │
    └─────────────────────────────────────────────────────────────────────┘
 ```
 
-Generation eval doesn't expose a confidence by default — the harness sets `confidence=None` in `EvalResult` and `ece=None` in the report. To get a confidence on a generated string, re-score it under the model with `continuation_logprob(model, tokenizer, prompt, prediction)` and convert per-token mean log-prob to a probability via `exp`. Exercise 6 walks through this.
+By default open-set eval doesn't generate a confidence. However it is possible to back out a proxy for confidence. First let the freeform completion generate, then generating a log-probability for the response using the same approach we used for multiple choice answers. However unlike multiple choice there is no way to normalize this value against the set of all possible answers. While it can be useful to record, it is nowhere near as load bearing as ECE.
 
 ### Hallucination categories
 
@@ -392,29 +351,27 @@ Some failure modes are not hallucinations — they're capability gaps. A 20M-par
    └───────────────────────────────────────────────────────────────────────┘
 ```
 
-The deliverable for this module is a written *characterization* of these floors, not a number. "Accuracy = 0.42" is less informative than "the model can answer city-of-country questions if the country appears in pretraining, fails on arithmetic past single digits, and never refuses any question regardless of how impossible."
+"Accuracy = 0.42" is less informative than "the model can answer city-of-country questions if the country appears in pretraining, fails on arithmetic past single digits, and never refuses any question regardless of how impossible."
 
 ## Concepts to internalize
 
-- **Loss curves measure training; eval harnesses measure capability.** The two are not interchangeable. A model can have low loss and high error rate; a model can have moderate loss and surprisingly good capability. After this module, "the loss went down" is no longer a complete description of progress.
-- **Closed-set vs open-set eval is a fundamental split.** Closed-set is fast, deterministic, and calibration-friendly; open-set is realistic but matcher-dependent. Most production harnesses do both; you should too.
-- **Multiple-choice scoring = sequence_logprob over each option, take argmax.** The math is one log-softmax + gather + masked sum per option — same primitive as DPO. Confidence is softmax over option scores.
-- **Length normalization changes the ranking, not the math.** Raw sum advantages shorter options; per-token mean is roughly length-invariant. Sweep both when evaluating.
-- **Accuracy and confidence are independent axes.** A model can be highly accurate but miscalibrated, or barely accurate but well-calibrated. ECE is the headline scalar that pins this gap.
-- **ECE = bin-weighted average |bin_acc − bin_conf|.** One careful loop over confidence bins. Lower is better; 0 is perfectly calibrated; 1 is maximally miscalibrated.
-- **Reliability curve is the visual for ECE.** Bin centers on the x-axis, bin accuracies on the y-axis. Diagonal is "perfectly calibrated." Tiny LMs sit BELOW the diagonal in high-confidence bins — over-confidence is the default.
-- **Generation eval = generate_fn + matcher.** The harness is decoupled from sampling; you supply a closure. Matchers are pluggable.
-- **The four matchers cover most needs.** `exact`, `normalized`, `numeric`, `contains`. Pick by task, not by personal preference.
-- **Hallucination categories are useful diagnostic labels, not a benchmark.** Label your failures as you go; aggregate the categories at the end. The labels help you target subsequent fine-tuning.
-- **Toy models have a hard capability floor.** No amount of eval polish makes a 20M-param model do arithmetic. The deliverable is a written characterization of the floor — that's the actual learning outcome.
+- **Loss curves measure training; eval harnesses measure capability.** The two are not interchangeable. A model can have low loss and high error rate; a model can have moderate loss and surprisingly good capability. 
+- **Accuracy and confidence are independent.** A model can be highly accurate but miscalibrated, or barely accurate but well-calibrated. ECE is the headline metric.
+- **Closed-set vs open-set eval.** Closed-set is deterministic and calibration-friendly. Open-set is realistic but matcher-dependent. 
+- **Multiple-choice scoring**. Sum log probabilities for each option. Confidence is softmax over option scores.
+- **ECE: bin-weighted average of calibration.** One careful loop over confidence bins. Lower is better; 0 is perfectly calibrated; 1 is maximally miscalibrated.
+- **Generation eval = generate function + matcher.** The harness is decoupled from sampling. Matchers are pluggable.
+- **The four matchers cover most needs.** `exact`, `normalized`, `numeric`, `contains`. Pick by task.
+- **Hallucination categories are diagnostics, not benchmarks.** The labels help you target subsequent fine-tuning.
+- **Models have a hard capability floor.** No amount of eval polish makes a 30M-param model do arithmetic. 
 
 ### What we don't cover
 
-- **HELM-style multi-metric harnesses.** HELM (Liang et al. 2022) tracks ~7 metrics per task across 30+ tasks for hundreds of models. Our harness tracks accuracy + ECE on two task types over a hand-built dataset of 50–200 examples. The architecture you'd want to scale this is a "scenario / metric / model" three-way matrix; that's out of scope. The lesson is the loop, not the matrix.
-- **Model-graded ("LLM-as-judge") evaluation.** Zheng et al. 2023 argue (correctly) that for many open-ended tasks, asking a strong model to *judge* outputs is more useful than any string matcher. Our toy model isn't strong enough to be a judge, and the matchers we ship are sufficient for the kinds of probes the exercises ask for. 
-- **Adversarial robustness benchmarks.** AdvGLUE, RealToxicityPrompts, etc. expose models to adversarial inputs designed to elicit failures. At toy scale these are mostly noise — our model fails on plain inputs already. Read the papers; don't build the benchmarks.
+- **HELM multi-metric harnesses.** HELM tracks ~7 metrics per task across 30+ tasks for hundreds of models. Our harness tracks accuracy + ECE on two task types over a hand-built dataset of 50–200 examples. HELM is the architecture you'd want to scale a "scenario / metric / model" three-way matrix. The lesson is the loop, not the matrix.
+- **Model-graded ("LLM-as-judge") evaluation.** For many open-ended tasks, asking a strong model to *judge* outputs is more useful than any string matcher. Our toy model isn't strong enough to be a judge.
+- **Adversarial robustness benchmarks.** AdvGLUE, RealToxicityPrompts, etc. expose models to adversarial inputs designed to elicit failures. At our scale these are mostly noise. Read the papers; don't build the benchmarks.
 - **Full MMLU.** MMLU is 57 subjects × ~100 questions = ~14k multiple-choice questions. Running it takes hours even on a 7B model. We use a hand-built MC subset of 20–50 questions for the exercise.
-- **Calibration via Platt scaling or temperature scaling.** Guo et al. 2017 propose post-hoc calibration: train a one-parameter "temperature" on a held-out set so the model's confidences align better with empirical accuracy. Useful, well-known, and a clean follow-up to ECE — but it's recalibration, not measurement, and we're focused on measurement here.
+- **Calibration via temperature scaling.** Post-hoc calibration: train a one-parameter "temperature" on a held-out set so the model's confidences align better with empirical accuracy. Useful, well-known, and a clean follow-up to ECE — but it's recalibration, not measurement.
 
 ---
 ## What you'll build
@@ -422,24 +379,22 @@ The deliverable for this module is a written *characterization* of these floors,
 Package: `g2c/eval/`
 
 ```python
-# data.py
 @dataclass(frozen=True)
 class MultipleChoiceExample:
     prompt: str
-    choices: list[str]                                       # ≥ 2 choices
-    answer_idx: int                                          # implemented
+    choices: list[str]
+    answer_idx: int
 
 @dataclass(frozen=True)
 class GenerationExample:
     prompt: str
-    references: list[str]                                    # ≥ 1 reference
-                                                             # implemented
+    references: list[str]
 
 @dataclass
 class EvalResult:
     correct:    bool
-    prediction: int | str                                    # int for MC, str for gen
-    confidence: float | None = None                          # implemented
+    prediction: int | str
+    confidence: float | None = None                 
     metadata:   dict[str, Any]
 
 @dataclass
@@ -449,64 +404,47 @@ class EvalReport:
     accuracy:        float
     mean_confidence: float | None
     ece:             float | None
-    results:         list[EvalResult]                        # implemented
+    results:         list[EvalResult]                     
 
 
 # match.py
-def exact_match(prediction: str, references: list[str]) -> bool: ...        # SCAFFOLDED
-def normalized_match(prediction: str, references: list[str]) -> bool: ...   # SCAFFOLDED
-def contains_match(prediction: str, references: list[str]) -> bool: ...     # SCAFFOLDED
+def exact_match(prediction: str, references: list[str]) -> bool: ...  
+def normalized_match(prediction: str, references: list[str]) -> bool: ... 
+def contains_match(prediction: str, references: list[str]) -> bool: ...   
 def numeric_match(
     prediction: str, references: list[str], *, tolerance: float = 0.0,
-) -> bool: ...                                                              # SCAFFOLDED
+) -> bool: 
 
 
 # logprob.py
 def continuation_logprob(
     model, tokenizer, prompt: str, continuation: str,
-) -> tuple[float, int]:                                                     # SCAFFOLDED
-
+) -> tuple[float, int]:              
 
 # multiple_choice.py
 def score_multiple_choice(
     model, tokenizer, example: MultipleChoiceExample,
     *, length_normalize: bool = False,
-) -> EvalResult:                                                            # SCAFFOLDED
+) -> EvalResult:                                 
 
 def run_multiple_choice_eval(
     model, tokenizer, examples: list[MultipleChoiceExample],
-    *, length_normalize: bool = False,
-    task_name: str = "multiple_choice",
-    compute_ece: bool = True, ece_n_bins: int = 10,
-) -> EvalReport:                                                            # implemented
-
-
-# generation.py
-def score_generation_example(
-    example: GenerationExample,
-    generate_fn: Callable[[str], str],
-    matcher: Callable[[str, list[str]], bool],
-) -> EvalResult:                                                            # implemented
+    *, ...) -> EvalReport:    # implemented
 
 def run_generation_eval(
     examples: list[GenerationExample],
     generate_fn: Callable[[str], str],
-    matcher: Callable[[str, list[str]], bool],
-    *, task_name: str = "generation",
-) -> EvalReport:                                                            # implemented
-
+    matcher: Callable[[str, list[str]], bool], *, ...,
+) -> EvalReport:              # implemented
 
 # calibration.py
 def expected_calibration_error(
-    confidences: list[float], correct: list[bool], *, n_bins: int = 10,
-) -> float:                                                                 # SCAFFOLDED
-
+    confidences: list[float], correct: list[bool], *, ...) -> float
 def reliability_curve(
-    confidences: list[float], correct: list[bool], *, n_bins: int = 10,
-) -> tuple[list[float], list[float], list[int]]:                            # SCAFFOLDED
+    confidences: list[float], correct: list[bool], *, ...)
 ```
 
-Roughly 80 lines across seven functions in three files. 
+Roughly 80 lines across seven functions.
 
 ## How to run the tests
 
@@ -533,7 +471,7 @@ pytest tests/test_eval.py -v                       # verbose
      - 10 simple arithmetic questions ("What is 3 + 4?", choices `["6", "7", "8", "9"]`).
      - 10 instruction-following questions ("If asked about today's weather, the assistant should respond with…", choices including refusal options).
 
-   Save as JSON. Constraints:
+   Constraints:
 
      - **Length-match the choices.** All four options for a question should be within 10–20% of each other in token count. If one option is dramatically shorter or longer, the harness's argmax is dominated by length not content.
      - **Plausible distractors.** Wrong answers should be wrong but reasonable — not absurd. "What is the capital of Spain?" with choices `["Madrid", "Lisbon", "Berlin", "an apple"]` is too easy because "an apple" is obviously not a city.
@@ -545,8 +483,6 @@ pytest tests/test_eval.py -v                       # verbose
      - ECE.
      - The reliability curve as a small ASCII plot or saved figure.
      - Per-category accuracy: factual / arithmetic / instruction-following separately.
-
-   Expected pattern: accuracy of 0.30–0.55 (random chance for 4-option is 0.25). ECE of 0.10–0.25 — a moderately overconfident toy model. Length normalization may bump accuracy by a few percent. Arithmetic accuracy is essentially random; factual is whatever happened to land in pretraining.
 
 3. **Probe with hallucination prompts.** Hand-author 20 prompts designed to elicit hallucinations:
 
@@ -567,8 +503,6 @@ pytest tests/test_eval.py -v                       # verbose
      - 2+2-digit (e.g. "What is 13 + 28?")
      - 3+3-digit (e.g. "What is 234 + 567?")
 
-   Expected pattern: high accuracy on 1+1-digit (the model has seen many of these in pretraining), much lower on 2+2-digit, near-zero on 3+3-digit. The point is to localize the *capability cliff* — at what digit count does the model fall off? Document this number; it's the "this model can do X" boundary you'll cite in the deliverable.
-
 5. **Beta-sweep eval comparison.** Take your Module-14 β sweep checkpoints (β ∈ {0.05, 0.1, 0.3, 1.0} from exercise 14.3). For each, run the multiple-choice harness from exercise 2. Plot:
 
      - Accuracy vs β.
@@ -583,8 +517,6 @@ pytest tests/test_eval.py -v                       # verbose
 
 7. **Hand-built MMLU subset (optional).** Pick 3 MMLU subjects (e.g. high_school_geography, elementary_mathematics, college_biology). Hand-transcribe (or download and minimally adapt) 20 questions per subject in `MultipleChoiceExample` form. Run the harness. Report per-subject accuracy. Compare against random chance (0.25 for 4-option MC) and against your hand-authored eval from exercise 1.
 
-   Expected pattern: low across all subjects (0.25–0.40 — barely above chance). The calibration metric is more informative than the accuracy metric — does the model *know* it's guessing?
-
 8. **Evaluation post-mortem (the deliverable).** Write 2–3 paragraphs characterizing your model's typical failure modes. Categories to cover:
 
      - **What it can do.** At least 3 specific capabilities, with eval numbers.
@@ -596,33 +528,31 @@ pytest tests/test_eval.py -v                       # verbose
 
 ## Pitfalls to expect
 
+- **The eval is too small to be statistically meaningful.** 20 examples × 4-option MC has a standard error of ~0.10 on accuracy at p=0.5. A 5-percentage-point difference between models is noise at this scale. Use 50–200 examples for any comparison you want to take seriously, even at toy scale.
+
 - **Multiple-choice scoring depends on the choices' surface form.** "Madrid" and "Madrid." score differently because they're different token sequences. Be consistent: end every choice with the same trailing format markers (e.g. `<|end|>` in the chat-template setup).
 
 - **Length-bias in raw multiple-choice scoring.** A long incorrect option can score lower than a short incorrect option *just because it's longer*. If accuracy seems suspiciously biased toward shorter choices, switch on `length_normalize=True`. lm-eval-harness exposes both `acc` and `acc_norm` for exactly this reason.
 
-- **ECE without `min(int(c * n_bins), n_bins - 1)`.** A confidence of exactly 1.0 (which happens — softmax max can hit 1.0 in fp32 when one logit dominates) maps to bin index `n_bins`, which is out of range. Symptom: `IndexError` or silently-wrong ECE. The `min` clamps it to the last bin.
+- **ECE without `min(int(c * n_bins), n_bins - 1)`.** A confidence of exactly 1.0 (which happens) maps to bin index `n_bins`, which is out of range. Symptom: `IndexError`
 
 - **ECE on a tiny eval set.** With N < 20 examples and n_bins=10, most bins are empty or contain 1–2 examples. The metric is noisy. Reduce `n_bins` to 5 (or 3) for tiny sets.
 
-- **Forgetting `torch.no_grad()` in `continuation_logprob`.** Eval is inference-only; without `no_grad`, every score builds an autograd graph and roughly doubles peak memory. The harness will run, but slowly and memory-hungry.
+- **Mean confidence != accuracy on a perfectly calibrated model.** Only on average — for any specific model, `mean_confidence` and `accuracy` can differ even with ECE=0. . Don't read `mean_confidence ≠ accuracy` as "miscalibrated".
 
-- **The mask in `continuation_logprob` is off by one.** The mask aligns with the *targets* (`y = full_ids[1:]`), not the inputs. Continuation tokens in `y` start at index `len(prompt_ids) - 1`, NOT `len(prompt_ids)`. Same shift-by-one as Modules 13–14. A mask off by one silently changes the score by including or excluding one prompt boundary token's log-prob.
+- **The mask is off by one.**  A mask off by one silently changes the score by including or excluding one prompt boundary token's log-prob.
 
-- **`numeric_match` matching the wrong number.** "Half of 100 is 50" extracts `100` as the first number, not `50`. If your model's answer-shape is "the answer is X", strip the prefix before matching, OR write your references to expect numbers in particular positions, OR use a stricter regex.
+- **`numeric_match` matching the wrong number.** "Half of 100 is 50" extracts `100` as the first number, not `50`. Strip the prefix before matching, OR write your references to expect numbers in particular positions, OR use a stricter regex.
 
-- **`contains_match` matching unintended substrings.** Searching for `"no"` matches `"Norway"`, `"snow"`, `"annoy"`, etc. For refusal probes, use anchored references like `"I cannot"`, `"I don't know"`, or word-boundary regex instead of bare `"no"`.
+- **`contains_match` matching unintended substrings.** Searching for `"no"` matches `"Norway"`, `"snow"`, `"annoy"`, etc. 
 
-- **The matcher silently does the wrong thing.** `normalized_match("Madrid.", ["Madrid"])` returns True (correct). But `normalized_match("Madrid is the capital", ["Madrid"])` returns False — they normalize to different strings. If you want partial-match semantics, use `contains_match`, not `normalized_match`. Pick the matcher to match the question.
+- **The matcher silently does the wrong thing.** If you want partial-match semantics, use `contains_match`, not `normalized_match`. Pick the matcher to match the question.
 
-- **Asymmetric matcher errors.** `normalized_match("madrid", ["Madrid."])` returns True; `normalized_match("Madrid.", ["madrid"])` also returns True. Symmetric. But `contains_match("the capital is Madrid", ["Madrid"])` returns True; `contains_match("Madrid", ["the capital is Madrid"])` returns False. Asymmetric: predictions are searched for references, not vice versa. If you cross prediction and reference roles by accident, your accuracy plummets silently.
+- **Asymmetric matcher errors.** `normalized_match()` is Symmetric. `contains_match()` is not. Predictions are searched for references, not vice versa. If you cross prediction and reference roles by accident, your accuracy plummets silently.
 
-- **Mean confidence != accuracy on a perfectly calibrated model.** Only on average — for any specific model, `mean_confidence` and `accuracy` can differ even with ECE=0. ECE is an integral over bins, not a point comparison. Don't read `mean_confidence ≠ accuracy` as "miscalibrated"; that's what ECE is for.
+- **Generation eval is non-deterministic.** Same input, different output across runs. If you're comparing models, fix the seed (`torch.Generator().manual_seed(seed)`) or use temperature=0 . Production benchmarks always use deterministic decoding.
 
-- **Generation eval with `temperature > 0` is non-deterministic.** Same input, different output across runs. If you're comparing models, fix the seed (`torch.Generator().manual_seed(seed)`) and pass it through your `generate_fn`. Or use temperature=0 (greedy) for deterministic eval. Production benchmarks always use deterministic decoding.
-
-- **Re-running the eval mutates a stale checkpoint.** A subtle bug: load checkpoint → run eval → train one more step → run eval again, expecting "same model, same eval, same numbers." But the optimizer modified the model's parameters between runs. Always reload the checkpoint freshly before each eval pass, or freeze with `model.eval()` and `torch.no_grad()` (the harness already does the latter inside `continuation_logprob`).
-
-- **The eval is too small to be statistically meaningful.** 20 examples × 4-option MC has a standard error of ~0.10 on accuracy at p=0.5. A 5-percentage-point difference between models is noise at this scale. Use 50–200 examples for any comparison you want to take seriously, even at toy scale.
+- **Forgetting `torch.no_grad()`** Eval is inference-only. The harness will run, but slowly and memory-hungry.
 
 ## M-series notes
 
@@ -633,34 +563,6 @@ Module 15 is mostly inference + bookkeeping. Comfortable on every M-series machi
 - **Generation eval cost.** Dominated by generation, not by scoring. Each example requires running `generate_fn` once with up to `max_new_tokens` autoregressive steps. At 64 max_new_tokens, a 50-question generation eval is ~30–60 seconds for a 20M model.
 
 - **Memory.** The harness holds the model + a few small Python lists of `EvalResult`s. Even a 1000-question eval over a 20M-param model fits comfortably in 8GB.
-
-- **Reproducibility.** For multiple-choice: deterministic by construction (no sampling). For generation: pass a `torch.Generator().manual_seed(seed)` through your `generate_fn` if you sample with `temperature > 0`, or use greedy (`temperature=0`).
-
-- **No `model.eval()` / dropout caveat.** Our `g2c.transformer.TransformerLM` doesn't use dropout in its current scaffold, so toggling between train and eval mode doesn't matter. If you add dropout later, remember `model.eval()` before the eval harness.
-
-- **`continuation_logprob` and MPS.** All tensor operations in `continuation_logprob` are well-supported on MPS. The model forward, log_softmax, gather, and masked sum all run natively. No CPU fallback warnings expected.
-
-- **Storing eval reports.** The `EvalReport` is JSON-serializable except for `metadata`'s `option_logps` lists (which can contain nans). For checkpointed eval results across training runs, serialize the per-example `correct`, `prediction`, `confidence`, and `metadata['option_logps']` to a CSV or JSON line per example. The reliability curve and ECE can always be recomputed from these.
-
-- **Baseline numbers** to expect from a freshly DPO'd 20M model on the deliverable eval sets:
-
-  ```
-     ┌─────────────────────────────────┬──────────┬──────────┬──────────┐
-     │ Task                            │ Accuracy │ Mean Conf│ ECE      │
-     ├─────────────────────────────────┼──────────┼──────────┼──────────┤
-     │ Hand-built 4-option MC (n=30)   │  0.30–   │  0.45–   │  0.10–   │
-     │                                 │  0.55    │  0.65    │  0.25    │
-     │ Hand-built generation (n=20)    │  0.10–   │  N/A     │  N/A     │
-     │                                 │  0.40    │          │          │
-     │ Arithmetic 1+1 digit (n=15)     │  0.30–   │  N/A     │  N/A     │
-     │                                 │  0.70    │          │          │
-     │ Arithmetic 2+2 digit (n=15)     │  0.0–    │  N/A     │  N/A     │
-     │                                 │  0.20    │          │          │
-     │ Arithmetic 3+3 digit (n=15)     │  0.0     │  N/A     │  N/A     │
-     └─────────────────────────────────┴──────────┴──────────┴──────────┘
-  ```
-
-  These are rough; your numbers will vary with checkpoint quality, eval set difficulty, and matcher strictness. The *shape* of the gradient — high on simple, near-zero on hard — is what matters; the absolute numbers don't.
 
 ---
 ## Reading
@@ -686,13 +588,13 @@ Optional:
 
 ## Deliverable checklist
 
-- [ ] All tests in `tests/test_eval.py` pass (88 tests if Module 09's `TransformerLM.forward` is implemented; otherwise 87 — the real-transformer end-to-end test depends on it).
-- [ ] Hand-authored multiple-choice eval set of 30+ questions in `data/eval/multiple_choice.json`, with the structure described in exercise 1. Each question has 4 length-matched choices.
-- [ ] Hand-authored generation eval set of 20+ questions in `data/eval/generation.json` (exercise 3), with categorized expected-failure modes.
-- [ ] Hand-authored arithmetic eval set of 50 questions in `data/eval/arithmetic.json` (exercise 4), spanning 1+1-digit through 3+3-digit.
-- [ ] Notebook: `notebooks/15-evaluation.ipynb`. Runs the multiple-choice and generation harnesses on your DPO'd model. Plots the reliability curve. Reports accuracy, mean confidence, and ECE per task type. Commit with outputs visible.
-- [ ] **Written characterization** of your model's typical failure modes (exercise 8). 2–3 paragraphs in `docs/eval-postmortem.md` (or in the notebook's final markdown cell). Cover: what it can do (with eval numbers), what it cannot do (with eval numbers), how it fails (categorized), and how well-calibrated it is.
+- [ ] All tests in `tests/test_eval.py` pass
+- [ ] Hand-authored multiple-choice eval set of 30+ questions in `data/eval/multiple_choice.json`. 
+- [ ] Hand-authored generation eval set of 20+ questions in `data/eval/generation.json`, with categorized expected-failure modes.
+- [ ] Hand-authored arithmetic eval set of 50 questions in `data/eval/arithmetic.json`, spanning 1+1-digit through 3+3-digit.
+- [ ] Notebook: `notebooks/15-evaluation.ipynb`. Runs the multiple-choice and generation harnesses on your DPO'd model. 
+- [ ] **Written characterization** of your model's typical failure modes. 2–3 paragraphs. Cover: what it can do (with eval numbers), what it cannot do (with eval numbers), how it fails (categorized), and how well-calibrated it is.
 - [ ] You can explain — out loud, without notes — the difference between accuracy and calibration, and why a model can be highly accurate yet poorly calibrated.
-- [ ] You can explain — out loud, without notes — the multiple-choice scoring procedure: tokenize each option, sequence_logprob conditional on the prompt, argmax for prediction, softmax for confidence.
-- [ ] You can explain — out loud, without notes — how ECE is computed (bin by confidence, weight by bin frequency, sum the per-bin |acc − conf| differences) and what its `[0, 1]` extremes mean.
-- [ ] You can explain — out loud, without notes — when to use each of the four matchers and what kinds of bug each silently introduces if used inappropriately.
+- [ ] You can explain — out loud, without notes — the multiple-choice scoring procedure.
+- [ ] You can explain — out loud, without notes — how ECE is computed and what its extremes mean.
+- [ ] You can explain — out loud, without notes — when to use each of the four matchers and what kinds of bug each introduces if used inappropriately.

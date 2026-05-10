@@ -12,6 +12,7 @@ Last week we taught the model to **format** an answer. This week we teach it to 
 
 * *Review* 
 	* [[13-sft]] for the chat template and masking
+	* [[PyTorch Primer]] if any PyTorch code is unfamiliar or confusing
 * *Finish* 
 	* `g2c/nn` from [[03-nn]] 
 	* `g2c/training` from [[03b-training]] 
@@ -32,23 +33,19 @@ Lisbon.<|end|>
 
 Confident. Format-perfect. Wrong. The SFT loss has no way to penalize this output — every syntactically valid `{single sentence}<|end|>` response with the format markets in the right place is equally good. The model "knows" the prompt is asking about a Spanish city; it picks city-shaped tokens that pretraining over-represented from the corpus. SFT taught it the *shape* of the answer; nothing taught it which answers is correct.
 
-SFT was the first layer of post-training in our LLM stack. This week we're exploring another form of post-training which teaches human preferences. This is more powerful than it appears at first. Many behavioral criteria, including factual accuracy, can be represented by asking the right humans the right questions.
+SFT was the first layer of post-training in our LLM stack. This week we're exploring DPO, another form of post-training that teaches pairwise preferences. This is more powerful than it appears at first. Many behavioral criteria, including factual accuracy, can be represented by having graders repeatedly pick between two different examples.
+
+SFT is used to post-train the shape of the output response. DPO is used to introduce behavior like helpfulness, honesty, tone, safety, and instruction following. Because these properties are downstream of having the basic assistant-like shape, DPO comes *after* SFT in the post-training pipeline. 
+
+The nomenclature can be a bit confusing. In almost every case the "base model" that DPO trains over is the SFT model, *not* the original pretrained model. In this module we'll train DPO on top of the SFT model from Module 13.
 
 ## The big idea
 
-In classic SFT post-training, the training example is a prompt response pair:
+In SFT post-training, we trained on a set of prompt-response examples. The limitation is this can teach generalized examples, but is weak at demonstrate specific properties. The model learns "answers should look like this". It doesn't learn "answer this way *instead of* that way". 
 
-```
-(prompt, response)
-```
+The solution is pairwise comparisons. Unlike a response example, a comparison lets us specifically contrast a good example against a bad example. This means we can construct the comparisons so they're as close as possible in every way, besides the specific property we're trying to teach. 
 
-The limitation is 
-
-```
-(prompt, chosen_response, rejected_response)
-```
-
-For the Madrid/Lisbon example, the preference triple would be:
+Consider the Madrid example. With SFT we supply tons of "What is the largest city in..." examples, and all that it's learning is to respond with city-shaped tokens. We can't teach accuracy because there is no negative example of city-like answers that are factually incorrect. But with a pairwise comparison, it's easy:
 
 ```
 prompt  : "<|user|>\nWhat is the largest city in Spain?\n<|assistant|>\n"
@@ -56,13 +53,17 @@ chosen  : "Madrid.<|end|>"
 rejected: "Lisbon.<|end|>"
 ```
 
-The goal is not "memorize Madrid." The goal is "when the model is in this kind of situation, move probability mass toward answers like the chosen completion and away from answers like the rejected completion." That distinction matters. DPO can sharpen behavior the base model already has some capacity for; it does not magically install facts the base model never represented.
+The goal is not "memorize Madrid." The goal is "when the model is in this kind of situation, shift probability mass towards answers like the chosen completion and away from answers like the rejected completion." That distinction matters. DPO can sharpen behavior the base model already has some capacity for. But it does not magically install facts the base model never represented.
 
 ### Preference data
 
-A *preference triple* (`prompt`, `chosen`, `rejected`) is a shared prompt prefix and two assistant responses. The grader chooses the best response, and rejects the other response. 
+Each training example is composed of a *preference triple* consisting of a user prompt prefix and a good (chosen) and bad (rejected) response completion. The prompt is shared between both responses.
 
-The training process rewards the tokens in the chosen response and penalizes the tokens in the rejected response. Prompt prefix tokens are identical between the responses, and therefore non-relevant for comparison. Therefore we *mask* them in the loss function.
+```
+(prompt, chosen_response, rejected_response)
+```
+
+The training process rewards the tokens in the chosen response and penalizes the tokens in the rejected response. Because prompt prefix tokens are identical between the responses, they are non-relevant for comparison. Therefore we *mask* them in the loss function. (If you recall Module 13, we took the same approach with SFT.) 
 
 ```
    prompt_ids + chosen_ids       → score chosen response
@@ -72,56 +73,47 @@ The training process rewards the tokens in the chosen response and penalizes the
    mask = 1 on response tokens
 ```
 
-DPO can feel similar to SFT in code. But SFT asks "how likely is this target response?" DPO asks "did the model improve the chosen response relative to the rejected response?"
-
-### RLHF as the historical baseline
-
-![RLHF (traditional) vs DPO (this module). The classical InstructGPT pipeline runs three stages: SFT (Module 13's deliverable), then reward modeling on preference comparisons, then PPO reinforcement-learning to optimize the SFT model against the reward model with a KL penalty. DPO collapses the second and third stages into a single supervised loss using the SFT'd model as a frozen reference. A "what RLHF needs" panel lists rollouts, value heads, KL controllers, and PPO ratio clipping. A "what DPO needs" panel lists: a frozen reference, a trainable policy, β, and a preference dataset. A "bottom line" panel pins the framing: same goal — align the model with human preferences — same gradient, but no reward model, no PPO loop, no on-policy rollouts.](14-dpo/Module14-RLHF.png)
-*RLHF's middle and right stages are notoriously expensive and finicky . DPO's closed-form derivation makes them disappear.*
-
-The standard way to train from preferences is **RLHF** (reinforcement learning from human feedback). RLHF also starts with `(prompt, chosen, rejected)` comparisons, but takes three stages:
-
-```
-   ┌──────────────────────────────────────────────────────────────────────┐
-   │   STAGE 1.  SFT.                                                     │
-   │     Train on (prompt, response) pairs to get the format right.       │
-   │     This is Module 13. Already done.                                 │
-   ├──────────────────────────────────────────────────────────────────────┤
-   │   STAGE 2.  REWARD MODELING.                                         │
-   │     Train a separate scalar-output head r(x, y) on the preference    │
-   │     pairs using the Bradley-Terry loss.                              │
-   ├──────────────────────────────────────────────────────────────────────┤
-   │   STAGE 3.  PPO RL.                                                  │
-   │     Use the frozen reward model as the environment reward, run       │
-   │     PPO with a KL penalty against the SFT model. The output is the   │
-   │     "instruction-tuned + RLHF" model that ChatGPT et al. ship.       │
-   └──────────────────────────────────────────────────────────────────────┘
-```
-
-Stage 2 is moderately expensive (a separate model). Stage 3 is *very* expensive — PPO is finicky, the reward model can be hacked by the policy ("reward hacking" / "Goodharting"), the KL controller has to be tuned, the rollouts dominate the wall-clock cost. At small scale Stage 3 is impractical.
-
-DPO exists because we want preference-tuning effect without that complexity.
+DPO tends to feel similar to SFT in code. But SFT trains on "how likely is this target response?" DPO trains on "did the model improve the chosen response relative to the rejected response?"
 
 ### The direct preference shortcut
 
-DPO collapses the reward-model and PPO stages from RLHF into a single supervised loss. The trick is that the closed-form solution to the KL-constrained RL objective lets you express reward in terms of two model probabilities:
+Historically preference post-training was performed with *reinforcement learning (RL)*. RL relies on explicitly derived preference scores (often from a pairwise ranking system like ELO or Bradley-Terry). After scoring all the training examples, the model is updated a technique called *policy proximal optimization (PPO)*. The problem with RL is that PPO tends to be complex, expensive, hard to tune, unstable, and prone to reward hacking. 
 
-- the trainable **policy** `π`
-- the frozen **reference** `π_ref`
+DPO is a "trick" to perform the equivalent of RL, but without any of the complexity of constructing explicit scores or policy functions. The "direct" in DPO means we go straight from pairwise comparisons to single supervised loss on the underlying model. And that means we can train with standard gradient descent. 
 
-Both start from the same SFT checkpoint. The policy updates. The reference *never* updates. For each preference triple, we ask:
+This is possible because DPO lets you express the reward from an RL objective in terms of two diverging models: 
+
+- the trainable **policy model** `π`
+- the frozen **reference model** `π_ref`
+
+Both start from the same base model (the post-SFT checkpoint). The policy updates. The reference *never* updates. For each preference triple, we ask:
 
 ```
 Did the policy increase chosen-over-rejected more than the reference does?
 ```
 
 The end result is a loss that depends only on:
-  - the trainable policy `π`
-  - the frozen reference `π_ref` (= the SFT'd model)
-  - a hyperparameter `β` (the KL strength)
+  - the trainable policy model `π`
+  - the frozen reference model `π_ref`
+  - a learning rate `β`
   - the preference dataset
 
-No reward model. No rollouts. No on-policy data. Just two model copies, four sequence log-probabilities, and one sigmoid loss.
+With an implicit reward of:
+
+```
+r̂(x, y) = β · (log π(y|x) − log π_ref(y|x))
+```
+
+Crossing two models against two pairwise examples means each pass calculate four log-probabilities:
+
+* `logit_frozen_chosen` 
+* `logit_frozen_rejected` 
+* `logit_policy_chosen` 
+* `logit_policy_rejected` 
+
+No reward model. No on-policy data. Just two model copies, four log-probabilities, and one sigmoid loss.
+
+After DPO training, chosen completions should have higher implicit reward than rejected completions. This reward never appears explicitly; the model just generates the probabilities it learned.
 
 ```
    ┌──────────────────────────────────────────────────────────────────────┐
@@ -188,20 +180,12 @@ No reward model. No rollouts. No on-policy data. Just two model copies, four seq
                     backward + step (policy params only)
 ```
 
-A useful framing: **DPO turns the policy into the reward model.** The implicit reward is:
-
-```
-r̂(x, y) = β · (log π(y|x) − log π_ref(y|x))
-```
-
-After DPO training, chosen completions should have higher implicit reward than rejected completions. This reward never appears explicitly; the policy just generates from the probabilities it learned.
-
 ### DPO loss
 
 ![DPO mechanism: four log-probs → one margin → one loss. Step 1 takes one preference example `(prompt, chosen, rejected)`. Step 2 forwards both the policy and the frozen reference on (prompt + chosen) and (prompt + rejected) — four sequences, four scalar log-probabilities `log π(c|x)`, `log π(r|x)`, `log π_ref(c|x)`, `log π_ref(r|x)`, each computed by log-softmaxing logits, gathering the target's column, and summing over the response tokens (mask = 1 only on the response, including `<|end|>`). Step 3 turns four log-probs into two log-ratios — chosen ratio `Δ_c = log π(c|x) − log π_ref(c|x)` and rejected ratio `Δ_r = log π(r|x) − log π_ref(r|x)` — and one margin `m = Δ_c − Δ_r`. Step 4 plugs the margin into the closed-form DPO loss `L = −log σ(β · m)`. A "step 0 sanity check" panel pins the canonical invariant: when the policy equals the reference, every Δ is zero, m is zero, σ(0) = 0.5, and the loss is exactly `log 2 ≈ 0.693`. An "intuition: what the loss does" panel shows three regimes — before training the policy and reference produce equal probabilities; during training the policy pushes chosen log-probs UP and rejected log-probs DOWN; bad training pushes both down (implicit-reward collapse).](14-dpo/Module14-FourLogs.png)
-*The whole DPO mechanism on one page. Trace the flow once before reading the prose: (prompt, chosen, rejected) → four log-probs → two log-ratios → one margin → one scalar loss.*
+*preference triplet → four log-probs → two log-ratios → one margin → one scalar loss.*
 
-For a single preference example `(x, y_c, y_r)` with chosen `y_c` and rejected `y_r`:
+For a single preference example:
 
 ```
 	   loss_c = ( log π(y_c | x)  −  log π_ref(y_c | x) )     ← chosen
@@ -212,7 +196,7 @@ For a single preference example `(x, y_c, y_r)` with chosen `y_c` and rejected `
        L_DPO  =  − log σ( β · m̂ )
 ```
 
-`m̂` is the policy-vs-reference improvement. `β` scales that log-ratio margin into an implicit-reward margin. The DPO loss is the negative log-likelihood of "chosen beat rejected" under a Bradley-Terry preference model.
+`m̂` is the policy-vs-reference improvement. `β` scales that log-ratio margin into an implicit-reward margin. DPO loss is the negative log-likelihood of "chosen beat rejected" under a pairwise preference model.
 
 ```
    ┌────────────────────────────────────────────────────────────────────┐
@@ -239,16 +223,16 @@ For a single preference example `(x, y_c, y_r)` with chosen `y_c` and rejected `
    └────────────────────────────────────────────────────────────────────┘
 ```
 
-**At initialization**: both ratios are zero, the margin is zero, `σ(0) = 0.5`, and `loss = log 2 ≈ 0.6931`. This is always the canonical DPO sanity value. If you implement DPO and your initial loss is anything else, the implementation is wrong.
+**At initialization**: both ratios are zero, the margin is zero, `σ(0) = 0.5`, and `loss = log 2`. This is always the canonical DPO sanity value. If you implement DPO and initial loss is anything else, the implementation is wrong.
 
-**As training proceeds**: the policy pushes `log π(y_c|x)` **up** and `log π(y_r|x)` **down** and loss falls. The reward margin (`chosen_reward − rejected_reward`) is the main number to pay attention to. If training is working it should increase over steps. (Loss itself will tend to saturate quickly because of the sigmoid.) 
+**As training proceeds**: the policy pushes `log π(y_c|x)` **up** and `log π(y_r|x)` **down**. The reward margin (`chosen_reward − rejected_reward`) is the main number to watch. If training is working it should gradually increase over the run.
 
-**β controls how far the policy can drift.** Mathematically, `β` is the KL coefficient in the original RLHF objective; intuitively, it's the "strength" of the policy's connection to the reference. Small β (e.g. 0.01) lets the policy diverge a long way for small preference signals. That invites risk of mode collapse, repetition, and gibberish. Large β (e.g. 1.0) pins the policy near the reference — safe but sometimes can't move enough to absorb the preference signal. The DPO paper and most follow-ups recommend `β ∈ [0.1, 0.5]` as the sweet spot. **At toy scale `β = 0.1` is a fine default**, though its always worth sweeping.
+**β controls the policy learning rate.**  Small β (e.g. 0.01) lets the policy diverge a long way for small preference signals. That invites risk of mode collapse, repetition, and gibberish. Large β (e.g. 1.0) pins the policy near the reference — safe but sometimes can't move enough to absorb the preference signal. The DPO paper and most follow-ups recommend `β ∈ [0.1, 0.5]`. **At toy scale `β = 0.1` is a fine default**, though its always worth sweeping.
 
 ### The frozen reference
 
 ![Policy vs frozen reference. Both models start from the same SFT'd checkpoint produced by Module 13 — `ref_model = copy.deepcopy(model)`. The policy is trainable: gradients flow, weights update, it learns to prefer chosen over rejected. The reference is frozen: never gradients (`with torch.no_grad():` around its forwards), only used to score the same prompts under the original SFT distribution so the log-ratios `log π / log π_ref` have a fixed denominator. A single preference triple `(prompt, chosen, rejected)` is fed to both models; both compute scalar log-probabilities `log π_θ(c|x)`, `log π_θ(r|x)`, `log π_ref(c|x)`, `log π_ref(r|x)`. The DPO loss combines these into a margin and pushes the policy to widen it without drifting too far from the reference. A "key idea" panel: we don't care about the absolute probabilities, only how the policy moves relative to the reference. An "important" panel: the reference must not change, ever — the deepest invariant test of a DPO implementation is to snapshot reference params before/after training and assert byte-for-byte equality.](14-dpo/Module14-Policy.png)
-*The two-model setup. Module 13's SFT'd checkpoint plays both roles — once trainable, once frozen.*
+*The two-model setup. The SFT model plays both roles — one copy trainable, one copy frozen.*
 
 The reference is the **anchor** for the implicit-reward computation. The whole DPO loss is a function of *log-ratios* between the policy and the reference. If for some reason both moved together (e.g. an update bug), the log-ratios stay zero and nothing changes.
 
@@ -287,13 +271,6 @@ The reference is the **anchor** for the implicit-reward computation. The whole D
    └─────────────────────────────────────────────────────────────────────┘
 ```
 
-Two ways to enforce the freeze:
-
-  1. **Architectural**: set `requires_grad=False` on every reference parameter. PyTorch's `model.parameters()` still returns them but `.grad` stays `None` and the optimizer can't step them.
-  2. **Trainer-level**: don't include them in the optimizer, and forward them under `torch.no_grad()` so they don't accumulate `.grad` at all.
-
-We use approach (2). It's cleaner — the optimizer signature is "only policy params," there's no risk of accidentally stepping the reference, and the `no_grad` context guarantees no autograd graph through the reference. 
-
 ### Preference dataset construction: the costly half of DPO
 
 DPO is technically simple but **operationally hard** because the dataset matters far more than the loss formula. Three construction methods at increasing scale:
@@ -306,93 +283,23 @@ DPO is technically simple but **operationally hard** because the dataset matters
 
 A quality pin for any preference dataset: chosen and rejected should differ in the *behavior* you care about, not in length, fluency, or surface form. If chosen is systematically longer than rejected, DPO learns "be longer." If chosen uses formal language and rejected uses informal, DPO learns "be formal." Vary only the *thing you're trying to teach*.
 
-### Failure modes specific to DPO
-
-Beyond the SFT failure modes inherited from Module 13:
-
-```
-   ┌────────────────────────────────────────────────────────────────┐
-   │   REFERENCE DRIFT                                              │
-   │   The reference model is not actually frozen — its parameters  │
-   │   update along with the policy. Symptom: loss curve looks      │
-   │   fine but the model behavior matches the SFT'd model exactly. │
-   │   Fix: verify ref_model.parameters() are unchanged after a few │
-   │   steps. Common cause: optimizer was constructed with both     │
-   │   models' params concatenated.                                 │
-   └────────────────────────────────────────────────────────────────┘
-
-   ┌────────────────────────────────────────────────────────────────┐
-   │   LENGTH BIAS                                                  │
-   │   Chosen completions are systematically longer than rejected   │
-   │   ones in the dataset. DPO learns "longer is better" instead   │
-   │   of the actual preference. Symptom: model produces verbose,   │
-   │   repetitive outputs after training. Fix: audit the dataset's  │
-   │   chosen/rejected length distributions.                        │
-   └────────────────────────────────────────────────────────────────┘
-
-   ┌────────────────────────────────────────────────────────────────┐
-   │   IMPLICIT-REWARD COLLAPSE                                     │
-   │   Both chosen_reward and rejected_reward go to large negative  │
-   │   numbers — the policy is making BOTH less likely than the     │
-   │   reference does, but chosen drops less than rejected. The     │
-   │   margin is fine; the absolute log-probs are nonsense.         │
-   │   Symptom: generation is gibberish but DPO accuracy looks      │
-   │   high. Fix: lower lr, raise β. (This is the single hardest    │
-   │   DPO failure mode to debug because the loss curve hides it.)  │
-   └────────────────────────────────────────────────────────────────┘
-
-   ┌────────────────────────────────────────────────────────────────┐
-   │   BETA TOO SMALL                                               │
-   │   The policy drifts arbitrarily far from the reference. Even   │
-   │   if the preference signal is good, the model loses base       │
-   │   capacity. Symptom: format breaks, repetition increases,      │
-   │   responses get longer or shorter monotonically. Fix: raise β. │
-   │   At toy scale β=0.1 is the floor; β=0.01 is too small.        │
-   └────────────────────────────────────────────────────────────────┘
-
-   ┌────────────────────────────────────────────────────────────────┐
-   │   BETA TOO LARGE                                               │
-   │   The policy is pinned so close to the reference that the      │
-   │   preference signal can't pull it. Symptom: loss stays near    │
-   │   log(2), accuracy stays near 0.5, model behavior is           │
-   │   indistinguishable from SFT. Fix: lower β. β=1.0 is usually   │
-   │   too high for hand-authored datasets at small scale.          │
-   └────────────────────────────────────────────────────────────────┘
-
-   ┌────────────────────────────────────────────────────────────────┐
-   │   PREFERENCE-LEAKED FORMAT BREAKAGE                            │
-   │   The dataset's rejected completions have a systematic format  │
-   │   problem (missing <|end|>, mid-response role marker, wrong    │
-   │   newline). DPO learns "DON'T do this format thing," which is  │
-   │   useful — except it also has an outsized gradient because the │
-   │   format violation is rare. Symptom: model becomes overly      │
-   │   conservative about format edge cases. Fix: ensure rejected   │
-   │   completions are format-clean; the only difference vs chosen  │
-   │   should be the BEHAVIOR you're correcting.                    │
-   └────────────────────────────────────────────────────────────────┘
-```
-
-The middle three (length bias, implicit-reward collapse, β tuning) are real concerns even at production scale and have whole papers about them. At toy scale you'll see them in caricature; the exercises ask you to *cause* the failure modes deliberately so you internalize what they look like.
-
 ## Concepts to internalize
 
 - **DPO is closed-form supervised loss.** The implementation collapses to a single forward+backward per step.
-- **The policy is the reward model.** The implicit reward is what DPO trains on; you can read it off any (x, y) pair after training.
+- **The policy is the reward model.** DPO trains the implicit reward; you can read it off any (x, y) pair after training.
 - **The reference must stay frozen.** If reference updates, the log-ratios do not correspond to learning.
-- **At step 0 the loss is exactly log(2).** If yours isn't, something is wrong.
-- **β is the KL strength.** Small β: more drift, more risk of collapse. Large β: less drift, less learning.
+- **β controls the learning rate.** Small β: more drift, more risk of collapse. Large β: less drift, less learning.
 - **The preference dataset format is `(prompt, chosen, rejected)` triples.** Chosen and rejected share the prompt prefix and diverge over the response. 
-- **Sequence-level log-probabilities are SUMS, not means.**  A mean would change the objective by length-normalizing.
-- **At toy scale, 50–200 preference pairs is the right order of magnitude.** Not 5; not 5000. Controlling quality is more important than quantity at this scale (same lesson as Module 13's LIMA finding).
+- **Sequence-level log-probabilities are sums, not means.**  A mean would change the objective by length-normalizing.
+- **At toy scale, 50–200 preference pairs is the right order of magnitude.** Not 5; not 5000. Controlling quality is more important than quantity at this scale.
 - **Length bias is the single most-studied DPO failure.** Always check chosen-vs-rejected length distributions before training.
 - **DPO does not teach new knowledge.** Like SFT, it shifts behavior over what the base model already knows. It learns to give *more probability* to similarly-shaped correct answers, but only when the base model's prior over the relevant tokens already them nonzero mass.
 
 ### What we don't cover
 
-- **Implementing a reward model and PPO.** The whole point of DPO is to replace this pipeline. Read the InstructGPT paper for context. It's only necessary if DPO works, and DPO works.
-- **Online preference collection.** Real DPO pipelines iterate: train the policy, sample fresh rollouts, ask a human (or stronger model) to label them, append to the dataset, retrain. This is where most of the engineering effort goes in production models. 
+- **Reinforcement learning from human feedback (RLHF).** Largely supplanted by DPO. Still useful when post-training can't be reduced to pairwise comparisons. Worth reading about.
+- **Online preference collection.** Real DPO pipelines iterate: train, sample fresh, grade, append, retrain. This is where most of the engineering effort goes in production models. 
 - **KTO / IPO / SLIC / ORPO and the rest of the DPO-derivative zoo.** Each is a small refinement aimed at a specific failure mode (length bias, off-policy drift, the implicit-reward calibration problem). Skim the names; don't implement them.
-- **Proper KL estimation.** DPO sidesteps this entirely. If you read the DPO paper carefully, the KL appears in the *derivation* but never has to be computed at training time.
 - **LoRA for policy.** At production scale, you train a low-rank update on top of the frozen reference. Saves the 2× memory cost. Out of scope here.
 - **Length normalization.** Some DPO variants normalize the log-prob by length. We don't — with similar-length chosen/rejected pairs, length bias is small.
 
@@ -563,29 +470,9 @@ pytest tests/test_dpo.py -v                    # verbose
 
 DPO is more compute-hungry than SFT but still tractable on M-series:
 
-- **Per-step cost.** Each step does 4 forward passes (policy/ref × chosen/rejected) and 1 backward (only through the policy forwards). Roughly **3× the wall-clock of an SFT step** at the same `(B, T)`. Memory peak is ~2× SFT — both models in memory at once.
-
-- **Total wall-clock estimates** at `max_steps=300`, on a Module-13-SFT'd checkpoint:
-
-  ```
-     ┌────────┬────────────┬────────────┬────────────┐
-     │ size   │ M1/M2 8GB  │ M2 Pro 32GB│ M3 Max 64GB│
-     ├────────┼────────────┼────────────┼────────────┤
-     │  1M    │   ~5 min   │   ~3 min   │   ~2 min   │
-     │  5M    │  ~12 min   │   ~7 min   │   ~5 min   │
-     │  20M   │  ~30 min   │  ~15 min   │  ~10 min   │
-     └────────┴────────────┴────────────┴────────────┘
-  ```
-
-  The 20M model's DPO comfortably fits in a long-coffee-break window. As with SFT, run on the largest checkpoint you have — quality scales with base-model size, and DPO on a 1M-param base is mostly a debugging exercise (the base capacity isn't there).
-
-- **Memory.** The 2× model footprint matters. On 8GB M1: a 20M model is fine; a 50M model would push the limits. On 32GB+: anything you can pretrain is comfortable.
-
-- **Device.** `DPOTrainer(..., device="auto")` moves both the policy and reference model to MPS when available, then moves each chosen/rejected batch to that same device. Use `device="cpu"` when debugging the two-model bookkeeping.
-
-- **Evaluation cost.** Generating from the DPO'd model + computing implicit rewards over 100 (x, y) pairs takes 1–2 minutes at our model sizes. The deliverable comparison notebook is fast to iterate.
-
-- **Checkpoint sizes.** Same as Modules 12/13: 1M ≈ 4MB, 5M ≈ 20MB, 20M ≈ 80MB. Storing pretraining + SFT'd + DPO'd versions of the 20M model is ~240MB — comfortable.
+* **Memory** is the primary limitation here. With course standard BaseLM, expect to use 6-10GB. Potentially workable with 8GB. Comfortable at 16GB. 
+* **Running time**. With BaseLM, the training runs from the exercise notebook should finish in well under under an hour.
+* **Smaller models**. We recommend using BaseLM. The smaller models from Module 10 are too weak generalize well. But this module's notebook will run fine with TinyLLM, StoryLM or even ShakespeareLM. Any model your system pretrained, it can easily post-train.
 
 ---
 ## Reading
