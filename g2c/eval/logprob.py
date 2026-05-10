@@ -34,6 +34,7 @@ shift-by-one as Modules 13–14.
 from __future__ import annotations
 
 import torch
+import torch.nn.functional as F
 
 
 def continuation_logprob(
@@ -145,5 +146,40 @@ def continuation_logprob(
         length-fair multiple choice scoring, divide by
         `n_continuation_tokens`.
     """
-    # TODO
-    raise NotImplementedError
+    prompt_ids = tokenizer.encode(prompt)
+    cont_ids = tokenizer.encode(continuation)
+    if len(prompt_ids) == 0:
+        raise ValueError("prompt must encode to at least one token")
+    if len(cont_ids) == 0:
+        raise ValueError("continuation must encode to at least one token")
+
+    full_ids = prompt_ids + cont_ids
+    device = _model_device(model)
+    full = torch.tensor(full_ids, dtype=torch.long, device=device).unsqueeze(0)
+    x = full[:, :-1]
+    y = full[:, 1:]
+
+    mask = torch.zeros_like(y, dtype=torch.float32)
+    mask[:, len(prompt_ids) - 1 :] = 1.0
+
+    with torch.no_grad():
+        logits = model(x)
+        log_probs = F.log_softmax(logits, dim=-1)
+        target_log_probs = log_probs.gather(
+            dim=-1,
+            index=y.unsqueeze(-1),
+        ).squeeze(-1)
+        total = (target_log_probs * mask).sum()
+
+    return float(total.item()), len(cont_ids)
+
+
+def _model_device(model) -> torch.device:
+    device = getattr(model, "device", None)
+    if isinstance(device, torch.device):
+        return device
+    try:
+        parameter = next(iter(model.parameters()))
+    except StopIteration:
+        return torch.device("cpu")
+    return parameter.device

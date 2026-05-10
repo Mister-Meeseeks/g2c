@@ -99,9 +99,9 @@ A confident fluent wrong answer is rewarded as much as a confident fluent right 
 
 ## The big idea
 
-The **eval harness** closes this loop. By scoring outputs against what we want, not what the loss measures, we surface the gap. Most of the model's failures are expected given the training objective; eval makes them *visible*.
+The **eval harness** closes this loop. By scoring outputs against what we want to, not what the loss measures, we surface the gap. Most of the model's failures are expected given the training objective; eval makes them *visible*.
 
-An eval harness is a repeatable procedure to evaluate and score model behavior against specific questions or challenges. The harness abstracts and standardizes the grading procedure against arbitrary questions. Standardized scoring mean models can be cross-compared in an objective way. 
+An eval harness is a repeatable procedure to evaluate and score model behavior against specific questions or challenges. The harness abstracts and standardizes the grading process for arbitrary questions. Standardized scoring means we can now compare models and checkpoints models and checkpoints in an objective way. Evaluation isn't just the end of the training pipeline, it's a step in a broader iterative pipeline of continuously refining the model.
 
 The key steps in an evaluation harness are:
 

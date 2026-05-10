@@ -218,6 +218,59 @@ class MultiHeadAttention(Module):
 
         return self.out_proj(mixed)  # (B, T, D)
                                            
+    def forward_cached(self, x: torch.Tensor, cache):
+        """Apply attention to a single new token using cached K/V state.
+
+        Args:
+            x: tensor of shape ``(B, 1, D)`` for the newest token only.
+            cache: a ``LayerKVCache``-like object with ``append``, ``keys``,
+                and ``values``. The cache stores previous keys/values with
+                shape ``(B, H, T_cache, head_dim)``.
+
+        Returns:
+            ``(out, cache)`` where ``out`` has shape ``(B, 1, D)`` and cache
+            has been updated to include the new token's key/value vectors.
+
+        Conceptual core:
+            1. Project the new token to Q/K/V.
+            2. Append the new K/V to the cache.
+            3. Attend the new Q over all cached K/V rows.
+            4. Project the mixed head output back to ``D``.
+
+        No causal mask is needed here: during one-token decoding there are no
+        future keys in the cache. The cache contains exactly past tokens plus
+        the current token.
+        """
+        if not self.causal:
+            raise ValueError("cached attention is only defined for causal attention")
+        if x.dim() != 3 or x.shape[1] != 1:
+            raise ValueError(
+                "forward_cached expects one token at a time with shape (B, 1, D); "
+                f"got {tuple(x.shape)}"
+            )
+
+        q = self.q_proj(x)
+        k = self.k_proj(x)
+        v = self.v_proj(x)
+
+        B, T, _ = x.shape
+        H, d_h = self.num_heads, self.head_dim
+        q = q.view(B, T, H, d_h).transpose(1, 2)
+        k = k.view(B, T, H, d_h).transpose(1, 2)
+        v = v.view(B, T, H, d_h).transpose(1, 2)
+
+        cache.append(k, v)
+        keys = cache.keys
+        values = cache.values
+        if keys is None or values is None:
+            raise RuntimeError("cache append did not store keys and values")
+
+        scores = q @ keys.transpose(-2, -1) / math.sqrt(d_h)
+        weights = scores.softmax(dim=-1)
+        mixed = weights @ values
+        mixed = mixed.transpose(1, 2).contiguous().view(B, 1, self.embedding_dim)
+        return self.out_proj(mixed), cache
+
 
     def attention_weights(self, x: torch.Tensor) -> torch.Tensor:
         """Return the per-head attention weight matrices for visualization.

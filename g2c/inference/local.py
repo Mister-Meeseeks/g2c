@@ -257,11 +257,68 @@ class LocalTransformerBackend(Backend):
 
           * Empty prompt: raises ValueError before forwarding.
         """
-        # TODO
-        raise NotImplementedError
+        if not isinstance(prompt, str):
+            raise TypeError(f"prompt must be str, got {type(prompt).__name__}")
+        if max_new_tokens <= 0:
+            raise ValueError(
+                f"max_new_tokens must be positive, got {max_new_tokens}"
+            )
+
+        prompt_ids = self._tokenizer.encode(prompt)
+        if len(prompt_ids) == 0:
+            raise ValueError("prompt encoded to 0 tokens")
+
+        device = _model_device(self._model)
+        prompt_tensor = torch.tensor(prompt_ids, dtype=torch.long, device=device)
+
+        start = time.perf_counter()
+        full = generate(
+            self._model,
+            prompt_tensor,
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+            top_k=top_k,
+            top_p=top_p,
+            eos_id=self._eos_id,
+        )
+        latency_ms = (time.perf_counter() - start) * 1000.0
+
+        completion_ids = [int(token_id) for token_id in full[len(prompt_ids) :].tolist()]
+        completion = self._tokenizer.decode(completion_ids)
+        return InferenceResult(
+            prompt=prompt,
+            completion=completion,
+            prompt_tokens=len(prompt_ids),
+            completion_tokens=len(completion_ids),
+            latency_ms=latency_ms,
+            backend=self._info,
+            metadata={
+                "sampling": {
+                    "max_new_tokens": max_new_tokens,
+                    "temperature": temperature,
+                    "top_k": top_k,
+                    "top_p": top_p,
+                },
+                "eos_id": self._eos_id,
+            },
+        )
 
     def __repr__(self) -> str:
         return (
             f"LocalTransformerBackend(name={self._info.name!r}, "
             f"model_id={self._info.model_id!r})"
         )
+
+
+def _model_device(model) -> torch.device:
+    device = getattr(model, "device", None)
+    if isinstance(device, torch.device):
+        return device
+    parameters = getattr(model, "parameters", None)
+    if parameters is None:
+        return torch.device("cpu")
+    try:
+        parameter = next(iter(parameters()))
+    except (StopIteration, TypeError):
+        return torch.device("cpu")
+    return parameter.device

@@ -227,6 +227,11 @@ tests/test_inference.py::TestOllamaBackendBoilerplate::test_extra_merged
 tests/test_inference.py::TestOllamaBackendBoilerplate::test_negative_timeout_rejected
 tests/test_inference.py::TestOllamaBackendBoilerplate::test_repr
 tests/test_inference.py::TestOllamaBackendBoilerplate::test_zero_timeout_rejected
+tests/test_inference.py::TestProdLMHelpers::test_constants
+tests/test_inference.py::TestProdLMHelpers::test_load_default_backend_prefers_prodlm_manifest
+tests/test_inference.py::TestProdLMHelpers::test_load_prodlm_backend_reads_manifest
+tests/test_inference.py::TestProdLMHelpers::test_load_prodlm_backend_required_without_manifest
+tests/test_inference.py::TestProdLMHelpers::test_write_manifest
 tests/test_lm.py::test_counts_construction_context_length
 tests/test_lm.py::test_counts_construction_default_smoothing
 tests/test_lm.py::test_counts_construction_starts_zero
@@ -256,6 +261,7 @@ tests/test_nn.py::test_linear_construction_shapes
 tests/test_nn.py::test_linear_parameters_requires_grad
 tests/test_nn.py::test_module_call_dispatches_to_forward
 tests/test_nn.py::test_module_default_no_parameters
+tests/test_nn.py::test_module_train_eval_modes_return_self
 tests/test_nn.py::test_module_to_cpu_moves_parameters
 tests/test_nn.py::test_mse_known
 tests/test_nn.py::test_relu_no_parameters

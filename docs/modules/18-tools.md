@@ -9,6 +9,9 @@
 ---
 ## Before you start
 
+* *Refresh* 
+	* AST
+	* JSON
 * *Finish* `g2c/inference` from [[16-inference]] — the tool-use loop calls `backend.complete(...)` to produce each model turn
 
 ---
@@ -27,54 +30,10 @@ This module is short on math and long on plumbing. The whole content is:
 
 There are four scaffolded methods. Three are short (each ~10–30 lines); the fourth is the loop (~30 lines). The lesson is in the *contract* between them — what each piece is responsible for, and what happens when one piece fails.
 
-### Math
-
-There isn't really any math in this module. The closest thing is:
-
-- **Recursive AST evaluation in the calculator.** The safe-eval pattern is "parse to AST, walk the tree, refuse every node that isn't on the allowlist." This is how every safe expression evaluator works (Excel formula engines, sandboxed config languages, code-eval cells in notebooks). Knowing the pattern means you can build similar mini-languages without reaching for `eval()`.
-
 ### Computer science
 
-- **Tool-call protocols.** Three competing conventions have emerged:
-    - **JSON in tagged delimiters** (`<tool_call>{json}</tool_call>`). What this module uses. Llama 3.x and Qwen 2.5 emit this natively; Anthropic recommends XML-tagged variants for Claude. Easy to parse with a regex; the model has seen the format during instruction tuning.
-    - **OpenAI-style structured output**. The model emits a special `tool_calls` array as part of its response *outside* the prose. The API surface is `response.tool_calls`, not part of the text body. Cleaner to parse but only available on models trained for it.
-    - **Python-syntax calls** (`<|python_tag|>calculator(expression="2+2")`). Llama 3.2's "ipython" mode. Looks like Python; risk is that real Python code calls and fake function calls are visually indistinguishable. We don't use this; the JSON-block approach generalizes better.
 
-  Pick one and stay consistent. The format the model has seen most often during pretraining/fine-tuning is the format it follows most reliably.
 
-- **JSON Schema vs JSON-schema-lite.** Real JSON Schema is a sprawling spec with `$ref`, `oneOf`, `allOf`, conditional schemas, and a hundred validation keywords. Production tool-calling almost never uses any of that — the standard pattern is "object with primitive properties and a `required` list." We implement that subset. Total validator: ~30 lines. If you outgrow it, the upgrade is one import: `import jsonschema; jsonschema.validate(args, schema)`.
-
-- **The `bool`-vs-`int` trap.** Python's `bool` is a subclass of `int`. `isinstance(True, int)` is `True`. If a JSON schema says `{"type": "integer"}` and the model emits `true`, a naive `isinstance(value, int)` accepts it — and the tool now gets `True` as its "count" parameter. The validator must reject `bool` explicitly when expecting numeric. This is the single most common subtle bug in JSON-schema-lite implementations.
-
-- **Safe evaluation strategies.** Three approaches to "execute code from a possibly-adversarial source":
-    - **Restricted globals + `eval()`.** Famously not safe — `().__class__.__base__.__subclasses__()` and many other escapes documented in the safe-eval literature. Don't.
-    - **AST whitelist.** Parse to AST, walk the tree, refuse every node not on the allowlist. What we do for the calculator. Structurally safe; the surface is what you explicitly admit.
-    - **Subprocess + sandbox**. Spawn a separate process with reduced privileges (`seccomp`, `nsjail`, Docker, etc.). What real production code-runners use. We use a plain `subprocess.run` for `run_python` — adequate for *local* pedagogy, NOT for a hosted service.
-
-- **Error surfacing as data, not exceptions.** When a tool fails (unknown name, bad args, runtime error), the dispatcher returns a `ToolResult(is_error=True)` instead of raising. The loop formats it as `<tool_error>` and feeds it back to the model. The model can read the error and try again. A raised exception in the dispatcher would crash the loop and lose the conversation.
-
-- **Tag distinction matters.** `<tool_result>` for success, `<tool_error>` for failures. Without the distinction, the model often parrots an error string back as if it were a successful answer ("The calculator returned: missing required arguments: ['expression']"). With explicit error tags, instruction-tuned models reliably treat them as recovery signals.
-
-- **Why the loop has `max_steps`.** Without a cap, a model that gets confused about when to stop calling tools can loop forever — each step appends to the prompt, eventually overflowing the context. `max_steps=5` is the safety net. Module 19's agent uses smarter stop conditions (goal detection, plan completion); this module's contract is "5 steps, then we cut you off."
-
-### Programming
-
-- **`re` for the tag parser.** A single regex (`<tool_call>(.*?)</tool_call>` with `re.DOTALL`) is enough to extract every tool call in a completion. Non-greedy capture stops at the nearest closing tag.
-- **`json` for the body.** Standard JSON parsing with `json.loads`. Skip blocks that don't parse; don't crash.
-- **`ast` for the calculator.** `ast.parse(expr, mode="eval")` returns an `ast.Expression` whose `.body` is the expression tree. Walk the tree with `isinstance` checks.
-- **`subprocess.run` for `run_python`.** With `timeout` and `capture_output=True`. The child process is its own world; we don't need to import the user's code into our process.
-- **`pathlib.Path` + `.relative_to(root)` for the read_file sandbox.** Resolve paths to absolute, check that the resolved target is under the allowed root. The `.relative_to()` ValueError is the path-escape signal.
-- **`@dataclass(frozen=True)`** for `Tool`, `ToolCall`, `ToolResult` — values, not handles.
-- **`abc` is NOT used here.** Unlike Module 16's `Backend` and Module 17's `Embedder`, tools don't have an ABC. A tool is a `Tool` dataclass with a callable; subclassing buys nothing.
-
-### What you can skip
-
-- **Function-calling fine-tuning.** Models like Llama 3.2 have been fine-tuned with tool-calling data — you get reliable JSON output from a properly-formatted prompt. Training your own tool-calling fine-tune would be a separate multi-week project. We rely on the model already having tool-calling instinct from its pretraining.
-- **Real JSON Schema.** The full spec covers conditional schemas, references, format validators, and more. We implement the corner that gets used in practice. If you outgrow it, drop in the `jsonschema` library.
-- **Production sandboxing.** Real code-execution tools run in Docker, gVisor, Firecracker, or a similar isolation layer. `subprocess.run` is fine for local pedagogy; it is NOT fine for a hosted service.
-- **Streaming.** Real production tool-calling streams token-by-token, parses partial JSON, and starts dispatching as soon as a complete `<tool_call>` block is seen. We do the synchronous version. Conceptually identical, ~3× more code.
-- **Parallel tool execution.** Some agentic systems dispatch all tool calls in a turn concurrently with `asyncio.gather`. We dispatch sequentially. For tools whose `func` is fast (calculator, read_file), the difference is microseconds. For slow tools (HTTP search, run_python), parallelism matters in production but not for a teaching loop.
-- **Tool-result truncation by content.** A real read_file tool detects giant files and summarizes; a real run_python tool truncates large stdout. We truncate by char count only — a starting point.
 
 ## Why we start here
 
@@ -84,50 +43,46 @@ Module 17 fixed the model's *knowledge* gap by retrieving relevant text into the
    ┌──────────────────────────────────────────────────────────────────────┐
    │  WHAT EVEN A 7B MODEL HANDED THE RIGHT CONTEXT CAN'T DO              │
    ├──────────────────────────────────────────────────────────────────────┤
-   │                                                                       │
-   │   • Arithmetic on numbers it didn't memorize:                         │
+   │                                                                      │
+   │   • Arithmetic on numbers it didn't memorize:                        │
    │       - "what's 3220000 * 7?" — it'll guess wrong half the time      │
    │       - even Q4-quantized 70B models get long multiplications wrong  │
-   │                                                                       │
-   │   • Read a file you point it at:                                      │
+   │                                                                      │
+   │   • Read a file you point it at:                                     │
    │       - "summarize this 50-page PDF" — it can't *open* the PDF       │
    │       - even with the bytes pasted in, you've burned 50 pages of ctx │
-   │                                                                       │
-   │   • Run code:                                                         │
+   │                                                                      │
+   │   • Run code:                                                        │
    │       - "compute the eigenvalues of this matrix" — needs numpy       │
    │       - "is this regex correct?" — needs to actually run the regex   │
-   │                                                                       │
-   │   • Look up information not in its training data:                     │
+   │                                                                      │
+   │   • Look up information not in its training data:                    │
    │       - "what's today's date?" — model frozen at training cutoff     │
    │       - "current price of AAPL?" — needs the live web                │
-   │                                                                       │
+   │                                                                      │
    │   These are the gaps tool use fills. Not by training the model on    │
    │   more data, not by retrieving more text — by giving it a *button*   │
    │   it can press to make something happen.                             │
-   │                                                                       │
+   │                                                                      │
    └──────────────────────────────────────────────────────────────────────┘
 ```
 
 Tool use is a tiny architectural change with a huge capability gain. The model still emits text; the difference is that some of the text is structured (a tool call), and the runtime around the model recognizes that structure, executes the corresponding function, and feeds the result back into the conversation.
 
-```
-   ┌──────────────────────────────────────────────────────────────────────┐
-   │  THE LOOP — MINIMAL VERSION                                           │
-   └──────────────────────────────────────────────────────────────────────┘
+```python
+	transcript = system + tool_block + user_message + "Assistant:"
 
-      transcript = system + tool_block + user_message + "Assistant:"
+    for step in range(max_steps):
+	    completion = backend.complete(transcript)
+        tool_calls = parse_tool_calls(completion)
 
-      for step in range(max_steps):
-          completion = backend.complete(transcript)
-          tool_calls = parse_tool_calls(completion)
+        if not tool_calls:
+	        return final_answer = completion          # ← exit clean
 
-          if not tool_calls:
-              return final_answer = completion          # ← exit clean
+        results = [dispatch(c) for c in tool_calls]
+        transcript += completion + format(results) + "Assistant:"
 
-          results = [dispatch(c) for c in tool_calls]
-          transcript += completion + format(results) + "Assistant:"
-
-      return None    # ← exit on timeout
+	return None    # ← exit on timeout
 ```
 
 Six lines of orchestration. Most of the complexity hides in the components: parsing the tool calls reliably, validating the arguments, executing safely, formatting the results in a way the model recognizes as feedback. Each is small; the *contract* between them is the lesson.
@@ -138,28 +93,28 @@ Six lines of orchestration. Most of the complexity hides in the components: pars
 
 ```
    ┌──────────────────────────────────────────────────────────────────────┐
-   │   THE Tool DATACLASS                                                  │
+   │   THE Tool DATACLASS                                                 │
    ├──────────────────────────────────────────────────────────────────────┤
-   │                                                                       │
+   │                                                                      │
    │     name           "calculator"                                      │
    │       ↓ matched by the parser when the model emits <tool_call>       │
-   │                                                                       │
+   │                                                                      │
    │     description    "Evaluate an arithmetic expression..."            │
    │       ↓ rendered into the system prompt; the model reads it          │
    │       ↓ to decide whether to use this tool                           │
-   │                                                                       │
+   │                                                                      │
    │     parameters     {"type": "object",                                │
    │                     "properties": {                                  │
    │                       "expression": {"type": "string", ...}          │
-   │                     },                                                │
-   │                     "required": ["expression"]}                       │
+   │                     },                                               │
+   │                     "required": ["expression"]}                      │
    │       ↓ rendered into the prompt as JSON                             │
    │       ↓ validated against the model's emitted arguments              │
-   │                                                                       │
+   │                                                                      │
    │     func           callable(expression=...) → result                 │
    │       ↓ invoked by the dispatcher with validated kwargs              │
    │       ↓ result coerced to str, wrapped as ToolResult                 │
-   │                                                                       │
+   │                                                                      │
    └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -181,6 +136,15 @@ Why this format?
 
 Why JSON inside? Because JSON has a `dict` and we need named arguments. Positional arguments would work for one-arg tools; with two or more args you need names, and JSON object syntax is the lowest-friction option that's universally well-tokenized.
 
+- **Tool-call protocols.** Three competing conventions have emerged:
+    - **JSON in tagged delimiters** (`<tool_call>{json}</tool_call>`). What this module uses. Llama 3.x and Qwen 2.5 emit this natively; Anthropic recommends XML-tagged variants for Claude. Easy to parse with a regex; the model has seen the format during instruction tuning.
+    - **OpenAI-style structured output**. The model emits a special `tool_calls` array as part of its response *outside* the prose. The API surface is `response.tool_calls`, not part of the text body. Cleaner to parse but only available on models trained for it.
+    - **Python-syntax calls** (`<|python_tag|>calculator(expression="2+2")`). Llama 3.2's "ipython" mode. Looks like Python; risk is that real Python code calls and fake function calls are visually indistinguishable. We don't use this; the JSON-block approach generalizes better.
+
+  Pick one and stay consistent. The format the model has seen most often during pretraining/fine-tuning is the format it follows most reliably.
+
+- **JSON Schema vs JSON-schema-lite.** Real JSON Schema is a sprawling spec with `$ref`, `oneOf`, `allOf`, conditional schemas, and a hundred validation keywords. Production tool-calling almost never uses any of that — the standard pattern is "object with primitive properties and a `required` list." We implement that subset. Total validator: ~30 lines. If you outgrow it, the upgrade is one import: `import jsonschema; jsonschema.validate(args, schema)`.
+- **Tag distinction matters.** `<tool_result>` for success, `<tool_error>` for failures. Without the distinction, the model often parrots an error string back as if it were a successful answer ("The calculator returned: missing required arguments: ['expression']"). With explicit error tags, instruction-tuned models reliably treat them as recovery signals.
 ### The parse → validate → dispatch → feedback contract
 
 ![From model text to tool result. A four-stage pipeline drawn left-to-right. (1) PARSE: the model's completion text contains `<tool_call>{"name": "calculator", "arguments": {"expression": "3220000 * 7"}}</tool_call>`. A regex extracts the block; `json.loads` parses the body; a shape check rejects non-dict top-level, missing `name`, empty name. Output: a `ToolCall(name, arguments, call_id)`. Permissive: malformed blocks are silently skipped. (2) VALIDATE: the JSON-schema-lite validator type-checks each argument against the tool's `parameters` schema — `string`, `integer` (rejecting `bool`), `number`, `boolean`, `array`, `object`. Required keys must be present; unknown extra keys are rejected. Strict: failures surface as `ToolError`. (3) DISPATCH: the registry looks up the tool by name; if missing, return `ToolResult(is_error=True, output="unknown tool: ...")`. If validation failed, same. If the tool's `func` raises at runtime, catch the exception and wrap as `ToolResult(is_error=True, output=f"{type(e).__name__}: {e}")`. Never raise. (4) FEEDBACK: format successful results as `<tool_result name="..." id="...">22540000</tool_result>` and errors as `<tool_error>` blocks, append back to the transcript. The model reads the feedback and either calls another tool or emits a final answer. A "common failure paths" panel below: malformed JSON → silently skipped; missing required arg → `<tool_error>`; wrong type → `<tool_error>`; tool raises → `<tool_error>`; unknown tool → `<tool_error>`. Errors are conversation, not crashes.](18-tools/Module18-Parse.png)
@@ -190,30 +154,30 @@ Why JSON inside? Because JSON has a `dict` and we need named arguments. Position
 Each step has a precise responsibility, and each must handle its own failures by surfacing them as data (not exceptions) so the loop can continue:
 
 ```
-   ┌──────────────────────────────────────────────────────────────────────┐
-   │   FAILURE-MODE TABLE                                                  │
-   ├──────────────────────────────────────────────────────────────────────┤
-   │                                                                       │
-   │   Step       What can go wrong          How we surface it            │
-   │   ────       ────────────────────       ─────────────────────         │
-   │   parse      malformed JSON              skip block silently         │
-   │              non-dict top-level          skip block silently         │
-   │              missing "name" key          skip block silently         │
-   │              non-str / empty name        skip block silently         │
-   │                                                                       │
-   │   validate   non-dict arguments          ToolError                    │
-   │              missing required key        ToolError                    │
-   │              unknown extra key           ToolError                    │
-   │              wrong type for value        ToolError                    │
-   │                                                                       │
-   │   dispatch   unknown tool name           ToolResult(is_error=True)   │
-   │              validation ToolError        ToolResult(is_error=True)   │
-   │              tool raised at runtime      ToolResult(is_error=True)   │
-   │                                                                       │
+   ┌─────────────────────────────────────────────────────────────────────────┐
+   │   FAILURE-MODE TABLE                                                    │
+   ├─────────────────────────────────────────────────────────────────────────┤
+   │                                                                         │
+   │   Step       What can go wrong          How we surface it               │
+   │   ────       ────────────────────       ─────────────────────           │
+   │   parse      malformed JSON              skip block silently            │
+   │              non-dict top-level          skip block silently            │
+   │              missing "name" key          skip block silently            │
+   │              non-str / empty name        skip block silently            │
+   │                                                                         │
+   │   validate   non-dict arguments          ToolError                      │
+   │              missing required key        ToolError                      │
+   │              unknown extra key           ToolError                      │
+   │              wrong type for value        ToolError                      │
+   │                                                                         │
+   │   dispatch   unknown tool name           ToolResult(is_error=True)      │
+   │              validation ToolError        ToolResult(is_error=True)      │
+   │              tool raised at runtime      ToolResult(is_error=True)      │
+   │                                                                         │
    │   loop       no more tool calls          stopped_reason="no_more_calls" │
-   │              max_steps hit               stopped_reason="max_steps"  │
-   │                                                                       │
-   └──────────────────────────────────────────────────────────────────────┘
+   │              max_steps hit               stopped_reason="max_steps"     │
+   │                                                                         │
+   └─────────────────────────────────────────────────────────────────────────┘
 ```
 
 The parser is permissive; the validator is strict; the dispatcher converts everything to model-readable feedback; the loop never crashes on a model behavior. This contract is what makes the system robust — every category of "the model did something weird" becomes a recoverable state.
@@ -247,6 +211,11 @@ The parser is permissive; the validator is strict; the dispatcher converts every
 
 The first design throws on every failure; the loop dies, the user sees a Python stack trace. The second design wraps every failure as a `ToolResult(is_error=True)`, which the loop formats as `<tool_error name="..." id="...">message</tool_error>` and feeds back to the model. The model reads it and tries again. Errors aren't bugs; they're conversation.
 
+- **Error surfacing as data, not exceptions.** When a tool fails (unknown name, bad args, runtime error), the dispatcher returns a `ToolResult(is_error=True)` instead of raising. The loop formats it as `<tool_error>` and feeds it back to the model. The model can read the error and try again. A raised exception in the dispatcher would crash the loop and lose the conversation.
+
+
+
+- **Why the loop has `max_steps`.** Without a cap, a model that gets confused about when to stop calling tools can loop forever — each step appends to the prompt, eventually overflowing the context. `max_steps=5` is the safety net. Module 19's agent uses smarter stop conditions (goal detection, plan completion); this module's contract is "5 steps, then we cut you off."
 ### Safe evaluation, by construction
 
 ![Safe calculator — AST whitelist, not eval(). A four-stage pipeline. (1) EXPRESSION INPUT: a string like `"2 + 3 * 4"` from the model. (2) PARSE TO AST: `ast.parse(expr, mode="eval")` produces an `ast.Expression` whose `.body` is a tree of nodes — `BinOp`, `Constant`, `UnaryOp`. (3) WALK & VALIDATE (whitelist): a recursive walker visits each node and checks its type against an explicit allowlist. Allowed nodes: `Constant` (numeric only — booleans rejected), `BinOp` (with `Add`/`Sub`/`Mult`/`Div`/`Mod`/`Pow`/`FloorDiv`), `UnaryOp` (with `UAdd`/`USub`), and parenthesization. Rejected nodes: `Name` (variable references), `Call` (function calls), `Attribute` (e.g., `(1).bit_length()`), `Subscript` (e.g., `[1,2,3][0]`), `Compare`, `Lambda`, `If`, `Import` — refused by name, not by pattern matching the source string. (4) EVALUATE: only after the whole tree validates, recursively compute the numeric result. A "why not eval()?" panel below pins the rationale: `eval(expr, {"__builtins__": {}})` is famously not safe — `().__class__.__base__.__subclasses__()` and many other escapes break out of the restricted environment. Whitelist > denylist for safety. The "examples" panel shows safe expressions (`"2 + 3 * 4"`, `"-5 ** 2"`) passing and unsafe expressions (`"abs(-1)"`, `"__import__('os').system('rm -rf /')"`) being refused at the AST check, before any execution happens.](18-tools/Module18-AST.png)
@@ -279,6 +248,14 @@ Every other node type — `Name`, `Call`, `Attribute`, `Subscript`, `Compare`, `
 
 Each is rejected at the AST walker, not because we pattern-matched the source string but because the AST node type isn't on the allowlist. The technique generalizes — you'd build a safe regex evaluator the same way (allow `Concat`, `CharClass`, `Repeat`; reject everything else).
 
+- **Safe evaluation strategies.** Three approaches to "execute code from a possibly-adversarial source":
+    - **Restricted globals + `eval()`.** Famously not safe — `().__class__.__base__.__subclasses__()` and many other escapes documented in the safe-eval literature. Don't.
+    - **AST whitelist.** Parse to AST, walk the tree, refuse every node not on the allowlist. What we do for the calculator. Structurally safe; the surface is what you explicitly admit.
+    - **Subprocess + sandbox**. Spawn a separate process with reduced privileges (`seccomp`, `nsjail`, Docker, etc.). What real production code-runners use. We use a plain `subprocess.run` for `run_python` — adequate for *local* pedagogy, NOT for a hosted service.
+
+
+- **Recursive AST evaluation in the calculator.** The safe-eval pattern is "parse to AST, walk the tree, refuse every node that isn't on the allowlist." This is how every safe expression evaluator works (Excel formula engines, sandboxed config languages, code-eval cells in notebooks). Knowing the pattern means you can build similar mini-languages without reaching for `eval()`.
+
 ### The loop — one screen of code
 
 ```python
@@ -305,57 +282,6 @@ def run_with_tools(backend, registry, user_message, *, max_steps=5):
 
 That's the entire loop. Module 19 will replace this with a ReAct-style loop that includes explicit "Thought" turns, plan tracking, and goal completion detection. For now, the contract is "no more tool calls means we're done" and "max_steps is the safety net."
 
-### The unified tool-use interface
-
-```
-   ┌─────────────────────────────────────────────────────────────────────┐
-   │   g2c/tools/  PUBLIC API                                              │
-   ├─────────────────────────────────────────────────────────────────────┤
-   │                                                                       │
-   │   Tool(name, description, parameters, func)                          │
-   │     a callable + schema + name                                        │
-   │                                                                       │
-   │   ToolCall(name, arguments, call_id)                                  │
-   │     a parsed invocation                                               │
-   │                                                                       │
-   │   ToolResult(call_id, name, output, is_error)                         │
-   │     the result of one execution                                       │
-   │                                                                       │
-   │   ToolError                                                           │
-   │     internal exception type                                           │
-   │                                                                       │
-   │   ToolRegistry(tools=[])                                              │
-   │     .register(tool), .get(name), .tools, .names()                    │
-   │                                                                       │
-   │   validate_arguments(tool, args) → dict                               │
-   │     JSON-schema-lite validator                                        │
-   │                                                                       │
-   │   parse_tool_calls(text) → list[ToolCall]                             │
-   │     extract <tool_call> blocks                                        │
-   │                                                                       │
-   │   format_tool_results(results) → str                                  │
-   │     render <tool_result> / <tool_error> blocks                        │
-   │                                                                       │
-   │   render_tools_for_prompt(tools) → str                                │
-   │     "Tools available:\n- ..."                                        │
-   │                                                                       │
-   │   dispatch_tool_call(registry, call) → ToolResult                     │
-   │     look up + validate + execute, never raise                         │
-   │                                                                       │
-   │   run_with_tools(backend, registry, user_message, *, max_steps,...)  │
-   │       → ToolRunResult                                                 │
-   │                                                                       │
-   │   Built-in tool factories:                                            │
-   │     make_calculator()                                                 │
-   │     make_read_file(*, root)                                           │
-   │     make_web_search(*, search=None)                                   │
-   │     make_run_python(*, timeout=10)                                    │
-   │                                                                       │
-   └─────────────────────────────────────────────────────────────────────┘
-```
-
-Total scaffolded code: roughly 60 lines spread across four method bodies (`validate_arguments`, `parse_tool_calls`, `calculator_evaluate`, `run_with_tools`). Everything else — the registry, the dispatcher, the prompt renderer, the result formatter, and three of the four built-in tools (`read_file`, `web_search`, `run_python`) — is pre-implemented because the wiring isn't the lesson; the components are.
-
 ## Concepts to internalize
 
 - **A tool is a callable, but the model only sees the schema.** The model never executes Python. It emits text describing what it wants to call; the runtime translates that text into a function call. This decoupling is what makes tool use safe(ish): the model's job ends at "emit JSON," and the runtime's job is the actual execution.
@@ -363,56 +289,18 @@ Total scaffolded code: roughly 60 lines spread across four method bodies (`valid
 - **Safe eval is a whitelist, not a denylist.** Allow only the AST nodes you can vouch for; refuse everything else. `eval()` with restricted globals is famously not safe; the AST-walker pattern is structurally bounded.
 - **Schemas are tighter than docstrings.** Model output is much more reliable when the prompt includes a precise JSON schema than when it includes only a prose description. The schema gives the model a *shape* to fill in; prose gives it a vibe.
 - **The loop's stop condition is "no more tool calls."** It's an oddly minimal contract — the model itself decides when it's done by simply not emitting another `<tool_call>`. The alternative (an explicit "DONE" sentinel) is fragile; instruction-tuned models reliably stop calling tools when they have enough context.
-- **`max_steps` is a safety net, not a feature.** It exists because "the model loops forever" is a real failure mode. Module 19's agent loop has smarter stop conditions (goal detection); this module's contract is "5 steps, then we cut you off."
-- **Pre-fine-tuned tool calling is a free 80%.** Modern instruction-tuned open models (Llama 3.x, Qwen 2.5, Mistral 7B Instruct) emit `<tool_call>` blocks reliably given a tool-describing prompt. You don't need to fine-tune; you need to format the prompt the way they were tuned to expect. Pick a model with a known tool-calling format and use it.
+- **`max_steps` is a safety net, not a feature.** It exists because "the model loops forever" is a real failure mode. 
+- **Fine-tuned tool calling is a free lunch.** Modern instruction-tuned open models emit `<tool_call>` blocks reliably given a tool-describing prompt. Pick a model with a known tool-calling format and use it.
 - **The parser is permissive; the validator is strict.** The parser tolerates malformed blocks (silent skip) so the model isn't punished for occasional weirdness. The validator rejects malformed arguments (loud error) so the tool gets clean inputs. Different layers, different policies.
 
-## Scaffolding and how to run the tests
+### What we don't cover
 
-This module ships seven files in `g2c/tools/`:
-
-- **`base.py`** — `Tool`, `ToolCall`, `ToolResult`, `ToolError`, `ToolStep`, `ToolRunResult` dataclasses. All boilerplate.
-- **`registry.py`** — `ToolRegistry`. Implemented.
-- **`schema.py`** — `validate_arguments` (**scaffolded**) + `render_tools_for_prompt` + `DEFAULT_SYSTEM`. Implemented except the validator.
-- **`parser.py`** — `parse_tool_calls` (**scaffolded**) + `format_tool_results`. Implemented except the parser.
-- **`builtins.py`** — `calculator_evaluate` (**scaffolded**) + `make_calculator` + `make_read_file` + `make_web_search` + `make_run_python`. The calculator's AST walker is the scaffold; the other three tools are fully implemented.
-- **`loop.py`** — `dispatch_tool_call` + `run_with_tools` (**scaffolded**). Dispatcher implemented; loop scaffolded.
-- **`__init__.py`** — public exports.
-
-Tests live in `tests/test_tools.py`. Initial state on `main`: 59 tests pass (boilerplate + the components that are fully implemented). 96 tests fail with `NotImplementedError` (or transitively, where they call into a scaffold) until you fill in the four scaffolded methods.
-
-```bash
-pytest tests/test_tools.py                          # all module-18 tests
-pytest tests/test_tools.py -x                       # stop at first failure
-pytest tests/test_tools.py -k Validate              # validator tests
-pytest tests/test_tools.py -k Parse                 # parser tests
-pytest tests/test_tools.py -k Calculator            # calculator tests
-pytest tests/test_tools.py -k RunWithTools          # loop tests
-pytest tests/test_tools.py -k Integration           # full-pipeline smoke
-pytest tests/test_tools.py -v                       # verbose
-```
-
-Implementation order — four independent steps:
-
-  1. **`validate_arguments`** in `g2c/tools/schema.py`. JSON-schema-lite type checks. Pure logic — no external deps. Easiest place to start. Turns green: `TestValidateArguments`, `TestValidateArgumentsTypeChecks`, `TestValidateArgumentsErrors`. Also unblocks `TestDispatchToolCall` (the dispatcher calls the validator).
-
-  2. **`parse_tool_calls`** in `g2c/tools/parser.py`. Regex + JSON + shape validation. Turns green: `TestParseToolCalls`, `TestParseToolCallsEdgeCases`.
-
-  3. **`calculator_evaluate`** in `g2c/tools/builtins.py`. AST-based safe arithmetic. Turns green: `TestCalculatorEvaluate`, `TestCalculatorRejection`, `TestMakeCalculator`.
-
-  4. **`run_with_tools`** in `g2c/tools/loop.py`. The orchestration loop. Once 1-3 are done, this turns green and the integration smoke tests pass: `TestRunWithTools`, `TestRunWithToolsLoop`, `TestRunWithToolsErrors`, `TestIntegrationSmoke`.
-
-The four are independent. Suggested order is "easiest → hardest" but you can work in any order — each scaffolded method has its own tests that turn green when only that method is filled in.
-
-Headline tests to watch:
-
-- **`test_integer_rejects_bool`** — pins the `bool`-vs-`int` trap. `isinstance(True, int)` is True in Python; the validator must reject booleans explicitly when expecting numeric.
-- **`test_call_id_is_unique_within_parse`** — pins the parser's id assignment. Two adjacent tool calls must get different `call_id`s.
-- **`test_malformed_json_skipped`** — pins the "permissive parser" contract. Bad blocks are silently skipped so the loop can degrade to "no calls this turn."
-- **`test_rejects_dunder_import`** — pins the calculator's safe-eval. `__import__('os')` must be refused at the AST check.
-- **`test_unknown_tool_feedback`** — pins the dispatcher's "errors are data" contract. The model can call a nonexistent tool and the loop continues.
-- **`test_tool_result_appears_in_subsequent_prompt`** — pins the feedback wiring. The loop must splice tool results into the next prompt turn or the model never sees them.
-- **`test_max_steps_stops_loop`** — pins the safety net. A model that won't stop must be cut off.
+- **Function-calling fine-tuning.** Models like Llama 3.2 have been fine-tuned with tool-calling data — you get reliable JSON output from a properly-formatted prompt. Training your own tool-calling fine-tune would be a separate multi-week project. We rely on the model already having tool-calling instinct.
+- **Real JSON Schema.** The full spec covers conditional schemas, references, format validators, and more. We implement the corner that gets used in practice. If you outgrow it, drop in the `jsonschema` library.
+- **Production sandboxing.** Real code-execution tools run in Docker, gVisor, Firecracker, or a similar isolation layer. `subprocess.run` is fine for local pedagogy; it is NOT fine for a hosted service.
+- **Streaming.** Real production tool-calling streams token-by-token, parses partial JSON, and starts dispatching as soon as a complete `<tool_call>` block is seen. We do the synchronous version. Conceptually identical, ~3× more code.
+- **Parallel tool execution.** Some agentic systems dispatch all tool calls in a turn concurrently with `asyncio.gather`. We dispatch sequentially. For tools whose `func` is fast (calculator, read_file), the difference is microseconds. For slow tools (HTTP search, run_python), parallelism matters in production but not for a teaching loop.
+- **Tool-result truncation by content.** A real read_file tool detects giant files and summarizes; a real run_python tool truncates large stdout. We truncate by char count only — a starting point.
 
 ## What you'll build
 
@@ -462,14 +350,12 @@ class ToolRunResult:                                              # implemented
 class ToolRegistry:                                               # implemented
     def __init__(self, tools=None): ...
     def register(self, tool): ...
-    def get(self, name) -> Tool: ...
-    @property
     def tools(self) -> list[Tool]: ...
     def names(self) -> list[str]: ...
 
 
 # schema.py
-def validate_arguments(tool, arguments) -> dict[str, Any]:        # SCAFFOLDED
+def validate_arguments(tool, arguments) -> dict[str, Any]:        
     ...
 
 def render_tools_for_prompt(tools) -> str:                        # implemented
@@ -477,7 +363,7 @@ def render_tools_for_prompt(tools) -> str:                        # implemented
 
 
 # parser.py
-def parse_tool_calls(text) -> list[ToolCall]:                     # SCAFFOLDED
+def parse_tool_calls(text) -> list[ToolCall]:                     
     ...
 
 def format_tool_results(results) -> str:                          # implemented
@@ -485,7 +371,7 @@ def format_tool_results(results) -> str:                          # implemented
 
 
 # builtins.py
-def calculator_evaluate(expression: str) -> float:                # SCAFFOLDED
+def calculator_evaluate(expression: str) -> float:                
     ...
 
 def make_calculator() -> Tool: ...                                # implemented
@@ -497,15 +383,25 @@ def make_run_python(*, timeout=10) -> Tool: ...                   # implemented
 # loop.py
 def dispatch_tool_call(registry, call) -> ToolResult: ...         # implemented
 
-def run_with_tools(                                               # SCAFFOLDED
-    backend, registry, user_message, *,
-    system=DEFAULT_SYSTEM, max_steps=5, max_new_tokens=512,
-    temperature=0.2, top_k=None, top_p=None,
-) -> ToolRunResult:
-    ...
+def run_with_tools(                                               
+    backend, registry, user_message, *, ...,
+) -> ToolRunResult: ...
 ```
 
-Total scaffolded code: roughly 60 lines across four function bodies. Everything else is pre-implemented because the lesson is the contracts (schema validation, structured parsing, safe evaluation, loop control), not the orchestration.
+Total scaffolded code: roughly 60 lines across four function bodies. 
+
+## How to run the tests
+
+```bash
+pytest tests/test_tools.py                          # all module-18 tests
+pytest tests/test_tools.py -x                       # stop at first failure
+pytest tests/test_tools.py -k Validate              # validator tests
+pytest tests/test_tools.py -k Parse                 # parser tests
+pytest tests/test_tools.py -k Calculator            # calculator tests
+pytest tests/test_tools.py -k RunWithTools          # loop tests
+pytest tests/test_tools.py -k Integration           # full-pipeline smoke
+pytest tests/test_tools.py -v                       # verbose
+```
 
 ## Exercises
 
@@ -637,9 +533,9 @@ Optional:
 ## Deliverable checklist
 
 - [ ] All tests in `tests/test_tools.py` pass: 155 tests, all green.
-- [ ] Ollama running with a tool-calling-capable chat model. `ollama list` shows `llama3.2:3b` (or your chosen model).
-- [ ] Notebook: `notebooks/18-tools.ipynb`. Wires the registry + backend + `run_with_tools`, runs Exercises 1, 2, 3, 4 with output cells visible.
-- [ ] **Tool-use post-mortem** (Exercise 9) in `docs/tools-postmortem.md`. 3-4 paragraphs. The actual deliverable.
+- [ ] Ollama running with a tool-calling-capable chat model. `ollama list` shows your chosen model.
+- [ ] Notebook: `notebooks/18-tools.ipynb`. 
+- [ ] **Tool-use post-mortem** (Exercise 9) in 3-4 paragraphs. The main deliverable.
 - [ ] You can explain — out loud, without notes — why errors are surfaced as `ToolResult(is_error=True)` instead of raised exceptions.
 - [ ] You can explain — out loud, without notes — why AST-walking is structurally safer than `eval()` with restricted globals.
 - [ ] You can explain — out loud, without notes — what the loop's stop condition is and why "no more tool calls" works as a signal.

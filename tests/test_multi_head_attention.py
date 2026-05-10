@@ -4,6 +4,7 @@ Suggested order to implement & turn green:
 
   1. MultiHeadAttention.forward             → test_forward_*
   2. MultiHeadAttention.attention_weights   → test_attention_weights_*
+  3. Optional cached inference path          → test_forward_cached_*
 
 Construction tests, the `causal_mask` static-method tests, and the
 parameter-count tests pass from the start — that part of the class is
@@ -25,6 +26,7 @@ import pytest
 import torch
 
 from g2c.attention import MultiHeadAttention
+from g2c.transformer import LayerKVCache
 
 
 # ----------------------------------------------------------------------
@@ -199,6 +201,44 @@ def test_forward_no_causal_sees_future():
     out1 = a(x1)
     out2 = a(x2)
     assert not torch.allclose(out1[0, 0], out2[0, 0], atol=1e-5)
+
+
+def test_forward_cached_matches_full_forward():
+    """The cached single-token path should match the regular causal path.
+
+    This pins the core KV-cache idea: after token t is processed, its K/V
+    projections can be reused while producing token t+1, without changing the
+    math.
+    """
+    torch.manual_seed(0)
+    a = MultiHeadAttention(embedding_dim=8, num_heads=2, causal=True)
+    x = torch.randn(2, 5, 8)
+    full = a(x)
+
+    cache = LayerKVCache()
+    pieces = []
+    for t in range(x.shape[1]):
+        out_t, cache = a.forward_cached(x[:, t:t + 1], cache)
+        pieces.append(out_t)
+
+    cached = torch.cat(pieces, dim=1)
+    assert cached.shape == full.shape
+    assert cache.length == x.shape[1]
+    assert torch.allclose(cached, full, atol=1e-5)
+
+
+def test_forward_cached_requires_single_new_token():
+    a = MultiHeadAttention(embedding_dim=8, num_heads=2, causal=True)
+    x = torch.randn(1, 2, 8)
+    with pytest.raises(ValueError):
+        a.forward_cached(x, LayerKVCache())
+
+
+def test_forward_cached_requires_causal_attention():
+    a = MultiHeadAttention(embedding_dim=8, num_heads=2, causal=False)
+    x = torch.randn(1, 1, 8)
+    with pytest.raises(ValueError):
+        a.forward_cached(x, LayerKVCache())
 
 
 # ----------------------------------------------------------------------

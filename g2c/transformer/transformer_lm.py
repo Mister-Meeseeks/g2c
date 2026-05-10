@@ -53,6 +53,7 @@ from g2c.embeddings import LearnedPositionalEmbedding, TokenEmbedding
 from g2c.nn import Module
 
 from .block import Block
+from .kv_cache import KVCache
 from .layer_norm import LayerNorm
 
 
@@ -199,3 +200,53 @@ class TransformerLM(Module):
             x = block(x)
         x = self.ln_final(x)
         return x @ self.token_embed.weight.T + self.head_bias
+
+    def empty_kv_cache(self) -> KVCache:
+        """Return an empty KV cache with one layer slot per block."""
+        return KVCache.empty(self.num_layers)
+
+    def forward_cached(
+        self,
+        token_ids: torch.Tensor,
+        cache: KVCache | None = None,
+    ) -> tuple[torch.Tensor, KVCache]:
+        """Compute next-token logits for one new token and update cache.
+
+        Args:
+            token_ids: integer tensor of shape ``(batch, 1)``. Cached decoding
+                processes exactly one new position per call.
+            cache: existing cache, or ``None`` to start from an empty cache.
+
+        Returns:
+            ``(logits, cache)`` where logits has shape ``(batch, 1, vocab_size)``
+            and cache now includes this token's key/value rows in every layer.
+
+        This is the inference-only sibling of ``forward``. It should match the
+        final-position logits from ``forward(token_ids_so_far)`` when called
+        step by step on the same token sequence.
+        """
+        if token_ids.dim() != 2 or token_ids.shape[1] != 1:
+            raise ValueError(
+                "forward_cached expects token_ids with shape (batch, 1); "
+                f"got {tuple(token_ids.shape)}"
+            )
+        if cache is None:
+            cache = self.empty_kv_cache()
+        if len(cache) != self.num_layers:
+            raise ValueError(
+                f"cache has {len(cache)} layers, but model has {self.num_layers}"
+            )
+
+        position = cache.length
+        if position >= self.max_seq_len:
+            raise ValueError(
+                f"KV cache length {position} has reached max_seq_len {self.max_seq_len}"
+            )
+
+        tok = self.token_embed(token_ids)
+        pos = self.pos_embed.weight[position : position + 1].to(tok.device)
+        x = tok + pos
+        for idx, block in enumerate(self.blocks):
+            x, cache.layers[idx] = block.forward_cached(x, cache.layers[idx])
+        x = self.ln_final(x)
+        return x @ self.token_embed.weight.T + self.head_bias, cache

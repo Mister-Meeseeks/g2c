@@ -34,11 +34,12 @@ Individual targets are still available:
 ./datasets.sh g2c-corpus-full
 ```
 
-BaseLM is prepared separately because it is a model artifact, not a dataset
-track:
+BaseLM and ProdLM are prepared separately because they are model artifacts, not
+dataset tracks:
 
 ```bash
 ./baselm.sh
+./prodlm.sh --model-id llama3.2:3b
 ```
 
 All dataset commands are intended to be idempotent. Rerunning should skip
@@ -90,7 +91,7 @@ Use these as planning ranges, not promises.
 | StoryLM 5M/30M training | Module 10 | minutes to about hour-class | checkpoints and model artifacts |
 | TinyLLM 30M-100M training | Module 10/12 | multi-hour or overnight | checkpoints and model artifacts |
 | BaseLM fetch | Modules 13-15 | model-size and network dependent | `./baselm.sh`, HF cache under `data/baselm/` |
-| ProdLM fetch | Modules 16-20 | model-size and network dependent | external model cache |
+| ProdLM fetch | Modules 16-20 | model-size and network dependent | `./prodlm.sh`, external Ollama model cache |
 
 Downloads and tokenized corpora are one-time setup costs. Training runs are the
 recurring cost. Long training sections should checkpoint so you can interrupt,

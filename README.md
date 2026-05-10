@@ -60,7 +60,7 @@ artifact they can find.
 - **BaseLM:** Modules 13-15 can use a small external pretrained base model when
   your self-trained model is too weak.
 - **ProdLM:** Modules 16-20 use a local pretrained instruct model sized to your
-  machine.
+  machine. Configure it with `./prodlm.sh --model-id <ollama-tag>`.
 
 See [Course Tracks and Artifacts](docs/tracks.md) for download/storage/time
 estimates and artifact names. The deeper maintainer design note lives at
@@ -128,6 +128,12 @@ self-trained model is too weak to make SFT/DPO behavior visible:
 
 ```bash
 ./baselm.sh                # registers the default BaseLM artifact
+```
+
+Modules 16-20 use a capable local instruction model through the ProdLM backend:
+
+```bash
+./prodlm.sh --model-id llama3.2:3b
 ```
 
 The broader TinyLLM track uses **G2C Corpus v1**, a generated local raw-text

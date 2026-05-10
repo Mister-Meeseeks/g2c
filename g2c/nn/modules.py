@@ -32,16 +32,32 @@ class Module:
     dispatches to `forward()`. Modules with learnable parameters override
     `parameters()` to expose them; default is no parameters.
 
-    This is a minimal teaching version of `torch.nn.Module`. We don't bother
-    with hooks, training/eval mode, state_dict, etc. — those are real-PyTorch
-    concerns, not pedagogy concerns.
+    This is a minimal teaching version of `torch.nn.Module`. We keep the
+    familiar call, device, and train/eval ergonomics, but skip hooks,
+    state_dict, and other production concerns.
     """
+
+    training = True
 
     def __call__(self, *args, **kwargs):
         return self.forward(*args, **kwargs)
 
     def forward(self, *args, **kwargs):
         raise NotImplementedError("Subclasses must implement forward()")
+
+    def train(self, mode: bool = True) -> "Module":
+        """Set training/eval mode and return self.
+
+        The course modules do not currently have mode-dependent layers such as
+        dropout, but exposing the PyTorch-shaped method keeps downstream
+        notebook and test code ergonomic.
+        """
+        self.training = bool(mode)
+        return self
+
+    def eval(self) -> "Module":
+        """Switch to evaluation mode and return self."""
+        return self.train(False)
 
     def parameters(self) -> Iterable[torch.Tensor]:
         """Return all trainable parameters of this module. Override in subclasses."""

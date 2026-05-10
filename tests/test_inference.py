@@ -49,6 +49,10 @@ import torch
 
 from g2c.inference import (
     DEFAULT_OLLAMA_URL,
+    DEFAULT_PRODLM_MODEL_ID,
+    PRODLM_KIND,
+    PRODLM_NAME,
+    ArtifactBackend,
     Backend,
     BackendInfo,
     BenchmarkResult,
@@ -57,7 +61,12 @@ from g2c.inference import (
     OllamaBackend,
     OllamaError,
     benchmark,
+    load_default_backend,
+    load_prodlm_backend,
+    prodlm_manifest_exists,
+    write_prodlm_manifest,
 )
+from g2c.artifacts import LoadedModelArtifact
 
 # -----------------------------------------------------------------------
 # Test fixtures
@@ -77,6 +86,17 @@ class _CharTokenizer:
 
     def decode(self, ids: list[int]) -> str:
         return "".join(chr(i) for i in ids)
+
+
+class _VocabAwareTokenizer(_CharTokenizer):
+    special_to_id = {"<|end|>": 4}
+
+    def __init__(self) -> None:
+        self.encode_with_vocab_size_calls: list[tuple[str, int]] = []
+
+    def encode_with_vocab_size(self, s: str, vocab_size: int) -> list[int]:
+        self.encode_with_vocab_size_calls.append((s, vocab_size))
+        return self.encode(s)
 
 
 class _TinyModel(torch.nn.Module):
@@ -381,6 +401,106 @@ class TestBackendABC:
         backend = _FakeBackend([("hi", 1.0, 1, 1)])
         assert isinstance(backend, Backend)
         assert backend.info.name == "fake"
+
+
+# -----------------------------------------------------------------------
+# Boilerplate: ProdLM helpers
+# -----------------------------------------------------------------------
+
+
+class TestProdLMHelpers:
+    def test_constants(self) -> None:
+        assert PRODLM_NAME == "ProdLM"
+        assert PRODLM_KIND == "ollama_backend"
+        assert DEFAULT_PRODLM_MODEL_ID == "llama3.2:3b"
+
+    def test_write_manifest(self, tmp_path) -> None:
+        root = write_prodlm_manifest(
+            model_id="qwen2.5:7b-instruct",
+            base_url="http://localhost:11434",
+            timeout=45.0,
+            repo_root=tmp_path,
+            notes="test manifest",
+        )
+
+        config = json.loads((root / "config.json").read_text(encoding="utf-8"))
+        manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+        assert config["kind"] == PRODLM_KIND
+        assert config["backend"] == "ollama"
+        assert config["model_id"] == "qwen2.5:7b-instruct"
+        assert config["timeout"] == pytest.approx(45.0)
+        assert manifest["name"] == PRODLM_NAME
+        assert manifest["role"] == "ProdLM"
+        assert prodlm_manifest_exists(repo_root=tmp_path)
+
+    def test_load_prodlm_backend_reads_manifest(self, tmp_path) -> None:
+        write_prodlm_manifest(
+            model_id="mistral:7b-instruct",
+            base_url="http://test-host:11434",
+            timeout=60.0,
+            repo_root=tmp_path,
+        )
+
+        backend = load_prodlm_backend(repo_root=tmp_path)
+        assert isinstance(backend, OllamaBackend)
+        assert backend.info.name == "prodlm"
+        assert backend.info.model_id == "mistral:7b-instruct"
+        assert backend.base_url == "http://test-host:11434"
+        assert backend.info.extra["configured_name"] == PRODLM_NAME
+
+    def test_load_default_backend_prefers_prodlm_manifest(self, tmp_path) -> None:
+        write_prodlm_manifest(model_id="llama3.2:1b", repo_root=tmp_path)
+        backend = load_default_backend(repo_root=tmp_path)
+        assert isinstance(backend, OllamaBackend)
+        assert backend.info.name == "prodlm"
+        assert backend.info.model_id == "llama3.2:1b"
+
+    def test_load_prodlm_backend_required_without_manifest(self, tmp_path) -> None:
+        with pytest.raises(FileNotFoundError):
+            load_prodlm_backend(repo_root=tmp_path, required=True)
+
+
+# -----------------------------------------------------------------------
+# Boilerplate: ArtifactBackend
+# -----------------------------------------------------------------------
+
+
+class TestArtifactBackend:
+    def _artifact(self, tmp_path, tokenizer) -> LoadedModelArtifact:
+        return LoadedModelArtifact(
+            name="TinyLLM-DPO",
+            canonical_name="TinyLLM-30M",
+            display_name="TinyLLM 30M DPO",
+            rank=40,
+            artifact_dir=tmp_path,
+            model=_TinyModel(vocab_size=256),
+            tokenizer=tokenizer,
+            tokenizer_artifact=None,
+            manifest={"source": "test artifact", "kind": "course_transformer"},
+            training_config={},
+        )
+
+    def test_wraps_artifact_metadata_and_eos(self, tmp_path, monkeypatch) -> None:
+        tokenizer = _VocabAwareTokenizer()
+        artifact = self._artifact(tmp_path, tokenizer)
+        backend = ArtifactBackend(artifact)
+
+        def _fake_generate(model, prompt_ids, **kwargs):
+            assert kwargs["eos_id"] == 4
+            return torch.tensor([ord("h"), ord("i"), ord("!")], dtype=torch.long)
+
+        monkeypatch.setattr("g2c.inference.local.generate", _fake_generate)
+        result = backend.complete("hi", max_new_tokens=1)
+
+        assert result.completion == "!"
+        assert result.backend.name == "artifact"
+        assert result.backend.model_id == "TinyLLM-DPO"
+        assert result.backend.extra["canonical_name"] == "TinyLLM-30M"
+        assert result.backend.extra["source"] == "test artifact"
+        assert result.metadata["eos_id"] == 4
+        assert tokenizer.encode_with_vocab_size_calls == [("hi", 256)]
+        assert backend.artifact is artifact
+        assert backend.raw_tokenizer is tokenizer
 
 
 # -----------------------------------------------------------------------
@@ -1124,6 +1244,9 @@ class TestModuleExports:
     def test_public_api_imports(self) -> None:
         from g2c.inference import (
             DEFAULT_OLLAMA_URL,
+            DEFAULT_PRODLM_MODEL_ID,
+            PRODLM_NAME,
+            ArtifactBackend,
             Backend,
             BackendInfo,
             BenchmarkResult,
@@ -1132,13 +1255,24 @@ class TestModuleExports:
             OllamaBackend,
             OllamaError,
             benchmark,
+            load_artifact_backend,
+            load_default_backend,
+            load_prodlm_backend,
+            write_prodlm_manifest,
         )
 
         # Each is a usable name, not just a string lookup.
+        assert callable(ArtifactBackend)
         assert callable(LocalTransformerBackend)
         assert callable(OllamaBackend)
         assert callable(benchmark)
+        assert callable(load_artifact_backend)
+        assert callable(load_default_backend)
+        assert callable(load_prodlm_backend)
+        assert callable(write_prodlm_manifest)
         assert isinstance(DEFAULT_OLLAMA_URL, str)
+        assert isinstance(DEFAULT_PRODLM_MODEL_ID, str)
+        assert PRODLM_NAME == "ProdLM"
         assert issubclass(OllamaError, Exception)
         # `name` etc. are dataclass fields — registered on
         # __dataclass_fields__, not on the class as attributes.
@@ -1146,5 +1280,3 @@ class TestModuleExports:
         assert "n" in BenchmarkResult.__dataclass_fields__
         assert hasattr(InferenceResult, "tokens_per_second")  # property
         assert Backend.__abstractmethods__ == {"complete", "info"}
-
-

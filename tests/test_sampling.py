@@ -7,11 +7,12 @@ Suggested order to implement & turn green:
   3. top_p_filter                   → test_top_p_filter_*
   4. apply_repetition_penalty       → test_apply_repetition_penalty_*
   5. generate                       → test_generate_*
+  6. Optional cached generation      → test_generate_cached_*
 
 Steps 1–4 are independent — you can do them in any order. Step 5
-composes all four warpers into the autoregressive loop and the
-remaining tests exercise the pipeline end-to-end against a tiny
-pretrained-style transformer.
+composes all four warpers into the autoregressive loop. Step 6 is the
+optional KV-cache sibling introduced in Module 16. The remaining tests
+exercise the pipeline end-to-end against a tiny pretrained-style transformer.
 
 The four warper-test groups all use small synthetic logit tensors —
 the suite runs in well under a second even with all five steps
@@ -32,6 +33,7 @@ from g2c.sampling import (
     apply_repetition_penalty,
     apply_temperature,
     generate,
+    generate_cached,
     top_k_filter,
     top_p_filter,
 )
@@ -521,6 +523,40 @@ def test_generate_respects_max_seq_len_via_cropping():
     # Total length = 10 + 20 = 30, exceeds max_seq_len=16. The function
     # must NOT raise — cropping happens inside.
     assert out.shape == (30,)
+
+
+def test_generate_cached_greedy_matches_uncached_generate():
+    """The KV-cache path should preserve greedy decoding exactly."""
+    m = _tiny_model()
+    prompt = torch.tensor([0, 1, 2], dtype=torch.long)
+    cached = generate_cached(m, prompt, max_new_tokens=8, temperature=0.0)
+    uncached = generate(m, prompt, max_new_tokens=8, temperature=0.0)
+    assert torch.equal(cached, uncached)
+
+
+def test_generate_cached_seeded_sampling_is_reproducible():
+    m = _tiny_model()
+    prompt = torch.tensor([0, 1, 2], dtype=torch.long)
+    g1 = torch.Generator().manual_seed(42)
+    g2 = torch.Generator().manual_seed(42)
+    out1 = generate_cached(m, prompt, max_new_tokens=8, generator=g1)
+    out2 = generate_cached(m, prompt, max_new_tokens=8, generator=g2)
+    assert torch.equal(out1, out2)
+
+
+def test_generate_cached_stops_at_max_seq_len():
+    """This simple cache has no rolling window, so it stops at max_seq_len."""
+    m = _tiny_model()
+    prompt = torch.arange(10, dtype=torch.long)
+    out = generate_cached(m, prompt, max_new_tokens=20, temperature=0.0)
+    assert out.shape == (m.max_seq_len,)
+
+
+def test_generate_cached_rejects_prompt_that_fills_context():
+    m = _tiny_model()
+    prompt = torch.arange(m.max_seq_len, dtype=torch.long) % m.vocab_size
+    with pytest.raises(ValueError):
+        generate_cached(m, prompt, max_new_tokens=1, temperature=0.0)
 
 
 def test_generate_invalid_temperature_raises():

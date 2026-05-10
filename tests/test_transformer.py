@@ -6,6 +6,7 @@ Suggested order to implement & turn green:
   2. FeedForward.forward           → test_ffn_*
   3. Block.forward                 → test_block_*
   4. TransformerLM.forward         → test_transformer_lm_*
+  5. Optional cached inference path → test_*_cached_*
 
 Construction tests, parameter-count tests, the LN init tests
 (`gamma`/`beta` start as ones/zeros), and the FFN default-hidden-dim
@@ -33,7 +34,7 @@ import pytest
 import torch
 
 from g2c.nn import CrossEntropyLoss
-from g2c.transformer import Block, FeedForward, LayerNorm, TransformerLM
+from g2c.transformer import Block, FeedForward, KVCache, LayerNorm, TransformerLM
 
 
 # ----------------------------------------------------------------------
@@ -571,6 +572,13 @@ def test_transformer_lm_more_layers_more_params():
     assert n4 - n1 == 3 * block_param_count
 
 
+def test_kv_cache_empty_has_one_layer_cache_per_block():
+    cache = KVCache.empty(num_layers=3)
+    assert len(cache) == 3
+    assert cache.length == 0
+    assert [layer.length for layer in cache.layers] == [0, 0, 0]
+
+
 # ----------------------------------------------------------------------
 # TransformerLM — forward
 # ----------------------------------------------------------------------
@@ -654,6 +662,58 @@ def test_transformer_lm_causality():
     assert torch.allclose(out1[0, :4], out2[0, :4], atol=1e-5)
     # Logits at positions 4 and 5 SHOULD change.
     assert not torch.allclose(out1[0, 4:], out2[0, 4:], atol=1e-4)
+
+
+def test_transformer_lm_forward_cached_matches_full_forward():
+    """Cached one-token decoding must produce the same logits as full forward."""
+    torch.manual_seed(0)
+    m = TransformerLM(
+        vocab_size=12,
+        embedding_dim=8,
+        num_layers=2,
+        num_heads=2,
+        max_seq_len=16,
+    )
+    ids = torch.randint(0, 12, (1, 6))
+    full = m(ids)
+
+    cache = m.empty_kv_cache()
+    pieces = []
+    for t in range(ids.shape[1]):
+        logits_t, cache = m.forward_cached(ids[:, t:t + 1], cache)
+        pieces.append(logits_t)
+
+    cached = torch.cat(pieces, dim=1)
+    assert cached.shape == full.shape
+    assert cache.length == ids.shape[1]
+    assert torch.allclose(cached, full, atol=1e-5)
+
+
+def test_transformer_lm_forward_cached_validates_sequence_shape():
+    m = TransformerLM(
+        vocab_size=12,
+        embedding_dim=8,
+        num_layers=1,
+        num_heads=2,
+        max_seq_len=16,
+    )
+    with pytest.raises(ValueError):
+        m.forward_cached(torch.randint(0, 12, (1, 2)), m.empty_kv_cache())
+
+
+def test_transformer_lm_forward_cached_validates_context_length():
+    m = TransformerLM(
+        vocab_size=12,
+        embedding_dim=8,
+        num_layers=1,
+        num_heads=2,
+        max_seq_len=2,
+    )
+    cache = m.empty_kv_cache()
+    m.forward_cached(torch.tensor([[1]]), cache)
+    m.forward_cached(torch.tensor([[2]]), cache)
+    with pytest.raises(ValueError):
+        m.forward_cached(torch.tensor([[3]]), cache)
 
 
 def test_transformer_lm_smoke_train():

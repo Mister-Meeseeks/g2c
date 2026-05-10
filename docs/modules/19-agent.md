@@ -1,8 +1,9 @@
 # Module 19 — Agent loops
 
-> **Question this module answers:** *How does the model pursue multi-step goals?*
+> **Question this module answers:** *How do we make the model pursue goals?*
 
-![Module 19 on one page: a four-panel circus map of the ReAct agent. PANEL 1 (top-left, "PLAN"): the user's task ("Read foo.txt and tell me the average") enters a planning booth. The backend emits "Goal: compute average of numbers in foo.txt\n1. read the file\n2. parse numbers\n3. average them" — the planner extracts a Plan(goal=..., steps=[...]). PANEL 2 (top-right, "PROMPT TIME"): the system prompt + plan block + user question are assembled. A trailing "Thought:" marker nudges the model into the ReAct format. PANEL 3 (bottom-left, "OBSERVE → THINK → ACT"): the model emits "Thought: I should read the file\nAction: read_file\nAction Input: {\"path\": \"foo.txt\"}". `parse_react_step` extracts the structured fields. The dispatcher routes through Module 18's `dispatch_tool_call`. The Observation is appended to the scratchpad. The next prompt regrows with the new Thought / Action / Observation block, and the loop continues. PANEL 4 (bottom-right, "STOP"): the model eventually emits "Thought: I have the answer\nFinal Answer: 42". The loop returns an AgentRunResult with `final_answer`, `steps`, `stopped_reason="final_answer"`, and the original `plan`. A right-edge sidebar lists key concepts: ReAct format (Thought/Action/Observation/Final Answer), the scratchpad as growing memory, planning as soft prior, error feedback as `[error]` observations, max_steps + duplicate-action loop detection as safety nets. Bottom caption: "Module 18 gave the model HANDS (tools); Module 19 gives it INTENT (planning + memory + recovery)."](19-agent/Module19-Hero.png)
+
+![Hero](19-agent/Module19-Hero.png)
 
 *The whole module on one page. The agent loop is a thin wrapper around Module 18's tool dispatch: it adds explicit reasoning (Thought lines), persistent memory (the scratchpad), an optional plan, smarter stop conditions (duplicate-action detection, halt-on-stuck), and graceful recovery from tool errors. The model still does all the cognitive work; the agent loop just keeps it on rails.*
 

@@ -59,6 +59,19 @@ def test_module_call_dispatches_to_forward():
     assert torch.allclose(m(x), torch.tensor([2.0, 4.0, 6.0]))
 
 
+def test_module_train_eval_modes_return_self():
+    class Identity(Module):
+        def forward(self, x):
+            return x
+
+    m = Identity()
+    assert m.training is True
+    assert m.eval() is m
+    assert m.training is False
+    assert m.train() is m
+    assert m.training is True
+
+
 def test_resolve_device_auto_is_real_device():
     expected = torch.device(
         "mps" if torch.backends.mps.is_available() else "cpu"

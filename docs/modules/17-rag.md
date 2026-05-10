@@ -2,13 +2,19 @@
 
 > **Question this module answers:** *How does the model use external knowledge it doesn't have memorized?*
 
-![Module 17 on one page: a four-panel circus map of the RAG pipeline. PANEL 1 (top-left, "INDEX TIME"): a stack of source documents on the left — `notes.md`, `16-inference.md`, `attention.md` — feeding into a `chunk_text(...)` machine that emits a row of overlapping rectangles labeled `[1] start=0 end=1500`, `[2] start=1350 end=2850`, etc. Each chunk flows into a `HashEmbedder` / `OllamaEmbedder` box, which spits out a `(d=512)` vector with bars representing coordinate magnitudes. The vectors stack into a `NumpyVectorStore` (a tall (N, d) matrix). PANEL 2 (top-right, "QUERY TIME"): a user typing "What is the capital of Spain?" The same embedder embeds the question to a `(d,)` vector, which dots against every row of the store; an `argpartition(-k)` tape spits out the top-3 chunks, ranked, with cosine similarities `0.78`, `0.62`, `0.41`. PANEL 3 (bottom-left, "PROMPT TIME"): an `assemble_rag_prompt` machine takes the question + top-k chunks and builds a numbered-citation prompt: `"You are a helpful assistant... Context: [1] (source: es.md) Madrid is... [2] ... Question: What is the capital of Spain? If the context doesn't contain the answer, say I don't know."` Two arrows: one to a `LocalTransformerBackend` (your tiny model from Modules 1–14), one to an `OllamaBackend` (Llama 3.2 3B from Module 16). PANEL 4 (bottom-right, "ANSWER TIME"): the `RAGPipeline` returns a `RAGAnswer` containing the model's response ("Madrid is the capital, per [1]."), the retrieved chunks (so the user can verify), the assembled prompt (so a debugger can see what the model actually saw), and the underlying `InferenceResult` (latency, token counts). A right-edge sidebar lists key concepts: chunking strategies (size, overlap, semantic vs character), embedder taxonomy (sparse/dense/hybrid), cosine similarity as dot-of-unit-vectors, citation formatting, "I don't know" guards, and the Lewis et al. 2020 lineage. Bottom caption: "Modules 1–16 taught the model how to read and answer; Module 17 teaches it how to LOOK THINGS UP."](17-rag/Module17-Hero.png)
+![Hero](17-rag/Module17-Hero.png)
 
-*The whole module on one page. RAG is the smallest possible architecture for "give the model access to information it doesn't have memorized." Chunk the corpus, embed each chunk, store the vectors, embed the query, retrieve the top-k by cosine similarity, splice them into a citation-formatted prompt, send to the inference backend. None of the components are individually deep — but the wiring is the lesson, because RAG is the substrate Module 18's tools and Module 19's agent loop both build on.*
+RAG is the smallest possible architecture for "give the model access to information it doesn't have memorized." Chunk the corpus, embed each chunk, store the vectors, embed the query, retrieve the top-k by cosine similarity, splice them into a citation-formatted prompt, send to the inference backend. None of the components are individually deep — but the wiring is the lesson, because RAG is the substrate Module 18's tools and Module 19's agent loop both build on.*
 
 ---
 ## Before you start
 
+* *Refresh*
+	* Hashing
+	* Cosine similarity
+	* Asymptotic runtime
+* *Review
+	* Numpy review  `np.linalg.norm`, `@` (matrix multiply), `np.argpartition`, `np.argsort`
 * *Finish* `g2c/inference` from [[16-inference]] — `RAGPipeline` drives generation through the unified `Backend` interface
 
 ---
@@ -61,34 +67,25 @@ Three small ideas worth having in your head:
 
 ### Programming
 
-- **`numpy` for the math.** `np.linalg.norm`, `@` (matrix multiply), `np.argpartition`, `np.argsort`. The four functions cover everything in this module.
+- **`numpy` for the math.**. The four functions cover everything in this module.
 - **`hashlib.blake2b`** for stable hashing. Python's built-in `hash()` is salted differently per process — different runs of the same code produce different hashes — so it's unusable for embeddings. BLAKE2b is fast, stdlib, and stable across runs.
-- **`abc.ABC` + `@abstractmethod`** for the `Embedder` interface. Same pattern as `Backend` from Module 16.
-- **`@dataclass(frozen=True)`** for `Chunk`, `RetrievedChunk`, and `RAGPrompt`. Values, not handles.
-- **`urllib.request`** for the `OllamaEmbedder`'s HTTP call. Same recipe as Module 16's `OllamaBackend`. The `urlopen` injection point lets the tests run without a real Ollama daemon.
 
-### What you can skip
 
-- **Implementing HNSW or any other ANN index.** Production scale wants this; course scale does not. A few-hundred-chunk corpus searches in microseconds against a flat index. Building HNSW from scratch is a 200-line project and a different lesson.
-- **Implementing a sentence-transformer-style dense embedder.** Training a contrastive bi-encoder is its own multi-week curriculum. We use `OllamaEmbedder` to plug into a pretrained one (`nomic-embed-text` is 137M parameters, trained by NomicAI on ~250M sentence pairs). Treat the embedder as a black box that turns text into a 768-vector.
-- **BM25 / hybrid retrieval.** BM25 is a 1990s-era lexical scorer that consistently improves on dense-only retrieval for keyword-heavy queries. We don't build it; the `HashEmbedder` covers the lexical-side intuition without the BM25 IDF / saturation math. Exercise 6 walks through adding BM25 as a hybrid retriever.
-- **Re-ranking with a cross-encoder.** Production RAG pipelines often retrieve top-k=50 with a cheap dense embedder and then re-rank top-k=5 with an expensive cross-encoder (`bge-reranker-v2-m3` etc.). Adds ~100 ms per query and 1–3% retrieval accuracy. We skip — the re-ranker is its own model, and the lesson is the pipeline shape.
-- **Persistence.** A real index lives on disk so you don't re-embed the corpus on every restart. `NumpyVectorStore` is in-memory only; `np.save` / `np.load` on `store.vectors` plus pickle for `store.chunks` is the obvious one-screen solution. Exercise 4 walks through it.
-- **Async embedding.** Embedding 10k chunks against a remote service one-at-a-time takes minutes. Real pipelines batch via async. We don't — the lesson is the math, not the I/O.
 
-## Why we start here
+
+## Where this fits in
 
 Modules 1–16 built a model and made it usable. The tiny model from Module 14 doesn't know facts — Module 16 fixed that by pivoting to a real pretrained model behind a unified `Backend`. But even a 7B-class model has gaps:
 
 ```
-   ┌──────────────────────────────────────────────────────────────────────┐
+   ┌───────────────────────────────────────────────────────────────────────┐
    │  WHAT EVEN A 7B MODEL DOESN'T KNOW                                    │
-   ├──────────────────────────────────────────────────────────────────────┤
+   ├───────────────────────────────────────────────────────────────────────┤
    │                                                                       │
    │   • Anything not in its training data:                                │
-   │       - your private notes, your company's wiki, last week's news    │
+   │       - your private notes, your company's wiki, last week's news     │
    │       - documents written after the model's training cutoff           │
-   │       - long-tail factual claims it saw 0–3 times in pretraining     │
+   │       - long-tail factual claims it saw 0–3 times in pretraining      │
    │                                                                       │
    │   • Anything it memorized BADLY:                                      │
    │       - fine details of a specific paper it saw once                  │
@@ -96,16 +93,20 @@ Modules 1–16 built a model and made it usable. The tiny model from Module 14 d
    │       - the line of code in `g2c/sampling/generate.py` line 47        │
    │                                                                       │
    │   • Anything it would need to update mid-conversation:                │
-   │       - "given this document, answer X" workflows                    │
-   │       - "the user just told me their cat's name, remember it"        │
+   │       - "given this document, answer X" workflows                     │
+   │       - "the user just told me their cat's name, remember it"         │
    │                                                                       │
    │   These are the gaps RAG fills. Not by training the model on more     │
    │   data — by retrieving the relevant text at QUERY TIME and putting    │
    │   it into the prompt. The model doesn't memorize new facts; it gets   │
    │   to read a relevant passage right before it answers.                 │
    │                                                                       │
-   └──────────────────────────────────────────────────────────────────────┘
+   └───────────────────────────────────────────────────────────────────────┘
 ```
+
+
+
+## The big idea
 
 The mechanism is simple: turn the user's question into a vector, search a pre-indexed library of text chunks for the closest matches, paste those chunks into the model's prompt, then ask the model to answer using only what's in front of it. The model doesn't learn anything new — it just gets handed the right page of the book.
 
@@ -114,26 +115,26 @@ The mechanism is simple: turn the user's question into a vector, search a pre-in
    │  THE PIPELINE — TWO PHASES                                            │
    └──────────────────────────────────────────────────────────────────────┘
 
-      ┌────────────────────────────────┐
+      ┌─────────────────────────────────┐
       │  INDEX TIME (once per corpus)   │
       │                                 │
       │   docs/  →  chunk_text  →       │
       │     [Chunk, Chunk, Chunk, ...] →│
       │       embedder.embed   →        │
-      │         (N, d) vectors  →        │
+      │         (N, d) vectors  →       │
       │           store.add             │
       │                                 │
       │   Cost: O(N) embedding calls.   │
       │   Done once; persisted.         │
       └─────────────┬───────────────────┘
                     ▼
-      ┌────────────────────────────────┐
+      ┌─────────────────────────────────┐
       │  QUERY TIME (once per question) │
       │                                 │
       │   question   →                  │
       │     embedder.embed → (1, d)     │
-      │       store.search →             │
-      │         top-k (Chunk, score)     │
+      │       store.search →            │
+      │         top-k (Chunk, score)    │
       │           assemble_rag_prompt → │
       │             prompt              │
       │               backend.complete →│
@@ -142,16 +143,14 @@ The mechanism is simple: turn the user's question into a vector, search a pre-in
       │   Cost: 1 embed + 1 search +    │
       │         1 generate. ~hundreds   │
       │         of ms total.            │
-      └────────────────────────────────┘
+      └─────────────────────────────────┘
 ```
 
 Phase 1 happens once. Phase 2 happens on every user question. The asymmetry is the point: indexing is the expensive amortized step that makes querying cheap.
 
-## The big idea
-
 ### Chunking — what to retrieve
 
-A document is too big to retrieve as a unit (a 50-page paper is one "topic" but you only want the paragraph that actually answers the question). A sentence is too small (the answer often spans 2–3 sentences). The chunk is the right intermediate — small enough to be specific, big enough to be self-contained.
+A document is too big to retrieve as a unit (a 50-page paper is one "topic" but you only want the paragraph that actually answers the question). A sentence is too small (the answer often spans 2–3 sentences). The **chunk** is the right intermediate — small enough to be specific, big enough to be self-contained.
 
 ```
    ┌──────────────────────────────────────────────────────────────────────┐
@@ -165,17 +164,17 @@ A document is too big to retrieve as a unit (a 50-page paper is one "topic" but 
    │                                            no inter-sentence context  │
    │                                                                       │
    │   500 char   Balanced; 1–3 sentences       Generic-feeling vectors    │
-   │              of context                                                │
+   │              of context                                               │
    │                                                                       │
    │   1500 char  Self-contained paragraphs;    Embedding "averages" over  │
-   │              good for "what does this      topic; one distinctive    │
-   │              section say"                  sentence gets diluted     │
+   │              good for "what does this      topic; one distinctive     │
+   │              section say"                  sentence gets diluted      │
    │                                                                       │
-   │   3000+ char Whole sections preserved      Embedding is a coarse     │
-   │              for the model to read         summary; retrieval misses │
-   │                                            specific facts            │
+   │   3000+ char Whole sections preserved      Embedding is a coarse      │
+   │              for the model to read         summary; retrieval misses  │
+   │                                            specific facts             │
    │                                                                       │
-   └──────────────────────────────────────────────────────────────────────┘
+   └───────────────────────────────────────────────────────────────────────┘
 ```
 
 Overlap exists for exactly one reason: an answer-bearing sentence that crosses a chunk boundary appears in BOTH chunks rather than being split between them. Without overlap, the chunker's split points become noise — moving a paragraph break a few characters drops the answer's recall.
@@ -201,7 +200,6 @@ This module's chunker is the simplest possible: fixed-size sliding window with o
 ### Embedding — turning text into coordinates
 
 ![Embedding space and cosine search. Left half: a 2D scatter of chunk embeddings color-coded by cluster — Spain/Cities (green), Python/Code (blue), Cooking (orange), Machine Learning (purple). Texts about the same topic land in the same neighborhood. The user's query "What is the capital of Spain?" embeds to a point near the Spain/Cities cluster, marked with a star. A "cosine similarity intuition" panel pins the math: for L2-normalized vectors, `cos(u, v) = u · v` — small angle → high similarity → score near 1; orthogonal → score near 0; opposite → score near -1. Right half: the search algorithm in five steps. Step 1 — embed the query. Step 2 — dot the query against every row of the (N, d) store matrix to get N similarities. Step 3 — `np.argpartition(scores, -k)` finds the top-k indices in O(N) without sorting the full array. Step 4 — sort just those k indices by descending score. Step 5 — return the top-k chunks plus their similarity scores. A "key takeaway" panel: cosine similarity finds the chunks whose meaning is most similar to the query — not the chunks that share words.](17-rag/Module17-Embedding.png)
-
 *The geometric picture for `NumpyVectorStore.search`. The five-step recipe IS the implementation: embed query, dot against store, argpartition for top-k, argsort the k indices, return chunks + scores. The test `test_search_returns_descending_order` pins the sort direction; reading off this image, the "most similar first" convention matches the natural reading direction of the panel.*
 
 An embedding is a function from `string → R^d`. Two strings are "similar" if their embeddings have a small angle between them. The choice of embedding function determines what "similar" means:
@@ -219,12 +217,13 @@ An embedding is a function from `string → R^d`. Two strings are "similar" if t
    │     "running"           ≈  "runs"              (shared "run", sim=0.3)│
    │                                                                       │
    │   OllamaEmbedder (nomic-embed-text):                                  │
-   │     "Madrid"            ≈  "the capital of Spain"   (semantic, sim=0.5)│
-   │     "running"           ≈  "jogging"                 (paraphrase, sim=0.6)│
-   │     "the cat sat"       ≈  "the dog stood"          (similar shape, sim=0.4)│
-   │     "the cat sat"       ≈  "running on a treadmill" (different topic, sim=0.05)│
+   │     "Madrid"            ≈  "the capital of Spain"  (semantic, sim=0.5)│
+   │     "running"           ≈  "jogging"             (paraphrase, sim=0.6)│
+   │     "the cat sat"       ≈  "the dog stood"    (similar shape, sim=0.4)│
+   │     "the cat sat"       ≈  "running on a treadmill"  
+   (different topic, sim=0.05)│
    │                                                                       │
-   └──────────────────────────────────────────────────────────────────────┘
+   └───────────────────────────────────────────────────────────────────────┘
 ```
 
 `HashEmbedder` is what you can build in a hundred lines of stdlib. It captures lexical signal — strings sharing tokens / n-grams cluster together. It's enough to make the pipeline work for tests, and enough to feel the limits: a question phrased differently from the source document doesn't retrieve. `OllamaEmbedder` (or any neural embedder) captures semantics — the same idea expressed in different words still clusters. **For real retrieval over heterogeneous queries, you want a neural embedder.** The `HashEmbedder` exists because (1) it teaches what an embedding even is, and (2) a fully-stdlib pipeline is testable without an external service.
@@ -266,8 +265,7 @@ That's the whole search algorithm for a flat index. ~five lines of numpy. The pe
 
 ### Prompt assembly — the format matters
 
-![Prompt assembly — turn retrieved chunks into a useful prompt. Top-left: input from the retriever — three top-k chunks with scores 0.84, 0.78, 0.62 and source labels (`design.md`, `notes.md`, `research.pdf`). Center: the assembled RAG prompt as a single concatenated string with four sections — system/context header (a helpful-assistant persona); context (the three retrieved chunks, each prefaced with `[1]`, `[2]`, `[3]` plus a `(source: ...)` label); the user's question; trailing instructions ("Use only the provided context to answer," "Cite your sources using bracketed numbers," "If the answer is not in the context, say I don't know"). Top-right: the model's output — a grounded answer that quotes specific chunks by number ("We recommend ~20% chunk overlap [1]. Overlap prevents answer-bearing sentences from being split..."). Bottom: a "common mistakes to avoid" row (no citations, too much context, unlabeled sources, missing instructions) and a "good defaults" row (chunk size 500–800 chars, k=3–6, citations [1] [2] [3], the "I don't know" guard). A "the takeaway" panel: prompt assembly is the bridge between retrieval and generation; good structure plus clear instructions plus citations equals answers you can trust.](17-rag/Module17-Prompt.png)
-
+![Prompt](17-rag/Module17-Prompt.png)
 *The reference card for `assemble_rag_prompt`. The four-section template (system → context → question → instructions) plus the 1-based citation scheme is what the test `test_assemble_rag_prompt_uses_one_based_citations` pins. Exercise 5 (probing failure modes on unanswerable questions) measures how well the "I don't know" guard at the bottom of the prompt actually triggers refusal — it's the single highest-leverage line in the whole template.*
 
 Once the retriever has handed you `[chunk_1, chunk_2, ..., chunk_k]`, the question is how to splice them into the model's input. The default template:
@@ -295,50 +293,7 @@ Three things this format is doing:
 2. **The `(source: ...)` label** lets the model name the document by its filename or URL when answering. Without it, citations can only be `[1]` — less useful.
 3. **The trailing `instruction`** is the "I don't know" guard. Without it, models hallucinate when context is insufficient. With it, instruction-tuned models will (more often than not) actually abstain.
 
-Note what's NOT in the template: chat-template markers like `<|user|>...<|assistant|>`, role tags, system prefixes like `system: `. Those belong to the chat template, which lives outside the RAG layer. The RAG prompt assembler produces the *body* of the user turn; whoever's calling the backend wraps it in the chat template their backend expects.
-
-### The unified RAG interface
-
-Three classes plus one helper, all in `g2c/rag/`:
-
-```
-   ┌─────────────────────────────────────────────────────────────────────┐
-   │   g2c/rag/  PUBLIC API                                                │
-   ├─────────────────────────────────────────────────────────────────────┤
-   │                                                                       │
-   │   Chunk(text, source, start, end, metadata)                           │
-   │     a slice of source document                                        │
-   │                                                                       │
-   │   chunk_text(text, *, source, chunk_size, chunk_overlap, metadata)    │
-   │     -> list[Chunk]                                                    │
-   │                                                                       │
-   │   Embedder (abstract)                                                 │
-   │     .dim          → int                                               │
-   │     .embed(texts) → (n, dim) float32, L2-normalized rows              │
-   │                                                                       │
-   │   HashEmbedder(*, dim, ngram_range, seed)                             │
-   │     stdlib character-n-gram hashing                                   │
-   │                                                                       │
-   │   OllamaEmbedder(model_id, *, dim, base_url, timeout, urlopen)        │
-   │     wraps Ollama's /api/embeddings                                    │
-   │                                                                       │
-   │   NumpyVectorStore(*, dim)                                            │
-   │     .add(chunks, vectors)                                             │
-   │     .search(query, *, k) → list[(Chunk, score)]                       │
-   │                                                                       │
-   │   DenseRetriever(embedder, store)                                     │
-   │     .retrieve(query, *, k) → list[RetrievedChunk]                     │
-   │                                                                       │
-   │   assemble_rag_prompt(question, chunks, *, system, instruction)       │
-   │     -> RAGPrompt                                                      │
-   │                                                                       │
-   │   RAGPipeline(retriever, backend, *, system, instruction)             │
-   │     .answer(question, *, k, max_new_tokens, ...) → RAGAnswer          │
-   │                                                                       │
-   └─────────────────────────────────────────────────────────────────────┘
-```
-
-Total scaffolded code: roughly 60 lines spread across four method bodies (`chunk_text`, `HashEmbedder.embed`, `NumpyVectorStore.search`, `assemble_rag_prompt`). Everything else — including `OllamaEmbedder.embed`, `DenseRetriever.retrieve`, and `RAGPipeline.answer` — is pre-implemented because the wiring isn't the lesson; the components are.
+Note what's *not* in the template: chat-template markers like `<|user|>...<|assistant|>`, role tags, system prefixes like `system: `. Those belong to the chat template, which lives outside the RAG layer. The RAG prompt assembler produces the *body* of the user turn; whoever's calling the backend wraps it in the chat template their backend expects.
 
 ## Concepts to internalize
 
@@ -350,6 +305,14 @@ Total scaffolded code: roughly 60 lines spread across four method bodies (`chunk
 - **The interface is the substrate.** Module 19's agent loop will call `pipeline.answer(question, k=5)`. The pipeline doesn't care whether the embedder is `HashEmbedder`, `OllamaEmbedder`, or some future `MLXEmbedder` — same `embed(texts)` contract, same downstream behavior. This is the pattern Module 16 established with `Backend`; Module 17 extends it to `Embedder`.
 - **In-memory is enough for course scale.** A flat numpy array searches a few-thousand-chunk corpus in microseconds. ANN indexes solve a problem we don't have. Build the simple thing; upgrade only when you've measured that you need to.
 - **Embedders and chat models are different beasts.** A chat model `complete(prompt) → completion` expects to generate. An embedder `embed(text) → vector` expects to *score* — no decoder, no sampling, no autoregression. Confusing them (e.g., trying to use a chat model as an embedder) is a classic early mistake. They share the same family of architectures (transformers) but diverge entirely in usage.
+
+### What we don't cover
+
+- **Implementing HNSW or any other ANN index.** Production scale wants this; course scale does not. A few-hundred-chunk corpus searches in microseconds against a flat index. Building HNSW from scratch is a 200-line project and a different lesson.
+- **Implementing a sentence-transformer-style dense embedder.** Training a contrastive bi-encoder is its own multi-week curriculum. We use `OllamaEmbedder` to plug into a pretrained one (`nomic-embed-text` is 137M parameters, trained by NomicAI on ~250M sentence pairs). Treat the embedder as a black box that turns text into a 768-vector.
+- **BM25 / hybrid retrieval.** BM25 is a 1990s-era lexical scorer that consistently improves on dense-only retrieval for keyword-heavy queries. We don't build it; the `HashEmbedder` covers the lexical-side intuition without the BM25 IDF / saturation math. Exercise 6 walks through adding BM25 as a hybrid retriever.
+- **Re-ranking with a cross-encoder.** Production RAG pipelines often retrieve top-k=50 with a cheap dense embedder and then re-rank top-k=5 with an expensive cross-encoder (`bge-reranker-v2-m3` etc.). Adds ~100 ms per query and 1–3% retrieval accuracy. We skip — the re-ranker is its own model, and the lesson is the pipeline shape.
+- **Async embedding.** Embedding 10k chunks against a remote service one-at-a-time takes minutes. Real pipelines batch via async. We don't — the lesson is the math, not the I/O.
 
 ## Scaffolding and how to run the tests
 

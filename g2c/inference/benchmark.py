@@ -270,5 +270,47 @@ def benchmark(
         completion_tokens_total and tokens_per_second_overall both
         fall back to None.
     """
-    # TODO
-    raise NotImplementedError
+    if len(prompts) == 0:
+        raise ValueError("benchmark needs at least one prompt")
+
+    results: list[InferenceResult] = []
+    for prompt in prompts:
+        results.append(
+            backend.complete(
+                prompt,
+                max_new_tokens=max_new_tokens,
+                temperature=temperature,
+                top_k=top_k,
+                top_p=top_p,
+            )
+        )
+
+    latencies = [result.latency_ms for result in results]
+    latency_total = sum(latencies)
+    completion_counts = [result.completion_tokens for result in results]
+    if any(count is None for count in completion_counts):
+        completion_tokens_total = None
+        tokens_per_second_overall = None
+    else:
+        completion_tokens_total = sum(int(count) for count in completion_counts)
+        total_seconds = latency_total / 1000.0
+        tokens_per_second_overall = (
+            completion_tokens_total / total_seconds if total_seconds > 0 else None
+        )
+
+    return BenchmarkResult(
+        backend=backend.info,
+        n=len(results),
+        latency_ms_total=latency_total,
+        latency_ms_mean=statistics.fmean(latencies),
+        latency_ms_p50=_percentile(latencies, 50),
+        latency_ms_p90=_percentile(latencies, 90),
+        completion_tokens_total=completion_tokens_total,
+        tokens_per_second_overall=tokens_per_second_overall,
+        per_request_latency_ms=latencies,
+        per_request_tokens_per_second=[
+            result.tokens_per_second for result in results
+        ],
+        results=results,
+        metadata=dict(metadata) if metadata is not None else {},
+    )

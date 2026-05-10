@@ -33,6 +33,8 @@ without improving the ranking. Read Guo et al. 2017 for context.
 """
 from __future__ import annotations
 
+import math
+
 
 def expected_calibration_error(
     confidences: list[float],
@@ -110,8 +112,20 @@ def expected_calibration_error(
     For small N (< 100), consider fewer bins (5) to reduce
     per-bin noise.
     """
-    # TODO
-    raise NotImplementedError
+    _validate_inputs(confidences, correct, n_bins)
+    n = len(confidences)
+    ece = 0.0
+    for bin_index in range(n_bins):
+        indices = [
+            i for i, confidence in enumerate(confidences)
+            if _bin_index(confidence, n_bins) == bin_index
+        ]
+        if not indices:
+            continue
+        bin_accuracy = sum(1 for i in indices if correct[i]) / len(indices)
+        bin_confidence = sum(confidences[i] for i in indices) / len(indices)
+        ece += (len(indices) / n) * abs(bin_accuracy - bin_confidence)
+    return float(ece)
 
 
 def reliability_curve(
@@ -164,5 +178,43 @@ def reliability_curve(
       * If you plot bin_confidences against bin_accuracies and the
         model is perfectly calibrated, the line is the diagonal.
     """
-    # TODO
-    raise NotImplementedError
+    _validate_inputs(confidences, correct, n_bins)
+    bin_confidences: list[float] = []
+    bin_accuracies: list[float] = []
+    bin_counts: list[int] = []
+
+    for bin_index in range(n_bins):
+        indices = [
+            i for i, confidence in enumerate(confidences)
+            if _bin_index(confidence, n_bins) == bin_index
+        ]
+        count = len(indices)
+        bin_counts.append(count)
+        if count == 0:
+            bin_confidences.append(math.nan)
+            bin_accuracies.append(math.nan)
+            continue
+        bin_confidences.append(sum(confidences[i] for i in indices) / count)
+        bin_accuracies.append(sum(1 for i in indices if correct[i]) / count)
+
+    return bin_confidences, bin_accuracies, bin_counts
+
+
+def _validate_inputs(
+    confidences: list[float],
+    correct: list[bool],
+    n_bins: int,
+) -> None:
+    if len(confidences) != len(correct):
+        raise ValueError("confidences and correct must have the same length")
+    if len(confidences) == 0:
+        raise ValueError("calibration is undefined for empty input")
+    if n_bins <= 0:
+        raise ValueError("n_bins must be positive")
+    for confidence in confidences:
+        if not 0.0 <= confidence <= 1.0:
+            raise ValueError("confidences must be on [0, 1]")
+
+
+def _bin_index(confidence: float, n_bins: int) -> int:
+    return min(int(confidence * n_bins), n_bins - 1)

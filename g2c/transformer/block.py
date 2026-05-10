@@ -157,3 +157,15 @@ class Block(Module):
         x = x + self.attn(self.ln1(x))
         x = x + self.ffn(self.ln2(x))
         return x
+
+    def forward_cached(self, x: torch.Tensor, cache):
+        """Apply one block to a single token using a layer KV cache.
+
+        ``x`` is the residual stream for the newest token only, shape
+        ``(B, 1, D)``. Attention reads cached past K/V rows; the FFN remains
+        per-token and needs no cache.
+        """
+        attn_out, cache = self.attn.forward_cached(self.ln1(x), cache)
+        x = x + attn_out
+        x = x + self.ffn(self.ln2(x))
+        return x, cache
