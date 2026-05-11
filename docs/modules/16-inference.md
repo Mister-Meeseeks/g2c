@@ -3,13 +3,12 @@
 > **Question this module answers:** *How do we get from "I built it" to "I can use it"?*
 
 ![Module 16 summary diagram showing a tiny course model, a configured production model, and a shared Backend interface used by evaluation, RAG, tools, and agents.](16-inference/Module16-Hero.png)
-*The whole module on one page. After 15 modules of "build it from scratch," Module 16 pivots to "use models through a stable interface." StudentLM artifacts, BaseLM experiments, and a capable local ProdLM all speak the same `Backend.complete(...)` API, so Module 17's RAG, Module 18's tools, and Module 19's agent loop do not have to care which model is underneath.*
+
+Every module up to the point has been about making the model smarter. In this lesson we focus on making it faster, more reliable, and scalable. 
 
 ---
 ## Before you start
 
-* *Refresh
-	* REST API using JSONs
 * *Finish* `g2c/sampling` from [[11-sampling]] — `LocalTransformerBackend` drives the from-scratch model through `g2c.sampling.generate`
 * *Finish* at least one saved model artifact from Module 10, 13, or 14, or run `./baselm.sh` — `ArtifactBackend` lets you use course-trained and BaseLM artifacts through the inference API
 * *Configure* ProdLM with `./prodlm.sh --model-id llama3.2:3b` (or another size from the suggested list below) — by default this pulls the Ollama model and writes a lightweight manifest the later modules can discover
@@ -21,19 +20,28 @@ In Modules 1-15 we went through the entire pipeline of building, training and sh
 
 At this point in the course journey, we've arrived at that the point where the model is "frozen". From here forward, we will no longer be updating weights. But we can't just declare mission accomplished, hand off the weights, and never think about it again. The best trained model in the world is useless if we can't serve and scale it to end users efficiently and reliably.
 
-This week covers the topic of **inference**, which is the process of using fixed weights to produce outputs. This is really just the sampling process we learned in Module 11, but at production scale. Compared to the very research heavy nature of training, inference is fundamentally an engineering discipline. Autoregression on even "small" models is slow and expensive. Up until this point everything in the course has been focused on how to make models smarter. This week we learn how to make them faster, cheaper and reliable. 
+This week covers the topic of **inference**, which is the process of using fixed weights to produce outputs. Compared to the research heavy nature of training, inference is fundamentally an engineering discipline. Even on today's "small" production models, generating text is enormously resource intensive. Up until this point, the course has been about how to make models smarter. This week we learn how to make them faster, cheaper and reliable.
 
 ## The big idea
 
-Training gives you weights; **inference** turns those weights into a usable system.
+Training gives you weights; inference turns those weights into a usable system. We are going to use the exact same sampling process that we learned in Module 11. But the difference is in prior modules we used sampling as a component of post-training and evalution. We never worried too much about efficiency or reliability, because those contexts are inherently controlled environments that easily fit into a notebook.
+
+We now turn our attention towards turning sampling generation into a model backend that external systems can depend on. That requires three practical moves:
+
+1.  **Wrap the model behind a stable interface.**  Downstream modules should call `backend.complete(prompt, ...)`, not care whether the model is StudentLM, BaseLM, ProdLM, Ollama, or MLX.
+2. **Make the model fit and run.**  At this point in the course, we be shifting into production models. We had no problem generating completions with the toy-scale models that we pre-trained. But now memory and GPU efficiency become first class priorities.
+3. **Avoid wasting work during generation.** As models scale up, even small amounts of duplicated work become expensive. We'll explore intelligent caching solutions to drastically cut down on compute costs for production sized prompts.
 
 ### Quantization: how a 7B model fits in 4 GB
 
 ![Quantization ladder — more model, less memory. Lower precision means fewer bits per weight, smaller checkpoint, more model fits on a laptop. A vertical "ladder" shows precision steps from FP32 (32 bits/param, 28 GB for 7B, highest fidelity) → FP16/BF16 (16 bits, 14 GB, near-lossless for inference) → INT8 (8 bits, 7 GB, mild accuracy hit) → INT4 (4 bits, ~3.5 GB, larger but still tractable accuracy hit). A right-side panel pins the speed lever: inference is memory-bandwidth-bound, so halving weight bytes roughly halves the time to fetch them per matmul — the headline 2-4× speedup at int4 comes from bandwidth, not faster math. A "GGUF Q-K variants" panel decodes the cryptic naming: `Q4_K_S` (most weights at 4 bits, smallest), `Q4_K_M` (recommended default — most weights at 4 bits, more important ones at 5–6 bits), `Q5_K_M` (slightly bigger, slightly better quality). A "memory budget example" computes 16 GB Mac − 4 GB OS − 2 GB KV cache = ~10 GB usable for weights, which fits a 7B Q4_K_M comfortably. The takeaway pinned at the bottom: quantization buys headroom, not magic — Q4_K_M is the default for the rest of the course.](16-inference/Module16-Quant.png)
-
 *Choosing a quantization level is an important exercise in the tradeoff curve between performance and accuracy.*
 
-A model's weights are nothing more than a (very large) array of floats. Like any array, the size of this array is `n_parameters × bytes_per_parameter`. Reducing `bytes_per_parameter` is the lever:
+Quantization is a technique that allows us to tradeoff performance for accuracy given a set of model weights. It relies on the fact that the least significant bits in numerical parameters exert vastly less influence on the model's activations. We can represent a set of weights using 50% of the bits, and lose much much less than 50% of its numerical accuracy.
+
+The easiest way to think about quantization is as a form of (lossy) compression. If you cut the number of bits in half, then you cut the memory footprint of the model (and its activations) in half. Of course this isn't a free lunch.
+
+The least significant are less important, but they're not zero importance. Downscaling the weights in some degradation to the underlying model. The accuracy hit from quantization is real but small for instruction-tuned models in the int8 → int4 range. Q4_K_M typically loses 1–3% on benchmarks compared to fp16.
 
 ```
    ┌───────────────────────────────────────────────────────────────────────┐
@@ -63,15 +71,14 @@ A model's weights are nothing more than a (very large) array of floats. Like any
    └───────────────────────────────────────────────────────────────────────┘
 ```
 
-The accuracy hit from quantization is real but small for instruction-tuned models in the int8 → int4 range. Q4_K_M typically loses 1–3% on benchmarks compared to fp16. For a course project, this is well below the noise of toy-model variance.
-
 The reason quantization speeds inference up isn't the math — int4 multiplications aren't faster than fp16 multiplications on most hardware. It's that **inference is memory-bandwidth-bound**. The time to multiply a weight by an activation is dominated by the time to *fetch the weight from RAM*. Halving the weight size halves the fetch time, even if the math itself is the same speed.
 
 ### KV cache: from O(T²) per token to O(T) per token
 
 ![KV cache — remember once, reuse forever. Two side-by-side flow diagrams. WITHOUT KV CACHE: each generation step recomputes attention over the whole sequence. Step 1 computes K/V for tokens 0..2; step 2 recomputes K/V for tokens 0..3 (re-doing the work for 0..2); step 3 redoes 0..4; cost per step grows linearly with sequence length, total work is O(T²). WITH KV CACHE: step 1 computes K/V for tokens 0..2, stores them; step 2 only computes K/V for the new token (one row), appends to the cache, attends from the new query against the entire cached K/V; per-step cost is O(T), total work is O(T·T) but with a much smaller constant. A "what is stored" panel pins the layout: `K_cache` and `V_cache` per layer, shape `(max_seq_len, n_heads, head_dim)`, dtype fp16. A memory-budget example for a 7B model (Llama 3.1 8B): 32 layers × 32 heads × 128 head_dim × 2 (K and V) × 2 bytes (fp16) × 2048 context = ~1 GB; doubles linearly with context length. A "scaling with context length" panel shows weights stay fixed while the cache grows — long-context inference is memory-bound on the cache, not the weights. A "the takeaway" panel: KV cache is mandatory at scale; production servers like llama.cpp build one in; the optional course-model cache makes the mechanism inspectable.](16-inference/Module16-KVCache.png)
-
 *Why 30 tok/s on a 7B model is even possible. The KV cache turns autoregressive decoding from O(T²) to O(T) per step — a 5–20× speedup at production context lengths.*
+
+Unlike quantization, KV caching is pretty close to a free lunch. At least on larger models and context windows. It depends on the fact that in next token auto regression, we are constantly revisiting the same prompt tokens.
 
 Module 11's generation loop recomputes attention over the entire sequence every step:
 
@@ -122,9 +129,10 @@ Total: `O(T)` per step → `O(T²)` for the whole generation, but with a ~10× s
    └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-The required backend path does not need a cache in your tiny `TransformerLM` — Ollama's underlying llama.cpp is heavily KV-cached, and that is the cache you depend on for ProdLM. The optional extension in this module adds a small, readable cache to the course model anyway, so you can see the state that carries forward from one generated token to the next.
+### Speculative decoding
 
-### Speculative decoding 
+![Speculative decoding](16-inference/Module16-Decoding.png)
+*Speculative decoding is to LLMs what branch prediction is to microprocessors*
 
 Speculative decoding runs a small "draft" model (e.g., a 1B-param sibling of a 70B model) ahead of the main model, generating several candidate tokens at once. The main model then verifies all of them in a single forward pass — comparing its softmax over each position against what the draft chose. Whichever prefix the main model agrees with is accepted; the rest are discarded; the next round starts.
 
@@ -133,6 +141,8 @@ When the draft is right (the common case for "easy" tokens — function words, p
 In practice: 2–3× throughput improvement on long generations. We don't build it. We acknowledge it because every production serving stack uses it.
 
 ### The inference server pattern
+
+To go from training to inference, the model has to become a general purpose service. Up until now it was fine to represent a model as a PyTorch tensor in a notebook. But once we move to building general purpose software *over* the model, we need functional form that's stable, standardized and modular.
 
 ```
    ┌────────────────────────────────────────────────────────────────────────┐
@@ -163,54 +173,86 @@ In practice: 2–3× throughput improvement on long generations. We don't build 
    └────────────────────────────────────────────────────────────────────────┘
 ```
 
-Ollama is the right default for this course: the install is one shell command, the API is small, and the model registry is curated (easy to find a working `:tag` for any popular open model). MLX is the alternative when you want maximum throughput on Apple Silicon and are willing to manage the conversion pipeline.
+The common approach to serve inference is over over an **API Provider**. Even local models are typically served through an API on `localhost`. The overhead of the network stack is trivial compared to the latency of inference itself. And with it we get some major advantages.
+
+For local models it creates process isolation, which allows us to manage and isolate the massive memory and GPU requirements of running the model. This allows software to treat inference as an abstracted backend. This makes switching models, providers or inference machines as easy as pointing at a different URL.
+
+Finally it allows for API *composability*. A provider itself can consume another API upstream in its own backend. A common example of this pattern is the *router*. Inference can be dynamically routed to models of varying capabilities depending on the shape of the workload. 
+
+In this course we'll be taking advantage of composability to add a hook to a production grade local provider inside the `g2c` framework:
 
 ```
    ┌──────────────────────────────────────────────────────────────────────┐
-   │   THE INTERFACE                                                       │
+   │   THE INTERFACE                                                      │
    └──────────────────────────────────────────────────────────────────────┘
 
-      ┌───────────────────────┐       ┌───────────────────────────┐
+      ┌────────────────────────┐       ┌───────────────────────────┐
       │  ArtifactBackend       │       │  ProdLM / OllamaBackend   │
-      │                       │       │                           │
+      │                        │       │                           │
       │  wraps saved artifacts:│       │  wraps an HTTP server:    │
       │   • StudentLM          │       │   • POSTs JSON to         │
       │   • BaseLM             │       │     /api/generate         │
       │   • SFT/DPO variants   │       │   • parses the response   │
-      │                       │       │   • times the round-trip   │
+      │                        │       │   • times the round-trip  │
       │  in-process            │       │                           │
       │  (PyTorch on MPS/CPU)  │       │  out-of-process           │
-      │                       │       │  (llama.cpp via Ollama)    │
-      └─────────┬─────────────┘       └────────┬─────────────────┘
-                │                                │
-                ▼                                ▼
+      │                        │       │  (llama.cpp via Ollama)   │
+      └────────────────────────┘       └───────────┬───────────────┘
+                   │                               │
+                   ▼                               ▼
                   ┌────────────────────────────────┐
-                  │  Backend.complete(...)          │
-                  │     returns InferenceResult     │
-                  │                                 │
-                  │  prompt, completion,            │
-                  │  prompt_tokens, completion_tokens,│
-                  │  latency_ms, backend, metadata  │
-                  └─────────────┬───────────────────┘
-                                │
-                                ▼
+                  │  Backend.complete(...)         │
+                  │     returns InferenceResult    │
+                  │                                │
+                  └────────────┬───────────────────┘
+                               │
+                               ▼
                           everywhere downstream
                           (RAG, tools, agent, eval)
 ```
 
-The `complete` method is the entire interface. No streaming, no async, no batched generation. The point is the **lowest common denominator** — and the LCD is enough for everything Modules 17–20 need.
+### Inference Benchmarks
+
+Training metrics tell us whether the model learned. Inference benchmarks tell us whether the model is usable. Once a model sits behind an assistant, a "good" answer that arrives 45 seconds later may still feel broken. Benchmarking is how we make that cost visible.
+
+```
+   ┌──────────────────────────────────────────────────────────────────────┐
+   │   INFERENCE BENCHMARK BASICS                                         │
+   ├──────────────────────────────────────────────────────────────────────┤
+   │                                                                      │
+   │   latency        How long one request takes from the caller's view.  │
+   │                  Usually measured in milliseconds.                   │
+   │                                                                      │
+   │   tokens/sec     How many completion tokens the backend produces     │
+   │                  per second. This is the headline throughput metric. │
+   │                                                                      │
+   │   wall clock     The real elapsed time around the whole call: Python │
+   │                  wrapper, HTTP request, JSON parsing, server work,   │
+   │                  and response decoding.                              │
+   │                                                                      │
+   └──────────────────────────────────────────────────────────────────────┘
+```
+
+Latency is the user-facing number: "how long did I wait?" Tokens/sec is the generation-speed number: "once the model is producing text, how fast is it?" They are related, but not identical. A short answer can have low latency but mediocre tokens/sec; a long answer can have high latency but strong tokens/sec.
+
+Wall-clock latency measures the full round trip from the caller's perspective. Server-reported latency is what a backend such as Ollama reports from inside the inference server. The wrapper sees process scheduling, HTTP overhead, JSON encoding/decoding, and any client-side work. The server sees its own model runtime. For local inference, the difference is usually small but still worth naming.
+
+Benchmark suites should also report distributions, not just averages. `p50` tells you the typical request. `p90` tells you the slow tail. Assistant systems are especially sensitive to the tail because an agent turn may require several backend calls in sequence; one slow call can make the whole interaction feel sluggish.
+
+When benchmarking, be aware of cold-start overhead. The first request can include model load, memory allocation, Metal/MPS warmup, or KV-cache initialization. That number matters if users launch the assistant fresh. Later requests are the number you actually feel during a session. Warm up once, then benchmark a fixed prompt set with the same sampling settings.
+
 ## Concepts to internalize
 
-- **Quantization buys you headroom, not magic.** A 4-bit 7B model fits in 4 GB and runs at usable speeds on M2; an fp16 7B does not fit on a 16 GB Mac at all (even before KV cache). The accuracy cost is 1–3% on benchmarks. The headroom is what actually unblocks Phase V on a laptop.
-- **The KV cache is mandatory at scale.** Naive `O(T²)` decoding is fine at 32-token contexts; at 2k contexts it's not. Ollama already has one for the real model. The optional toy cache exists to make the mechanism concrete, not because it changes the rest of Phase V.
-- **Wall clock vs server-reported latency are different things.** Ollama tells you `total_duration` (the GPU-side compute time). Your wrapper records wall-clock latency (compute + IPC + JSON encoding). Both are valid; they answer different questions. Track both.
-- **Tokens-per-second is the headline throughput metric.** But it depends critically on what you count: prompt processing tokens, generation tokens, both, neither. The `InferenceResult.tokens_per_second` property uses *generation tokens / wall-clock seconds* — the user-facing definition. When comparing to published numbers, check the convention.
-- **The first request is always slower.** Cold cache, model load, MPS / Metal kernel JIT compilation. A `benchmark` of 1 request reports the cold-start number; a benchmark of 5 requests reports the steady-state. Always warm up before measuring.
-- **Backends are values, not globals.** The wrapper classes are stateful (they hold a model or a base URL), but they're not singletons. RAG, tool, and agent code take a `Backend` parameter. This is dependency injection — the same pattern that decoupled `generate_fn` from the eval harness in Module 15, applied at the model level.
+- **Quantization buys you headroom, not magic.** A 4-bit 7B model fits in 4 GB and runs at usable speeds on M2; an fp16 7B does not fit on a 16 GB Mac at all (even before KV cache). The accuracy cost is 1–3% on benchmarks. 
+- **KV cache is mandatory at scale.** Naive `O(T²)` decoding is fine at 32-token contexts; at 2k contexts it's not. 
+- **Wall clock vs server-reported latency are different things.** Ollama tells you the GPU-side compute time. Your wrapper records wall-clock latency. Track both.
+- **Tokens-per-second is the headline throughput metric.** But it depends on what you count: prompt processing tokens? Generation tokens? Both? When comparing numbers, check the convention.
+- **The first request is always slower.** Cold cache, model load, MPS / Metal kernel JIT compilation. Always warm up before measuring.
+- **Backends are values, not globals.** The wrapper classes are stateful, but they're not singletons. This is dependency injection.
 
 ## What we don't cover
 
-- Prior knowledge of GGUF, MLX, quantization, KV caches, or speculative decoding. Those are introduced here.
+- Details of GGUF, MLX, and other optimized model formats. It's enough to know these formats at a high level.
 - Manual model quantization. Download a pre-quantized local model instead.
 - Streaming, async I/O, and MLX serving. They are useful extensions, not required for the module deliverable.
 
@@ -479,56 +521,50 @@ Optional:
 
 ## Deliverable checklist
 
-- [ ] All tests in `tests/test_inference.py` pass. The real-transformer end-to-end test may skip if Modules 04 / 09 / 11 are still scaffolded.
-- [ ] Ollama installed and ProdLM configured with `./prodlm.sh --model-id <model:tag>`. `ollama list` shows the model. `curl http://localhost:11434/api/tags` returns a non-empty `models` array.
-- [ ] Notebook: `notebooks/16-inference.ipynb`. Runs Exercises 1, 2, 4, 5 against your strongest artifact and configured ProdLM. Plots latency / throughput / accuracy comparisons. Commit with outputs visible.
+- [ ] All tests in `tests/test_inference.py` pass. 
+- [ ] Ollama installed and ProdLM configured
+- [ ] Notebook: `notebooks/16-inference.ipynb`. 
 - [ ] **Inference-stack post-mortem** (Exercise 9) in `docs/inference-postmortem.md`. 3–4 paragraphs. The actual deliverable. Cover: what ran, where the gaps were, the cost-quality frontier, and which backend you're committing to for the rest of the course.
 - [ ] You can explain — out loud, without notes — the rough memory cost of running a 7B model at fp32 vs fp16 vs int8 vs int4, and which fits on a 16 GB Mac.
 - [ ] You can explain — out loud, without notes — what a KV cache is, why it's necessary at scale, and why the required course path relies on ProdLM's production cache instead of your toy cache.
 - [ ] You can explain — out loud, without notes — the difference between wall-clock latency (what `InferenceResult.latency_ms` records) and server-reported latency (what Ollama's `total_duration` reports), and what each is good for.
-- [ ] You can explain — out loud, without notes — why the unified `Backend` interface exists, and what would have to change in Module 17's RAG code if it weren't there.
 
 ## M-series notes
 
 This is the most memory-sensitive module of the course. Choose the model size + quant level to match your hardware:
 
 ```
-   ┌──────────────────────────────────────────────────────────────────────┐
+   ┌───────────────────────────────────────────────────────────────────────┐
    │   MEMORY BUDGET BY MAC CONFIGURATION                                  │
-   ├──────────────────────────────────────────────────────────────────────┤
+   ├───────────────────────────────────────────────────────────────────────┤
    │                                                                       │
-   │   8GB Mac:    1B–3B Q4 only.  llama3.2:1b, qwen2.5:0.5b, qwen2.5:1.5b. │
-   │                Tight headroom; close other apps before running.        │
+   │   8GB Mac:    1B–3B Q4 only.  llama3.2:1b, qwen2.5:0.5b, qwen2.5:1.5b.│
+   │                Tight headroom; close other apps before running.       │
    │                                                                       │
-   │   16GB Mac:   Comfortable up to 7B Q4.  llama3.2:3b is best default.   │
-   │                llama3.1:8b Q4 works but leaves ~3 GB for everything    │
-   │                else (browser, IDE, OS) — tight at long contexts.       │
+   │   16GB Mac:   Comfortable up to 7B Q4.  llama3.2:3b is best default.  │
+   │                llama3.1:8b Q4 works but leaves ~3 GB for everything   │
+   │                else (browser, IDE, OS) — tight at long contexts.      │
    │                                                                       │
-   │   32GB Mac:   Comfortable with 8B Q4 + headroom; 13B Q4 fits.          │
-   │                qwen2.5:14b Q4 works but slow.                          │
+   │   32GB Mac:   Comfortable with 8B Q4 + headroom; 13B Q4 fits.         │
+   │                qwen2.5:14b Q4 works but slow.                         │
    │                                                                       │
-   │   64GB Mac:   13B Q4 comfortable; 30B Q4 fits but slow;                │
-   │                70B Q4 fits at the edge (40+ GB), 1–5 tok/s.            │
+   │   64GB Mac:   13B Q4 comfortable; 30B Q4 fits but slow;               │
+   │                70B Q4 fits at the edge (40+ GB), 1–5 tok/s.           │
    │                                                                       │
-   │   128GB Mac:  70B Q4–Q6 comfortable; 70B Q8 fits.                      │
+   │   128GB Mac:  70B Q4–Q6 comfortable; 70B Q8 fits.                     │
    │                                                                       │
-   └──────────────────────────────────────────────────────────────────────┘
+   └───────────────────────────────────────────────────────────────────────┘
 ```
 
-For the rest of this course, the recommended ProdLM default is `llama3.2:3b` Q4_K_M, configured with `./prodlm.sh --model-id llama3.2:3b`:
+The  course default is `llama3.2:3b` and this is what will automatically be setup when students run `./prodlm.sh`
 
 - Fits in 4 GB on every reasonable Mac config.
 - Fast enough for interactive use (25–40 tok/s on M2 16GB).
-- Strong enough for RAG and agent tasks (instruction-tuned, decent factual recall).
-- Same family as the larger Llama 3 models, so what you learn here scales up if you later have access to a bigger machine.
 
-If you have ≥ 32 GB, switching to `llama3.1:8b` Q4_K_M is worth it for Module 19 (agent loops) — the 8B handles tool-calling significantly better than the 3B.
+If you have ≥ 32 GB, switching to `llama3.1:8b` is worth it for Module 19 (agent loops) — the 8B handles tool-calling significantly better than the 3B.
 
 Other practical notes:
 
-- **First-call latency.** Cold-start on Ollama (model load from disk) takes 5–30 seconds depending on model size and disk speed. Subsequent calls are warm. Always do one warmup call before benchmarking.
-- **Throughput vs latency.** A bigger model has higher latency *per request* but doesn't necessarily have lower throughput per token — the bigger model is doing more compute per token, but the time per token doesn't grow linearly with parameter count. M-series GPUs are memory-bandwidth-bound; throughput tracks memory bandwidth more than compute.
-- **MPS vs Metal vs MLX vs CPU.** Your `LocalTransformerBackend` runs on MPS (PyTorch). Ollama runs on Metal (via llama.cpp's Metal backend). MLX runs on Metal directly (Apple-native API). All three target the same Apple GPU; they differ in driver overhead and kernel optimization. For a fixed model + machine, MLX is typically fastest, then Ollama (Metal), then PyTorch MPS.
 - **Heat and throttling.** Sustained inference (5+ minutes of continuous calls) makes the M-series heat up; the GPU clock down-throttles to maintain temperature. Steady-state throughput after thermal throttling can be 70–80% of the cold-start steady state. For benchmarks, either run short suites (under a minute) or measure *both* the early and late steady states.
 - **Disk space for models.** 4 GB per Q4 7B model. `ollama pull` to a local laptop with a 256 GB SSD eats real space. `ollama rm <model>` cleans up. `ollama list` shows what's there.
 - **Network.** Ollama's first `pull` is gigabytes over HTTPS. Plan for the download time. Once pulled, all inference is local — no network during use.

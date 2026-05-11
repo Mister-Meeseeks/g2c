@@ -12,77 +12,44 @@
 
 * *Finish* `g2c/tools` from [[18-tools]] — the agent dispatches through `dispatch_tool_call`, reusing the registry, schema validation, and error wrapping
 * *Finish* `g2c/inference` from [[16-inference]] — the agent calls `backend.complete(...)` for every reasoning step
+* *Configure* ProdLM with `./prodlm.sh --model-id llama3.2:3b` or another local instruction model — the exercises need a model that can follow ReAct-style formatting
+* *Refresh* JSON request/response patterns — tool inputs and tool results are structured data even when the model emits them as text
+* *Refresh* basic regular expressions — the parser extracts line-oriented markers from free-form model completions
 
 ---
 ## Prerequisites
 
-Module 19 is the fourth leg of Phase V (assistant systems). Module 18 built the tool-call substrate — registry, schema validation, parse → validate → dispatch contract. Module 19 wraps that substrate in a ReAct-style observe / think / act loop so the model can pursue tasks that require *several* tool calls in sequence, with recovery when one of them goes wrong.
-
-This module is short on math and long on protocol. The whole content is:
-
-- A small dataclass set (`Action`, `Observation`, `AgentStep`, `AgentRunResult`, `Plan`) describing one ReAct turn and one full run.
-- A regex parser that pulls `Thought:` / `Action:` / `Action Input:` / `Final Answer:` out of free-form model text.
-- A `Scratchpad` that accumulates per-step records and renders them back into the next prompt.
-- An optional planning phase that asks the backend for a numbered plan up front.
-- An `Agent` class whose `.run(user_message)` ties everything together: planning, looping, dispatching, error recovery, stop-condition checking.
-
-There are four scaffolded methods. Three are short (each ~10–30 lines); the fourth is the loop (~70 lines including all the branches). The lesson is in the *contract* between them — what each piece is responsible for, and how a robust agent is built by composing small, well-behaved pieces.
+Module 19 assumes you can already run a model backend and dispatch a validated tool call. It does **not** assume prior agent-framework knowledge. ReAct, scratchpads, planning, loop detection, and agent stop conditions are introduced here.
 
 ### Math
 
-There isn't really any math in this module. The closest things are:
-
-- **The implicit Markov-ish property of the scratchpad.** Each turn's prompt is a function of the last turn's output and the previous turn's prompt: `prompt_{n+1} = render(history[:n+1])`. The model treats this as a state-transition problem, where its job is to pick the best next action given the current state. This is one of the conceptual reasons ReAct works: the model is good at "given history, pick action," and ReAct's prompt structure exactly matches that.
-
-- **The "dispatch loop is a fixed point search."** When the model emits Final Answer, we've reached a fixed point — applying the loop again would just emit the same Final Answer (or restart). The whole loop is a search for that fixed point. Convergence is not guaranteed; `max_steps` is the safety net.
+None. You only need basic counting and comparison for step counts, stop reasons, and benchmark summaries.
 
 ### Computer science
 
-- **ReAct as a control-flow pattern.** Yao et al. 2022 showed that interleaving "Thought" and "Action" turns improves both reasoning and tool selection over either alone. The intuition: forcing the model to write a Thought line forces it to commit to *why* it's calling a tool before it picks the tool. This compresses the "what should I do" question into a fixed slot; without it, models conflate reasoning and action and pick worse tools. The empirical result is on HotpotQA, FEVER, ALFWorld, and WebShop — small models with ReAct beat larger models without.
-
-- **The scratchpad is a working memory.** Every step appends a (thought, action, observation) record. Before the next call, all records are rendered back into the prompt. This is *short-term* memory in the cognitive-science sense — full history visible during the current task, dropped at task end. Long-term memory (across conversations) would be a separate system; the capstone in Module 20 builds that.
-
-- **Planning vs reactive control.** A reactive agent picks the next action based on the last observation only. A planning agent commits to a sequence of subgoals up front and references them as it goes. Pure reactive often loses the thread on long tasks ("what was I doing again?"); pure planning struggles when the world doesn't match the plan. The Module 19 default is *planning followed by reactive* — produce a plan once, then run the ReAct loop with the plan visible but not enforced. This matches the Plan-and-Execute pattern from LangChain and the "Plan-and-Solve" prompting paper (Wang et al. 2023).
-
-- **Stop conditions are policy, not mechanism.** The Module 18 loop had one stop condition: "no more `<tool_call>` blocks." Module 19 adds three more:
-    - `final_answer` — model emitted Final Answer (clean exit, the canonical signal)
-    - `duplicate_action` — same action with same args two steps in a row (loop detection)
-    - `no_progress` — model emitted neither action nor final answer (stuck step) AND `halt_on_stuck=True`
-  Plus the `max_steps` safety net inherited from Module 18. The agent's robustness depends on having *several* exit paths that handle different failure modes.
-
-- **Error recovery as a conversation pattern.** The agent loop NEVER raises on model wobble. Bad parse → record as `parse_error` step, render to scratchpad as `Observation: [parse error] ...`. Unknown tool → `is_error=True` Observation. Tool runtime exception → also `is_error=True`. The model reads the next prompt, sees its own bad action followed by `[error] ...`, and decides what to do differently. Errors aren't bugs; they're conversation, exactly as in Module 18 — but now compounded across multiple turns.
-
-- **The `[error]` prefix matters.** Without an explicit error marker, the model often parrots the error string back as if it were a successful answer ("The calculator returned: missing required arguments"). With `[error] ...`, instruction-tuned models reliably treat it as a recovery signal and try a different approach.
-
-- **Duplicate-action loop detection is a heuristic, not a proof.** "Same tool, same args, two steps in a row" catches the most common loop pattern (model didn't understand the observation, retries identical call). It misses subtler loops (different args but no progress) and false-positives on legitimate retries (paginated reads, idempotent checks). The flag `loop_detection=True/False` lets you opt out per-task.
-
-- **The `\s*` newline-gobbling regex bug.** A common subtle bug: a regex like `r"Action\s*:\s*([^\n]+)"` looks safe — `[^\n]+` won't cross newlines, right? But `\s*` matches *all* whitespace including `\n`, so given input `"Action:\nAction Input: ..."` the regex consumes the newline and captures the next line's content as the action name. The fix: post-colon whitespace must be `[ \t]*` (horizontal only), not `\s*`. This is one of the most common ways agent parsers silently produce garbage; the parser tests pin it.
+- Module 16's backend abstraction: a model is called through `backend.complete(prompt, ...)`.
+- Module 18's tool-call contract: parse structured data, validate arguments, dispatch to a registry, return tool results as data.
+- The idea that model output is untrusted text until the runtime parses and validates it.
+- Basic loop control: a loop needs progress checks and a maximum iteration count.
 
 ### Programming
 
-- **`re` for the ReAct parser.** Per-marker regexes (one for `Thought:`, one for `Action:`, one for `Action Input:`, one for `Final Answer:`). Each works independently; the parser combines their results. `re.IGNORECASE` for case-insensitive markers (some models lowercase). `re.DOTALL` on the body captures so JSON can span multiple lines.
-- **`json.loads` with `try/except`.** The Action Input is JSON; the parser tolerates malformed JSON by setting a `parse_error` instead of raising. Same pattern as Module 18.
-- **`json.dumps(..., sort_keys=True)` for action keys.** Loop detection compares `(tool_name, json.dumps(args, sort_keys=True))` across steps; sorted keys make `{"a": 1, "b": 2}` and `{"b": 2, "a": 1}` compare equal.
-- **`@dataclass(frozen=True)` for `Action`, `Observation`, `ParsedStep`** — values, not handles. `@dataclass` (mutable) for `AgentStep`, `Plan`, `AgentRunResult` — built up incrementally during a run.
-- **Composition with Module 18.** The agent calls `dispatch_tool_call(registry, ToolCall(...))` from Module 18 for tool execution. Module 19 doesn't reimplement validation, schema lookup, or error wrapping; it sits on top of Module 18's contracts.
+- `re.search`, capture groups, flags such as `re.IGNORECASE` and `re.DOTALL`.
+- `json.loads` / `json.dumps`, including handling malformed JSON with `try` / `except`.
+- `@dataclass` for small value objects.
+- Lists as append-only logs.
+- Passing objects by composition: the `Agent` receives a backend and a tool registry instead of constructing them internally.
 
 ### What you can skip
 
-- **Multi-turn conversation memory.** Module 19's `Agent.run` is single-turn: one user message → one agent run → one final answer. Real assistants need conversation history that survives across runs. The capstone in Module 20 layers that on top.
-
-- **Tree-of-thoughts and other branching strategies.** Yao et al. 2023 ("Tree of Thoughts") generalize ReAct to a search over multiple reasoning paths with backtracking. We do straight-line ReAct only; the branching mechanics are a separate module of work.
-
-- **Reflection / self-critique loops.** Some agentic frameworks (Reflexion, Self-Refine) add a "review your last attempt" step. Useful when verification is cheaper than generation. Not built here; conceptually orthogonal to ReAct's loop.
-
-- **Streaming output during a step.** A real production agent streams the model's tokens as they're generated and starts dispatching as soon as a complete `Action Input:` block is seen. We do synchronous calls. Same conceptual shape, ~3× more code.
-
-- **Async / parallel agents.** A "swarm" of agents working in parallel, coordinated by a supervisor, is its own design space (Park et al.'s Generative Agents, Anthropic's orchestrator-worker pattern). We do one agent at a time.
-
-- **Token-aware context management.** When the scratchpad grows past the model's context window, we truncate by character count. Production agents would token-count, summarize old steps, or use a vector store for long-term memory. Out of scope.
-
-- **Production sandboxing.** All Module 18 caveats apply — the `run_python` tool runs in an unsandboxed subprocess. Fine for local pedagogy, NOT fine for a hosted agent.
+- Prior knowledge of ReAct, planning agents, scratchpads, loop detection, or agent frameworks. Those are introduced here.
+- Tree-of-thoughts, reflection loops, async/parallel agents, streaming parsers, and supervisor-worker systems.
+- Production sandboxing. All Module 18 caveats still apply: the local `run_python` tool is pedagogical, not a hosted-agent sandbox.
+- Token-aware context management and long-term memory. Module 19 uses a simple scratchpad; Module 20 layers on conversation-level assistant behavior.
 
 ## Why we start here
+
+Module 19 is the fourth leg of Phase V: assistant systems. Module 16 gave us a stable model backend. Module 17 added retrieval. Module 18 gave the model tools. Now we need the runtime pattern that lets the model pursue a goal across several calls, observe what happened, recover from mistakes, and eventually stop.
 
 Module 18 fixed the "model needs to call a function" problem with one tool call per turn. But many real tasks need a *sequence*:
 
