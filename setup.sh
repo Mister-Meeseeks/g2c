@@ -2,8 +2,8 @@
 # Bootstrap the From Gradients to ChatGPT course environment.
 #
 # Strategy:
-#   - SYSTEM-LEVEL tools (python, uv) are CHECKED, not installed. If missing,
-#     the script prints how to install them and exits.
+#   - SYSTEM-LEVEL tools (python, uv, curl, ollama) are CHECKED, not installed.
+#     If missing, the script prints how to install them and exits.
 #   - PROJECT-LEVEL tools (torch, pytest, ruff, jupyter, Hugging Face helpers,
 #     and the g2c package itself) are installed into a project-local venv at
 #     ./.venv via uv.
@@ -47,7 +47,20 @@ if ! command -v uv >/dev/null 2>&1; then
 fi
 ok "uv $(uv --version | awk '{print $2}')"
 
-# ---- 3. venv -----------------------------------------------------------------
+# ---- 3. Ollama ----------------------------------------------------------------
+info "Checking Ollama"
+if command -v ollama >/dev/null 2>&1; then
+    ok "ollama $(ollama --version 2>/dev/null | head -n 1 | sed 's/^ollama version //')"
+else
+    fail "ollama not found.
+       Install: 
+         - Download the macOS app:  
+               https://ollama.com/download
+         - OR:        
+               brew install ollama"
+fi
+
+# ---- 4. venv -----------------------------------------------------------------
 PROJECT_ROOT=$(pwd -P)
 if [[ ! -d .venv ]]; then
     info "Creating venv at .venv"
@@ -90,7 +103,7 @@ if [[ -d .venv/bin ]]; then
     done
 fi
 
-# ---- 4. Project deps ---------------------------------------------------------
+# ---- 5. Project deps ---------------------------------------------------------
 info "Installing g2c (editable) + dev/BaseLM deps"
 if [[ "$REINSTALL_DEV" == "1" ]]; then
     uv pip install -e ".[dev,baselm]" --reinstall --quiet
@@ -99,7 +112,7 @@ else
 fi
 ok "deps installed"
 
-# ---- 5. Small data assets ----------------------------------------------------
+# ---- 6. Small data assets ----------------------------------------------------
 mkdir -p data
 
 if ! command -v curl >/dev/null 2>&1; then
@@ -124,11 +137,11 @@ fi
 info "Building Shakespeare tokenizer artifact (~2 sec on first run)"
 .venv/bin/python scripts/build_tokenizers.py shakespeare
 
-# ---- 6. Smoke test -----------------------------------------------------------
+# ---- 7. Smoke test -----------------------------------------------------------
 info "Running smoke test"
 .venv/bin/python scripts/smoke_test.py
 
-# ---- 7. Completion sentinel --------------------------------------------------
+# ---- 8. Completion sentinel --------------------------------------------------
 # Module 00's environment-check exercise reads this file to confirm setup.sh
 # ran end-to-end (smoke test passed, deps installed). Removed and rewritten on
 # every successful run so it always reflects the latest setup.
@@ -152,6 +165,9 @@ echo "    ./datasets.sh tinystories  # Module 10 scale-up corpus"
 echo ""
 echo "Download/register the optional BaseLM model with:"
 echo "    ./baselm.sh                # Modules 13-15 pretrained base fallback"
+echo ""
+echo "Configure the ProdLM runtime with:"
+echo "    ./prodlm.sh                # Modules 16-20 local production model"
 echo ""
 echo "Run the full suite with:"
 echo "    python -m pytest    # many tests intentionally fail on the scaffold branch"

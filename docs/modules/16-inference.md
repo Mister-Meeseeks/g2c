@@ -8,108 +8,162 @@
 ---
 ## Before you start
 
+* *Refresh
+	* REST API using JSONs
 * *Finish* `g2c/sampling` from [[11-sampling]] — `LocalTransformerBackend` drives the from-scratch model through `g2c.sampling.generate`
 * *Finish* at least one saved model artifact from Module 10, 13, or 14, or run `./baselm.sh` — `ArtifactBackend` lets you use course-trained and BaseLM artifacts through the inference API
 * *Configure* ProdLM with `./prodlm.sh --model-id llama3.2:3b` (or another size from the suggested list below) — by default this pulls the Ollama model and writes a lightweight manifest the later modules can discover
 
 ---
-## Prerequisites
+## Where this fits in
 
-Module 16 assumes you can already produce completions from at least one model and you understand the evaluation adapter pattern from Module 15. It does **not** assume you already know quantization formats, KV caches, speculative decoding, Ollama internals, or MLX.
+In Modules 1-15 we went through the entire pipeline of building, training and shaping a model. We now have something that's starting to resemble the assistant systems that make up modern LLM products. The remainder of the course will be about building the "shell" around it to make a useful assistant. Retrieval, tool usage, agent harnesses. These are all critical and complex components to make a system like ChatGPT useful. However all of them live outside the model itself.
 
-### Math
+At this point in the course journey, we've arrived at that the point where the model is "frozen". From here forward, we will no longer be updating weights. But we can't just declare mission accomplished, hand off the weights, and never think about it again. The best trained model in the world is useless if we can't serve and scale it to end users efficiently and reliably.
 
-Only basic ratios and memory arithmetic:
+This week covers the topic of **inference**, which is the process of using fixed weights to produce outputs. This is really just the sampling process we learned in Module 11, but at production scale. Compared to the very research heavy nature of training, inference is fundamentally an engineering discipline. Autoregression on even "small" models is slow and expensive. Up until this point everything in the course has been focused on how to make models smarter. This week we learn how to make them faster, cheaper and reliable. 
 
-- Comfort reading numbers like "tokens per second" and "milliseconds per token."
-- Comfort multiplying parameter counts by bytes per parameter.
-- Comfort interpreting p50/p90 latency as summary statistics.
+## The big idea
 
-### Computer science
+Training gives you weights; **inference** turns those weights into a usable system.
 
-- Module 11's autoregressive generation loop: prompt tokens in, sampled continuation out.
-- The saved-artifact workflow from Modules 10, 13, and 14, or the BaseLM setup from `./baselm.sh`.
-- Module 15's `generate_fn(prompt) -> str` adapter idea.
-- The general idea that one process can hold a model while another process calls it through an API.
+### Quantization: how a 7B model fits in 4 GB
 
-### Programming
+![Quantization ladder — more model, less memory. Lower precision means fewer bits per weight, smaller checkpoint, more model fits on a laptop. A vertical "ladder" shows precision steps from FP32 (32 bits/param, 28 GB for 7B, highest fidelity) → FP16/BF16 (16 bits, 14 GB, near-lossless for inference) → INT8 (8 bits, 7 GB, mild accuracy hit) → INT4 (4 bits, ~3.5 GB, larger but still tractable accuracy hit). A right-side panel pins the speed lever: inference is memory-bandwidth-bound, so halving weight bytes roughly halves the time to fetch them per matmul — the headline 2-4× speedup at int4 comes from bandwidth, not faster math. A "GGUF Q-K variants" panel decodes the cryptic naming: `Q4_K_S` (most weights at 4 bits, smallest), `Q4_K_M` (recommended default — most weights at 4 bits, more important ones at 5–6 bits), `Q5_K_M` (slightly bigger, slightly better quality). A "memory budget example" computes 16 GB Mac − 4 GB OS − 2 GB KV cache = ~10 GB usable for weights, which fits a 7B Q4_K_M comfortably. The takeaway pinned at the bottom: quantization buys headroom, not magic — Q4_K_M is the default for the rest of the course.](16-inference/Module16-Quant.png)
 
-- Basic `dataclass` and abstract-base-class syntax.
-- Basic `json.dumps` / `json.loads`.
-- Basic `urllib.request` or equivalent HTTP-client experience.
-- Basic timing with `time.perf_counter`.
-- Basic list aggregation for benchmark summaries.
+*Choosing a quantization level is an important exercise in the tradeoff curve between performance and accuracy.*
 
-### What you can skip
-
-- Prior knowledge of GGUF, MLX, quantization, KV caches, or speculative decoding. Those are introduced here.
-- Manual model quantization. Download a pre-quantized local model instead.
-- Streaming, async I/O, and MLX serving. They are useful extensions, not required for the module deliverable.
-
-## Why we start here
-
-Modules 1–15 built a model. The training works, the architecture works, the loss goes down. But:
+A model's weights are nothing more than a (very large) array of floats. Like any array, the size of this array is `n_parameters × bytes_per_parameter`. Reducing `bytes_per_parameter` is the lever:
 
 ```
-   ┌──────────────────────────────────────────────────────────────────────┐
-   │  THE PROBLEM AT THE END OF MODULE 15                                  │
-   ├──────────────────────────────────────────────────────────────────────┤
+   ┌───────────────────────────────────────────────────────────────────────┐
+   │   QUANTIZATION ARITHMETIC                                             │
+   ├───────────────────────────────────────────────────────────────────────┤
    │                                                                       │
-   │   Your 20M-param TransformerLM, post-DPO:                             │
+   │     Precision   Bits/param   7B model size    Speedup vs fp32         │
+   │     ─────────   ──────────   ────────────    ────────────────         │
+   │     fp32        32           28.0 GB          1.0×                    │
+   │     fp16/bf16   16           14.0 GB          1.5–2× (memory bw)      │
+   │     int8        8             7.0 GB          1.5–2.5× (often)        │
+   │     int4        4             3.5 GB          2–4× (memory bw)        │
    │                                                                       │
-   │     ✓  trains end-to-end on a MacBook                                 │
-   │     ✓  follows the chat template                                      │
-   │     ✓  improves with SFT and DPO                                      │
-   │     ✓  has a calibrated, eval-able failure profile                    │
+   │   GGUF "K-quant" mixes precisions per-tensor:                         │
+   │     Q4_K_M  ≈  4.5 effective bits/param ≈ 4.0 GB for 7B               │
+   │     Q5_K_M  ≈  5.5 effective bits/param ≈ 4.7 GB for 7B               │
+   │     Q8_0    ≈  8 bits/param            ≈ 7.0 GB for 7B                │
    │                                                                       │
-   │     ✗  doesn't know facts                                             │
-   │     ✗  can't add 13 + 28                                              │
-   │     ✗  hallucinates fluently                                          │
-   │     ✗  can't follow a multi-step task                                 │
+   │   Quantization replaces:                                              │
+   │     w  = w_fp16                                                       │
+   │   with:                                                               │
+   │     w  ≈ scale * round((w_fp16 - bias) / scale)                       │
+   │   where (scale, bias) are computed PER-BLOCK (typically 32–128        │
+   │   weights per block). The block's worth of weights fits in            │
+   │   block_size * bits_per_param bits PLUS one fp16 scale.               │
    │                                                                       │
-   │   For RAG, tools, and agents (Modules 17–19) to be more than          │
-   │   "watch the toy model fail in slightly different ways," we need      │
-   │   a base model that's actually capable. That means a pretrained       │
-   │   open model — Llama 3, Qwen 2.5, Mistral. Quantized to fit on a      │
-   │   laptop. Run by a real inference server.                             │
-   │                                                                       │
-   └──────────────────────────────────────────────────────────────────────┘
+   └───────────────────────────────────────────────────────────────────────┘
 ```
 
-The model names in this phase are roles, not one fixed vendor choice:
+The accuracy hit from quantization is real but small for instruction-tuned models in the int8 → int4 range. Q4_K_M typically loses 1–3% on benchmarks compared to fp16. For a course project, this is well below the noise of toy-model variance.
 
-- **StudentLM** is whatever you trained yourself: ShakespeareLM, StoryLM, TinyLLM, SFT, or DPO variants.
-- **BaseLM** is a small Hugging Face base model you can load in PyTorch for trainable SFT/DPO exercises when your own model is too weak.
-- **ProdLM** is the capable local instruction model used for RAG, tools, and agents. The default implementation is an Ollama-served quantized model, but downstream code only sees the `Backend` interface.
+The reason quantization speeds inference up isn't the math — int4 multiplications aren't faster than fp16 multiplications on most hardware. It's that **inference is memory-bandwidth-bound**. The time to multiply a weight by an activation is dominated by the time to *fetch the weight from RAM*. Halving the weight size halves the fetch time, even if the math itself is the same speed.
 
-This module has three jobs:
+### KV cache: from O(T²) per token to O(T) per token
 
-- Introduce the model formats and runtime patterns you will actually encounter: GGUF, safetensors, MLX, Ollama, and local artifacts.
-- Explain the inference-time optimizations that make laptop-scale model use practical: quantization, KV cache, and speculative decoding.
-- Build a small Python interface so RAG and agent code can call `backend.complete(prompt, ...)` without knowing whether the model is an in-process artifact, a Hugging Face BaseLM wrapper, or an out-of-process ProdLM server.
+![KV cache — remember once, reuse forever. Two side-by-side flow diagrams. WITHOUT KV CACHE: each generation step recomputes attention over the whole sequence. Step 1 computes K/V for tokens 0..2; step 2 recomputes K/V for tokens 0..3 (re-doing the work for 0..2); step 3 redoes 0..4; cost per step grows linearly with sequence length, total work is O(T²). WITH KV CACHE: step 1 computes K/V for tokens 0..2, stores them; step 2 only computes K/V for the new token (one row), appends to the cache, attends from the new query against the entire cached K/V; per-step cost is O(T), total work is O(T·T) but with a much smaller constant. A "what is stored" panel pins the layout: `K_cache` and `V_cache` per layer, shape `(max_seq_len, n_heads, head_dim)`, dtype fp16. A memory-budget example for a 7B model (Llama 3.1 8B): 32 layers × 32 heads × 128 head_dim × 2 (K and V) × 2 bytes (fp16) × 2048 context = ~1 GB; doubles linearly with context length. A "scaling with context length" panel shows weights stay fixed while the cache grows — long-context inference is memory-bound on the cache, not the weights. A "the takeaway" panel: KV cache is mandatory at scale; production servers like llama.cpp build one in; the optional course-model cache makes the mechanism inspectable.](16-inference/Module16-KVCache.png)
 
-The only required code you write is the interface itself.
+*Why 30 tok/s on a 7B model is even possible. The KV cache turns autoregressive decoding from O(T²) to O(T) per step — a 5–20× speedup at production context lengths.*
 
-The "right" ProdLM for this course is usually an instruction-tuned model in the 3B–8B range, quantized to 4 bits. Concretely, one of:
+Module 11's generation loop recomputes attention over the entire sequence every step:
 
 ```
-   ┌──────────────────────────────────────────────────────────────────────┐
-   │   Suggested ProdLM models for the rest of the course                  │
-   ├──────────────────────────────────────────────────────────────────────┤
-   │                                                                       │
-   │     llama3.2:3b           ~1.9 GB Q4_K_M     16GB OK    fast          │
-   │     llama3.1:8b           ~4.7 GB Q4_K_M     16GB OK    medium        │
-   │     qwen2.5:7b-instruct   ~4.4 GB Q4_K_M     16GB OK    medium        │
-   │     mistral:7b-instruct   ~4.1 GB Q4_K_M     16GB OK    medium        │
-   │                                                                       │
-   │   Configure with:  ./prodlm.sh --model-id <model:tag>                 │
-   │   Inspect with:    ollama list                                        │
-   │   Override in code: load_prodlm_backend(model_id="<model:tag>")       │
-   │                                                                       │
-   └──────────────────────────────────────────────────────────────────────┘
+   Step 1:   forward([P1, P2, P3])              →  predict S1
+   Step 2:   forward([P1, P2, P3, S1])          →  predict S2
+   Step 3:   forward([P1, P2, P3, S1, S2])      →  predict S3
+   Step 4:   forward([P1, P2, P3, S1, S2, S3])  →  predict S4
+   ...
 ```
 
-But the rest of the course shouldn't have to care which one. Module 17's RAG should work the same against your saved TinyLLM artifact, a BaseLM checkpoint, or a configured `llama3.2:3b` ProdLM. The eval harness from Module 15 should be re-runnable across a generation gap. The agent loop in Module 19 should be portable. That's what the unified `Backend` interface enables — one method, `backend.complete(prompt, ...) -> InferenceResult`, that abstracts over all of them.
+At step `t`, the model recomputes K and V for tokens 0..t. That's `O(T²)` total work for a sequence of length T. The `K_t` and `V_t` projections at step `t` are *the same* as they were at step `t-1` for all positions before `t-1` — there's no need to recompute them.
+
+The KV cache stores `K_0, K_1, ..., K_t` and `V_0, V_1, ..., V_t` as the model generates, so step `t+1` only needs to:
+
+  1. Project the *new* token's K and V (one row's worth of work).
+  2. Append to the cache.
+  3. Compute attention from the new query against the entire cached K/V (one matmul against a length-`T+1` matrix).
+
+Total: `O(T)` per step → `O(T²)` for the whole generation, but with a ~10× smaller constant. In practice, KV-cached inference is 5–20× faster than the naive loop for sequences past 128 tokens.
+
+```
+   ┌─────────────────────────────────────────────────────────────────────────┐
+   │   KV CACHE — STATE THAT CARRIES FORWARD                                 │
+   ├─────────────────────────────────────────────────────────────────────────┤
+   │                                                                         │
+   │   Cached state, per layer:                                              │
+   │     K_cache:  (max_seq_len, n_heads, head_dim)                          │
+   │     V_cache:  (max_seq_len, n_heads, head_dim)                          │
+   │                                                                         │
+   │   Per generation step:                                                  │
+   │     1. project new token →  K_new, V_new   (one row each)               │
+   │     2. write into K_cache[t], V_cache[t]                                │
+   │     3. attention =  softmax(Q_new · K_cache[:t+1]ᵀ / √d) · V_cache[:t+1]│
+   │                                                                         │
+   │   Memory cost:                                                          │
+   │     KV cache size  =  2 · max_seq_len · n_layers · n_heads · head_dim   │
+   │                       · bytes_per_dtype                                 │
+   │                                                                         │
+   │   For 7B at fp16, 32 layers, 32 heads × 128 dim, T=2048:                │
+   │     = 2 · 2048 · 32 · 32 · 128 · 2  bytes                               │
+   │     = 1.07 GB                                                           │
+   │                                                                         │
+   │   This is why 7B at 4-bit + 16k context can blow past 16 GB —           │
+   │   the cache scales linearly with context length while weights stay      │
+   │   fixed.                                                                │
+   │                                                                         │
+   └─────────────────────────────────────────────────────────────────────────┘
+```
+
+The required backend path does not need a cache in your tiny `TransformerLM` — Ollama's underlying llama.cpp is heavily KV-cached, and that is the cache you depend on for ProdLM. The optional extension in this module adds a small, readable cache to the course model anyway, so you can see the state that carries forward from one generated token to the next.
+
+### Speculative decoding 
+
+Speculative decoding runs a small "draft" model (e.g., a 1B-param sibling of a 70B model) ahead of the main model, generating several candidate tokens at once. The main model then verifies all of them in a single forward pass — comparing its softmax over each position against what the draft chose. Whichever prefix the main model agrees with is accepted; the rest are discarded; the next round starts.
+
+When the draft is right (the common case for "easy" tokens — function words, punctuation, completions of common phrases), one forward pass through the main model produces several output tokens. When the draft is wrong, no harm — the main model's logits at the divergence point determine the next token, same as without speculation.
+
+In practice: 2–3× throughput improvement on long generations. We don't build it. We acknowledge it because every production serving stack uses it.
+
+### The inference server pattern
+
+```
+   ┌────────────────────────────────────────────────────────────────────────┐
+   │   LOCAL INFERENCE SERVERS — THE LAY OF THE LAND                        │
+   ├────────────────────────────────────────────────────────────────────────┤
+   │                                                                        │
+   │   llama.cpp     C++ library + CLI. Loads GGUF, runs on CPU+GPU.        │
+   │                  The grandparent of every other entry. Open source,    │
+   │                  Apache 2.0, ~50k lines of optimized C++.              │
+   │                                                                        │
+   │   Ollama        Daemon + HTTP API + model registry on top of           │
+   │                  llama.cpp. `ollama pull / list / run / serve`.        │
+   │                  HTTP API at localhost:11434 by default. The           │
+   │                  one-command-install path on macOS.                    │
+   │                                                                        │
+   │   MLX           Apple's tensor library + python bindings. In-process   │
+   │                  (no HTTP). Faster than llama.cpp on M-series for      │
+   │                  many ops; format-incompatible with GGUF (uses         │
+   │                  safetensors-style sharded checkpoints).               │
+   │                                                                        │
+   │   vLLM          Server-class. CUDA-only or ROCm-only. Not relevant     │
+   │                  for MacBook. Mentioned for completeness.              │
+   │                                                                        │
+   │   text-gen-webui Higher-level UI on top of llama.cpp + others.         │
+   │                  Useful as an exploratory chat client; we don't        │
+   │                  use it programmatically.                              │
+   │                                                                        │
+   └────────────────────────────────────────────────────────────────────────┘
+```
+
+Ollama is the right default for this course: the install is one shell command, the API is small, and the model registry is curated (easy to find a working `:tag` for any popular open model). MLX is the alternative when you want maximum throughput on Apple Silicon and are willing to manage the conversion pipeline.
 
 ```
    ┌──────────────────────────────────────────────────────────────────────┐
@@ -145,259 +199,20 @@ But the rest of the course shouldn't have to care which one. Module 17's RAG sho
 ```
 
 The `complete` method is the entire interface. No streaming, no async, no batched generation. The point is the **lowest common denominator** — and the LCD is enough for everything Modules 17–20 need.
-
-## The big idea
-
-### Quantization: how a 7B model fits in 4 GB
-
-![Quantization ladder — more model, less memory. Lower precision means fewer bits per weight, smaller checkpoint, more model fits on a laptop. A vertical "ladder" shows precision steps from FP32 (32 bits/param, 28 GB for 7B, highest fidelity) → FP16/BF16 (16 bits, 14 GB, near-lossless for inference) → INT8 (8 bits, 7 GB, mild accuracy hit) → INT4 (4 bits, ~3.5 GB, larger but still tractable accuracy hit). A right-side panel pins the speed lever: inference is memory-bandwidth-bound, so halving weight bytes roughly halves the time to fetch them per matmul — the headline 2-4× speedup at int4 comes from bandwidth, not faster math. A "GGUF Q-K variants" panel decodes the cryptic naming: `Q4_K_S` (most weights at 4 bits, smallest), `Q4_K_M` (recommended default — most weights at 4 bits, more important ones at 5–6 bits), `Q5_K_M` (slightly bigger, slightly better quality). A "memory budget example" computes 16 GB Mac − 4 GB OS − 2 GB KV cache = ~10 GB usable for weights, which fits a 7B Q4_K_M comfortably. The takeaway pinned at the bottom: quantization buys headroom, not magic — Q4_K_M is the default for the rest of the course.](16-inference/Module16-Quant.png)
-
-*The lookup table for choosing a quantization level. The deliverable post-mortem (exercise 9) asks you to commit to one (model, quant) pair as your default backend; this image is the chart you'll consult to pick. For 16 GB Macs, Q4_K_M at 7B is the sweet spot the rest of Phase V assumes.*
-
-A model's weights are an array of floats. The array's size is `n_parameters × bytes_per_parameter`. Reducing `bytes_per_parameter` is the lever:
-
-```
-   ┌──────────────────────────────────────────────────────────────────────┐
-   │   QUANTIZATION ARITHMETIC                                             │
-   ├──────────────────────────────────────────────────────────────────────┤
-   │                                                                       │
-   │     Precision   Bits/param   7B model size    Speedup vs fp32        │
-   │     ─────────   ──────────   ────────────    ────────────────       │
-   │     fp32        32           28.0 GB          1.0×                    │
-   │     fp16/bf16   16           14.0 GB          1.5–2× (memory bw)     │
-   │     int8        8             7.0 GB          1.5–2.5× (often)       │
-   │     int4        4             3.5 GB          2–4× (memory bw)       │
-   │                                                                       │
-   │   GGUF "K-quant" mixes precisions per-tensor:                         │
-   │     Q4_K_M  ≈  4.5 effective bits/param ≈ 4.0 GB for 7B              │
-   │     Q5_K_M  ≈  5.5 effective bits/param ≈ 4.7 GB for 7B              │
-   │     Q8_0    ≈  8 bits/param            ≈ 7.0 GB for 7B               │
-   │                                                                       │
-   │   Quantization replaces:                                              │
-   │     w  = w_fp16                                                       │
-   │   with:                                                               │
-   │     w  ≈ scale * round((w_fp16 - bias) / scale)                       │
-   │   where (scale, bias) are computed PER-BLOCK (typically 32–128        │
-   │   weights per block). The block's worth of weights fits in            │
-   │   block_size * bits_per_param bits PLUS one fp16 scale.               │
-   │                                                                       │
-   └──────────────────────────────────────────────────────────────────────┘
-```
-
-The accuracy hit from quantization is real but small for instruction-tuned models in the int8 → int4 range. Q4_K_M typically loses 1–3% on benchmarks compared to fp16. For a course project, this is well below the noise of toy-model variance.
-
-The reason quantization speeds inference up isn't the math — int4 multiplications aren't faster than fp16 multiplications on most hardware. It's that **inference is memory-bandwidth-bound**. The time to multiply a weight by an activation is dominated by the time to *fetch the weight from RAM*. Halving the weight size halves the fetch time, even if the math itself is the same speed.
-
-### KV cache: from O(T²) per token to O(T) per token
-
-![KV cache — remember once, reuse forever. Two side-by-side flow diagrams. WITHOUT KV CACHE: each generation step recomputes attention over the whole sequence. Step 1 computes K/V for tokens 0..2; step 2 recomputes K/V for tokens 0..3 (re-doing the work for 0..2); step 3 redoes 0..4; cost per step grows linearly with sequence length, total work is O(T²). WITH KV CACHE: step 1 computes K/V for tokens 0..2, stores them; step 2 only computes K/V for the new token (one row), appends to the cache, attends from the new query against the entire cached K/V; per-step cost is O(T), total work is O(T·T) but with a much smaller constant. A "what is stored" panel pins the layout: `K_cache` and `V_cache` per layer, shape `(max_seq_len, n_heads, head_dim)`, dtype fp16. A memory-budget example for a 7B model (Llama 3.1 8B): 32 layers × 32 heads × 128 head_dim × 2 (K and V) × 2 bytes (fp16) × 2048 context = ~1 GB; doubles linearly with context length. A "scaling with context length" panel shows weights stay fixed while the cache grows — long-context inference is memory-bound on the cache, not the weights. A "the takeaway" panel: KV cache is mandatory at scale; production servers like llama.cpp build one in; the optional course-model cache makes the mechanism inspectable.](16-inference/Module16-KVCache.png)
-
-*The picture for understanding why Ollama's 30 tok/s on a 7B model is even possible. The KV cache turns autoregressive decoding from O(T²) to O(T) per step — a 5–20× speedup at production context lengths. The required path relies on Ollama's production cache; the optional extension builds a small version for your own `TransformerLM` so the mechanism is inspectable.*
-
-Module 11's generation loop recomputes attention over the entire sequence every step:
-
-```
-   Step 1:   forward([P1, P2, P3])              →  predict S1
-   Step 2:   forward([P1, P2, P3, S1])          →  predict S2
-   Step 3:   forward([P1, P2, P3, S1, S2])      →  predict S3
-   Step 4:   forward([P1, P2, P3, S1, S2, S3])  →  predict S4
-   ...
-```
-
-At step `t`, the model recomputes K and V for tokens 0..t. That's `O(T²)` total work for a sequence of length T. The `K_t` and `V_t` projections at step `t` are *the same* as they were at step `t-1` for all positions before `t-1` — there's no need to recompute them.
-
-The KV cache stores `K_0, K_1, ..., K_t` and `V_0, V_1, ..., V_t` as the model generates, so step `t+1` only needs to:
-
-  1. Project the *new* token's K and V (one row's worth of work).
-  2. Append to the cache.
-  3. Compute attention from the new query against the entire cached K/V (one matmul against a length-`T+1` matrix).
-
-Total: `O(T)` per step → `O(T²)` for the whole generation, but with a ~10× smaller constant. In practice, KV-cached inference is 5–20× faster than the naive loop for sequences past 128 tokens.
-
-```
-   ┌──────────────────────────────────────────────────────────────────────┐
-   │   KV CACHE — STATE THAT CARRIES FORWARD                               │
-   ├──────────────────────────────────────────────────────────────────────┤
-   │                                                                       │
-   │   Cached state, per layer:                                            │
-   │     K_cache:  (max_seq_len, n_heads, head_dim)                        │
-   │     V_cache:  (max_seq_len, n_heads, head_dim)                        │
-   │                                                                       │
-   │   Per generation step:                                                │
-   │     1. project new token →  K_new, V_new   (one row each)            │
-   │     2. write into K_cache[t], V_cache[t]                              │
-   │     3. attention =  softmax(Q_new · K_cache[:t+1]ᵀ / √d) · V_cache[:t+1]│
-   │                                                                       │
-   │   Memory cost:                                                        │
-   │     KV cache size  =  2 · max_seq_len · n_layers · n_heads · head_dim  │
-   │                       · bytes_per_dtype                                │
-   │                                                                       │
-   │   For 7B at fp16, 32 layers, 32 heads × 128 dim, T=2048:               │
-   │     = 2 · 2048 · 32 · 32 · 128 · 2  bytes                              │
-   │     = 1.07 GB                                                          │
-   │                                                                       │
-   │   This is why 7B at 4-bit + 16k context can blow past 16 GB —          │
-   │   the cache scales linearly with context length while weights stay     │
-   │   fixed.                                                               │
-   │                                                                       │
-   └──────────────────────────────────────────────────────────────────────┘
-```
-
-The required backend path does not need a cache in your tiny `TransformerLM` — Ollama's underlying llama.cpp is heavily KV-cached, and that is the cache you depend on for ProdLM. The optional extension in this module adds a small, readable cache to the course model anyway, so you can see the state that carries forward from one generated token to the next.
-
-### Speculative decoding — skim only
-
-Speculative decoding (Leviathan et al. 2023, Chen et al. 2023) runs a small "draft" model (e.g., a 1B-param sibling of the 70B target) ahead of the main model, generating several candidate tokens at once. The main model then verifies all of them in a single forward pass — comparing its softmax over each position against what the draft chose. Whichever prefix the main model agrees with is accepted; the rest are discarded; the next round starts.
-
-When the draft is right (the common case for "easy" tokens — function words, punctuation, completions of common phrases), one forward pass through the main model produces several output tokens. When the draft is wrong, no harm — the main model's logits at the divergence point determine the next token, same as without speculation.
-
-In practice: 2–3× throughput improvement on long generations. We don't build it. We acknowledge it because every production serving stack uses it.
-
-### The inference server pattern
-
-```
-   ┌──────────────────────────────────────────────────────────────────────┐
-   │   LOCAL INFERENCE SERVERS — THE LAY OF THE LAND                       │
-   ├──────────────────────────────────────────────────────────────────────┤
-   │                                                                       │
-   │   llama.cpp     C++ library + CLI. Loads GGUF, runs on CPU+GPU.       │
-   │                  The grandparent of every other entry. Open source,    │
-   │                  Apache 2.0, ~50k lines of optimized C++.              │
-   │                                                                       │
-   │   Ollama        Daemon + HTTP API + model registry on top of           │
-   │                  llama.cpp. `ollama pull / list / run / serve`.        │
-   │                  HTTP API at localhost:11434 by default. The           │
-   │                  one-command-install path on macOS.                    │
-   │                                                                       │
-   │   MLX           Apple's tensor library + python bindings. In-process   │
-   │                  (no HTTP). Faster than llama.cpp on M-series for      │
-   │                  many ops; format-incompatible with GGUF (uses         │
-   │                  safetensors-style sharded checkpoints).               │
-   │                                                                       │
-   │   vLLM          Server-class. CUDA-only or ROCm-only. Not relevant     │
-   │                  for MacBook. Mentioned for completeness.              │
-   │                                                                       │
-   │   text-gen-webui Higher-level UI on top of llama.cpp + others.        │
-   │                  Useful as an exploratory chat client; we don't        │
-   │                  use it programmatically.                              │
-   │                                                                       │
-   └──────────────────────────────────────────────────────────────────────┘
-```
-
-Ollama is the right default for this course: the install is one shell command, the API is small, and the model registry is curated (easy to find a working `:tag` for any popular open model). MLX is the alternative when you want maximum throughput on Apple Silicon and are willing to manage the conversion pipeline.
-
-### The unified Backend interface — what we actually build
-
-![Backend abstraction — one interface, many models. A central `backend.complete(prompt, *, max_new_tokens, temperature, top_k, top_p) -> InferenceResult` method is the entire public surface. Above it: a row of consumers (eval harness from Module 15, RAG pipeline from Module 17, tool calls from Module 18, the agent loop from Module 19, the capstone app from Module 20) — none of them know which backend is underneath. Below it: concrete implementations for saved artifacts, Ollama-backed ProdLM, and an optional MLX backend. The same prompt routed through any of them produces an InferenceResult with the same fields. A "design pattern" panel pins the name: dependency injection — same idea as `generate_fn` in the Module 15 eval harness, applied at a coarser granularity. A "the takeaway" panel: the unified interface comes BEFORE the strong model. Build the seam first; the strong model plugs in behind it.](16-inference/Module16-Backend.png)
-
-*The architecture diagram for the rest of the course. Module 17 onward calls `backend.complete(...)` and never branches on whether the backend is a saved artifact, BaseLM, or ProdLM. Exercise 9 (the deliverable post-mortem) commits you to one default backend; the abstraction is what lets you swap in a different model later without touching downstream code.*
-
-Core classes plus two artifact helpers:
-
-```
-   ┌─────────────────────────────────────────────────────────────────────┐
-   │   g2c/inference/  PUBLIC API                                          │
-   ├─────────────────────────────────────────────────────────────────────┤
-   │                                                                       │
-   │   Backend                  abstract                                  │
-   │     .info       → BackendInfo                                        │
-   │     .complete(prompt, *, max_new_tokens, temperature,                │
-   │               top_k, top_p) → InferenceResult                        │
-   │                                                                       │
-   │   LocalTransformerBackend(model, tokenizer, *, ...)                   │
-   │     wraps:  a TransformerLM-like model + tokenizer + generate         │
-   │                                                                       │
-   │   ArtifactBackend(artifact, *, ...)                                   │
-   │     wraps:  saved StudentLM / BaseLM / SFT / DPO artifacts            │
-   │                                                                       │
-   │   OllamaBackend(model_id, *, base_url, timeout, ...)                  │
-   │     wraps:  HTTP POST to /api/generate                               │
-   │                                                                       │
-   │   load_prodlm_backend(...)                                            │
-   │     loads:  configured ProdLM manifest, then returns OllamaBackend    │
-   │                                                                       │
-   │   load_default_backend(...)                                           │
-   │     loads:  ProdLM if configured, otherwise the strongest artifact    │
-   │                                                                       │
-   │   InferenceResult                                                     │
-   │     prompt, completion, prompt_tokens, completion_tokens,             │
-   │     latency_ms, backend, metadata                                     │
-   │     .tokens_per_second  (derived)                                     │
-   │                                                                       │
-   │   benchmark(backend, prompts, *, ...) → BenchmarkResult               │
-   │     iterates complete() over prompts; aggregates timing.              │
-   │                                                                       │
-   └─────────────────────────────────────────────────────────────────────┘
-```
-
-Total scaffolded code: ~70 lines spread across three method bodies (`LocalTransformerBackend.complete`, `OllamaBackend.complete`, `benchmark`). `ArtifactBackend` and the ProdLM manifest helpers are implemented plumbing so notebooks can stay focused on the model comparison. The math is trivial; the lesson is the interface and the wiring.
-
 ## Concepts to internalize
 
-- **The unified interface comes BEFORE the strong model.** Modules 17–20 work because every backend speaks the same `complete(prompt, ...)` API. A version of this course that hard-coded `g2c.sampling.generate` everywhere couldn't pivot from StudentLM to ProdLM without a refactor of every downstream module. Build the seam first; the strong model plugs in behind it.
 - **Quantization buys you headroom, not magic.** A 4-bit 7B model fits in 4 GB and runs at usable speeds on M2; an fp16 7B does not fit on a 16 GB Mac at all (even before KV cache). The accuracy cost is 1–3% on benchmarks. The headroom is what actually unblocks Phase V on a laptop.
-- **The KV cache is mandatory at scale.** Naive `O(T²)` decoding is fine at 32-token contexts (your tiny model); at 2k contexts it's not. Ollama already has one for the real model. The optional toy cache exists to make the mechanism concrete, not because it changes the rest of Phase V.
+- **The KV cache is mandatory at scale.** Naive `O(T²)` decoding is fine at 32-token contexts; at 2k contexts it's not. Ollama already has one for the real model. The optional toy cache exists to make the mechanism concrete, not because it changes the rest of Phase V.
 - **Wall clock vs server-reported latency are different things.** Ollama tells you `total_duration` (the GPU-side compute time). Your wrapper records wall-clock latency (compute + IPC + JSON encoding). Both are valid; they answer different questions. Track both.
 - **Tokens-per-second is the headline throughput metric.** But it depends critically on what you count: prompt processing tokens, generation tokens, both, neither. The `InferenceResult.tokens_per_second` property uses *generation tokens / wall-clock seconds* — the user-facing definition. When comparing to published numbers, check the convention.
 - **The first request is always slower.** Cold cache, model load, MPS / Metal kernel JIT compilation. A `benchmark` of 1 request reports the cold-start number; a benchmark of 5 requests reports the steady-state. Always warm up before measuring.
 - **Backends are values, not globals.** The wrapper classes are stateful (they hold a model or a base URL), but they're not singletons. RAG, tool, and agent code take a `Backend` parameter. This is dependency injection — the same pattern that decoupled `generate_fn` from the eval harness in Module 15, applied at the model level.
-- **The generation-API design space is small.** `complete(prompt, ...) -> result` covers the whole course. Streaming, batching, async, and tool-aware completions are all useful production extensions but don't unlock anything pedagogically new — they're optimizations of the same abstraction. Phase V uses the synchronous completion exclusively.
 
-## Scaffolding and how to run the tests
+## What we don't cover
 
-This module ships seven files in `g2c/inference/`:
-
-- **`backend.py`** — the `Backend` ABC plus `BackendInfo` and `InferenceResult` dataclasses. **Boilerplate, fully implemented.**
-- **`local.py`** — `LocalTransformerBackend`. Constructor + `info` are implemented. `complete` is **scaffolded**.
-- **`ollama.py`** — `OllamaBackend` plus `OllamaError`. Constructor + `info` are implemented. `complete` is **scaffolded**.
-- **`benchmark.py`** — `BenchmarkResult` (boilerplate) + `benchmark()` (**scaffolded**).
-- **`artifact.py`** — `ArtifactBackend` and `load_artifact_backend`. **Boilerplate, fully implemented.**
-- **`prodlm.py`** — ProdLM manifest helpers and `load_default_backend`. **Boilerplate, fully implemented.**
-- **`__init__.py`** — public exports.
-
-The optional KV-cache extension lives next to the code it extends:
-
-- **`g2c/transformer/kv_cache.py`** — `LayerKVCache` and `KVCache` containers. **Boilerplate, fully implemented.**
-- **`MultiHeadAttention.forward_cached`** — project only the newest token's Q/K/V, append K/V to the layer cache, and attend the newest query against cached K/V. **Scaffolded conceptually, tested against `forward`.**
-- **`Block.forward_cached`** and **`TransformerLM.forward_cached`** — thread one cache object per layer through the transformer. **Mostly plumbing.**
-- **`g2c/sampling/generate_cached.py`** — a cache-aware sibling of Module 11's `generate`. **Boilerplate around the cached forward path.**
-
-Tests live in `tests/test_inference.py`. The dataclass boilerplate, validation paths, ABC behavior, `BackendInfo` invariants, and helper exports should pass before you write the three pedagogical bodies. The implementation tests fail with `NotImplementedError` until you fill in `LocalTransformerBackend.complete`, `OllamaBackend.complete`, and `benchmark`. The real-transformer smoke test auto-skips when `BPETokenizer.train`, `TransformerLM.forward`, or `generate` aren't implemented yet.
-
-```bash
-pytest tests/test_inference.py                          # all module-16 tests
-pytest tests/test_inference.py -x                       # stop at first failure
-pytest tests/test_inference.py -k Local                 # local-backend tests
-pytest tests/test_inference.py -k Ollama                # ollama-backend tests
-pytest tests/test_inference.py -k Benchmark             # benchmark tests
-pytest tests/test_inference.py -k boilerplate           # the boilerplate sanity tests
-pytest tests/test_multi_head_attention.py -k cached     # optional KV-cache attention tests
-pytest tests/test_transformer.py -k cached              # optional KV-cache model tests
-pytest tests/test_sampling.py -k cached                 # optional KV-cache generation tests
-pytest tests/test_inference.py -v                       # verbose
-```
-
-Implementation order — three independent steps:
-
-  1. **`LocalTransformerBackend.complete`**. Encode prompt → time → call `generate` → slice off prompt tokens → decode tail → build `InferenceResult`. Tests use a monkeypatched `generate` so this works even before Module 11 is filled in. Turns green: `TestLocalTransformerBackendComplete`, `TestLocalTransformerBackendValidation`.
-
-  2. **`OllamaBackend.complete`**. Build JSON body → POST → parse JSON response → wrap stdlib errors in `OllamaError`. Tests inject a fake `urlopen`, so no real Ollama daemon is required for the test suite. Turns green: `TestOllamaBackendComplete`, `TestOllamaBackendOptionsHandling`, `TestOllamaBackendErrorPaths`, `TestOllamaBackendValidation`.
-
-  3. **`benchmark`**. Iterate `complete` over prompts, aggregate latencies (mean / p50 / p90) and tokens (sum, overall throughput). Tests use a `_FakeBackend` that returns scripted results. Turns green: `TestBenchmark`, `TestBenchmarkEdgeCases`.
-
-Steps 1–3 are independent — work in any order. The boilerplate tests pass from the start as a sanity check.
-
-The end-to-end smoke test (`test_local_backend_real_transformer_smoke`) wires up a real `BPETokenizer` + a real tiny `TransformerLM` + the real `generate` and runs `LocalTransformerBackend.complete` against them. It auto-skips when any prerequisite is unimplemented; once Modules 04, 09, and 11 are done, it runs and verifies end-to-end composition. Same convention as Module 15's `test_run_multiple_choice_eval_real_transformer_smoke`.
-
-Headline tests to watch:
-
-- **`test_completion_excludes_prompt`** — pins the slicing convention: `complete()` returns only the new tokens, not the prompt + new tokens. The most common bug here is forgetting to slice and returning the full sequence as the "completion."
-- **`test_token_counts`** — pins that `prompt_tokens` is the encoded-prompt length and `completion_tokens` is the new-tokens length, NOT the full sequence.
-- **`test_request_body_includes_required_fields`** — pins the Ollama wire format. `model`, `prompt`, `stream: false`, `options.num_predict`, `options.temperature` — get any of these wrong and the server rejects.
-- **`test_top_k_omitted_when_none`** — when sampling parameters are `None`, the request body must omit them entirely (so Ollama uses its defaults). Including a literal `null` would override the server default with "no value," which Ollama doesn't handle gracefully on every endpoint.
-- **`test_url_error_wrapped`** / **`test_http_error_wrapped`** — every stdlib HTTP exception path must surface as `OllamaError`. Callers should have one type to catch, not three.
-- **`test_completion_tokens_total_none_when_any_missing`** — if any individual request returned `None` for `completion_tokens`, the aggregate throughput is `None`. Don't silently sum-with-zero — that produces a misleading "high tokens/sec" number.
-- **`test_p90_above_p50_for_skewed_latencies`** — pins that p90 > p50 on a right-skewed distribution. Catches off-by-one bugs in the percentile lookup.
+- Prior knowledge of GGUF, MLX, quantization, KV caches, or speculative decoding. Those are introduced here.
+- Manual model quantization. Download a pre-quantized local model instead.
+- Streaming, async I/O, and MLX serving. They are useful extensions, not required for the module deliverable.
 
 ## What you'll build
 
@@ -519,6 +334,25 @@ def benchmark(
 
 Total scaffolded code: roughly 70 lines across three function bodies. The pedagogical content is the wiring — taking a string in, a string out, and recording what happened in between.
 
+## How to run the tests
+
+Tests live in `tests/test_inference.py`.
+
+```bash
+source .venv/bin/activate
+
+pytest tests/test_inference.py                          # all module-16 tests
+pytest tests/test_inference.py -x                       # stop at first failure
+pytest tests/test_inference.py -k Local                 # local-backend tests
+pytest tests/test_inference.py -k Ollama                # ollama-backend tests
+pytest tests/test_inference.py -k Benchmark             # benchmark tests
+pytest tests/test_inference.py -k boilerplate           # the boilerplate sanity tests
+pytest tests/test_multi_head_attention.py -k cached     # optional KV-cache attention tests
+pytest tests/test_transformer.py -k cached              # optional KV-cache model tests
+pytest tests/test_sampling.py -k cached                 # optional KV-cache generation tests
+pytest tests/test_inference.py -v                       # verbose
+```
+
 ## Exercises
 
 These exercises have two paths. The artifact path works with whatever saved StudentLM/BaseLM artifact you have. The ProdLM path requires a running Ollama installation and a configured manifest from `./prodlm.sh --model-id llama3.2:3b` (or your model of choice). The course works with a 16 GB or larger MacBook; 8 GB Macs can run smaller ProdLMs (`llama3.2:1b`, `qwen2.5:0.5b`) but the Phase V experience is degraded.
@@ -560,7 +394,7 @@ These exercises have two paths. The artifact path works with whatever saved Stud
 
 4. **Re-run Module 15's evaluation on ProdLM.** Take `run_generation_eval` from Module 15 and pass it a `generate_fn` that wraps `prodlm.complete` (note: Module 15's harness expects a `Callable[[str], str]`, so write a small adapter `def gen_fn(prompt): return prodlm.complete(prompt).completion`). Run on your hand-built generation eval set. Compare accuracy to your strongest artifact. Expected: much higher accuracy on factual prompts; same hallucination risk on impossible prompts; better but still imperfect arithmetic.
 
-5. **Quantify the quantization tax.** Configure ProdLM for a default Q4 model, then configure it again for an 8-bit or higher-precision variant if your machine can fit it. Run a 50-question MC eval (Module 15) on both. Report accuracy and ECE for each. Expected: higher precision may be 1–3% more accurate on aggregate; ECE is similar; throughput is lower because more memory bandwidth is required.
+5. **Quantify the quantization tax.** Load BaseLM in-process, run a small generation eval at fp16, then fake-quantize fresh copies of the weights to 8, 4, and 2 bits. Report accuracy and a few qualitative samples at each precision. This is a quality experiment: the fake-quantized weights are dequantized back into ordinary PyTorch float tensors, so memory does not shrink. Expected: 8-bit should usually look close to fp16; 4-bit may show visible degradation; 2-bit should make the intelligence collapse obvious. Real memory savings still come from a runtime format such as GGUF through Ollama.
 
 6. **Build a "router" Backend.** Subclass `Backend` to dispatch between two concrete backends based on prompt length: `< 32 tokens` goes to the artifact backend (fast, local, good enough for trivial completions); `≥ 32 tokens` goes to ProdLM (slower but more capable). Run the benchmark. Expected: throughput is somewhere between artifact-only and ProdLM-only, depending on prompt mix. The exercise is the dispatching pattern — it's the same shape as a routing decision in Module 19's agent loop.
 

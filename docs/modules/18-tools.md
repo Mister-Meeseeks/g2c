@@ -9,33 +9,46 @@
 ---
 ## Before you start
 
-* *Refresh* 
-	* AST
-	* JSON
 * *Finish* `g2c/inference` from [[16-inference]] — the tool-use loop calls `backend.complete(...)` to produce each model turn
+* *Configure* a ProdLM backend from [[16-inference]] — tool calling works best with an instruction-tuned model that already understands structured tool-call formats
+* *Refresh* JSON objects and basic regex — tool calls are JSON blocks extracted from model text
+* *Skim* Python AST basics if you have not used `ast.parse` before — the calculator tool uses an AST whitelist instead of `eval`
 
 ---
 ## Prerequisites
 
-Module 18 is the third leg of Phase V (assistant systems). Module 16 built the unified `Backend` interface; Module 17 used it to wire retrieval into the prompt. Module 18 wires *outgoing* affordances — the model gets a list of tools it can invoke, a structured way to invoke them, and a feedback channel for the results.
+Module 18 assumes you can call a model through the `Backend.complete(...)` interface and are comfortable reading structured text protocols. It does **not** assume you already know production function-calling APIs, full JSON Schema, sandboxing, or agent planning loops.
 
-This module is short on math and long on plumbing. The whole content is:
+### Math
 
-- A small dataclass set (`Tool`, `ToolCall`, `ToolResult`, `ToolStep`) describing the contract.
-- A registry that holds tools and renders them for the prompt.
-- A JSON-schema-lite validator that type-checks arguments before execution.
-- A regex-based parser that extracts tool calls from model text.
-- A dispatcher that catches every failure mode and converts it to a model-readable error.
-- A loop that ties the whole thing together.
-
-There are four scaffolded methods. Three are short (each ~10–30 lines); the fourth is the loop (~30 lines). The lesson is in the *contract* between them — what each piece is responsible for, and what happens when one piece fails.
+None.
 
 ### Computer science
 
+- Module 16's backend interface: a caller sends a prompt and receives an `InferenceResult`.
+- Module 17's prompt-augmentation idea: the runtime can add structured context before the user message.
+- The basic parse -> validate -> dispatch pattern: extract structured text, check it, then call the corresponding function.
+- The idea that model text is untrusted input. The runtime validates it before doing anything consequential.
 
+### Programming
 
+- JSON objects and `json.loads`.
+- Basic regex, especially non-greedy matches and `re.DOTALL`.
+- Basic `dataclass` and exception usage.
+- Basic file reads with `Path`.
+- Basic `subprocess.run` semantics for the optional Python-execution tool.
+- Basic familiarity with Python ASTs is helpful for the calculator; the module teaches the AST whitelist pattern before asking you to implement it.
+
+### What you can skip
+
+- Full JSON Schema. We implement only the small object/properties/required subset used by most tool schemas.
+- Production sandboxing. `run_python` is for local pedagogy, not hosted arbitrary-code execution.
+- Streaming and parallel tool calls. The module uses a synchronous one-turn-at-a-time loop.
+- Tool-calling fine-tuning. We rely on an instruction-tuned ProdLM that already has tool-calling behavior.
 
 ## Why we start here
+
+Module 18 is the third leg of Phase V (assistant systems). Module 16 built the unified `Backend` interface; Module 17 used it to wire retrieval into the prompt. Module 18 wires *outgoing* affordances — the model gets a list of tools it can invoke, a structured way to invoke them, and a feedback channel for the results.
 
 Module 17 fixed the model's *knowledge* gap by retrieving relevant text into the prompt. But knowledge isn't enough for an assistant — there are tasks that fundamentally require *action*:
 
