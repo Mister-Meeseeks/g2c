@@ -11,7 +11,7 @@ Every module up to the point has been about making the model smarter. In this le
 
 * *Finish* `g2c/sampling` from [[11-sampling]] — `LocalTransformerBackend` drives the from-scratch model through `g2c.sampling.generate`
 * *Finish* at least one saved model artifact from Module 10, 13, or 14, or run `./baselm.sh` — `ArtifactBackend` lets you use course-trained and BaseLM artifacts through the inference API
-* *Configure* ProdLM with `./prodlm.sh --model-id llama3.2:3b` (or another size from the suggested list below) — by default this pulls the Ollama model and writes a lightweight manifest the later modules can discover
+* *Configure* ProdLM with `./prodlm.sh --model-id llama3.2:3b` (or another size from the suggested list below) — by default this pulls the Ollama generation model, pulls `nomic-embed-text` for Module 17 RAG, and writes a lightweight manifest the later modules can discover
 
 ---
 ## Where this fits in

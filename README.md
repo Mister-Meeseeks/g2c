@@ -60,7 +60,8 @@ artifact they can find.
 - **BaseLM:** Modules 13-15 can use a small external pretrained base model when
   your self-trained model is too weak.
 - **ProdLM:** Modules 16-20 use a local pretrained instruct model sized to your
-  machine. Configure it with `./prodlm.sh --model-id <ollama-tag>`.
+  machine. Configure it with `./prodlm.sh --model-id <ollama-tag>`; this also
+  pulls `nomic-embed-text` for RAG.
 
 See [Course Tracks and Artifacts](docs/tracks.md) for download/storage/time
 estimates and artifact names. The deeper maintainer design note lives at
@@ -135,6 +136,8 @@ Modules 16-20 use a capable local instruction model through the ProdLM backend:
 ```bash
 ./prodlm.sh --model-id llama3.2:3b
 ```
+
+That command also pulls the default RAG embedding model, `nomic-embed-text`.
 
 The broader TinyLLM track uses **G2C Corpus v1**, a generated local raw-text
 corpus built from streamed upstream datasets:

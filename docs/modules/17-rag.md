@@ -67,7 +67,6 @@ Three small ideas worth having in your head:
 
 ### Programming
 
-- **`numpy` for the math.**. The four functions cover everything in this module.
 - **`hashlib.blake2b`** for stable hashing. Python's built-in `hash()` is salted differently per process — different runs of the same code produce different hashes — so it's unusable for embeddings. BLAKE2b is fast, stdlib, and stable across runs.
 
 
@@ -76,6 +75,10 @@ Three small ideas worth having in your head:
 ## Where this fits in
 
 Modules 1–16 built a model and made it usable. The tiny model from Module 14 doesn't know facts — Module 16 fixed that by pivoting to a real pretrained model behind a unified `Backend`. But even a 7B-class model has gaps:
+
+At inference time, models can "know" facts in one of two ways. One is that they're already embedded into weights of the model's internal world model. In [[15-evaluation]] we tested models on their factual recall of questions like "What's the largest city in Spain?". Models learn facts like these during training, primarily pretraining. 
+
+The other way a model can "know" a fact is, when it's supplied in the prompt. We can also pose questions like "Kate is in 10th grade, how many years until she graduate high school?" To produce the right answer, the model must take a fact supplied in the prompt ("Kate is in 10th grade") with a fact that it hopefully learned in pretraining ("High school ends at grade 12").
 
 ```
    ┌───────────────────────────────────────────────────────────────────────┐
@@ -96,23 +99,41 @@ Modules 1–16 built a model and made it usable. The tiny model from Module 14 d
    │       - "given this document, answer X" workflows                     │
    │       - "the user just told me their cat's name, remember it"         │
    │                                                                       │
-   │   These are the gaps RAG fills. Not by training the model on more     │
-   │   data — by retrieving the relevant text at QUERY TIME and putting    │
-   │   it into the prompt. The model doesn't memorize new facts; it gets   │
-   │   to read a relevant passage right before it answers.                 │
-   │                                                                       │
    └───────────────────────────────────────────────────────────────────────┘
 ```
 
+**Retrieval** is how assistant systems bridges between a large collection of information in the form of a corpus (not necessarily the same corpus used in pretraining) and what information it selectively curates at [[16-inferance]] time to actually put into the prompt.
 
+A simple example: "what did the president say in his speech last night?". First we know this fact isn't going to be internally known to the model, because it occurred too recently to be in the pretraining corpus. Therefore the assistant system must recall it from a retrieval corpus. If users frequently ask about current events, then it's reasonable for our assistant system's retrieval corpus to include something like BBC stories from the past week. 
+
+It's not practically feasible to dump "all news from the past week" into a context window, and let the model figure it out. Something has to curate the potentially relevant information before we send the prompt to the model. In this example, the model doesn't need news stories about soccer matches or celebrity gossip, but it does need news stories about the president.
+
+Retrieval makes assistant systems more intelligent by curating relevant information and exposing it to the model at inference time. When executed right, the end user sees a transpa assistant system that seamlessly knows everything in the corpus. 
 
 ## The big idea
 
-The mechanism is simple: turn the user's question into a vector, search a pre-indexed library of text chunks for the closest matches, paste those chunks into the model's prompt, then ask the model to answer using only what's in front of it. The model doesn't learn anything new — it just gets handed the right page of the book.
+The goal of retrieval is to query a large corpus for data relevant to an arbitrary prompt. The retrieval system doesn't need to "understand" the data. It just has to curate a small context-sized subset of the corpus based on relevance. 
+
+We start by slicing the corpus into **chunks** that are 
+
+In [[05-embeddings]] we learned a technique for converting language into geometry. Embeddings project tokens into a vector in a high dimensional semantic space. That has two major advantages over string based approaches:
+
+1. **Embedding vectors are semantically rich.** Substrings break on synonyms, related concepts, cross-language comparisons, etc. "*bank*" and "*loan*" have no string overlap, but high semantic overlap.
+2. **Vectors are easy to aggregate**. In Module 5 we showed this with `queen = king - man + woman`. Retrieval operates over large chunks of text. We need a way to determine the semantic overlap of not just individual words but between two large bodies of text. We use geometry to "average" vectors in a phrase, sentence, paragraph, or chunk is easy. 
+
+**Retrieval augmented generation (RAG)** is the recipe for incorporating a retrieval system into a broader assistant system:
+
+1. **Retrieval ─** Convert the user prompt into a vector using the embedding model. Slice the corpus into chunks of text. For each chunk, convert into an embedding vector. Calculate a similarity alculate a geometrical based similarity score.
+2. **Augmented ─** Select the highest ranked chunks and insert into the prompt.
+3. **Generation ─** Send the augmented prompt to the LLM, so its response has access to the retrieved data
+
+With reliable well-fit embeddings, retrieval is a simple formula. Start by **indexing** the corpus up front. Amortize as much non-query specific work as possible ahead of time. Break the corpus up into chunks, convert the chunk texts into embedding, then write the vector for each chunk to a table. 
+
+At query time, we convert the user prompt itself into an embedding vector. We scan through the pre-indexed table comparing each chunk's vector to the prompt's vector, generating a similarity score. We select the top K most relevant chunks based off those scores, then inject the text contents into the system prompt.
 
 ```
    ┌──────────────────────────────────────────────────────────────────────┐
-   │  THE PIPELINE — TWO PHASES                                            │
+   │  THE PIPELINE — TWO PHASES                                           │
    └──────────────────────────────────────────────────────────────────────┘
 
       ┌─────────────────────────────────┐
@@ -146,9 +167,7 @@ The mechanism is simple: turn the user's question into a vector, search a pre-in
       └─────────────────────────────────┘
 ```
 
-Phase 1 happens once. Phase 2 happens on every user question. The asymmetry is the point: indexing is the expensive amortized step that makes querying cheap.
-
-### Chunking — what to retrieve
+### Chunking
 
 A document is too big to retrieve as a unit (a 50-page paper is one "topic" but you only want the paragraph that actually answers the question). A sentence is too small (the answer often spans 2–3 sentences). The **chunk** is the right intermediate — small enough to be specific, big enough to be self-contained.
 
@@ -180,37 +199,42 @@ A document is too big to retrieve as a unit (a 50-page paper is one "topic" but 
 Overlap exists for exactly one reason: an answer-bearing sentence that crosses a chunk boundary appears in BOTH chunks rather than being split between them. Without overlap, the chunker's split points become noise — moving a paragraph break a few characters drops the answer's recall.
 
 ```
-   No overlap, answer split at the boundary:
-     │ ... background context | The capital of Spain  │ is Madrid. More text ...│
-     └────── chunk 1 ─────────┴────────── chunk 2 ──────┴──────── chunk 3 ──────┘
-     Embedding chunk 2 has "The capital of Spain" but not "Madrid".
-     Embedding chunk 3 has "Madrid" but not "The capital of Spain".
-     The Spain-capital question retrieves NEITHER chunk well.
-
-   With ~20% overlap:
-     │ ... background context | The capital of Spain ...│
-     └────── chunk 1 ─────────┴────────── chunk 2 ──────┘
-                                        │ ...al of Spain is Madrid. More text ...│
-                                        └──────── chunk 3 ──────────────────────┘
-     Chunk 3 contains the full "...of Spain is Madrid" — retrieval works.
+   No overlap:
+   
+	────────── chunk 1 ───────────────────┌───── chunk 2 ──────────────────────
+										  | 
+	...big cities. The largest city in America is New York. It was settled in...
+	                                      | 
+	────────── chunk 1 ───────────────────└────── chunk 2 ──────────────────────
+     
+     
+   With overlap:
+   
+   ────────── chunk 1 ───────────────────┐
+				 ┌───── chunk 2 ───────────────────────────────────────────────
+				 | 
+   ...big cities. The largest city in America is New York. It was settled in...
+	             | 
+	             └────── chunk 2 ──────────────────────────────────────────────
+    ────────── chunk 1 ───────────────────┘
 ```
 
 This module's chunker is the simplest possible: fixed-size sliding window with overlap. It ignores sentence and paragraph boundaries. A real chunker prefers natural breaks; the `chunk_text` recipe is intentionally minimal so the lesson is the math.
 
-### Embedding — turning text into coordinates
+### Embedding 
 
 ![Embedding space and cosine search. Left half: a 2D scatter of chunk embeddings color-coded by cluster — Spain/Cities (green), Python/Code (blue), Cooking (orange), Machine Learning (purple). Texts about the same topic land in the same neighborhood. The user's query "What is the capital of Spain?" embeds to a point near the Spain/Cities cluster, marked with a star. A "cosine similarity intuition" panel pins the math: for L2-normalized vectors, `cos(u, v) = u · v` — small angle → high similarity → score near 1; orthogonal → score near 0; opposite → score near -1. Right half: the search algorithm in five steps. Step 1 — embed the query. Step 2 — dot the query against every row of the (N, d) store matrix to get N similarities. Step 3 — `np.argpartition(scores, -k)` finds the top-k indices in O(N) without sorting the full array. Step 4 — sort just those k indices by descending score. Step 5 — return the top-k chunks plus their similarity scores. A "key takeaway" panel: cosine similarity finds the chunks whose meaning is most similar to the query — not the chunks that share words.](17-rag/Module17-Embedding.png)
-*The geometric picture for `NumpyVectorStore.search`. The five-step recipe IS the implementation: embed query, dot against store, argpartition for top-k, argsort the k indices, return chunks + scores. The test `test_search_returns_descending_order` pins the sort direction; reading off this image, the "most similar first" convention matches the natural reading direction of the panel.*
+*With embedding vectors, semantic similarity reduces to geometry*
 
-An embedding is a function from `string → R^d`. Two strings are "similar" if their embeddings have a small angle between them. The choice of embedding function determines what "similar" means:
+An embedding is a function from a string of text to a numerical vector in a high dimenstional space. Within an embedding space, semantic similarity is measured as the angle between the vectors. If two vectors share a small angle, then their coordinates in the semantic space are close in a geometric sense. The choice of embedding function determines what "similar" means:
 
 ```
-   ┌──────────────────────────────────────────────────────────────────────┐
+   ┌───────────────────────────────────────────────────────────────────────┐
    │   EMBEDDER COMPARISON                                                 │
-   ├──────────────────────────────────────────────────────────────────────┤
+   ├───────────────────────────────────────────────────────────────────────┤
    │                                                                       │
    │   HashEmbedder:                                                       │
-   │     "Madrid"            ≈  "Madrid"            (identical, sim=1)    │
+   │     "Madrid"            ≈  "Madrid"            (identical, sim=1)     │
    │     "Madrid"            ≈  "madrid"            (lowercase, sim=1)     │
    │     "Madrid"            ≈  "Madrideño"         (substring, sim=0.4)   │
    │     "Madrid"            ≈  "the capital city"  (no overlap, sim≈0)    │
@@ -220,15 +244,15 @@ An embedding is a function from `string → R^d`. Two strings are "similar" if t
    │     "Madrid"            ≈  "the capital of Spain"  (semantic, sim=0.5)│
    │     "running"           ≈  "jogging"             (paraphrase, sim=0.6)│
    │     "the cat sat"       ≈  "the dog stood"    (similar shape, sim=0.4)│
-   │     "the cat sat"       ≈  "running on a treadmill"  
-   (different topic, sim=0.05)│
+   │     "the cat sat"       ≈  "running on a treadmill"                   |
+   |                                    (different topic, sim=0.05).       │
    │                                                                       │
    └───────────────────────────────────────────────────────────────────────┘
 ```
 
 `HashEmbedder` is what you can build in a hundred lines of stdlib. It captures lexical signal — strings sharing tokens / n-grams cluster together. It's enough to make the pipeline work for tests, and enough to feel the limits: a question phrased differently from the source document doesn't retrieve. `OllamaEmbedder` (or any neural embedder) captures semantics — the same idea expressed in different words still clusters. **For real retrieval over heterogeneous queries, you want a neural embedder.** The `HashEmbedder` exists because (1) it teaches what an embedding even is, and (2) a fully-stdlib pipeline is testable without an external service.
 
-### Retrieval — the math is one line
+### Retrieval 
 
 Given a query embedding `q` and a stored matrix of chunk embeddings `V` (shape `(N, d)`), all of which are L2-normalized:
 
@@ -266,7 +290,7 @@ That's the whole search algorithm for a flat index. ~five lines of numpy. The pe
 ### Prompt assembly — the format matters
 
 ![Prompt](17-rag/Module17-Prompt.png)
-*The reference card for `assemble_rag_prompt`. The four-section template (system → context → question → instructions) plus the 1-based citation scheme is what the test `test_assemble_rag_prompt_uses_one_based_citations` pins. Exercise 5 (probing failure modes on unanswerable questions) measures how well the "I don't know" guard at the bottom of the prompt actually triggers refusal — it's the single highest-leverage line in the whole template.*
+*The "I don't know" guard at the bottom of the prompt actually triggers refusal — it's the single highest-leverage line in the whole template.*
 
 Once the retriever has handed you `[chunk_1, chunk_2, ..., chunk_k]`, the question is how to splice them into the model's input. The default template:
 
@@ -297,69 +321,21 @@ Note what's *not* in the template: chat-template markers like `<|user|>...<|assi
 
 ## Concepts to internalize
 
-- **The vector is not the meaning, it's a *coordinate for* the meaning.** Two strings whose embeddings are close are similar *in the geometry of that embedder*. A different embedder gives you different geometry. There's no "ground truth" embedding space — only embedders that are useful for specific retrieval tasks.
-- **Retrieval quality dominates RAG quality.** A 7B model handed the right chunk answers correctly; the same model handed the wrong chunk hallucinates fluently. Improving retrieval (better chunker, better embedder, hybrid scoring, re-ranking) buys more than improving the model. This is why production RAG stacks invest more in retrieval than in generation.
-- **The "I don't know" guard is the single highest-leverage line in the prompt.** Models that have it abstain on insufficient context; models that don't, hallucinate. One sentence of prompting is worth several percent of measurable accuracy on factual benchmarks.
-- **Chunks should be self-contained.** A chunk that ends mid-sentence forces the model to hallucinate the missing context. A chunk that ends at a sentence boundary doesn't. Real chunkers prefer natural breaks for this reason; the sliding-window chunker we build here is a starting point, not a destination.
-- **Citations are alignment, not formatting.** The point of `[1] (source: foo.md)` isn't pretty output — it's that a downstream system (or a human reviewer) can verify whether the model's claim is actually supported by chunk `[1]`. Citation-without-verification is just decoration.
-- **The interface is the substrate.** Module 19's agent loop will call `pipeline.answer(question, k=5)`. The pipeline doesn't care whether the embedder is `HashEmbedder`, `OllamaEmbedder`, or some future `MLXEmbedder` — same `embed(texts)` contract, same downstream behavior. This is the pattern Module 16 established with `Backend`; Module 17 extends it to `Embedder`.
-- **In-memory is enough for course scale.** A flat numpy array searches a few-thousand-chunk corpus in microseconds. ANN indexes solve a problem we don't have. Build the simple thing; upgrade only when you've measured that you need to.
-- **Embedders and chat models are different beasts.** A chat model `complete(prompt) → completion` expects to generate. An embedder `embed(text) → vector` expects to *score* — no decoder, no sampling, no autoregression. Confusing them (e.g., trying to use a chat model as an embedder) is a classic early mistake. They share the same family of architectures (transformers) but diverge entirely in usage.
+- **The vector is not the meaning, it's a *coordinate for* the meaning.** Two strings with similar embeddings are close in the geometry of *that embedder*.  There's no "ground truth" embedding space — only embedders that are useful for specific retrieval tasks.
+- **Retrieval quality dominates RAG quality.** A 7B model handed the right chunk answers correctly; the same model handed the wrong chunk hallucinates. 
+- **The "I don't know" guard is the single highest-leverage line in the prompt.** Models that have it abstain on insufficient context; models that don't, hallucinate.
+- **Chunks should be self-contained.** A chunk that ends mid-sentence forces the model to hallucinate the missing context. Real chunkers prefer natural breaks for this reason.
+- **Citations are alignment, not formatting.** The point of `[1] (source: foo.md)` isn't pretty output — it's that a reviewer can verify the claim.
+- **Embedders and chat models are different beasts.** A chat model `complete(prompt) → completion` expects to generate. An embedder `embed(text) → vector` expects to *score*  Confusing them (e.g., trying to use a chat model as an embedder) is a classic early mistake. They share the same family of architectures (transformers) but diverge entirely in usage.
 
 ### What we don't cover
 
-- **Implementing HNSW or any other ANN index.** Production scale wants this; course scale does not. A few-hundred-chunk corpus searches in microseconds against a flat index. Building HNSW from scratch is a 200-line project and a different lesson.
-- **Implementing a sentence-transformer-style dense embedder.** Training a contrastive bi-encoder is its own multi-week curriculum. We use `OllamaEmbedder` to plug into a pretrained one (`nomic-embed-text` is 137M parameters, trained by NomicAI on ~250M sentence pairs). Treat the embedder as a black box that turns text into a 768-vector.
-- **BM25 / hybrid retrieval.** BM25 is a 1990s-era lexical scorer that consistently improves on dense-only retrieval for keyword-heavy queries. We don't build it; the `HashEmbedder` covers the lexical-side intuition without the BM25 IDF / saturation math. Exercise 6 walks through adding BM25 as a hybrid retriever.
-- **Re-ranking with a cross-encoder.** Production RAG pipelines often retrieve top-k=50 with a cheap dense embedder and then re-rank top-k=5 with an expensive cross-encoder (`bge-reranker-v2-m3` etc.). Adds ~100 ms per query and 1–3% retrieval accuracy. We skip — the re-ranker is its own model, and the lesson is the pipeline shape.
-- **Async embedding.** Embedding 10k chunks against a remote service one-at-a-time takes minutes. Real pipelines batch via async. We don't — the lesson is the math, not the I/O.
+- **Implementing HNSW or any other ANN index.** Production scale wants this; course scale does not. Building HNSW from scratch is a 200-line project and a different lesson.
+- **Implementing a sentence-transformer-style dense embedder.** Training a contrastive bi-encoder is its own multi-week curriculum. We use `OllamaEmbedder` to plug into a pretrained one. Treat the embedder as a black box that turns text into a 768-vector.
+- **Hybrid retrieval**. All RAG 
+- **Re-ranking with a cross-encoder.** Production RAG pipelines often retrieve top-k=50 with a cheap dense embedder and then re-rank top-k=5 with an expensive cross-encoder.
+- **Async embedding.** Embedding 10k chunks against a remote service one-at-a-time takes minutes. Real pipelines batch via async. We don't — the lesson is the math.
 
-## Scaffolding and how to run the tests
-
-This module ships seven files in `g2c/rag/`:
-
-- **`chunk.py`** — the `Chunk` dataclass plus `chunk_text`. Boilerplate (the dataclass): implemented. Logic (`chunk_text`): **scaffolded.**
-- **`embed.py`** — `Embedder` ABC, `HashEmbedder` (boilerplate + **scaffolded** `embed`), `OllamaEmbedder` (fully implemented), `OllamaEmbedError`.
-- **`store.py`** — `NumpyVectorStore` (boilerplate + **scaffolded** `search`) plus the `cosine_similarity` helper.
-- **`retrieve.py`** — `DenseRetriever` and `RetrievedChunk`. Fully implemented.
-- **`prompt.py`** — `RAGPrompt`, `assemble_rag_prompt` (**scaffolded**), default templates.
-- **`pipeline.py`** — `RAGPipeline` and `RAGAnswer`. Fully implemented.
-- **`__init__.py`** — public exports.
-
-Tests live in `tests/test_rag.py`. Initial state on `main`: 73 tests pass (boilerplate + the components that are fully implemented). 69 tests fail with `NotImplementedError` until you fill in the four scaffolded methods.
-
-```bash
-pytest tests/test_rag.py                          # all module-17 tests
-pytest tests/test_rag.py -x                       # stop at first failure
-pytest tests/test_rag.py -k Chunk                 # chunker tests
-pytest tests/test_rag.py -k HashEmbedder          # hash embedder tests
-pytest tests/test_rag.py -k Search                # vector store search tests
-pytest tests/test_rag.py -k Prompt                # prompt assembly tests
-pytest tests/test_rag.py -k Pipeline              # end-to-end pipeline tests
-pytest tests/test_rag.py -k Integration           # full-pipeline smoke
-pytest tests/test_rag.py -v                       # verbose
-```
-
-Implementation order — four independent steps:
-
-  1. **`chunk_text`** in `g2c/rag/chunk.py`. Sliding window with overlap. Pure string slicing — no numpy, no HTTP, no model. Easiest place to start. Turns green: `TestChunkText`, `TestChunkTextEdgeCases`.
-
-  2. **`HashEmbedder.embed`** in `g2c/rag/embed.py`. Hash character n-grams into bucket counts; L2-normalize each row. Tests don't require any external service. Turns green: `TestHashEmbedderEmbed`.
-
-  3. **`NumpyVectorStore.search`** in `g2c/rag/store.py`. Dot product + top-k via `np.argpartition` / `np.argsort`. Turns green: `TestNumpyVectorStoreSearch`, `TestVectorStoreSearchEdgeCases`.
-
-  4. **`assemble_rag_prompt`** in `g2c/rag/prompt.py`. Splice question + chunks + system + instruction into a numbered-citation prompt. Pure string construction. Turns green: `TestAssembleRAGPrompt`, `TestAssembleRAGPromptEdgeCases`.
-
-The four steps are independent — work in any order. The integration tests (`TestIntegrationSmoke`, `TestRAGPipelineAnswer`) and the retriever tests (`TestDenseRetrieve`) turn green automatically once all four are filled in, because they exercise the wiring around the components.
-
-Headline tests to watch:
-
-- **`test_chunk_text_overlap_correct`** — pins the stride math: each chunk starts `chunk_size - chunk_overlap` characters past the previous. Off-by-one here breaks every retrieval downstream.
-- **`test_chunk_text_covers_full_document`** — the chunker must reach the end. A bug that stops one stride short silently loses the last paragraph of every document.
-- **`test_hash_embedder_rows_are_unit_norm`** — the L2-normalization contract. Without it, `NumpyVectorStore.search`'s dot-product trick computes the wrong similarity.
-- **`test_search_returns_descending_order`** — top-1 is the most similar. A reversed sort silently degrades retrieval to anti-retrieval.
-- **`test_assemble_rag_prompt_uses_one_based_citations`** — humans cite `[1]`, not `[0]`. Forgetting `start=1` confuses the model AND any citation parser.
-- **`test_pipeline_propagates_retrieved_chunks_to_prompt`** — wire-bug catcher: the chunks the retriever returned MUST be the chunks the prompt cites. A confused implementation could embed the question, retrieve, then assemble a prompt against a different chunk list.
 
 ## What you'll build
 
@@ -463,15 +439,31 @@ class RAGPipeline:                                                 # implemented
                ) -> RAGAnswer: ...
 ```
 
-Total scaffolded code: roughly 60 lines across four function bodies. Everything else is pre-implemented because the lesson is the math (chunking, embedding, cosine similarity, prompt construction), not the orchestration.
+Total scaffolded code: roughly 60 lines across four function bodies. Everything else is pre-implemented because the lesson is the math, not the orchestration.
+
+## How to run tests
+
+Tests live in `tests/test_rag.py`. Initial state: 73 tests pass, 69 tests fail
+
+```bash
+source .venv/bin/activate
+
+pytest tests/test_rag.py                          # all module-17 tests
+pytest tests/test_rag.py -x                       # stop at first failure
+pytest tests/test_rag.py -k Chunk                 # chunker tests
+pytest tests/test_rag.py -k Search                # vector store search tests
+pytest tests/test_rag.py -k Prompt                # prompt assembly tests
+pytest tests/test_rag.py -k Pipeline              # end-to-end pipeline tests
+pytest tests/test_rag.py -k Integration           # full-pipeline smoke
+pytest tests/test_rag.py -v                       # verbose
+```
 
 ## Exercises
 
-These exercises require Ollama running with both an inference model AND an embedding model:
+These exercises require Ollama running with both an inference model AND an embedding model. If you already ran `./prodlm.sh`, both defaults should be pulled:
 
 ```bash
-ollama pull llama3.2:3b           # the chat model from Module 16
-ollama pull nomic-embed-text       # the embedding model
+./prodlm.sh --model-id llama3.2:3b # pulls the chat model and nomic-embed-text
 ollama serve                       # if not already running
 ```
 
@@ -587,9 +579,9 @@ Optional:
 
 ## Deliverable checklist
 
-- [ ] All tests in `tests/test_rag.py` pass: 142 tests, all green.
+- [ ] All tests in `tests/test_rag.py` pass
 - [ ] Ollama running with at least one embedding model pulled. `ollama list` shows `nomic-embed-text` (or your chosen embedder).
-- [ ] Notebook: `notebooks/17-rag.ipynb`. Indexes a corpus you care about (your `docs/`, your notes, the course material), runs Exercises 1, 2, 3, 5 with output cells visible.
+- [ ] Notebook: `notebooks/17-rag.ipynb` complete
 - [ ] **RAG post-mortem** (Exercise 9) in `docs/rag-postmortem.md`. 3–4 paragraphs. The actual deliverable — what you indexed, what worked, what broke, what you'd build next.
 - [ ] You can explain — out loud, without notes — why retrieval quality dominates RAG quality, and why improving the retriever buys more than improving the model.
 - [ ] You can explain — out loud, without notes — what cosine similarity means as a dot product, and why every embedder in this module L2-normalizes its rows.
