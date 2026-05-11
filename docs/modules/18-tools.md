@@ -4,7 +4,7 @@
 
 ![Module 18 on one page: a four-panel circus map of the tool-use loop. PANEL 1 (top-left, "REGISTRATION"): a `ToolRegistry` shelf holds four labeled drawers — `calculator` (with a parameters schema scroll: {"expression": "string"}), `read_file` ({"path": "string", "max_chars": "integer"}), `web_search` ({"query": "string"}), `run_python` ({"code": "string"}). Each drawer's front shows the tool's description in plain English. PANEL 2 (top-right, "PROMPT TIME"): the registry's tools render into a system prompt block: "Tools available:\n- calculator: Evaluate an arithmetic expression...\n- read_file: Read a UTF-8 text file..." plus a "Call format: <tool_call>{...}</tool_call>" footer. The user message gets appended below: "User: What's the population of Madrid times 7?" The model reads it. PANEL 3 (bottom-left, "PARSE & DISPATCH"): the model's completion contains a `<tool_call>{"name": "calculator", "arguments": {"expression": "3220000 * 7"}}</tool_call>`. A `parse_tool_calls` machine extracts it; a `validate_arguments` checker stamps it OK; the dispatcher looks up "calculator" in the registry and invokes it. The result `22540000` becomes a `ToolResult`, formatted as `<tool_result name="calculator" id="call_0_xxxx">22540000</tool_result>` and appended back to the prompt. PANEL 4 (bottom-right, "FEEDBACK & STOP"): the model sees the tool result, decides it has enough information, and emits a final answer (no more `<tool_call>` blocks). The loop returns a `ToolRunResult` with `final_answer`, `steps` (every back-and-forth), `stopped_reason="no_more_calls"`. A right-edge sidebar lists key concepts: tool schemas (JSON-schema-lite), the `<tool_call>` format, the parse → dispatch → feedback loop, error surfacing as `<tool_error>` tags so the model can recover, max_steps as the safety net. Bottom caption: "Module 17 gave the model EYES (retrieval); Module 18 gives it HANDS (tools). Module 19 will give it INTENT (planning loops)."](18-tools/Module18-Hero.png)
 
-*The whole module on one page. Tool use is the smallest possible architecture for "let the model affect the outside world." Define a tool with a JSON schema, splice the schemas into the prompt, parse `<tool_call>` blocks out of the model's output, validate arguments, dispatch the call, format the result back into the next prompt turn, and loop until the model stops calling tools. The agent loop with planning and scratchpad memory comes in Module 19; Module 18 builds the substrate.*
+Tool use is the smallest possible architecture for "let the model affect the outside world." Define a tool a JSON, splice the schemas into the prompt, parse tool call blocks from the model's output.
 
 ---
 ## Before you start
@@ -102,7 +102,7 @@ Six lines of orchestration. Most of the complexity hides in the components: pars
 
 ## The big idea
 
-### A tool is a callable + schema + name
+A **tool** is a callable + schema + name
 
 ```
    ┌──────────────────────────────────────────────────────────────────────┐
@@ -297,8 +297,8 @@ That's the entire loop. Module 19 will replace this with a ReAct-style loop that
 
 ## Concepts to internalize
 
-- **A tool is a callable, but the model only sees the schema.** The model never executes Python. It emits text describing what it wants to call; the runtime translates that text into a function call. This decoupling is what makes tool use safe(ish): the model's job ends at "emit JSON," and the runtime's job is the actual execution.
-- **Errors are conversation.** When a tool fails, the loop feeds the error back to the model and lets it try again. A raised exception ends the conversation; a `ToolResult(is_error=True)` continues it. This single decision is responsible for most of the "robust to model mistakes" feeling.
+- **A tool is a callable, but the model only sees the schema.** The model never executes Python. It emits text describing the call. The decoupling is what makes tool use safe(ish). The runtime's job is the actual execution.
+- **Errors are conversation.** When a tool fails, the loop feeds the error back to the model and lets it try again. This single decision is responsible for most of the "robust to model mistakes" feeling.
 - **Safe eval is a whitelist, not a denylist.** Allow only the AST nodes you can vouch for; refuse everything else. `eval()` with restricted globals is famously not safe; the AST-walker pattern is structurally bounded.
 - **Schemas are tighter than docstrings.** Model output is much more reliable when the prompt includes a precise JSON schema than when it includes only a prose description. The schema gives the model a *shape* to fill in; prose gives it a vibe.
 - **The loop's stop condition is "no more tool calls."** It's an oddly minimal contract — the model itself decides when it's done by simply not emitting another `<tool_call>`. The alternative (an explicit "DONE" sentinel) is fragile; instruction-tuned models reliably stop calling tools when they have enough context.

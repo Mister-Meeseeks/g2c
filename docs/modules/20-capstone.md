@@ -4,7 +4,7 @@
 
 ![Module 20 on one page: a five-panel circus map of the capstone assistant. PANEL 1 (top-left, "USER"): a typed question enters from a CLI prompt ("? what's 2+2?"). PANEL 2 (top-middle, "MEMORY"): the Conversation object renders prior turns ("User: hi / Assistant: hello") into a "Previous conversation:" block. PANEL 3 (top-right, "RAG"): the optional retriever pulls k chunks from a corpus and formats them as a "Context from documents:" block. PANEL 4 (center-bottom, "AGENT"): the contextualized message (history + context + current question) is handed to the Module 19 Agent, which runs the full ReAct loop with planning, scratchpad, and tool dispatch. PANEL 5 (bottom-right, "OUT"): the agent's `final_answer` is returned to the user, recorded in the conversation, and gated by the EvalSuite for regression testing. Around the edges, labels point at each upstream module: M16 (Backend) feeds the agent's inference; M17 (DenseRetriever) feeds the RAG block; M18 (ToolRegistry) feeds the agent's tool palette; M19 (Agent) is the per-turn engine. A right-edge banner reads "the lesson is the architecture." A bottom caption reads "Modules 1-19 built the parts; Module 20 is where they live together — and where the post-mortem starts."](20-capstone/Module20-Hero.png)
 
-*The whole module on one page. The capstone is fundamentally an integration: the new code (`Conversation`, `Assistant`, `EvalSuite`, the CLI) is small; the lesson is the architecture and the post-mortem. By the end of this module you will have a working chat assistant — and, more importantly, a written characterization of where each layer earns its keep, where it breaks down, and where the from-scratch model stops being viable.*
+By the end of this module you will have a working chat assistant — and, more importantly, a characterization of where each layer earns its keep, where it breaks down, and where the from-scratch model stops being viable.
 
 ---
 ## Before you start
@@ -90,19 +90,19 @@ This is the same Markov-ish "prompt grows monotonically" property as Module 19's
 
 - **Production sandboxing.** All Module 18/19 caveats apply — `run_python` runs untrusted code in an unsandboxed subprocess. Fine for local pedagogy, NOT fine for a hosted assistant.
 
-## Why we start here
+## Where this fits in
 
-You've built nineteen modules. Module 1's autograd engine was 200 lines; Module 10's pretraining was a real loss curve on a real corpus; Module 19's agent was a multi-step ReAct loop with error recovery. The components are all there. They've been tested in isolation but never *together*.
+You've built nineteen modules. Module 1 was a basic autograd engine; Module 10's pretraining was a real loss curve on a real corpus; Module 19's agent was a multi-step ReAct loop with error recovery. The components are all there. They've been tested in isolation but never *together*.
 
 The capstone is where you find out:
 
 ```
-   ┌──────────────────────────────────────────────────────────────────────┐
+   ┌───────────────────────────────────────────────────────────────────────┐
    │  THINGS YOU LEARN BY ASSEMBLING                                       │
-   ├──────────────────────────────────────────────────────────────────────┤
+   ├───────────────────────────────────────────────────────────────────────┤
    │                                                                       │
    │   • Where does each layer EARN its keep?                              │
-   │       - The from-scratch model (M10) generates fluent text but         │
+   │       - The from-scratch model (M10) generates fluent text but        │
    │         can't follow chat instructions reliably.                      │
    │       - SFT (M13) makes it follow prompts.                            │
    │       - DPO (M14) makes it polite.                                    │
@@ -113,23 +113,23 @@ The capstone is where you find out:
    │       - Conversation memory (M20) makes it usable.                    │
    │                                                                       │
    │   • Where does each layer BREAK?                                      │
-   │       - The model's responses get repetitive at low temperature.     │
-   │       - The retriever picks the wrong chunks on ambiguous queries.   │
-   │       - The agent loops on poorly-described tools.                   │
-   │       - The conversation drifts when context exceeds the cap.        │
-   │       - Some questions need three of these all at once and one of    │
-   │         them goes wrong, masking the others.                         │
+   │       - The model's responses get repetitive at low temperature.      │
+   │       - The retriever picks the wrong chunks on ambiguous queries.    │
+   │       - The agent loops on poorly-described tools.                    │
+   │       - The conversation drifts when context exceeds the cap.         │
+   │       - Some questions need three of these all at once and one of     │
+   │         them goes wrong, masking the others.                          │
    │                                                                       │
-   │   • Where does the from-scratch model STOP being viable?             │
-   │       - Anywhere that depends on instruction-tuning, world           │
-   │         knowledge, or multi-step reasoning. (Spoilers: most         │
-   │         interesting tasks.)                                          │
-   │       - The capstone uses a pretrained model (Llama / Qwen) for     │
-   │         this reason. The from-scratch model lives on as a            │
-   │         comparison baseline — you can swap it in via                 │
-   │         `LocalTransformerBackend` and feel the gap.                  │
+   │   • Where does the from-scratch model STOP being viable?              │
+   │       - Anywhere that depends on instruction-tuning, world            │
+   │         knowledge, or multi-step reasoning. (Spoilers: most           │
+   │         interesting tasks.)                                           │
+   │       - The capstone uses a pretrained model (Llama / Qwen) for       │
+   │         this reason. The from-scratch model lives on as a             │
+   │         comparison baseline — you can swap it in via                  │
+   │         `LocalTransformerBackend` and feel the gap.                   │
    │                                                                       │
-   └──────────────────────────────────────────────────────────────────────┘
+   └───────────────────────────────────────────────────────────────────────┘
 ```
 
 The post-mortem at the end of this module is the deliverable that compresses these observations into a permanent record. It's the actual learning outcome of the course.
@@ -345,60 +345,6 @@ Total scaffolded code: roughly 50 lines across two method bodies. The rest is in
 
 - **Most "agent failures" are integration failures.** When the assistant gets a question wrong, the bug is rarely in the agent loop itself. It's almost always upstream: the wrong tool was registered, the wrong chunks were retrieved, the conversation history truncated the relevant message, the prompt template was unclear. Debug by checking `AssistantTurn` fields in order: `retrieved_context`, `contextualized_message`, `agent_run.steps`. The trail of what the assistant *saw* is more useful than what the model *did*.
 
-## Scaffolding and how to run the tests
-
-This module ships six files in `g2c/assistant/`:
-
-- **`config.py`** — `AssistantConfig` + `AssistantError`. All boilerplate.
-- **`conversation.py`** — `Message` + `Conversation` with `add_user` / `add_assistant` / `clear` / `last_user_message` (implemented) + `format_for_prompt` (**scaffolded**).
-- **`assistant.py`** — `Assistant` class with constructor + helpers `_maybe_retrieve` / `_build_contextualized_message` (implemented) + `chat` (**scaffolded**).
-- **`eval.py`** — `EvalCase` / `EvalCaseResult` / `EvalReport` / `run_evaluation`. All implemented.
-- **`cli.py`** — `run_cli` + `CLI_HELP`. All implemented.
-- **`__init__.py`** — public exports.
-
-Tests live in `tests/test_assistant.py`. Initial state on `main`: 70 tests pass (boilerplate + components that are fully implemented). 54 tests fail with `NotImplementedError` (or transitively, where they call into a scaffold) until you fill in the two scaffolded methods.
-
-```bash
-pytest tests/test_assistant.py                          # all module-20 tests
-pytest tests/test_assistant.py -x                       # stop at first failure
-pytest tests/test_assistant.py -k Conversation          # conversation tests
-pytest tests/test_assistant.py -k Chat                  # the orchestration
-pytest tests/test_assistant.py -k Eval                  # the regression gate
-pytest tests/test_assistant.py -k CLI                   # the CLI loop
-pytest tests/test_assistant.py -k Integration           # full-pipeline smoke
-pytest tests/test_assistant.py -v                       # verbose
-```
-
-Implementation order — two independent steps:
-
-  1. **`Conversation.format_for_prompt`** in `g2c/assistant/conversation.py`. Render the chat history as `"User: ...\nAssistant: ..."`. Pure logic — no external deps. Easiest place to start. Turns green: `TestConversationFormat`, `TestConversationFormatTruncation`.
-
-  2. **`Assistant.chat`** in `g2c/assistant/assistant.py`. The orchestration: format history → optional RAG → build contextualized message → run agent → record in conversation → return turn. Once `format_for_prompt` is done, this turns green and everything downstream (eval suite, CLI driving chat, integration smoke) passes too. Turns green: `TestAssistantChat`, `TestAssistantChatHistory`, `TestAssistantChatRAG`, `TestAssistantChatErrorHandling`, `TestEvalSuite`, `TestCLI` (the chat-driven tests), `TestIntegrationSmoke`.
-
-The two are independent. Suggested order is "conversation first" because the assistant's chat depends on `format_for_prompt`, but you can implement either first — the tests for the unimplemented one will keep failing.
-
-The integration tests (`TestIntegrationSmoke`) also depend on Module 18's `validate_arguments` and `calculator_evaluate`, plus Module 19's four scaffolds, all being implemented — they exercise the calculator tool through the agent through the assistant. If those are still scaffolded from earlier modules, the integration tests will fail transitively until you finish 18 and 19 first.
-
-Headline tests to watch:
-
-- **`test_history_does_not_double_include_current_message`** — pins the "render history BEFORE adding current user message" rule. If you add the user message to the conversation first and then render, the current question appears twice in the prompt: once as history, once as the current question.
-
-- **`test_history_visible_to_backend_in_prompt`** — pins the wiring. The conversation history must arrive at `backend.complete` via the agent's prompt, not just live on the `AssistantTurn`. Without this the assistant has no actual multi-turn memory.
-
-- **`test_failed_run_records_synthetic_assistant_message`** — pins the placeholder contract. When `agent.run` produces no `final_answer`, the conversation still gets an assistant message ("(no answer — stopped: max_steps)") so the next turn's history is coherent.
-
-- **`test_rag_passed_to_backend_prompt`** — pins the RAG wiring. Retrieved chunks must end up in the prompt the backend sees, not just on the `AssistantTurn`.
-
-- **`test_rag_off_per_call_overrides_config`** — pins the per-call override. `chat(msg, use_rag=False)` must skip retrieval even when `config.rag_enabled=True`. The retriever shouldn't be called.
-
-- **`test_broken_retriever_raises_assistant_error`** — pins the "retrieval errors are config bugs, not model bugs" rule. The retriever isn't wrapped in a try/except inside `chat`; failures propagate.
-
-- **`test_passes_when_substring_matches`** / **`test_fails_on_no_final_answer`** — pin the eval gate's three checks. Substring missing ⇒ fail. No final answer ⇒ fail (regardless of substring). Tool not called ⇒ fail (when expected_tool is set).
-
-- **`test_reset_each_isolates_cases`** vs **`test_reset_each_false_threads_state`** — pin the eval harness's two modes. Default (reset_each=True) gives each case a fresh conversation; turning it off lets cases share state for multi-turn eval suites.
-
-- **`test_save_writes_transcript`** — pins the CLI's `/save` round-trippability. The transcript is JSON, includes the config, the messages, and per-turn metadata.
-
 ## What you'll build
 
 Package: `g2c/assistant/`
@@ -492,6 +438,21 @@ def run_cli(assistant, *,                                         # implemented
 ```
 
 Total scaffolded code: roughly 50 lines across two function bodies. The lesson is the architecture (where each layer fits, what flows between them); the orchestration is layout.
+
+## How to run the tests
+
+Tests live in `tests/test_assistant.py`. Initial state on `main`: 70 tests pass . 54 tests fail
+
+```bash
+pytest tests/test_assistant.py                          # all module-20 tests
+pytest tests/test_assistant.py -x                       # stop at first failure
+pytest tests/test_assistant.py -k Conversation          # conversation tests
+pytest tests/test_assistant.py -k Chat                  # the orchestration
+pytest tests/test_assistant.py -k Eval                  # the regression gate
+pytest tests/test_assistant.py -k CLI                   # the CLI loop
+pytest tests/test_assistant.py -k Integration           # full-pipeline smoke
+pytest tests/test_assistant.py -v                       # verbose
+```
 
 ## Exercises
 
@@ -621,7 +582,7 @@ Llama 3.2:3b is the fastest reasonable choice; Qwen 2.5:7b handles multi-step re
 
 ## Reading
 
-The capstone has fewer required readings than other modules — most of the conceptual ground was covered earlier. The reading list here is for situating the capstone work in the broader landscape and informing the post-mortem.
+The capstone has fewer required readings— most of the conceptual ground was covered earlier. The reading list here is for situating the capstone work in the broader landscape and informing the post-mortem.
 
 Primary:
 
@@ -649,9 +610,9 @@ Optional:
 
 ## Deliverable checklist
 
-- [ ] All tests in `tests/test_assistant.py` pass: 124 tests, all green.
+- [ ] All tests in `tests/test_assistant.py` pass.
 - [ ] Ollama running with a tool-calling chat model. `ollama list` shows `llama3.2:3b` (or your chosen model).
-- [ ] Notebook: `notebooks/20-capstone.ipynb`. Wires `Assistant` + a multi-tool registry + a RAG corpus, runs Exercises 1, 3, 4, 6 with output cells visible.
+- [ ] Notebook: `notebooks/20-capstone.ipynb`. 
 - [ ] **Eval suite**: `notebooks/20-eval-cases.py` (or similar) with 5-15 `EvalCase`s. Pass rate ≥ 80% on your assistant configuration.
 - [ ] **Failure-mode catalog** (Exercise 8) in `docs/capstone-failure-modes.md`. Five failure modes, each with a transcript, localization, and proposed mitigation.
 - [ ] **The post-mortem** (Exercise 10) at `docs/capstone-postmortem.md`. The actual deliverable. 1500-3000 words. The required sections are listed in Exercise 10.

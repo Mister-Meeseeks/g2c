@@ -76,7 +76,7 @@ Three small ideas worth having in your head:
 
 Modules 1–16 built a model and made it usable. The tiny model from Module 14 doesn't know facts — Module 16 fixed that by pivoting to a real pretrained model behind a unified `Backend`. But even a 7B-class model has gaps:
 
-At inference time, models can "know" facts in one of two ways. One is that they're already embedded into weights of the model's internal world model. In [[15-evaluation]] we tested models on their factual recall of questions like "What's the largest city in Spain?". Models learn facts like these during training, primarily pretraining. 
+At inference time, models can "know" facts in one of two ways. One is that they're already embedded into weights of the model's internal world model. In [[15-evaluation]] we tested models on their factual recall of questions like "What's the largest city in Spain?". Models learn facts like these during training, primarily pretraining.
 
 The other way a model can "know" a fact is, when it's supplied in the prompt. We can also pose questions like "Kate is in 10th grade, how many years until she graduate high school?" To produce the right answer, the model must take a fact supplied in the prompt ("Kate is in 10th grade") with a fact that it hopefully learned in pretraining ("High school ends at grade 12").
 
@@ -104,32 +104,30 @@ The other way a model can "know" a fact is, when it's supplied in the prompt. We
 
 **Retrieval** is how assistant systems bridges between a large collection of information in the form of a corpus (not necessarily the same corpus used in pretraining) and what information it selectively curates at [[16-inferance]] time to actually put into the prompt.
 
-A simple example: "what did the president say in his speech last night?". First we know this fact isn't going to be internally known to the model, because it occurred too recently to be in the pretraining corpus. Therefore the assistant system must recall it from a retrieval corpus. If users frequently ask about current events, then it's reasonable for our assistant system's retrieval corpus to include something like BBC stories from the past week. 
+A simple example: "what did the president say in his speech last night?". First we know this fact isn't going to be internally known to the model, because it occurred too recently to be in the pretraining corpus. Therefore the assistant system must recall it from a retrieval corpus. If users frequently ask about current events, then it's reasonable for our assistant system's retrieval corpus to include something like BBC stories from the past week.
 
 It's not practically feasible to dump "all news from the past week" into a context window, and let the model figure it out. Something has to curate the potentially relevant information before we send the prompt to the model. In this example, the model doesn't need news stories about soccer matches or celebrity gossip, but it does need news stories about the president.
 
-Retrieval makes assistant systems more intelligent by curating relevant information and exposing it to the model at inference time. When executed right, the end user sees a transpa assistant system that seamlessly knows everything in the corpus. 
+Retrieval makes assistant systems more intelligent by curating relevant information and exposing it to the model at inference time. When executed right, the end user sees a transpa assistant system that seamlessly knows everything in the corpus.
 
 ## The big idea
 
 The goal of retrieval is to query a large corpus for data relevant to an arbitrary prompt. The retrieval system doesn't need to "understand" the data. It just has to curate a small context-sized subset of the corpus based on relevance. 
 
-We start by slicing the corpus into **chunks** that are 
+In [[05-embeddings]] we learned a technique for converting language into geometry. Embeddings project tokens into a vector in a high dimensional semantic space. **Vector retrieval** that same idea to whole chunks of text. 
 
-In [[05-embeddings]] we learned a technique for converting language into geometry. Embeddings project tokens into a vector in a high dimensional semantic space. That has two major advantages over string based approaches:
+Instead of asking the language model to internally remember every fact, we build a searchable map of an external corpus. Each chunk gets reduced to a vector by an embedding model. Each user question gets reduced to a vector by the same embedding model. Retrieval is then a nearest-neighbor problem: find the chunk vectors closest to the question vector.
 
-1. **Embedding vectors are semantically rich.** Substrings break on synonyms, related concepts, cross-language comparisons, etc. "*bank*" and "*loan*" have no string overlap, but high semantic overlap.
-2. **Vectors are easy to aggregate**. In Module 5 we showed this with `queen = king - man + woman`. Retrieval operates over large chunks of text. We need a way to determine the semantic overlap of not just individual words but between two large bodies of text. We use geometry to "average" vectors in a phrase, sentence, paragraph, or chunk is easy. 
+That gives the assistant a practical two-step memory system:
 
-**Retrieval augmented generation (RAG)** is the recipe for incorporating a retrieval system into a broader assistant system:
+1. **Index time:** prepare the corpus before the user asks anything. Split documents into chunks, embed each chunk, and store `(chunk, vector)` pairs in an index.
+2. **Query time:** when the user asks a question, embed the question, search the index for the closest chunks, and put those chunks into the prompt before calling the inference backend.
 
-1. **Retrieval ─** Convert the user prompt into a vector using the embedding model. Slice the corpus into chunks of text. For each chunk, convert into an embedding vector. Calculate a similarity alculate a geometrical based similarity score.
-2. **Augmented ─** Select the highest ranked chunks and insert into the prompt.
-3. **Generation ─** Send the augmented prompt to the LLM, so its response has access to the retrieved data
+The important distinction is that retrieval does not answer the question by itself. Rather its a component of the **retrieval augmentation generation (RAG)** pipeline.  Retrieval only decides what evidence the model gets to read. Augmentation is how we incorporate that evidence into the prompt. Generation is running the LLM with the agumented prompt.
 
-With reliable well-fit embeddings, retrieval is a simple formula. Start by **indexing** the corpus up front. Amortize as much non-query specific work as possible ahead of time. Break the corpus up into chunks, convert the chunk texts into embedding, then write the vector for each chunk to a table. 
+The generator still does the language work: combining the user's question with the retrieved context, reasoning over it, and producing the answer. If retrieval finds the right chunks, even a modest model can look much smarter. If retrieval finds the wrong chunks, a strong model may confidently answer from the wrong evidence.
 
-At query time, we convert the user prompt itself into an embedding vector. We scan through the pre-indexed table comparing each chunk's vector to the prompt's vector, generating a similarity score. We select the top K most relevant chunks based off those scores, then inject the text contents into the system prompt.
+This is why RAG is best understood as an assistant-scaffold pattern rather than a new model architecture. The model weights stay fixed. The corpus can change every day. The index can be rebuilt whenever documents change. At inference time, the model receives a curated slice of the corpus as prompt context and behaves as if it "knows" that information.
 
 ```
    ┌──────────────────────────────────────────────────────────────────────┐
@@ -200,28 +198,28 @@ Overlap exists for exactly one reason: an answer-bearing sentence that crosses a
 
 ```
    No overlap:
-   
+
 	────────── chunk 1 ───────────────────┌───── chunk 2 ──────────────────────
-										  | 
+										  |
 	...big cities. The largest city in America is New York. It was settled in...
-	                                      | 
+	                                      |
 	────────── chunk 1 ───────────────────└────── chunk 2 ──────────────────────
-     
-     
+
+
    With overlap:
-   
+
    ────────── chunk 1 ───────────────────┐
 				 ┌───── chunk 2 ───────────────────────────────────────────────
-				 | 
+				 |
    ...big cities. The largest city in America is New York. It was settled in...
-	             | 
+	             |
 	             └────── chunk 2 ──────────────────────────────────────────────
     ────────── chunk 1 ───────────────────┘
 ```
 
 This module's chunker is the simplest possible: fixed-size sliding window with overlap. It ignores sentence and paragraph boundaries. A real chunker prefers natural breaks; the `chunk_text` recipe is intentionally minimal so the lesson is the math.
 
-### Embedding 
+### Embedding
 
 ![Embedding space and cosine search. Left half: a 2D scatter of chunk embeddings color-coded by cluster — Spain/Cities (green), Python/Code (blue), Cooking (orange), Machine Learning (purple). Texts about the same topic land in the same neighborhood. The user's query "What is the capital of Spain?" embeds to a point near the Spain/Cities cluster, marked with a star. A "cosine similarity intuition" panel pins the math: for L2-normalized vectors, `cos(u, v) = u · v` — small angle → high similarity → score near 1; orthogonal → score near 0; opposite → score near -1. Right half: the search algorithm in five steps. Step 1 — embed the query. Step 2 — dot the query against every row of the (N, d) store matrix to get N similarities. Step 3 — `np.argpartition(scores, -k)` finds the top-k indices in O(N) without sorting the full array. Step 4 — sort just those k indices by descending score. Step 5 — return the top-k chunks plus their similarity scores. A "key takeaway" panel: cosine similarity finds the chunks whose meaning is most similar to the query — not the chunks that share words.](17-rag/Module17-Embedding.png)
 *With embedding vectors, semantic similarity reduces to geometry*
@@ -252,7 +250,7 @@ An embedding is a function from a string of text to a numerical vector in a high
 
 `HashEmbedder` is what you can build in a hundred lines of stdlib. It captures lexical signal — strings sharing tokens / n-grams cluster together. It's enough to make the pipeline work for tests, and enough to feel the limits: a question phrased differently from the source document doesn't retrieve. `OllamaEmbedder` (or any neural embedder) captures semantics — the same idea expressed in different words still clusters. **For real retrieval over heterogeneous queries, you want a neural embedder.** The `HashEmbedder` exists because (1) it teaches what an embedding even is, and (2) a fully-stdlib pipeline is testable without an external service.
 
-### Retrieval 
+### Retrieval
 
 Given a query embedding `q` and a stored matrix of chunk embeddings `V` (shape `(N, d)`), all of which are L2-normalized:
 
@@ -322,7 +320,7 @@ Note what's *not* in the template: chat-template markers like `<|user|>...<|assi
 ## Concepts to internalize
 
 - **The vector is not the meaning, it's a *coordinate for* the meaning.** Two strings with similar embeddings are close in the geometry of *that embedder*.  There's no "ground truth" embedding space — only embedders that are useful for specific retrieval tasks.
-- **Retrieval quality dominates RAG quality.** A 7B model handed the right chunk answers correctly; the same model handed the wrong chunk hallucinates. 
+- **Retrieval quality dominates RAG quality.** A 7B model handed the right chunk answers correctly; the same model handed the wrong chunk hallucinates.
 - **The "I don't know" guard is the single highest-leverage line in the prompt.** Models that have it abstain on insufficient context; models that don't, hallucinate.
 - **Chunks should be self-contained.** A chunk that ends mid-sentence forces the model to hallucinate the missing context. Real chunkers prefer natural breaks for this reason.
 - **Citations are alignment, not formatting.** The point of `[1] (source: foo.md)` isn't pretty output — it's that a reviewer can verify the claim.
@@ -332,7 +330,7 @@ Note what's *not* in the template: chat-template markers like `<|user|>...<|assi
 
 - **Implementing HNSW or any other ANN index.** Production scale wants this; course scale does not. Building HNSW from scratch is a 200-line project and a different lesson.
 - **Implementing a sentence-transformer-style dense embedder.** Training a contrastive bi-encoder is its own multi-week curriculum. We use `OllamaEmbedder` to plug into a pretrained one. Treat the embedder as a black box that turns text into a 768-vector.
-- **Hybrid retrieval**. All RAG 
+- **Hybrid retrieval**. All RAG
 - **Re-ranking with a cross-encoder.** Production RAG pipelines often retrieve top-k=50 with a cheap dense embedder and then re-rank top-k=5 with an expensive cross-encoder.
 - **Async embedding.** Embedding 10k chunks against a remote service one-at-a-time takes minutes. Real pipelines batch via async. We don't — the lesson is the math.
 
