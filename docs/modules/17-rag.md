@@ -1,6 +1,6 @@
 # Module 17 — Retrieval-augmented generation
 
-> **Question this module answers:** *How does the model use external knowledge it doesn't have memorized?*
+> **Question this module answers:** *How can the model use external knowledge it doesn't have memorized?*
 
 ![Hero](17-rag/Module17-Hero.png)
 

@@ -230,5 +230,32 @@ def assemble_rag_prompt(
         `"Context:\n[...]\n\nQuestion: ..."` with no leading or
         trailing paragraphs.
     """
-    # TODO
-    raise NotImplementedError
+    if not isinstance(question, str):
+        raise TypeError(
+            f"question must be str, got {type(question).__name__}"
+        )
+    if len(question) == 0:
+        raise ValueError("question must be non-empty")
+
+    chunk_list = _coerce_chunks(chunks)
+
+    chunk_parts: list[str] = []
+    for index, chunk in enumerate(chunk_list, start=1):
+        chunk_parts.append(
+            f"[{index}] (source: {chunk.source})\n{chunk.text}"
+        )
+    chunk_block = "\n\n".join(chunk_parts)
+
+    parts: list[str] = []
+    if system:
+        parts.append(system)
+    parts.append("Context:\n" + chunk_block if chunk_block else "Context:")
+    parts.append(f"Question: {question}")
+    if instruction:
+        parts.append(instruction)
+
+    return RAGPrompt(
+        text="\n\n".join(parts),
+        question=question,
+        chunks=tuple(chunk_list),
+    )

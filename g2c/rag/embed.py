@@ -239,8 +239,19 @@ class HashEmbedder(Embedder):
           * `embed(["abc"])` row is L2-normalized: `(out**2).sum() ==
             1.0` to within float32 precision.
         """
-        # TODO
-        raise NotImplementedError
+        out = np.zeros((len(texts), self._dim), dtype=np.float32)
+        n_min, n_max = self._ngram_range
+
+        for row, text in enumerate(texts):
+            lowered = text.lower()
+            for n in range(n_min, n_max + 1):
+                if len(lowered) < n:
+                    continue
+                for start in range(len(lowered) - n + 1):
+                    bucket = self._bucket(lowered[start : start + n])
+                    out[row, bucket] += 1.0
+
+        return _l2_normalize_rows(out).astype(np.float32, copy=False)
 
     def __repr__(self) -> str:
         n_min, n_max = self._ngram_range

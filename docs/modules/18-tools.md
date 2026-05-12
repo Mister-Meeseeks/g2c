@@ -1,6 +1,6 @@
 # Module 18 — Tool use
 
-> **Question this module answers:** *How does the model act outside itself?*
+> **Question this module answers:** *How can the model act outside itself?*
 
 ![Module 18 on one page: a four-panel circus map of the tool-use loop. PANEL 1 (top-left, "REGISTRATION"): a `ToolRegistry` shelf holds four labeled drawers — `calculator` (with a parameters schema scroll: {"expression": "string"}), `read_file` ({"path": "string", "max_chars": "integer"}), `web_search` ({"query": "string"}), `run_python` ({"code": "string"}). Each drawer's front shows the tool's description in plain English. PANEL 2 (top-right, "PROMPT TIME"): the registry's tools render into a system prompt block: "Tools available:\n- calculator: Evaluate an arithmetic expression...\n- read_file: Read a UTF-8 text file..." plus a "Call format: <tool_call>{...}</tool_call>" footer. The user message gets appended below: "User: What's the population of Madrid times 7?" The model reads it. PANEL 3 (bottom-left, "PARSE & DISPATCH"): the model's completion contains a `<tool_call>{"name": "calculator", "arguments": {"expression": "3220000 * 7"}}</tool_call>`. A `parse_tool_calls` machine extracts it; a `validate_arguments` checker stamps it OK; the dispatcher looks up "calculator" in the registry and invokes it. The result `22540000` becomes a `ToolResult`, formatted as `<tool_result name="calculator" id="call_0_xxxx">22540000</tool_result>` and appended back to the prompt. PANEL 4 (bottom-right, "FEEDBACK & STOP"): the model sees the tool result, decides it has enough information, and emits a final answer (no more `<tool_call>` blocks). The loop returns a `ToolRunResult` with `final_answer`, `steps` (every back-and-forth), `stopped_reason="no_more_calls"`. A right-edge sidebar lists key concepts: tool schemas (JSON-schema-lite), the `<tool_call>` format, the parse → dispatch → feedback loop, error surfacing as `<tool_error>` tags so the model can recover, max_steps as the safety net. Bottom caption: "Module 17 gave the model EYES (retrieval); Module 18 gives it HANDS (tools). Module 19 will give it INTENT (planning loops)."](18-tools/Module18-Hero.png)
 
@@ -17,9 +17,9 @@ Tool use is the smallest possible architecture for "let the model affect the out
 ---
 ## Where this fits in
 
-Module 16 built the interface we use to interact with the model. Module 17 moved the input to the model beyond just the user prompt. This module will enhance how we process the output of the model, and therefore the capabilities of the assistant system.
+Module 16 built the interface we use to interact with the model. Module 17 moved input to the model beyond just user prompt. In this module we will expand the ways we consume model output, to go beyond text answers and allow the model to directly take actions.
 
-Up through Module 17, we've built the model and its surrounding assistant system to be *knowledgeable*. The metric has been answering questions correctly. But knowledge isn't enough for an assistant — there are tasks that fundamentally require *action*:
+Up through Module 17, we've built the model and its surrounding assistant system to be *knowledgeable*. The framing has been the questions the system could answer. But knowledge isn't enough for an assistant — there are tasks that fundamentally require *action*:
 
 ```
    ┌──────────────────────────────────────────────────────────────────────┐
@@ -154,8 +154,6 @@ Each step in the pipeline has a precise responsibility, and each responsibility 
 ```
 
 The model may not call the tool correctly the first time. A natural response is to **retry** with an attempted correction. This is possible because the tool harness returns errors as text that the model can process, instead of raising errors in the harness itself. Without that the harness would just crash on the first error. 
-
-Even if the tool calls succeed, the model may want to initiate another round of tool calls based on the results of the first. For example if the user asks "*what time does the best museum in Paris open*", the first turn might call `web_search("best museum in Paris")` and based on that result the second turn might call `web_search("opening hours Louvre")`.
 
 Therefore the tool harness has to handle multiple rounds of **tool-use steps** on a single query. Which means we need to know *when to stop.* Our harness supports two stopping conditions:
 

@@ -273,5 +273,77 @@ def run_with_tools(
       * Backend that always emits a tool call and `max_steps=2` →
         two steps, `final_answer=None`, `stopped_reason="max_steps"`.
     """
-    # TODO
-    raise NotImplementedError
+    if not isinstance(user_message, str) or not user_message:
+        raise ValueError("user_message must be a non-empty str")
+    if max_steps <= 0:
+        raise ValueError(f"max_steps must be > 0, got {max_steps}")
+
+    tools_block = render_tools_for_prompt(registry.tools)
+    transcript = "\n\n".join(
+        [
+            system,
+            tools_block,
+            f"User: {user_message}",
+            "Assistant:",
+        ]
+    )
+
+    steps: list[ToolStep] = []
+    final_answer: str | None = None
+    stopped_reason = "max_steps"
+
+    for _ in range(max_steps):
+        inference = backend.complete(
+            transcript,
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+            top_k=top_k,
+            top_p=top_p,
+        )
+        completion = inference.completion
+        tool_calls = parse_tool_calls(completion)
+
+        if not tool_calls:
+            final_answer = completion
+            steps.append(
+                ToolStep(
+                    completion=completion,
+                    tool_calls=[],
+                    tool_results=[],
+                    inference=inference,
+                )
+            )
+            stopped_reason = "no_more_calls"
+            break
+
+        tool_results = [dispatch_tool_call(registry, call) for call in tool_calls]
+        steps.append(
+            ToolStep(
+                completion=completion,
+                tool_calls=tool_calls,
+                tool_results=tool_results,
+                inference=inference,
+            )
+        )
+        transcript = (
+            transcript
+            + " "
+            + completion
+            + "\n\n"
+            + format_tool_results(tool_results)
+            + "\n\nAssistant:"
+        )
+
+    return ToolRunResult(
+        user_message=user_message,
+        final_answer=final_answer,
+        steps=steps,
+        stopped_reason=stopped_reason,
+        metadata={
+            "n_steps": len(steps),
+            "n_tool_calls": sum(len(step.tool_calls) for step in steps),
+            "tools_available": registry.names(),
+            "backend_name": backend.info.name,
+            "backend_model_id": backend.info.model_id,
+        },
+    )
