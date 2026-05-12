@@ -5,7 +5,7 @@
 
 ![Hero](19-agent/Module19-Hero.png)
 
-*The whole module on one page. The agent loop is a thin wrapper around Module 18's tool dispatch: it adds explicit reasoning (Thought lines), persistent memory (the scratchpad), an optional plan, smarter stop conditions (duplicate-action detection, halt-on-stuck), and graceful recovery from tool errors. The model still does all the cognitive work; the agent loop just keeps it on rails.*
+*The agent loop is a thin wrapper around tool dispatch: it adds explicit reasoning, persistent memory (the scratchpad), an optional plan, smarter stop conditions, and graceful recovery from tool errors. The model still does all the cognitive work; the agent loop just keeps it on rails.*
 
 ---
 ## Before you start
@@ -47,16 +47,16 @@ None. You only need basic counting and comparison for step counts, stop reasons,
 - Production sandboxing. All Module 18 caveats still apply: the local `run_python` tool is pedagogical, not a hosted-agent sandbox.
 - Token-aware context management and long-term memory. Module 19 uses a simple scratchpad; Module 20 layers on conversation-level assistant behavior.
 
-## Why we start here
+## Where this fits in
 
-Module 19 is the fourth leg of Phase V: assistant systems. Module 16 gave us a stable model backend. Module 17 added retrieval. Module 18 gave the model tools. Now we need the runtime pattern that lets the model pursue a goal across several calls, observe what happened, recover from mistakes, and eventually stop.
+Module 16 gave us a stable model backend. Module 17 added retrieval. Module 18 gave the model tools. Now we need the runtime pattern that lets the model pursue a goal across several calls, observe what happened, recover from mistakes, and eventually stop.
 
 Module 18 fixed the "model needs to call a function" problem with one tool call per turn. But many real tasks need a *sequence*:
 
 ```
-   ┌──────────────────────────────────────────────────────────────────────┐
-   │  TASKS THAT NEED MORE THAN ONE TOOL CALL                             │
-   ├──────────────────────────────────────────────────────────────────────┤
+   ┌───────────────────────────────────────────────────────────────────────┐
+   │  TASKS THAT NEED MORE THAN ONE TOOL CALL                              │
+   ├───────────────────────────────────────────────────────────────────────┤
    │                                                                       │
    │   • "Summarize the longest file in this directory":                   │
    │       1. list files                                                   │
@@ -75,12 +75,12 @@ Module 18 fixed the "model needs to call a function" problem with one tool call 
    │       3. read the error                                               │
    │       4. propose a fix                                                │
    │                                                                       │
-   │   The Module 18 loop technically supports multi-call sequences, but   │
-   │   it has no protocol for the model to *reason* between calls. The    │
-   │   model has to decide its next action with no place to think out     │
-   │   loud first. ReAct fixes this with explicit Thought lines.          │
+   │   The tool loop technically supports multi-call sequences, but        │
+   │   it has no protocol for the model to *reason* between calls. The     │
+   │   model has to decide its next action with no place to think out      │
+   │   loud first.                                                         │
    │                                                                       │
-   └──────────────────────────────────────────────────────────────────────┘
+   └───────────────────────────────────────────────────────────────────────┘
 ```
 
 The headline finding from the ReAct paper is empirical: small models (PaLM-540B in 2022; the equivalent today is a 7-13B Llama / Qwen) do measurably better on multi-step tool-use tasks when the prompt forces an explicit `Thought:` line before each `Action:`. The Thought line gives the model a place to commit to *why* it's about to call a tool; without it, models conflate reasoning and action and the tool selection gets noisy.
@@ -278,29 +278,29 @@ The dispatcher (Module 18's `dispatch_tool_call`) already wraps every error clas
 
 ```
    ┌──────────────────────────────────────────────────────────────────────┐
-   │  STOP CONDITION TABLE                                                 │
+   │  STOP CONDITION TABLE                                                │
    ├──────────────────────────────────────────────────────────────────────┤
-   │                                                                       │
-   │   stopped_reason   when it fires           what it means              │
-   │   ──────────────   ─────────────────       ────────────────────────   │
+   │                                                                      │
+   │   stopped_reason   when it fires           what it means             │
+   │   ──────────────   ─────────────────       ────────────────────────  │
    │   final_answer     model emitted Final     clean exit, model is done │
-   │                    Answer                                             │
-   │                                                                       │
+   │                    Answer                                            │
+   │                                                                      │
    │   duplicate_       same action + same      model didn't understand   │
    │     action         args two steps in a     its last observation, is  │
    │                    row, with               looping. Stop.            │
-   │                    loop_detection=True                                │
-   │                                                                       │
+   │                    loop_detection=True                               │
+   │                                                                      │
    │   no_progress      neither action nor      model emitted prose with  │
    │                    final answer, with      no structured content.    │
    │                    halt_on_stuck=True      Halt rather than retry.   │
-   │                                                                       │
+   │                                                                      │
    │   max_steps        loop ran out of         the safety net. Returns   │
    │                    iterations              final_answer=None — the   │
    │                                            model never decided to    │
    │                                            stop. Tune max_steps for  │
    │                                            the task.                 │
-   │                                                                       │
+   │                                                                      │
    └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -312,62 +312,6 @@ The default Agent has `loop_detection=True`, `halt_on_stuck=False`, `max_steps=8
 - Truly bad situations: `max_steps` cuts off after 8 turns. ✓
 
 Tuning these per-task is a real consideration — `loop_detection=False` for legitimate-retry workflows; `halt_on_stuck=True` when the model has only one shot at format compliance; smaller / larger `max_steps` for one-shot vs. long-task agents.
-
-### The unified agent interface
-
-```
-   ┌─────────────────────────────────────────────────────────────────────┐
-   │   g2c/agent/  PUBLIC API                                              │
-   ├─────────────────────────────────────────────────────────────────────┤
-   │                                                                       │
-   │   Action(tool, arguments)                                             │
-   │     a parsed tool invocation                                          │
-   │                                                                       │
-   │   Observation(output, is_error)                                       │
-   │     the result of one action                                          │
-   │                                                                       │
-   │   Plan(goal, steps)                                                   │
-   │     an optional plan from the planning phase                          │
-   │                                                                       │
-   │   AgentStep(completion, thought, action, observation,                 │
-   │             final_answer, parse_error, inference)                     │
-   │     one iteration's record                                            │
-   │                                                                       │
-   │   AgentRunResult(user_message, plan, final_answer, steps,             │
-   │                  stopped_reason, metadata)                            │
-   │     the full run's record                                             │
-   │                                                                       │
-   │   AgentError                                                          │
-   │     internal exception type                                           │
-   │                                                                       │
-   │   ParsedStep(thought, action, final_answer, parse_error)              │
-   │     parse_react_step's output                                         │
-   │                                                                       │
-   │   parse_react_step(text) → ParsedStep                                 │
-   │     extract Thought/Action/Action Input/Final Answer                  │
-   │                                                                       │
-   │   Scratchpad(*, max_chars=None)                                       │
-   │     .append(step), .render(), .steps, len()                           │
-   │                                                                       │
-   │   extract_plan(text, user_message) → Plan | None                      │
-   │     parse a numbered plan from a planning completion                  │
-   │                                                                       │
-   │   make_plan(backend, user_message, registry, **kw) → Plan | None      │
-   │     run the planning phase end-to-end                                 │
-   │                                                                       │
-   │   render_system_prompt(tools) → str                                   │
-   │   render_planning_prompt(user_message, tools) → str                   │
-   │   render_plan_block(goal, steps) → str                                │
-   │     prompt-template renderers                                         │
-   │                                                                       │
-   │   Agent(backend, registry, *, max_steps=8, plan=True,                 │
-   │         loop_detection=True, halt_on_stuck=False, ...)                │
-   │     .run(user_message) → AgentRunResult                               │
-   │                                                                       │
-   └─────────────────────────────────────────────────────────────────────┘
-```
-
-Total scaffolded code: roughly 100 lines spread across four method bodies. Everything else — the dataclasses, the registry composition, the prompt templates, the planner orchestration, the dispatch wiring — is pre-implemented because the wiring isn't the lesson; the protocol is.
 
 ## Concepts to internalize
 
