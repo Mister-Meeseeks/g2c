@@ -9,69 +9,16 @@ RAG is the smallest possible architecture for "give the model access to informat
 ---
 ## Before you start
 
-* *Refresh*
-	* Hashing
-	* Cosine similarity
-	* Asymptotic runtime
 * *Review
 	* Numpy review  `np.linalg.norm`, `@` (matrix multiply), `np.argpartition`, `np.argsort`
-* *Finish* `g2c/inference` from [[16-inference]] — `RAGPipeline` drives generation through the unified `Backend` interface
+	* [[05-embeddings]] for embedding vectors, semantic geometry and cosine similarity
+	* [[13-sft]] for the general assistant prompt format. 
+	* [[16-inference]] for Ollama and the abstracted backend pattern
+* *Finish* 
+	* `g2c/inference` from [[16-inference]] 
+* *Configure* Production embedding model with `./prodlm.sh` 
 
 ---
-## Prerequisites
-
-Module 17 opens the second half of Phase V (assistant systems). Module 16 built the unified `Backend` interface; this module is the first downstream piece that uses it. Every component you build here — the chunker, the embedder, the vector store, the retriever, the prompt assembler — is going to keep showing up: the agent loop in Module 19 retrieves over conversation history; the capstone in Module 20 retrieves over your own notes.
-
-This module is short on math. There's no new training loss, no new architecture, no gradient. The whole content is:
-
-- A taxonomy of "how to turn text into vectors" (sparse vs dense, hashing vs neural, the cosine-similarity convention).
-- The tradeoffs in chunk size and overlap.
-- The pattern for splicing retrieved context into a prompt without breaking the model's instruction-following.
-- A small Python interface that downstream modules can import without knowing whether the embedder is hash-based or neural.
-
-The only code you write is the pipeline itself.
-
-### Math
-
-Three small ideas worth having in your head:
-
-- **Cosine similarity reduces to a dot product on unit vectors.** For vectors `u, v` with `||u|| = ||v|| = 1`, `cos(u, v) = u · v`. Every embedder in this module L2-normalizes its rows; the vector store therefore searches with a plain dot product. If you ever drop the normalization on either side, the *ranking* still works (norms are positive scalars and don't change argmax order) but the absolute scores become uninterpretable.
-- **Memory cost of a vector index.** A corpus of `N` chunks at dimension `d`, stored in float32, takes `N · d · 4` bytes. A real-world index of 10k chunks at 768-dim is 30 MB — fine. 1M chunks at 1024-dim is 4 GB — already worth thinking about quantizing the index. We don't optimize for this; for course-scale corpora the naive numpy array is fast enough.
-- **Top-k via argpartition is `O(N)`, not `O(N log N)`.** `np.argpartition(scores, -k)` is the right call when `N` is large and `k` is small. The implementation is "quickselect with k pivots" — it finds the top-k indices in linear time without sorting the whole array. For tiny corpora where `k ≈ N`, just sort. The `NumpyVectorStore.search` recipe branches on this.
-
-### Computer science
-
-- **Chunking strategies.** Three families:
-    - **Character / token sliding window.** Fixed-size windows with overlap. What this module implements. Easy to implement, dependency-free, robust to messy text. Loses paragraph and sentence structure.
-    - **Recursive character splitting.** Try to split on `"\n\n"`, fall back to `"\n"`, fall back to `" "`, fall back to characters. Preserves natural breaks. LangChain's default. A small but real upgrade over the sliding window.
-    - **Semantic chunking.** Embed sentences, group consecutive sentences whose embeddings are similar enough that they "belong together." Best quality; slowest; requires an embedder. Used by some agentic systems for indexing long technical documents.
-
-- **Embedder taxonomy.** Three kinds, in order of pedagogical and practical importance:
-    - **Sparse / lexical.** TF-IDF, BM25, our `HashEmbedder`. The vector is mostly zeros; non-zero entries correspond to terms (or n-grams, or hash buckets). Fast, deterministic, no model required. Captures lexical overlap, no semantics. Good for "find passages mentioning the same words" — bad for "find passages on the same topic."
-    - **Dense / neural.** A model — typically a transformer encoder — turns each text into a fixed-dim float vector. `nomic-embed-text` (768-dim), `mxbai-embed-large` (1024-dim), `text-embedding-3-small` (1536-dim). Captures topic, paraphrase, and analogies. Requires a model. The substrate of every modern RAG system.
-    - **Hybrid.** Sparse + dense scores combined (typically by reciprocal-rank fusion). Robust across query types — keyword-heavy queries that dense embedders mishandle ("what does CVE-2024-3094 do?") still hit when sparse retrieval matches the literal token.
-
-- **Vector stores.** Two axes — what's indexed (flat vs ANN) and where it lives (in-memory vs on-disk):
-    - **Flat in-memory.** What `NumpyVectorStore` is. Exact search, `O(N · d)` per query. Fast up to ~100k chunks; eats more memory past that.
-    - **HNSW** (hierarchical navigable small world). Approximate search, sub-linear in `N`. Used by FAISS, hnswlib, Chroma's default backend. Builds a graph at index time; traverses it greedily at query time. ~99% recall at 10–100× speedup over flat for million-scale corpora.
-    - **IVF-PQ** (inverted file with product quantization). Approximate search with quantized vectors. Used by Faiss for the largest corpora. Shrinks the index by a factor of 8–32× at the cost of some recall.
-    - **Hosted services** (Pinecone, Weaviate, LanceDB, Qdrant). Same algorithms as above, behind an HTTP API, with persistence + replication. We don't use any of these; the in-memory store is enough.
-
-- **Citation formatting in prompts.** Three competing conventions:
-    - **Numbered brackets** (`[1]`, `[2]`). What this module uses. Compact, easy for humans to scan, easy for downstream parsers to extract.
-    - **XML tags** (`<source id="1">...</source>`). Anthropic's recommended format for Claude. Verbose; the model ignores it less often.
-    - **Markdown footnotes** (`[^1]`). Native to markdown rendering; rarer in LLM contexts.
-    Whichever you pick, *be consistent*. The reason `[1]` works is that the model has seen millions of bracketed citations during pretraining and knows what to do with them.
-
-- **The "I don't know" guard.** Every RAG prompt should end with an instruction telling the model what to do when the context is insufficient. Without it, the model hallucinates rather than abstaining — because pretraining rewarded fluent continuation, not honesty about the limits of its evidence. This single instruction is responsible for a non-trivial fraction of measurable RAG quality on factual benchmarks.
-
-### Programming
-
-- **`hashlib.blake2b`** for stable hashing. Python's built-in `hash()` is salted differently per process — different runs of the same code produce different hashes — so it's unusable for embeddings. BLAKE2b is fast, stdlib, and stable across runs.
-
-
-
-
 ## Where this fits in
 
 Modules 1–16 built a model and made it usable. The tiny model from Module 14 doesn't know facts — Module 16 fixed that by pivoting to a real pretrained model behind a unified `Backend`. But even a 7B-class model has gaps:
@@ -219,6 +166,12 @@ Overlap exists for exactly one reason: an answer-bearing sentence that crosses a
 
 This module's chunker is the simplest possible: fixed-size sliding window with overlap. It ignores sentence and paragraph boundaries. A real chunker prefers natural breaks; the `chunk_text` recipe is intentionally minimal so the lesson is the math.
 
+Chunking systems in the wild generally fall under three categories:
+
+- **Character / token sliding window.** Fixed-size windows with overlap. What this module implements. Easy to implement, dependency-free, robust to messy text. Loses paragraph and sentence structure.
+- **Recursive character splitting.** Try to split on `"\n\n"`, fall back to `"\n"`, fall back to `" "`, fall back to characters. Preserves natural breaks. A small but real upgrade over the sliding window.
+- **Semantic chunking.** Embed sentences, group consecutive sentences whose embeddings are similar enough that they "belong together." Best quality, slowest, requires an embedder. Used by some agentic systems for indexing long technical documents.
+
 ### Embedding
 
 ![Embedding space and cosine search. Left half: a 2D scatter of chunk embeddings color-coded by cluster — Spain/Cities (green), Python/Code (blue), Cooking (orange), Machine Learning (purple). Texts about the same topic land in the same neighborhood. The user's query "What is the capital of Spain?" embeds to a point near the Spain/Cities cluster, marked with a star. A "cosine similarity intuition" panel pins the math: for L2-normalized vectors, `cos(u, v) = u · v` — small angle → high similarity → score near 1; orthogonal → score near 0; opposite → score near -1. Right half: the search algorithm in five steps. Step 1 — embed the query. Step 2 — dot the query against every row of the (N, d) store matrix to get N similarities. Step 3 — `np.argpartition(scores, -k)` finds the top-k indices in O(N) without sorting the full array. Step 4 — sort just those k indices by descending score. Step 5 — return the top-k chunks plus their similarity scores. A "key takeaway" panel: cosine similarity finds the chunks whose meaning is most similar to the query — not the chunks that share words.](17-rag/Module17-Embedding.png)
@@ -226,6 +179,13 @@ This module's chunker is the simplest possible: fixed-size sliding window with o
 
 An embedding is a function from a string of text to a numerical vector in a high dimenstional space. Within an embedding space, semantic similarity is measured as the angle between the vectors. If two vectors share a small angle, then their coordinates in the semantic space are close in a geometric sense. The choice of embedding function determines what "similar" means:
 
+* **Sparse / lexical.** The vector is mostly zeros; non-zero entries correspond to terms (or n-grams, or hash buckets). Fast, deterministic, no model required. Captures lexical overlap, no semantics. Good for "find passages mentioning the same words" — bad for "find passages on the same topic."
+
+* **Dense / neural.** A model — typically a transformer encoder — turns each text into a fixed-dim float vector. Captures topic, paraphrase, and analogies. Requires a model. The substrate of every modern RAG system.
+
+* **Hybrid.** Sparse + dense scores combined (typically by reciprocal-rank fusion). Robust across query types — keyword-heavy queries that dense embedders mishandle ("what does CVE-2024-3094 do?") still hit when sparse retrieval matches the literal token.
+
+In this module we build `HashEmbedder` as a toy lexical model. It captures lexical signal — strings sharing tokens / n-grams cluster together. It's enough to make the pipeline work for tests, and to feel the limits: a question phrased differently from the source document doesn't retrieve. `OllamaEmbedder` (or any neural embedder) captures semantics — the same idea expressed in different words still clusters. For real retrieval over heterogeneous queries, you want a neural embedder. 
 ```
    ┌───────────────────────────────────────────────────────────────────────┐
    │   EMBEDDER COMPARISON                                                 │
@@ -248,22 +208,27 @@ An embedding is a function from a string of text to a numerical vector in a high
    └───────────────────────────────────────────────────────────────────────┘
 ```
 
-`HashEmbedder` is what you can build in a hundred lines of stdlib. It captures lexical signal — strings sharing tokens / n-grams cluster together. It's enough to make the pipeline work for tests, and enough to feel the limits: a question phrased differently from the source document doesn't retrieve. `OllamaEmbedder` (or any neural embedder) captures semantics — the same idea expressed in different words still clusters. **For real retrieval over heterogeneous queries, you want a neural embedder.** The `HashEmbedder` exists because (1) it teaches what an embedding even is, and (2) a fully-stdlib pipeline is testable without an external service.
 
 ### Retrieval
 
-Given a query embedding `q` and a stored matrix of chunk embeddings `V` (shape `(N, d)`), all of which are L2-normalized:
+Once we have query and corpus vectors, we want to construct a **k-Nearest Neighbors (kNN)** algorithm to find the chunks with the closest semantic similarities. We rely on the fact that embeddings are normalized to unit length. For unit normalized vectors, the cosine of the angle is monotonically decreasing with distance. This reduces similarity comparison to a simple, fast, GPU-friendly dot product.
 
 ```
-   similarities = V @ q         # shape (N,) — one cosine per chunk
-
-   top_k_indices = argpartition(similarities, -k)[-k:]    # O(N)
-   top_k_sorted  = top_k_indices[argsort(-similarities[top_k_indices])]
-
-   results = [(chunks[i], similarities[i]) for i in top_k_sorted]
+Vectors are unit normal:
+	||u|| = 1         
+	||v|| = 1 
+	
+Similarity score ∈ [0,1]:
+	cos(u, v) = u · v
 ```
 
-That's the whole search algorithm for a flat index. ~five lines of numpy. The performance work — HNSW, IVF, GPU indexes — replaces the `V @ q` line with something sub-linear in `N`. For our scale, `V @ q` is fast.
+Cosine similarity gives us a scalar similarity score for each of the `N` chunks in the corpus. To find the top-K closest chunks we apply the following algorithm:
+
+1. Argpartition the top-K scores. (Argpartition don't sort, avoid overhead of full sort)
+2. Sort the remaining top-K scores.
+3. Lookup and return the chunks corresponding to the top-K scores
+
+That's the whole search algorithm for a flat index. Linear in `N` and therefore corpus size. Performance focused search algorithms — HNSW, IVF, GPU indexes — replace the above with something sub-linear in `N`. This usually involves trading off kNN with **approximate nearest neighbors (ANN)**. 
 
 ```
    ┌──────────────────────────────────────────────────────────────────────┐
@@ -285,7 +250,7 @@ That's the whole search algorithm for a flat index. ~five lines of numpy. The pe
    └──────────────────────────────────────────────────────────────────────┘
 ```
 
-### Prompt assembly — the format matters
+### Prompt assembly
 
 ![Prompt](17-rag/Module17-Prompt.png)
 *The "I don't know" guard at the bottom of the prompt actually triggers refusal — it's the single highest-leverage line in the whole template.*
@@ -328,12 +293,12 @@ Note what's *not* in the template: chat-template markers like `<|user|>...<|assi
 
 ### What we don't cover
 
-- **Implementing HNSW or any other ANN index.** Production scale wants this; course scale does not. Building HNSW from scratch is a 200-line project and a different lesson.
+- **Implementing HNSW or any other ANN index.** Approximate search, sub-linear. Production scale wants this; course scale does not. Building HNSW from scratch is a 200-line project and a different lesson.
 - **Implementing a sentence-transformer-style dense embedder.** Training a contrastive bi-encoder is its own multi-week curriculum. We use `OllamaEmbedder` to plug into a pretrained one. Treat the embedder as a black box that turns text into a 768-vector.
 - **Hybrid retrieval**. All RAG
 - **Re-ranking with a cross-encoder.** Production RAG pipelines often retrieve top-k=50 with a cheap dense embedder and then re-rank top-k=5 with an expensive cross-encoder.
 - **Async embedding.** Embedding 10k chunks against a remote service one-at-a-time takes minutes. Real pipelines batch via async. We don't — the lesson is the math.
-
+- **Quantized indexing.** 1M chunks at 1024-dim in `float32` is 4 GB — already worth thinking about quantizing the index. We don't optimize for this; for course-scale corpora the naive numpy array is fast enough.
 
 ## What you'll build
 
@@ -548,6 +513,8 @@ The exercises are written assuming `llama3.2:3b` for inference and `nomic-embed-
 - **Mixing `Chunk` and `RetrievedChunk` in `assemble_rag_prompt`.** The `_coerce_chunks` helper handles both — caller can pass either. But if you pass something that's NEITHER, you get `TypeError("chunks must contain Chunk or RetrievedChunk, ...")`. Common cause: passing the raw `(chunk, score)` tuples from `NumpyVectorStore.search` directly. Wrap in `RetrievedChunk` first, OR strip to just the chunks.
 
 - **The HashEmbedder produces zero rows for very short strings.** If your `ngram_range` is `(3, 5)` and the input is `"ab"` (2 chars), there are no n-grams of length ≥ 3 — the row stays zero. Cosine similarity against a zero row is 0. Failure mode: extremely short chunks (or chunks of mostly punctuation) retrieve poorly. The fix: lower the `ngram_range` floor, or filter out very short chunks at index time.
+
+*  **Using Python's built-in `hash()` instead of `hashlib.blake2b`** Python's built-in `hash()` is salted differently per process — different runs of the same code produce different hashes — so it's unusable for embeddings. BLAKE2b is fast and stable across runs.
 
 - **The chunker's `metadata` dict shared across all chunks.** Without `dict(metadata)` on each Chunk creation, all chunks share a reference to the same dict. A caller mutating `chunks[0].metadata` then sees the change in `chunks[1].metadata`. Defensive copy at chunk-creation time prevents this.
 
