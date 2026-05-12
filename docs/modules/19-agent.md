@@ -56,23 +56,25 @@ In this lesson, we are now past the point where we focus on improving the model 
 
 ## The big idea
 
-An **agent** is a goal-directed inference loop that maintains coherence across steps by accumulating its thoughts, actions, and observations in the prompt. The **agent harness** is the deterministic software in the assistant system that orchestrates. 
+An **agent** is a goal-directed inference loop. It calls a model, interprets the model's output, optionally takes an action in the outside world, records what happened, and calls the model again with that record included in the next prompt.
 
-Each full run of the loop operates within a **session**. The session maintains state by accumulating an append-only **transcript** of user queries, model responses, tool calls, and tool results. On each **turn**, the runtime builds the prompt from the transcript, giving the model the context it needs to maintain coherence across successive inference calls.
+The **agent harness** is the deterministic software that runs this loop. The model still does ordinary inference. The harness gives that inference a structure: memory through an accumulated transcript, actions through tools, and stop conditions so the loop can finish or fail closed.
 
-But even with full session history being transparently available in each prompt, agents can lose coherence and drift off task in long multi-step chains. To mitigate this, we use **planning** where the agent spends one step up front drafting a plan for how it would accomplish the stated goal. That plan then goes into the scratchpad in every subsequent turn. 
+The **transcript** is the full record of one run. In this module, the part of the transcript rendered into each prompt has two pieces. The initial **prompt context** contains system instructions, tool descriptions, the user's goal, and sometimes an optional plan. The **scratchpad** is the part that grows: the model's thoughts, requested actions, action inputs, and tool observations. The full prompt for each model call is rebuilt from both pieces:
 
-The agent pattern we will build is called **ReAct**, short for **reasoning + acting**. The idea is simple: instead of asking the model to jump directly from a user request to a final answer, we ask it to alternate between thinking about what to do next and taking an action in the outside world.
+```text
+prompt = prompt_context + scratchpad + "Thought:"
+```
 
-No math, no training, no changes to the underlying model. Just an intelligent framework for structured calls to the model that substantially improves its capabilities on complex tasks. 
+That final `Thought:` is the cue for the next step. It tells the model to continue in the format the harness knows how to parse.
 
-### Thinking blocks 
+No new math, no training, no changes to the underlying model. Just a structured runtime around repeated model calls that gives the model memory, tools, and control flow for complex tasks.
 
+### ReAct
 
+The pattern we build in this module is **ReAct**, short for **reasoning + acting**. Instead of asking the model to jump directly from a user request to a final answer, ReAct asks the model to alternate between deciding what to do next and taking an action.
 
-The trailing `Thought:` is the agent's nudge — it tells the model "your turn, in the ReAct format." Without it, instruction-tuned models often start the next turn with prose ("I think we should..."), which the parser then has to recover from. With it, the model continues the pattern.
-
-A ReAct step has three parts:
+A tool-using ReAct step has four fields:
 
 ```text
 Thought: I need to inspect the file before answering.
@@ -84,55 +86,53 @@ Observation: 3
 20
 ```
 
-The model writes the `Thought`, `Action`, and `Action Input`. The runtime executes the action and appends the `Observation`. Then the model sees the updated transcript and decides what to do next.
+The model writes `Thought`, `Action`, and `Action Input`. The runtime executes the action and appends `Observation`. Then the next model call sees the updated scratchpad.
 
 This is powerful because many useful tasks cannot be solved in one model call. The model may need to read a file, run a calculation, inspect an error, search a document, or recover from a bad tool call. ReAct gives the model a structured place to reason between those steps.
 
-Eventually, when the model has enough information, it stops acting and emits a final answer:
+A ReAct run ends when the model stops acting and emits a final answer:
 
 ```text
 Thought: I now know the final answer.
 Final Answer: The average is 10.
 ```
 
-A key empirical finding: models do measurably better on multi-step tool-use tasks when the prompt separates reasoning from action with an explicit `Thought` line before each `Action`. The Thought line gives the model a place to commit to *why* it is about to call a tool; without it, models conflate reasoning and action and tool selection gets noisy.
+A key empirical finding from the ReAct paper is that models do better on multi-step tool-use tasks when reasoning and action are separated. The `Thought` line gives the model a place to commit to *why* it is about to call a tool. Without that separation, models often conflate reasoning and action, and tool selection gets noisy.
 
-ReAct is a loop that takes a user stated goal, Each step in the loop is structured to include a thought, an action (i.e. a tool call), and an observation (i.e. the result from the tool call). At the end of each step, those results are appended to the transcript for availability in the next loop. The loop runs until the model emits a final answer *or* a failure condition is reached. In simplified pseudocode: 
+In simplified pseudocode:
 
-```
-   ┌──────────────────────────────────────────────────────────────────────┐
-   │  THE ReAct LOOP.                                                     │
-   └──────────────────────────────────────────────────────────────────────┘
-   
-    plan <- make_plan(user_goal)
-    transcript <- build_prompt(user_goal, plan)
-    
-    while not done:
-	    thought, action, final_answer <- model(transcript)
-	    
-	    if final_answer != "":
-		     return final_answer
-		     
-		observation <- run_tools(action)
-		
-		transcript += thought
-		transcript += action
-		transcript += observation
+```python
+plan = maybe_make_plan(user_goal, tools)
+prompt_context = build_prompt_context(user_goal, tools, plan)
+scratchpad = []
+
+for step in range(max_steps):
+    prompt = render(prompt_context, scratchpad) + "\nThought:"
+    model_output = model(prompt)
+    parsed = parse_react_step(model_output)
+
+    if parsed.final_answer is not None:
+        return parsed.final_answer
+
+    observation = run_tool(parsed.action)
+    scratchpad.append(parsed.thought, parsed.action, observation)
+
+return stopped_without_answer
 ```
 
-Each piece is small; the lesson is the contract between them. The parser is forgiving in the right places and strict in the right places. The scratchpad renders consistently so the model knows what it is seeing. Dispatch never raises on model behavior. Stop conditions are layered so the loop can end cleanly or fail closed.
+Each piece is small. The parser extracts structure from model text. The tool dispatcher turns actions into observations. The scratchpad records the working trace. Stop conditions prevent the loop from running forever.
 
 ![Agent state machine — the ReAct loop. A flowchart of `Agent.run` from start to exit. (1) INITIALIZE: build the system prompt; optionally call `make_plan(...)` for a goal + numbered steps; create an empty Scratchpad. (2) MAIN STEP: render the prompt (system + plan + user message + scratchpad + trailing `Thought:`); call `backend.complete(...)`; receive a completion. (3) PARSE: `parse_react_step(completion)` extracts a `ParsedStep(thought, action, final_answer, parse_error)`. (4) BRANCH: if `final_answer` present → return clean exit (`stopped_reason="final_answer"`); if `action` present → dispatch through Module 18's `dispatch_tool_call`, build an `Observation`, append `AgentStep` to scratchpad, loop; if neither (parse error or stuck) → if `halt_on_stuck` halt with `no_progress`, else record a parse-error observation and continue. (5) STOP-CONDITION CHECK (after each step): if duplicate action with `loop_detection=True` → halt with `duplicate_action`; if `max_steps` reached → halt with `max_steps`. A right-side panel pins the four stop conditions: `final_answer` (clean), `duplicate_action` (loop detection), `no_progress` (stuck step + halt_on_stuck), `max_steps` (safety net). A "scratchpad format" sidebar shows how each step renders back into the next prompt. A "key idea" callout at top: the agent repeatedly asks the model what to do next, executes the chosen action, and keeps going until either a final answer appears or a stop condition fires.](19-agent/Module19-Loop.png)
-*The control-flow picture for `Agent.run`. 
+*The control-flow picture for `Agent.run`: model output is parsed, actions are dispatched, observations go into the scratchpad, and the next prompt is rebuilt from that state.*
 
-### A turn is a (thought, action, observation) triple
+### One ReAct step
 
-![Turns](19-agent/Module19-Turn.png)
+![One ReAct step](19-agent/Module19-Turn.png)
 *Inside one iteration of the loop.*
 
 ```
    ┌──────────────────────────────────────────────────────────────────────┐
-   │   ONE REACT TURN                                                     │
+   │   ONE REACT STEP                                                     │
    ├──────────────────────────────────────────────────────────────────────┤
    │                                                                      │
    │     model emits:                                                     │
@@ -152,7 +152,7 @@ Each piece is small; the lesson is the contract between them. The parser is forg
    │         observation = Observation(output="42", is_error=False)       │
    │         AgentStep(thought, action, observation, ...)                 │
    │                                                                      │
-   │     scratchpad renders for next turn:                                │
+   │     scratchpad renders for next step:                                │
    │         Thought: I need to add 21 and 21 to get the answer.          │
    │         Action: calculator                                           │
    │         Action Input: {"expression": "21 + 21"}                      │
@@ -161,67 +161,72 @@ Each piece is small; the lesson is the contract between them. The parser is forg
    └──────────────────────────────────────────────────────────────────────┘
 ```
 
-The model sees its own past Thought / Action / Action Input on every subsequent turn — it gets to *read its own reasoning history* and decide what to do next. This is the scratchpad's whole job: turn the model's stateless `complete(prompt)` call into something that feels like working memory.
+The model sees prior `Thought` / `Action` / `Action Input` / `Observation` blocks on every subsequent step. It gets to read its own working history and decide what to do next. This is the scratchpad's job: turn stateless `complete(prompt)` calls into a stateful loop.
 
 ### The scratchpad
 
 ![Hero](19-agent/Module19-Scratchpad.png)
-*Each turn's prompt is a function of the last turn's output and all prior steps; the scratchpad is what carries those steps forward.*
+*Each prompt is built from stable prompt context plus the growing scratchpad.*
 
 ```
    ┌──────────────────────────────────────────────────────────────────────┐
-   │   PROMPT GROWTH — TURN BY TURN                                       │
+   │   PROMPT GROWTH — STEP BY STEP                                       │
    ├──────────────────────────────────────────────────────────────────────┤
    │                                                                      │
-   │   Turn 1 prompt:                                                     │
+   │   Step 1 prompt:                                                     │
    │       <system>                                                       │
-   │       <plan>                                                         │
+   │       <tools>                                                        │
+   │       <plan, optional>                                               │
    │       Question: <user msg>                                           │
    │       Thought:                  ← model continues from here          │
    │                                                                      │
-   │   Turn 2 prompt (turn 1's [thought, action, obs] now visible):       │
+   │   Step 2 prompt (step 1's work trace now visible):                   │
    │       <system>                                                       │
-   │       <plan>                                                         │
+   │       <tools>                                                        │
+   │       <plan, optional>                                               │
    │       Question: <user msg>                                           │
    │                                                                      │
-   │       Thought: <turn 1 thought>                                      │
-   │       Action: <turn 1 action.tool>                                   │
-   │       Action Input: <turn 1 action.arguments>                        │
-   │       Observation: <turn 1 observation>                              │
+   │       Thought: <step 1 thought>                                      │
+   │       Action: <step 1 action.tool>                                   │
+   │       Action Input: <step 1 action.arguments>                        │
+   │       Observation: <step 1 observation>                              │
    │                                                                      │
    │       Thought:                  ← model continues from here          │
    │                                                                      │
-   │   Turn 3 prompt (turn 1 + turn 2 visible):                           │
+   │   Step 3 prompt (step 1 + step 2 visible):                           │
    │       ...                                                            │
-   │       <turn 1 block>                                                 │
+   │       <step 1 block>                                                 │
    │                                                                      │
-   │       <turn 2 block>                                                 │
+   │       <step 2 block>                                                 │
    │                                                                      │
    │       Thought:                  ← model continues from here          │
    │                                                                      │
    └──────────────────────────────────────────────────────────────────────┘
 ```
 
+The **prompt context** is mostly stable: system instructions, tool descriptions, the user's goal, and maybe a plan. The **scratchpad** is the part that grows: one block per ReAct step. The broader **transcript** is the full record of the run, but the scratchpad is the specific working section the agent renders back into the next prompt.
+
+This append-only layout also matters for efficient inference. With a KV cache, the model can reuse the cached keys and values for the unchanged prefix of the prompt and only compute the newly appended tokens. That works best when each step preserves the previous prompt exactly and appends the new scratchpad block at the end. If the harness rewrites earlier text, reorders blocks, or edits old observations, the cached prefix no longer matches and the backend has to recompute more of the prompt.
 
 ### The marker contract
 
-ReAct's wire format has five named markers:
+ReAct's text protocol has five named markers:
 
 ```
-Thought:        ← reasoning text, free-form
-Action:         ← tool name (must match registry)
-Action Input:   ← JSON object, the tool's arguments
-Observation:    ← tool result, injected by runtime (not by model)
-Final Answer:   ← user-facing answer, ends the loop
+Thought:        # reasoning text, written by the model
+Action:         # tool name, written by the model
+Action Input:   # JSON object, written by the model
+Observation:    # tool result, injected by the runtime
+Final Answer:   # user-facing answer, written by the model
 ```
 
-For a tool step, the model emits `Thought` / `Action` / `Action Input`; the runtime appends `Observation:` and asks for the next turn. When the model has enough info, it emits `Thought` / `Final Answer:` and the loop exits.
+For a tool step, the model emits `Thought`, `Action`, and `Action Input`. The runtime appends `Observation` and asks for the next step. When the model has enough information, it emits `Thought` and `Final Answer`, and the loop exits.
 
 Why these markers and not, say, `<thought>...</thought>` XML?
 
-- **It's the format the ReAct paper used.** Yao et al. introduced these specific markers and demonstrated empirically that they work. Instruction-tuning datasets later picked it up; LangChain made it a de-facto standard. Models pretrained on the open internet have seen this format extensively.
-- **It's regex-friendly.** Each marker is a fixed string at line-start with a colon. The parser is a few `re.search` calls.
-- **It separates reasoning from action.** Distinct markers mean the parser can extract structured action data (the tool call) without tripping on the free-form reasoning.
+- **It is the canonical ReAct format.** Yao et al. introduced these markers, and many instruction-tuned models have seen them.
+- **It is easy to parse.** Each marker is a fixed string at line start.
+- **It separates reasoning from action.** The parser can extract the tool call without treating the free-form thought as structured data.
 
 ### Errors are observations, not crashes
 
@@ -241,7 +246,7 @@ Why these markers and not, say, `<thought>...</thought>` XML?
    │   The agent wraps:                                                   │
    │       Observation(output="no tool named ...", is_error=True)         │
    │                                                                      │
-   │   The scratchpad renders for the next turn:                          │
+   │   The scratchpad renders for the next step:                          │
    │       Thought: <model's thought>                                     │
    │       Action: nonexistent_tool                                       │
    │       Action Input: {"x": "y"}                                       │
@@ -250,13 +255,13 @@ Why these markers and not, say, `<thought>...</thought>` XML?
    │                          this prefix is the recovery signal          │
    │                                                                      │
    │   Model sees its own bad action followed by [error] ..., decides     │
-   │   what to do differently, emits the corrected action on the next     │
-   │   turn. NO STACK TRACE. NO LOOP CRASH. NO LOST CONVERSATION.         │
+   │   what to do differently, and emits the corrected action on the      │
+   │   next step. No stack trace. No loop crash. No lost conversation.    │
    │                                                                      │
    └──────────────────────────────────────────────────────────────────────┘
 ```
 
-The dispatcher (Module 18's `dispatch_tool_call`) already wraps every error class as `ToolResult(is_error=True)`. The agent module just propagates that to `Observation(is_error=True)` and renders it with an `[error]` prefix. The agent loop never raises on a model action; only misuse (empty `user_message`, wrong types) triggers an exception.
+The dispatcher from Module 18 wraps tool failures as `ToolResult(is_error=True)`. The agent converts that into `Observation(is_error=True)` and renders it with an `[error]` prefix. The loop does not crash just because the model chose a bad tool or malformed argument. It feeds the error back to the model as information.
 
 ### Stop conditions, layered
 
@@ -293,7 +298,7 @@ The default Agent has `loop_detection=True`, `halt_on_stuck=False`, `max_steps=8
 - Tasks with a tool error: model recovers (the `[error]` observation feeds back). ✓
 - Tasks where the model loops: `loop_detection` cuts it off. ✓
 - Tasks where the model goes off-format: parse-error observation feeds back; it usually recovers. ✓
-- Truly bad situations: `max_steps` cuts off after 8 turns. ✓
+- Truly bad situations: `max_steps` cuts off after 8 steps. ✓
 
 Tuning these per-task is a real consideration — `loop_detection=False` for legitimate-retry workflows; `halt_on_stuck=True` when the model has only one shot at format compliance; smaller / larger `max_steps` for one-shot vs. long-task agents.
 
