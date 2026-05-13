@@ -36,7 +36,7 @@ train and val flat   -> stalled optimization
 
 When we pretrain our course LLM in Module 10, the ideas and techniques from this module will be heavily utilized.
 
-## The Big Idea
+## The big idea
 
 The learning rate is not "how much the model learns." It is the scale of the parameter update:
 
@@ -181,7 +181,7 @@ Regularization is a family of responses to mitigate that pattern. Dropout is a t
 
 We are not implementing dropout in this course path because it is not the bottleneck for the TinyLLM stack. It adds a useful but separate concept cluster: stochastic forward passes, train/eval mode, RNG control, and activation scaling. For LLM pretraining, dropout is often small or zero. Worth knowing by name, but not worth spending a build week on here.
 
-## Concepts To Internalize
+## Concepts to internalize
 
 - **Learning rate controls update scale.** If loss explodes, lower it. If loss crawls and gradients are finite, raise it.
 - **SGD has one global scale.** Every parameter sees the same nominal `lr`.
@@ -274,7 +274,7 @@ Set up or resume the working notebook for this exercise set by running:
 
 7. **Curve diagnosis.** Given three train/validation plots — both high and flat, train low / val high, and both decreasing smoothly — write what you would try next for each.
 
-## Pitfalls to avoid
+## Pitfalls to expect
 
 - **Confusing Adam and AdamW.** Adam's original L2 penalty adds `weight_decay * param` to the gradient. AdamW decays the parameter directly. The distinction matters.
 - **Incrementing `step_count` per parameter.** The step counter advances once per optimizer step.
@@ -284,7 +284,7 @@ Set up or resume the working notebook for this exercise set by running:
 - **Treating clipping as a tuning substitute.** If clipping fires constantly, the learning rate is probably too high.
 - **Reading only training loss.** A model can improve train loss while getting worse on validation data.
 
-## M-Series Notes
+## M-series notes
 
 Everything in this module should run comfortably on CPU. MPS is useful for larger notebook experiments, but the point here is diagnosis, not throughput. Keep the experiments small enough that you can rerun them many times while changing one knob at a time.
 
@@ -302,7 +302,7 @@ Secondary:
 - **Goodfellow, Bengio, Courville, *Deep Learning*, optimization chapter.** Useful for vocabulary around momentum, conditioning, and learning-rate schedules.
 - **Goyal et al., "Accurate, Large Minibatch SGD" (2017).** Skim for the warmup idea.
 
-## Deliverable Checklist
+## Deliverable checklist
 
 - [ ] `AdamW.step` passes `pytest tests/test_training.py -k adamw`.
 - [ ] `clip_grad_norm_` and `cosine_with_warmup` pass `pytest tests/test_training.py`.

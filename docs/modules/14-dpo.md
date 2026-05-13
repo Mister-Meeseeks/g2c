@@ -2,10 +2,9 @@
 
 > **Question this module answers:** *Why is the model helpful, polite, or stylistically consistent?*
 
-![Hero image](14-dpo/Module14-Hero.png)
-*Preference tuning changes the training signal from "imitate this answer" to "prefer this answer over that one." That comparative signal is what DPO turns into a direct loss.*
+![DPO at a glance: a pretrained-and-SFT'd model receives pairs of candidate responses to the same prompt; a preference label marks one as "chosen" and the other as "rejected"; the DPO loss directly nudges the model toward the chosen response and away from the rejected one — no separate reward model, no RLHF rollout.](14-dpo/Module14-Hero.png)
 
-Last week we taught the model to **format** an answer. This week we teach it to **prefer** one answer over another. Pair up responses, evaluate the preferred choice, and train on those preferences. No new architecture, no reward model. The 50–200 preference pairs are the entire training set. Everything else is plumbing.
+Preference tuning changes the training signal from "imitate this answer" to "prefer this answer over that one." That comparative signal is what DPO turns into a direct loss. Last week we taught the model to **format** an answer. This week we teach it to **prefer** one answer over another. Pair up responses, evaluate the preferred choice, and train on those preferences. No new architecture, no reward model. The 50–200 preference pairs are the entire training set. Everything else is plumbing.
 
 ---
 ## Before you start

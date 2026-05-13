@@ -188,7 +188,7 @@ To start setup a Jupyter notebook for the exercise set by running:
 
 6. **A tiny classifier forward pass.** In the Module 02 notebook, implement `classifier_forward(x, W, b)` on top of `linear` and `softmax`: random weights, a batch of inputs, logits, and an output probability distribution over classes. Annotate every shape. Check that each row of probabilities sums to 1. No training in this module — we don't have tensor-shaped autograd yet.
 
-## Pitfalls avoid
+## Pitfalls to expect
 
 - **Off-by-one in the matmul loop.** The standard order is `for i in range(m): for j in range(n): for p in range(k): C[i][j] += A[i][p] * B[p][j]`. Mixing up the inner index breaks correctness silently — always test against NumPy.
 - **Forgetting to subtract the max in softmax.** Works fine on small inputs; produces NaN on real-world logits because `exp(50.0)` overflows float32. The shift-invariance test in the suite catches this.

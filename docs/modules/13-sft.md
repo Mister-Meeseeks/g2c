@@ -110,7 +110,7 @@ At toy scale this is even more pronounced. With 50 hand-authored examples:
 
 At small scale, the model overfits to your dataset's surface regularities. This is both a feature and a bug. The exercises ask you to author the dataset yourself because the experience of writing 50 consistent examples is the fastest way to internalize what "consistency" means.
 
-## SFT Training
+### SFT Training
 
 SFT uses the same basic gradient descent loop we used for pretraining. The difference is the data. Instead of training on raw text, we train on curated examples of desired behavior.
 

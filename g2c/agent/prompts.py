@@ -55,6 +55,7 @@ separation of reasoning and action is a clean pedagogical lens.
 """
 from __future__ import annotations
 
+import json
 from collections.abc import Iterable
 
 from g2c.tools import Tool
@@ -124,7 +125,8 @@ def _render_tools_block(tools: Iterable[Tool]) -> str:
     """Render a tool list as the "Tools available" body. Internal.
 
     Used by both the system prompt and the planning prompt. The format
-    is "  - name: description" — indented, one per line.
+    is an indented block per tool: name, description, parameters
+    schema, and the exact ReAct action line to use.
 
     Empty input renders as "  (no tools registered)" — a valid (if
     pointless) configuration that tests exercise.
@@ -135,6 +137,11 @@ def _render_tools_block(tools: Iterable[Tool]) -> str:
     lines = []
     for t in tools_list:
         lines.append(f"  - {t.name}: {t.description}")
+        schema = json.dumps(t.parameters, indent=2)
+        schema = "\n".join(f"      {line}" for line in schema.splitlines())
+        lines.append("    parameters schema:")
+        lines.append(schema)
+        lines.append(f"    use exactly: Action: {t.name}")
     return "\n".join(lines)
 
 

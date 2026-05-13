@@ -451,6 +451,8 @@ Roughly 80 lines across seven functions.
 Tests live in `tests/test_eval.py`. Initial state: 19 tests pass, 70 tests fail
 
 ```bash
+source .venv/bin/activate
+
 pytest tests/test_eval.py                          # all module-15 tests
 pytest tests/test_eval.py -x                       # stop at first failure
 pytest tests/test_eval.py -k Match                 # all matcher tests

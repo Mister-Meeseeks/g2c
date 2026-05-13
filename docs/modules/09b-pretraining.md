@@ -185,6 +185,7 @@ def lm_cross_entropy(
 Tests live in `tests/test_pretraining_setup.py`. The `data.py` tests pass from the start; `lm_cross_entropy` tests fail until you implement the reshape.
 
 ```bash
+source .venv/bin/activate
 pytest tests/test_pretraining_setup.py -x
 pytest tests/test_pretraining_setup.py -v
 ```

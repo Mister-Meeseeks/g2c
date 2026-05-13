@@ -9,9 +9,9 @@ Module 01 builds the **backward pass** — the autodiff machinery that converts 
 ---
 ## Before you start
 
-- **Review Module 00.** Load the underlying math, computer science and programming topics back into cache.
-- **Run `setup.sh`**. If you haven't already setup the course environment. We'll use it in this module's exercises.
-- **Setup your favorite code editor**. In this and the rest of the course we'll be writing, reading and running a lot of python code in `g2c`
+- *Review* [[00-prerequisite-review]] to load the underlying math, computer science, and programming topics back into cache.
+- *Run* `setup.sh` if you haven't already set up the course environment. We'll use it in this module's exercises.
+- Set up your favorite code editor for Python — you'll be writing, reading, and running a lot of code in `g2c`.
 
 ---
 ## Where this fits in
@@ -134,10 +134,10 @@ Tests are in `tests/test_autodiff.py`. Initial state: 2 passed, 42 failed.
 
 ```bash
 source .venv/bin/activate
-python -m pytest tests/test_autodiff.py            # run all autodiff tests
-python -m pytest tests/test_autodiff.py -x         # stop at first failure (recommended while working)
-python -m pytest tests/test_autodiff.py -k add     # run only tests whose name matches "add"
-python -m pytest tests/test_autodiff.py -v         # verbose: list every test
+pytest tests/test_autodiff.py            # run all autodiff tests
+pytest tests/test_autodiff.py -x         # stop at first failure (recommended while working)
+pytest tests/test_autodiff.py -k add     # run only tests whose name matches "add"
+pytest tests/test_autodiff.py -v         # verbose: list every test
 ```
 
 ## Exercises
@@ -165,7 +165,7 @@ To start setup a Jupyter notebook for the exercise set by running:
 - **Mutating inputs vs. returning new Values.** Each operation should return a new `Value`. Don't try to be clever about in-place updates — they make the graph confusing and break re-execution.
 - **Float precision in gradient checks.** Finite differences with `h = 1e-7` can give noisy comparisons. Use `h = 1e-5` and tolerate ~1e-4 absolute error.
 
-## M-Series Notes 
+## M-series notes
 
 Pure Python on a single CPU thread. Runs in seconds. No PyTorch, no MPS, no installs beyond what's already in the venv.
 

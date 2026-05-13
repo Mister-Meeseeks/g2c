@@ -251,12 +251,13 @@ When benchmarking, be aware of cold-start overhead. The first request can includ
 - **The first request is always slower.** Cold cache, model load, MPS / Metal kernel JIT compilation. Always warm up before measuring.
 - **Backends are values, not globals.** The wrapper classes are stateful, but they're not singletons. This is dependency injection.
 
-## What we don't cover
+### What we don't cover
 
 - Details of GGUF, MLX, and other optimized model formats. It's enough to know these formats at a high level.
 - Manual model quantization. Download a pre-quantized local model instead.
 - Streaming, async I/O, and MLX serving. They are useful extensions, not required for the module deliverable.
 
+---
 ## What you'll build
 
 Package: `g2c/inference/`
@@ -499,6 +500,7 @@ These exercises have two paths. The artifact path works with whatever saved Stud
 
 - **Streaming and non-streaming have different request bodies.** When you set `stream: true` (exercise 7), the response is NDJSON, not a single JSON object. `json.loads(resp.read())` fails on the first chunk. Iterate `resp` line by line and `json.loads` each line.
 
+---
 ## Reading
 
 Primary:

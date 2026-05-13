@@ -226,6 +226,7 @@ The correct philsophy for tool safety is **permisstive parser, strict validator*
 - **Parallel tool execution.** Some agentic systems dispatch all tool calls in a turn concurrently with `asyncio.gather`. We dispatch sequentially. For tools whose `func` is fast (calculator, read_file), the difference is microseconds. For slow tools (HTTP search, run_python), parallelism matters in production but not for a teaching loop.
 - **Tool-result truncation by content.** A real read_file tool detects giant files and summarizes; a real run_python tool truncates large stdout. We truncate by char count only — a starting point.
 
+---
 ## What you'll build
 
 Package: `g2c/tools/`
@@ -306,6 +307,8 @@ Total scaffolded code: roughly 60 lines across four function bodies.
 ## How to run the tests
 
 ```bash
+source .venv/bin/activate
+
 pytest tests/test_tools.py                          # all module-18 tests
 pytest tests/test_tools.py -x                       # stop at first failure
 pytest tests/test_tools.py -k Validate              # validator tests
@@ -417,6 +420,7 @@ Llama 3.2 specifically is fine-tuned on tool-call data; it emits `<tool_call>` b
 
 - **The model emits a final answer AND a tool call.** Some models emit "the answer is 42" followed by a `<tool_call>` block they didn't quite mean to send. The current loop reads the call as authoritative ("there are tool calls — keep going"). If you want "answer present means stop," that's a different policy — a wrapper on the parser, or a post-call check on the loop.
 
+---
 ## Reading
 
 Primary:

@@ -13,12 +13,12 @@ This is the payoff week for Phase III. Module 09 built the architecture. Module 
 	* [[03b-training]] (AdamW, clipping, lr schedule)
 	* [[09b-pretraining]] (batching, cross-entropy)
 * *Finish* 
-	* `g2c/transfomer-block` [[09b-pretraining]]
+	* `g2c/transformer-block` from [[09-transformer-block]]
 	* `g2c/pretraining` from  [[09b-pretraining]]
 	* `g2c/training` from [[03b-training]]. 
 	* The trained tokenizers from [[04-tokenizer]] notebook (optional; `datasets.sh` will generate if missing)
-*  *Run* `.venv/bin/python scripts/artifact_status.py --module 10` to see which local artifact path is ready
-*  *Run* `./datasets.sh --tiny`, `./datasets.sh --small`, or `./datasets.sh` if you want to prepare a larger track before the optional scale-up runs
+* *Run* `.venv/bin/python scripts/artifact_status.py --module 10` to see which local artifact path is ready
+* *Run* `./datasets.sh --tiny`, `./datasets.sh --small`, or `./datasets.sh` if you want to prepare a larger track before the optional scale-up runs
 
 ---
 ## Where this fits in
@@ -141,6 +141,7 @@ class Trainer:
 When debugging, run prerequisite tests first to localize failures:
 
 ```bash
+source .venv/bin/activate
 pytest tests/test_training.py -x
 pytest tests/test_pretraining_setup.py -x
 pytest tests/test_transformer.py -x

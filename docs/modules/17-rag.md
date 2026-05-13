@@ -300,6 +300,7 @@ Note what's *not* in the template: chat-template markers like `<|user|>...<|assi
 - **Async embedding.** Embedding 10k chunks against a remote service one-at-a-time takes minutes. Real pipelines batch via async. We don't — the lesson is the math.
 - **Quantized indexing.** 1M chunks at 1024-dim in `float32` is 4 GB — already worth thinking about quantizing the index. We don't optimize for this; for course-scale corpora the naive numpy array is fast enough.
 
+---
 ## What you'll build
 
 Package: `g2c/rag/`
@@ -404,7 +405,7 @@ class RAGPipeline:                                                 # implemented
 
 Total scaffolded code: roughly 60 lines across four function bodies. Everything else is pre-implemented because the lesson is the math, not the orchestration.
 
-## How to run tests
+## How to run the tests
 
 Tests live in `tests/test_rag.py`. Initial state: 73 tests pass, 69 tests fail
 
@@ -522,6 +523,7 @@ The exercises are written assuming `llama3.2:3b` for inference and `nomic-embed-
 
 - **`pipeline.answer` returns the model's raw completion.** No post-processing, no citation extraction, no fact-checking. If the model hallucinates `"[7]"` (a citation index that doesn't exist among the retrieved chunks), the pipeline doesn't catch it. Citation verification is a separate step — Exercise 7 of Module 19 (agent loops) is one place to put it.
 
+---
 ## Reading
 
 Primary:

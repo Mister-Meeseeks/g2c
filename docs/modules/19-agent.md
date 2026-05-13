@@ -318,13 +318,14 @@ Tuning these per-task is a real consideration — `loop_detection=False` for leg
 
 - **`max_steps` exists because models can lose the thread.** The combination of "nothing in the prompt actually requires the model to stop" and "context length is finite" means you need a hard cap. Module 18 had `max_steps=5`; Module 19 defaults to `8` because a planned task often needs the planning step + 3-5 tool calls + the final answer. Tune per-task.
 
-## What we don't cover
+### What we don't cover
 
 - Tree-of-thoughts, reflection loops, async/parallel agents, streaming parsers, and supervisor-worker systems.
 - **Production sandboxing**. All Module 18 caveats still apply: the local `run_python` tool is pedagogical, not a hosted-agent sandbox.
 - **Token-aware context management and long-term memory.** Module 19 uses a simple scratchpad; Module 20 layers on conversation-level assistant behavior.
 
 
+---
 ## What you'll build
 
 Package: `g2c/agent/`
@@ -422,6 +423,8 @@ Total scaffolded code: roughly 100 lines across four function bodies. The lesson
 Tests live in `tests/test_agent.py`. Initial state: 45 tests pass, 76 tests fail
 
 ```bash
+source .venv/bin/activate
+
 pytest tests/test_agent.py                          # all module-19 tests
 pytest tests/test_agent.py -x                       # stop at first failure
 pytest tests/test_agent.py -k Parse                 # parser tests
@@ -530,6 +533,7 @@ Llama 3.2:3b is the fastest reasonable choice. Llama 3.1:8b handles multi-step r
 
 - **Confusing `Action.tool` (Module 19) with `ToolCall.name` (Module 18).** They mean the same thing but use different field names. The agent's parser produces `Action(tool=...)`; the dispatcher needs `ToolCall(name=...)`. The agent module's `run` does the conversion — if you build a custom dispatch path, watch for this.
 
+---
 ## Reading
 
 Primary:

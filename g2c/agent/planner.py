@@ -180,8 +180,40 @@ def extract_plan(text: str, user_message: str) -> Plan | None:
       * `extract_plan("1. a\\n2. b\\n3. c\\n4. d\\n5. e\\n6. f", "x")` →
         Plan with first 5 steps, "f" dropped.
     """
-    # TODO
-    raise NotImplementedError
+    if not isinstance(text, str):
+        raise TypeError(f"text must be a str, got {type(text).__name__}")
+    if not isinstance(user_message, str):
+        raise TypeError(
+            f"user_message must be a str, got {type(user_message).__name__}"
+        )
+    if not user_message:
+        raise ValueError("user_message must be a non-empty str")
+
+    goal_match = _GOAL_RE.search(text)
+    if goal_match:
+        goal = goal_match.group(1).strip()
+    else:
+        goal = user_message.strip()
+    if not goal:
+        goal = user_message.strip()
+
+    steps: list[str] = []
+    seen_indices: list[int] = []
+    for step_match in _STEP_RE.finditer(text):
+        idx = int(step_match.group(1))
+        body = step_match.group(2).strip()
+        if not body:
+            continue
+        if seen_indices and idx <= seen_indices[-1]:
+            continue
+        seen_indices.append(idx)
+        steps.append(body)
+        if len(steps) >= 5:
+            break
+
+    if not steps:
+        return None
+    return Plan(goal=goal, steps=steps)
 
 
 def make_plan(

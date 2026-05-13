@@ -344,7 +344,7 @@ Open the working notebook with `.venv/bin/python scripts/open_notebook.py 00`. E
 
 6. **Environment check.** Run `./setup.sh`. If MPS is unavailable on an Apple Silicon machine, fix that before Module 02.
 
-## Pitfalls to avoid
+## Pitfalls to expect
 
 - **Trying to relearn everything.** The goal is not to master all prerequisite fields. It is to recover the pieces used by this course.
 - **Treating shapes as incidental.** Shapes are the fastest debugging tool you have. Write them down.
