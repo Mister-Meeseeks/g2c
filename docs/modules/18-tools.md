@@ -420,6 +420,17 @@ Llama 3.2 specifically is fine-tuned on tool-call data; it emits `<tool_call>` b
 
 - **The model emits a final answer AND a tool call.** Some models emit "the answer is 42" followed by a `<tool_call>` block they didn't quite mean to send. The current loop reads the call as authoritative ("there are tool calls — keep going"). If you want "answer present means stop," that's a different policy — a wrapper on the parser, or a post-call check on the loop.
 
+
+## M-series notes
+
+This module is comfortable on every M-series Mac.j Practical considerations:
+
+- **Inference happens via `OllamaBackend`** (or `LocalTransformerBackend` for the from-scratch model — but the from-scratch model isn't trained for tool calling, so it won't follow the schema). All Module 16 caveats apply: first call is slow, steady-state matches the model's parameter count.
+- **Tool execution latency.** The calculator is microseconds; `read_file` is microseconds for small files; `web_search` depends on your backend (the stub is microseconds; a real DuckDuckGo / Tavily call is ~1 second); `run_python` is the slowest (subprocess startup + Python init is ~50–200ms on M-series).
+- **Subprocess startup cost.** `subprocess.run([sys.executable, "-c", ...])` pays ~50-200 ms in Python startup. If `run_python` is called frequently, the total wall time is dominated by startup. A more advanced runner reuses a long-lived Python child process via `subprocess.Popen` + line-based protocol; out of scope here, but worth knowing about.
+- **Context length.** Each step appends to the transcript. A 5-step run with verbose tool results can easily reach 4–8k tokens. Llama 3.2's 128k context is comfortable; smaller-context models would need careful pruning of past turns. Module 19 will introduce conversation memory management.
+- **No special memory considerations for tool execution itself.** The tool runtime is pure Python plumbing. The model's inference is the memory-hungry part, and that's the same as Modules 16/17.
+
 ---
 ## Reading
 
@@ -451,13 +462,3 @@ Optional:
 - [ ] You can explain — out loud, without notes — why AST-walking is structurally safer than `eval()` with restricted globals.
 - [ ] You can explain — out loud, without notes — what the loop's stop condition is and why "no more tool calls" works as a signal.
 - [ ] You can explain — out loud, without notes — why the validator must reject `bool` when expecting `int` or `number`.
-
-## M-series notes
-
-This module is comfortable on every M-series Mac.j Practical considerations:
-
-- **Inference happens via `OllamaBackend`** (or `LocalTransformerBackend` for the from-scratch model — but the from-scratch model isn't trained for tool calling, so it won't follow the schema). All Module 16 caveats apply: first call is slow, steady-state matches the model's parameter count.
-- **Tool execution latency.** The calculator is microseconds; `read_file` is microseconds for small files; `web_search` depends on your backend (the stub is microseconds; a real DuckDuckGo / Tavily call is ~1 second); `run_python` is the slowest (subprocess startup + Python init is ~50–200ms on M-series).
-- **Subprocess startup cost.** `subprocess.run([sys.executable, "-c", ...])` pays ~50-200 ms in Python startup. If `run_python` is called frequently, the total wall time is dominated by startup. A more advanced runner reuses a long-lived Python child process via `subprocess.Popen` + line-based protocol; out of scope here, but worth knowing about.
-- **Context length.** Each step appends to the transcript. A 5-step run with verbose tool results can easily reach 4–8k tokens. Llama 3.2's 128k context is comfortable; smaller-context models would need careful pruning of past turns. Module 19 will introduce conversation memory management.
-- **No special memory considerations for tool execution itself.** The tool runtime is pure Python plumbing. The model's inference is the memory-hungry part, and that's the same as Modules 16/17.

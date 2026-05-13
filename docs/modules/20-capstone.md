@@ -501,6 +501,23 @@ These exercises require ProdLM configured with a local instruction model:
 
 - **The CLI's `/save` not flushing before exit.** The CLI's standard pattern is "type `/save path`, then exit." If `/save` doesn't write synchronously, you lose the transcript on exit. The CLI uses `Path.write_text` which writes synchronously; if you replace it with anything that buffers, beware.
 
+
+## M-series notes
+
+The capstone inherits Module 16-19's compute footprint. There is no new compute-heavy work in Module 20 itself; the assistant is orchestration on top of components you've already characterized.
+
+- **Per-turn latency is dominated by agent backend calls.** With `plan=True`, a typical chat turn is one planning call plus one to five ReAct loop calls. With the default `llama3.2:3b` ProdLM, this is comfortable on an M-series laptop. Larger local models may reason better but will cost more latency and memory.
+
+- **RAG adds one embedding call per turn.** The retriever embeds the query, then searches the in-memory store. Both are sub-100ms with `OllamaEmbedder`; the retrieval overhead is negligible compared to the agent's backend calls.
+
+- **Conversation history grows the prompt linearly.** With `max_history_messages=20` and average message length of 200 chars, you're adding about 4k chars, roughly 1k tokens, to each prompt. For longer sessions or smaller-context models, lower the cap or summarize old turns.
+
+- **The CLI's `/save` is essentially free.** A 100-turn transcript is well under 1 MB of JSON; `Path.write_text` finishes in milliseconds. No reason not to save aggressively.
+
+- **The eval suite should stay small.** Ten cases at a few seconds per case is an inner-loop tool. If it grows into an overnight benchmark, it has stopped serving its Module 20 purpose.
+
+- **The from-scratch baseline is a comparison, not a usable chat backend.** It is worth one eval pass so you can document where it breaks. Do not expect it to serve as the capstone assistant's main model.
+
 ---
 ## Reading
 
@@ -543,19 +560,3 @@ Optional:
 - [ ] You can explain — out loud, without notes — what `format_for_prompt` does NOT include and why.
 - [ ] You can explain — out loud, without notes — why the eval harness doesn't catch retriever exceptions.
 - [ ] You can explain — out loud, without notes — where exactly the from-scratch Module 10 model stops being viable as a chat backend, with one concrete example.
-
-## M-series notes
-
-The capstone inherits Module 16-19's compute footprint. There is no new compute-heavy work in Module 20 itself; the assistant is orchestration on top of components you've already characterized.
-
-- **Per-turn latency is dominated by agent backend calls.** With `plan=True`, a typical chat turn is one planning call plus one to five ReAct loop calls. With the default `llama3.2:3b` ProdLM, this is comfortable on an M-series laptop. Larger local models may reason better but will cost more latency and memory.
-
-- **RAG adds one embedding call per turn.** The retriever embeds the query, then searches the in-memory store. Both are sub-100ms with `OllamaEmbedder`; the retrieval overhead is negligible compared to the agent's backend calls.
-
-- **Conversation history grows the prompt linearly.** With `max_history_messages=20` and average message length of 200 chars, you're adding about 4k chars, roughly 1k tokens, to each prompt. For longer sessions or smaller-context models, lower the cap or summarize old turns.
-
-- **The CLI's `/save` is essentially free.** A 100-turn transcript is well under 1 MB of JSON; `Path.write_text` finishes in milliseconds. No reason not to save aggressively.
-
-- **The eval suite should stay small.** Ten cases at a few seconds per case is an inner-loop tool. If it grows into an overnight benchmark, it has stopped serving its Module 20 purpose.
-
-- **The from-scratch baseline is a comparison, not a usable chat backend.** It is worth one eval pass so you can document where it breaks. Do not expect it to serve as the capstone assistant's main model.

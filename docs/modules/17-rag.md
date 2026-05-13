@@ -523,6 +523,17 @@ The exercises are written assuming `llama3.2:3b` for inference and `nomic-embed-
 
 - **`pipeline.answer` returns the model's raw completion.** No post-processing, no citation extraction, no fact-checking. If the model hallucinates `"[7]"` (a citation index that doesn't exist among the retrieved chunks), the pipeline doesn't catch it. Citation verification is a separate step — Exercise 7 of Module 19 (agent loops) is one place to put it.
 
+
+## M-series notes
+
+This module is comfortable on every M-series Mac. Practical considerations:
+
+- **Embedding wall time.** `nomic-embed-text` runs at 30–80 chunks/sec on M-series, depending on Mac config and chunk size. A 1000-chunk corpus indexes in 15–30 seconds. On a 10k-chunk corpus, the indexing budget starts to matter — plan for a few minutes.
+- **Vector store memory.** A 10k-chunk corpus at 768-dim float32 is 30 MB. A 100k-chunk corpus is 300 MB. Comfortable on every Mac.
+- **Inference still happens via `OllamaBackend`.** All Module 16 caveats apply — first call is slow, steady-state matches the model size, etc. The RAG pipeline doesn't change the inference cost; it just changes the prompt the inference sees.
+- **MLX-accelerated embedders.** `mlx-lm` doesn't ship a built-in embedder, but several MLX-converted embedding models are on HuggingFace. The conversion is a one-line `mlx_lm.convert` for most encoder-only architectures. For a corpus you re-embed often, MLX is 2–3× faster than Ollama's GGUF embedder on M-series. Not a deliverable; a worthwhile exercise once you know the embedder model you're keeping.
+- **Disk space for embedding models.** `nomic-embed-text` is ~265 MB. `mxbai-embed-large` is ~670 MB. `bge-large` (if you go that route) is ~1.3 GB. Smaller than the chat models from Module 16 — not a constraint.
+
 ---
 ## Reading
 
@@ -554,13 +565,3 @@ Optional:
 - [ ] You can explain — out loud, without notes — what cosine similarity means as a dot product, and why every embedder in this module L2-normalizes its rows.
 - [ ] You can explain — out loud, without notes — what chunk overlap is for, and what fails without it.
 - [ ] You can explain — out loud, without notes — why the "I don't know" guard in the prompt is high-leverage, and what the model does without it.
-
-## M-series notes
-
-This module is comfortable on every M-series Mac. Practical considerations:
-
-- **Embedding wall time.** `nomic-embed-text` runs at 30–80 chunks/sec on M-series, depending on Mac config and chunk size. A 1000-chunk corpus indexes in 15–30 seconds. On a 10k-chunk corpus, the indexing budget starts to matter — plan for a few minutes.
-- **Vector store memory.** A 10k-chunk corpus at 768-dim float32 is 30 MB. A 100k-chunk corpus is 300 MB. Comfortable on every Mac.
-- **Inference still happens via `OllamaBackend`.** All Module 16 caveats apply — first call is slow, steady-state matches the model size, etc. The RAG pipeline doesn't change the inference cost; it just changes the prompt the inference sees.
-- **MLX-accelerated embedders.** `mlx-lm` doesn't ship a built-in embedder, but several MLX-converted embedding models are on HuggingFace. The conversion is a one-line `mlx_lm.convert` for most encoder-only architectures. For a corpus you re-embed often, MLX is 2–3× faster than Ollama's GGUF embedder on M-series. Not a deliverable; a worthwhile exercise once you know the embedder model you're keeping.
-- **Disk space for embedding models.** `nomic-embed-text` is ~265 MB. `mxbai-embed-large` is ~670 MB. `bge-large` (if you go that route) is ~1.3 GB. Smaller than the chat models from Module 16 — not a constraint.
