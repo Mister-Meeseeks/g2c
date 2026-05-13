@@ -308,69 +308,16 @@ pytest tests/test_sft.py -v                    # verbose
 
 ## Exercises
 
-1. **Hand-author a tiny instruction dataset.** Write 50 single-turn `(user, assistant)` pairs by hand. Suggested mix:
+Open the working notebook with `.venv/bin/python scripts/open_notebook.py 13`. The notebook carries the exact dataset format, training cells, and comparison prompts.
 
-     - 25 short factual Q&A (`"What is the capital of France?"` → `"Paris."`)
-     - 15 short instructions (`"Translate 'hello' to French."` → `"bonjour"`)
-     - 10 short creative tasks (`"Write a one-line haiku about a cat."` → some appropriate one-liner)
-
-   Save them as JSON. Constraints:
-
-     - Every assistant response is **one sentence**, ten words or fewer.
-     - Every prompt is **one sentence**, twenty words or fewer.
-     - Use the **same style** in every assistant response — no "Sure!", no "Of course,", no preamble. The first word of the response is content.
-
-   The consistency rules are doing real work: they bias the SFT signal toward a clean format. The exercises later test what happens when you violate them.
-
-2. **Run SFT and compare base vs SFT outputs.** Load your Module 10 checkpoint. Wrap your 50 examples in `SFTTrainer` and train for **500 steps** at `max_lr=3e-4`, `batch_size=4`, `warmup_steps=20`, `grad_clip=1.0`, `max_seq_len=128`. Save the SFT'd checkpoint.
-
-   Now generate from both — same prompt, same seed, same sampling settings (`temperature=0.7, top_p=0.9`). Print all comparisons side by side. Test at least prompts 5 in-distribution, and 5 out-of-distribution. Report:
-   
-     - For the in-distribution prompts: does the SFT model produce the right format (assistant turn, single sentence, ends with `<|end|>` or stops early)? How often does the SFT model emit a valid (perhaps wrong) answer? How often is it actually right?
-     - For the OOD prompts: how does the SFT model behave? Does it still answer with a single sentence? Has it forgotten how to continue prose?
-     - One paragraph: what was the most surprising sample, and why?
-
-3. **Loss-masking ablation.** Replicate exercise 2 with a modified `masked_cross_entropy` that **doesn't mask** (i.e. uses the full sequence as targets, like pretraining). Observe:
-
-     - Does the model still learn to answer questions?
-     - Does it learn faster or slower?
-     - Most importantly: at inference time, given the prompt `<|user|>\nWhat is 2+2?\n<|assistant|>\n`, does the model continue with the assistant's response, or does it sometimes "complete" the user's text first (i.e. emit more user-style tokens before an `<|assistant|>` marker)?
-
-
-4. **Format-collapse exploration.** Use exercise 2's SFT'd model and feed it the prompt:
-
-   ```
-   <|user|>
-   Continue this poem:
-   <|assistant|>
-   The stars above shine bright at night,
-   ```
-
-   I.e., prefill the assistant's turn with a partial response and let the model continue. Observe what the model does at the end of the line. Two failure modes you should look for:
-
-     - **It emits `<|end|>` immediately** because every training example was one sentence — the model has learned "after one sentence, stop." This is **format collapse**. Document the output.
-     - **It emits something completely off-topic** — perhaps a factual answer, perhaps a translation. The training distribution had no examples of multi-sentence creative writing. Document one example.
-
-   Now retrain with **5 multi-sentence creative examples added** to the dataset (the rest unchanged). Repeat the same prompt. Does the model now extend the response into a second line? At toy scale you may see partial improvement; document what changed. The point is: *the SFT distribution is the ceiling.* The model can't be coaxed into behavior the dataset doesn't represent.
-
-5. **Data-size sweep.** Train three SFT models from the same Module 12 checkpoint with **10 / 50 / 200 examples** (subsample your dataset for the smaller two, or hand-author more for 200). Same hyperparameters everywhere. Compare on the same five in-distribution prompts. Report:
-
-     - Format-compliance rate on the 5 prompts (0–5 valid responses per model).
-     - One sample per model where the difference is visible.
-     - One sentence on whether the data-quality intuition transfers — do you think 200 messy examples would be worse than 50 clean ones?
-
-6. **Pretraining-style perplexity loss after SFT.** Take a held-out passage of TinyShakespeare (the same eval split you used in Module 10/12). Compute the *base* model's per-token cross-entropy on that passage. Then compute the *SFT'd* model's per-token cross-entropy on the same passage.
-
-7. **Optional: LR sweep.** Train at `max_lr ∈ {1e-4, 3e-4, 1e-3, 3e-3}` (i.e. four runs). Plot final SFT loss and one sample per run. The expected pattern:
-
-     - `1e-4`: under-trained. Model is still mostly base-shaped after 500 steps.
-     - `3e-4`: the sweet spot. Format learned cleanly.
-     - `1e-3`: overshoots. Format learned but base capacity damaged.
-     - `3e-3`: catastrophic. Loss curve looks fine; outputs are gibberish.
-
-   The headline observation: SFT lr is ~10× lower than pretraining lr, and the *qualitative gap* between `3e-4` and `3e-3` is much wider than the loss-curve gap. Quantitative metrics under-state how much forgetting `3e-3` is doing.
-
-8. **Optional: inject a deliberate inconsistency.** Take your 50 examples and add 5 examples where the assistant uses a markedly different style (e.g. starts every response with "Indeed,"). Retrain. Test on prompts not in the inconsistent set. Does the "Indeed," style appear? At what rate? This is a tiny experiment in *style contamination*: at small scale, even 10% inconsistency in the training set is visible in the output distribution. The rate at which it appears is a measure of how unreliable SFT-on-noisy-data is.
+1. **Hand-author SFT data.** Create a tiny instruction-following dataset.
+2. **Run SFT.** Train and compare base vs SFT outputs.
+3. **Loss-mask ablation.** Observe what changes when assistant-only masking is removed.
+4. **Format collapse.** Probe whether the model learned the chat template.
+5. **Data-size sweep.** Compare small, medium, and larger SFT datasets.
+6. **Pretraining loss after SFT.** Check how behavior shaping affects base-LM loss.
+7. **Optional LR sweep.** See how SFT reacts to learning-rate scale.
+8. **Optional inconsistency injection.** Measure how noisy style examples contaminate outputs.
 
 ## Pitfalls to expect
 

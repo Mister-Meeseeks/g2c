@@ -254,25 +254,15 @@ pytest tests/test_training.py -x
 
 ## Exercises
 
-Set up or resume the working notebook for this exercise set by running:
+Open or resume the working notebook with `.venv/bin/python scripts/open_notebook.py 03b`. The notebook contains the runnable sweeps, plots, and answer cells.
 
-```bash
-.venv/bin/python scripts/open_notebook.py 03b
-```
-
-1. **Learning-rate sweep.** Train the same tiny MLP at `lr ∈ {1e-4, 1e-3, 1e-2, 1e-1, 1.0}`. Plot final train loss and describe the pattern. Which runs crawl, which learn, and which diverge?
-
-2. **AdamW by hand.** For a scalar parameter `p = 1.0`, gradient `g = 0.1`, `lr = 0.001`, `betas = (0.9, 0.999)`, `eps = 1e-8`, and no weight decay, compute the first AdamW update by hand. Explain why bias correction makes the first update roughly `0.001`.
-
-3. **Implement `AdamW.step`.** Run `pytest tests/test_training.py -k adamw -x` until the AdamW tests pass.
-
-4. **SGD vs AdamW on the same model.** Train the same MLP with SGD and AdamW. Keep model, data, seed, and number of steps fixed. Plot both loss curves. Which optimizer is less sensitive to the initial LR choice?
-
-5. **Gradient clipping demo.** Create two fake parameters with gradients `[3]` and `[4]`. Clip to `max_norm=1.0`. Explain why both gradients are multiplied by `1/5`, not clipped independently. Run `pytest tests/test_training.py -k clip_grad_norm -x`.
-
-6. **Warmup/cosine schedule.** Plot `cosine_with_warmup` for `warmup_steps=100`, `max_steps=1000`, `max_lr=3e-4`, `min_lr=3e-5`. Explain what happens at step 0, step 99, step 100, halfway through decay, and at the end. Run `pytest tests/test_training.py -k cosine_with_warmup -x`.
-
-7. **Curve diagnosis.** Given three train/validation plots — both high and flat, train low / val high, and both decreasing smoothly — write what you would try next for each.
+1. **Learning-rate sweep.** See crawling, learning, and divergence on the same model.
+2. **AdamW by hand.** Compute the first scalar AdamW update.
+3. **Implement AdamW.** Fill in `AdamW.step` and run the focused tests.
+4. **SGD vs AdamW.** Compare optimizer behavior under matched conditions.
+5. **Gradient clipping.** Demonstrate global-norm clipping on a tiny example.
+6. **Warmup/cosine schedule.** Plot the learning-rate schedule and explain its phases.
+7. **Curve diagnosis.** Match train/validation curve shapes to likely next actions.
 
 ## Pitfalls to expect
 

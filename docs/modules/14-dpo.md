@@ -373,69 +373,16 @@ pytest tests/test_dpo.py -v                    # verbose
 
 ## Exercises
 
-1. **Hand-author a tiny preference dataset.** Write 100 `(prompt, chosen, rejected)` triples. Suggested mix:
+Open the working notebook with `.venv/bin/python scripts/open_notebook.py 14`. The notebook contains the preference-data format, trainer setup, plots, and comparison prompts.
 
-     - 40 factual Q&A pairs where chosen is the correct answer and rejected is a plausible-but-wrong answer (`"What is the capital of Spain?"`: chosen=`"Madrid."`, rejected=`"Lisbon."`).
-     - 30 style pairs where chosen is concise and rejected is verbose or rambling.
-     - 20 helpfulness pairs where chosen directly addresses the prompt and rejected sidesteps it.
-     - 10 refusal pairs where chosen politely declines a problematic prompt and rejected complies.
-
-   Save them as JSON. Constraints:
-
-     - **Length-match.** Chosen and rejected should be within ~2× length of each other in tokens. Length bias is the single most-studied DPO failure; control it.
-     - **Style-match.** Both completions should use the same surface style (terse, no preamble, ends with `<|end|>`). The only difference should be the *behavior* you're correcting.
-     - **One axis at a time.** Don't pair a verbose-incorrect against a terse-correct; the model can't tell which axis you're rewarding.
-
-2. **Run DPO and compare SFT vs DPO outputs.** Load your Module 13 SFT'd checkpoint into TWO `TransformerLM` instances — `model` (policy) and `ref_model` (reference). Wrap your 100 preference examples in `DPOTrainer` and train for **300 steps** at `max_lr=1e-4`, `batch_size=4`, `warmup_steps=10`, `grad_clip=1.0`, `max_seq_len=128`, `beta=0.1`. Save the DPO'd checkpoint.
-
-   Generate from both — same prompt, same seed, same sampling settings. Compare on:
-
-     - **5 prompts where the SFT model gets the answer wrong** (e.g. `"largest city in Spain"` if your SFT model says Lisbon). Does DPO improve any?
-     - **5 prompts NOT in the training set** with the same shape as the chosen behaviors. Does DPO transfer?
-     - **5 OOD prompts** (poetry continuation, prose completion). Has DPO degraded base capacity?
-
-   Report:
-     - Win-rate over the SFT model on the 5 in-distribution prompts.
-     - Reward margin (`chosen_reward − rejected_reward`) on the held-out eval set across training steps. Should grow monotonically.
-     - One sample per prompt-class where DPO clearly helped, and one where it clearly hurt.
-
-3. **β sweep.** Train at `β ∈ {0.01, 0.05, 0.1, 0.3, 1.0}` (five runs). For each, plot:
-     - Final training loss.
-     - Final reward margin.
-     - One sample on a held-out prompt.
-
-   Expected pattern:
-     - `β = 0.01`: aggressive drift, loss drops fast, but samples are gibberish or repetitive (capacity damage).
-     - `β = 0.05–0.3`: the sweet spot, samples look better than SFT.
-     - `β = 1.0`: policy barely moves, loss stays near `log 2`, samples look like SFT.
-
-   Headline observation: the qualitative gap between `β = 0.05` and `β = 1.0` is much wider than the loss-curve gap. A loss-only plot under-states how much capacity damage low-β runs are doing. Document one extreme example.
-
-4. **Length-bias injection.** Take your dataset; for half of the examples, *deliberately* make the chosen completion noticeably longer than the rejected one. Retrain. Generate from the resulting model on the held-out test prompts. Observe:
-     - Are responses systematically longer than the SFT model's?
-     - Are they systematically longer than the un-biased DPO model's?
-     - Does the DPO accuracy metric (% of pairs with chosen reward > rejected reward) hide the length bias? (Hint: it does.)
-
-5. **Reference drift verification.** Snapshot every parameter of `ref_model` before training. Train. Snapshot after. Verify byte-for-byte equality. (This is `test_dpo_trainer_ref_model_unchanged` formalized — but doing it on your real run is reassurance that your training pipeline isn't subtly mutating the reference.)
-
-6. **Implicit-reward calibration.** After DPO, the implicit reward `r̂(x, y) = β · log[π(y|x) / π_ref(y|x)]` is supposed to be a useful "reward function" — better completions should score higher. Test this:
-     - Generate 20 random completions from the DPO'd model on 10 held-out prompts.
-     - For each (x, y) pair, compute the implicit reward (you have policy and reference; just forward both and compute the log-ratio).
-     - Rank the 20 completions per prompt by implicit reward.
-     - Read the top-1 and bottom-1 completion. Does the ranking match your intuition? (At toy scale: probably not perfectly, but better than random.)
-
-   Report: across the 10 prompts, what fraction of the time does the top-1 implicit-reward completion match what *you* would have ranked first? This is the "is DPO actually doing what it claims" sanity check.
-
-7. **Optional: DPO without the SFT step.** Run DPO directly from a Module 10 (pretraining) checkpoint, skipping the SFT stage. Both policy and reference start from the base model. Observe:
-     - Does DPO still learn the preferences?
-     - Does the model emit the chat format correctly?
-     - Compare against the SFT-then-DPO model qualitatively.
-
-8. **Optional: a single bad rejected example.** Take your dataset; in one example, deliberately make the rejected completion contain malformed format (`"Madrid"` without trailing `<|end|>`, or a rogue `<|user|>` mid-response). Train. Observe:
-     - Does the gradient through that one example damage the format model on prompts unrelated to it?
-     - At toy scale, how many "good" examples does it take to balance one "bad" rejected one?
-
-   This calibrates intuition for what a "noisy" preference dataset costs. At toy scale, ratios of 50:1 (good:bad) can still be visible in outputs.
+1. **Hand-author preference data.** Create chosen/rejected examples around simple behavior preferences.
+2. **Run DPO.** Train policy vs reference and compare SFT/DPO outputs.
+3. **Beta sweep.** Study how `beta` changes reward margins and drift.
+4. **Length-bias injection.** Deliberately bias chosen examples and observe the result.
+5. **Reference drift check.** Verify the reference model stays frozen.
+6. **Implicit-reward calibration.** Check whether DPO rewards rank held-out completions sensibly.
+7. **Optional DPO without SFT.** Compare preference training from a base checkpoint.
+8. **Optional malformed rejected example.** See how one bad format example can distort behavior.
 
 ## Pitfalls to expect
 

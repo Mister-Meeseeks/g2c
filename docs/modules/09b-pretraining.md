@@ -194,19 +194,13 @@ pytest tests/test_pretraining_setup.py -v
 
 Open the working notebook with `.venv/bin/python scripts/open_notebook.py 09b`. Each exercise has `Question:` / `Answer:` cells inside the notebook. If you'd like a hint instead of a grade, write the request in the answer string and ask a coding agent for help. Blank answers are skipped rather than counted wrong.
 
-1. **Shift a toy stream by hand.** Given `ids = [10, 11, 12, 13, 14, 15]`, `start = 1`, and `T = 3`, write `x` and `y`. Explain why `y[t]` is the target for `x[t]`.
-
-2. **Explain why the causal mask matters.** In one paragraph, explain why multi-position training would be invalid without a causal mask.
-
-3. **Inspect `get_lm_batch`.** Run the notebook cell that samples from `torch.arange(30)`. Verify that every target is input plus one. Then explain why this toy stream makes the shift easy to see.
-
-4. **Implement `lm_cross_entropy`.** Fill in the scaffold in `g2c/pretraining/loss.py`, then run `pytest tests/test_pretraining_setup.py -k lm_cross_entropy -x`.
-
-5. **Flatten shapes explicitly.** For `B = 2`, `T = 4`, `V = 7`, write the shapes of `logits`, `targets`, `flat_logits`, and `flat_targets`. State how many classification examples the batch contains.
-
-6. **Compute the baseline.** For `V = 256`, `V = 512`, and `V = 1024`, compute `log(V)` and `exp(log(V))`. Explain why larger vocabularies have larger initial loss but not necessarily worse models.
-
-7. **Random model sanity check.** Instantiate a tiny `TransformerLM`, sample one batch, compute `lm_cross_entropy`, and compare it to `log(V)`. If the two values differ a lot, write down two possible explanations.
+1. **Shift a toy stream.** Write `x` and `y` for a tiny next-token window.
+2. **Causal mask reasoning.** Explain why multi-position training needs masking.
+3. **Inspect `get_lm_batch`.** Verify sampled inputs and targets are shifted by one token.
+4. **Implement `lm_cross_entropy`.** Flatten sequence logits/targets and run the tests.
+5. **Flatten shapes.** Count how many classification examples a `(B, T, V)` batch contains.
+6. **Compute `log(V)`.** Use the uniform baseline to sanity-check initial loss.
+7. **Random-model check.** Compare a tiny transformer's initial loss to `log(V)`.
 
 ## Pitfalls to expect
 

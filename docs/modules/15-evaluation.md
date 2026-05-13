@@ -467,66 +467,16 @@ pytest tests/test_eval.py -v                       # verbose
 
 ## Exercises
 
-1. **Hand-author a tiny multiple-choice eval set.** Write 30 `MultipleChoiceExample`s, each with 4 choices and a gold answer index. Suggested mix:
+Open the working notebook with `.venv/bin/python scripts/open_notebook.py 15`. The notebook contains the concrete eval examples, harness calls, plots, and answer cells.
 
-     - 10 factual questions (capitals, large-named-entity facts, simple geography).
-     - 10 simple arithmetic questions ("What is 3 + 4?", choices `["6", "7", "8", "9"]`).
-     - 10 instruction-following questions ("If asked about today's weather, the assistant should respond with…", choices including refusal options).
-
-   Constraints:
-
-     - **Length-match the choices.** All four options for a question should be within 10–20% of each other in token count. If one option is dramatically shorter or longer, the harness's argmax is dominated by length not content.
-     - **Plausible distractors.** Wrong answers should be wrong but reasonable — not absurd. "What is the capital of Spain?" with choices `["Madrid", "Lisbon", "Berlin", "an apple"]` is too easy because "an apple" is obviously not a city.
-
-2. **Run the multiple-choice harness on your DPO'd model.** Load your Module 14 DPO'd checkpoint. Run `run_multiple_choice_eval` over your dataset. Report:
-
-     - Overall accuracy (raw and length-normalized — does normalization change it?).
-     - Mean confidence.
-     - ECE.
-     - The reliability curve as a small ASCII plot or saved figure.
-     - Per-category accuracy: factual / arithmetic / instruction-following separately.
-
-3. **Probe with hallucination prompts.** Hand-author 20 prompts designed to elicit hallucinations:
-
-     - 5 obscure-fact questions (low-frequency named entities your pretraining wouldn't have seen many times).
-     - 5 questions with no real answer ("What is the seventh letter of the word 'cat'?").
-     - 5 prompts that contain an explicit fact that the answer should respect ("Alice is 30. How old will she be in 5 years?").
-     - 5 absurd prompts ("What is the color of an idea?").
-
-   Run `run_generation_eval` with `contains_match` against the expected behavior (the right answer for the answerable ones, "I don't know" / "cannot" for the unanswerable). Categorize each failure as factual hallucination, contextual hallucination, refusal failure, or format breakage. Report:
-
-     - Number per category.
-     - One verbatim sample per category that's egregious.
-     - Whether DPO improved any of these (compare against SFT-only output if you preserved that checkpoint).
-
-4. **Build a hand-authored arithmetic eval.** 50 simple-arithmetic prompts, in `<|user|>\n{question}\n<|assistant|>\n` format. Run `run_generation_eval` with `numeric_match` (tolerance=0). Report accuracy by digit count:
-
-     - 1+1-digit (e.g. "What is 3 + 4?")
-     - 2+2-digit (e.g. "What is 13 + 28?")
-     - 3+3-digit (e.g. "What is 234 + 567?")
-
-5. **Beta-sweep eval comparison.** Take your Module-14 β sweep checkpoints (β ∈ {0.05, 0.1, 0.3, 1.0} from exercise 14.3). For each, run the multiple-choice harness from exercise 2. Plot:
-
-     - Accuracy vs β.
-     - ECE vs β.
-     - Reliability curves stacked.
-
-   Expected pattern: accuracy roughly flat across β with a small peak in the sweet spot (0.1–0.3); ECE markedly worse at extreme β (low β: model drifted, high β: model unchanged from SFT, neither is well-calibrated for this dataset). Document the β that gave the best ECE — it's not necessarily the same as the one with best accuracy.
-
-6. **Generation eval with calibration (optional).** The generation harness sets `confidence=None` by default. Extend it: after `generate_fn` produces a prediction, re-score it under the model with `continuation_logprob(model, tokenizer, prompt, prediction)` and convert the per-token mean log-prob to a probability via `exp(mean_logp)`. Wire this through to `EvalResult.confidence` and re-aggregate ECE.
-
-   Run on the arithmetic eval from exercise 4. Plot the reliability curve. Expected pattern: the model is even *more* over-confident on generation than on multiple choice, because every emitted answer feels "complete and final" to the autoregressive scorer regardless of how plausible it is.
-
-7. **Hand-built MMLU subset (optional).** Pick 3 MMLU subjects (e.g. high_school_geography, elementary_mathematics, college_biology). Hand-transcribe (or download and minimally adapt) 20 questions per subject in `MultipleChoiceExample` form. Run the harness. Report per-subject accuracy. Compare against random chance (0.25 for 4-option MC) and against your hand-authored eval from exercise 1.
-
-8. **Evaluation post-mortem (the deliverable).** Write 2–3 paragraphs characterizing your model's typical failure modes. Categories to cover:
-
-     - **What it can do.** At least 3 specific capabilities, with eval numbers.
-     - **What it cannot do.** At least 3 specific capability ceilings, with eval numbers.
-     - **How it fails.** Hallucination categories, refusal behavior, format breakage rates.
-     - **How well it knows itself.** Calibration: ECE, the gap between accuracy and mean confidence, where the over-confidence concentrates (high-confidence bins or low?).
-
-   This is the deliverable. Not the eval harness — the *characterization* of the model. Reading this back to yourself in six months should let you remember what you built and what its limits were.
+1. **Multiple-choice eval set.** Hand-author a small balanced MC dataset.
+2. **Run the MC harness.** Measure accuracy, confidence, calibration, and category breakdowns.
+3. **Hallucination prompts.** Probe factual, contextual, refusal, and format failures.
+4. **Arithmetic eval.** Use numeric matching across easy and harder arithmetic buckets.
+5. **Beta-sweep comparison.** Evaluate DPO checkpoints across accuracy and calibration.
+6. **Optional generation calibration.** Add confidence estimates to generation evals.
+7. **Optional MMLU subset.** Adapt a small subject set into the course eval format.
+8. **Evaluation post-mortem.** Characterize what the model can do, cannot do, and how it fails.
 
 ## Pitfalls to expect
 

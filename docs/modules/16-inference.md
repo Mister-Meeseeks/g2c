@@ -399,76 +399,17 @@ pytest tests/test_inference.py -v                       # verbose
 
 ## Exercises
 
-These exercises have two paths. The artifact path works with whatever saved StudentLM/BaseLM artifact you have. The ProdLM path requires a running Ollama installation and a configured manifest from `./prodlm.sh --model-id llama3.2:3b` (or your model of choice). The course works with a 16 GB or larger MacBook; 8 GB Macs can run smaller ProdLMs (`llama3.2:1b`, `qwen2.5:0.5b`) but the Phase V experience is degraded.
+Open the working notebook with `.venv/bin/python scripts/open_notebook.py 16`. These exercises compare your saved artifacts with ProdLM and focus on inference behavior.
 
-1. **Smoke-test artifact and ProdLM backends.** Load the strongest saved artifact automatically, load your configured ProdLM, and run a 4-prompt comparison:
-
-   ```python
-   prompts = [
-       "<|user|>\nWhat is the largest city in Spain?\n<|assistant|>\n",
-       "<|user|>\nWhat is 13 + 28?\n<|assistant|>\n",
-       "<|user|>\nIn one sentence, who wrote Hamlet?\n<|assistant|>\n",
-       "<|user|>\nList three programming languages.\n<|assistant|>\n",
-   ]
-
-   from g2c.inference import load_artifact_backend, load_prodlm_backend
-
-   artifact = load_artifact_backend(required=False)
-   prodlm = load_prodlm_backend(required=True)
-   backends = [backend for backend in (artifact, prodlm) if backend is not None]
-
-   for backend in backends:
-       for p in prompts:
-           r = backend.complete(p, max_new_tokens=64, temperature=0.0)
-           print(f"[{backend.info.name}] {r.completion!r}  ({r.tokens_per_second:.1f} tok/s)")
-   ```
-
-   Compare the outputs side by side. Note where the artifact can answer, where it hallucinates, and where ProdLM behaves differently. Save the comparison.
-
-2. **Benchmark ProdLM on its own.** Use `benchmark(prodlm, prompts, max_new_tokens=128)` over a 20-prompt suite of factual / arithmetic / instruction-following questions (re-use your Module 15 eval set). Report:
-
-   - Mean / p50 / p90 latency (ms).
-   - Overall tokens/sec.
-   - Per-request tokens/sec (notice variance).
-   - The cold-start latency of the first request vs the steady-state mean.
-
-   Expected on M2 16GB with `llama3.2:3b`: 25–40 tok/s steady-state, first-request latency 2–5× higher than steady state. On 64 GB with `llama3.1:8b`: 15–25 tok/s. On 8 GB with `llama3.2:1b`: 50–80 tok/s.
-
-3. **Run the same prompts via MLX.** Install `mlx-lm` (`pip install mlx-lm`), download an MLX-converted model (`mlx-community/Llama-3.2-3B-Instruct-4bit` from Hugging Face works), and write a tiny `MLXBackend` subclass of `Backend`. The exercise here is the subclass — same pattern as `OllamaBackend`, but calling `mlx_lm.generate` in-process. Run the same `benchmark` suite. Compare MLX throughput to ProdLM on the same Mac, same model family, same prompts. Expected: MLX is faster (1.5–2× on M2) for the steady state but model loading is slower.
-
-4. **Re-run Module 15's evaluation on ProdLM.** Take `run_generation_eval` from Module 15 and pass it a `generate_fn` that wraps `prodlm.complete` (note: Module 15's harness expects a `Callable[[str], str]`, so write a small adapter `def gen_fn(prompt): return prodlm.complete(prompt).completion`). Run on your hand-built generation eval set. Compare accuracy to your strongest artifact. Expected: much higher accuracy on factual prompts; same hallucination risk on impossible prompts; better but still imperfect arithmetic.
-
-5. **Quantify the quantization tax.** Load BaseLM in-process, run a small generation eval at fp16, then fake-quantize fresh copies of the weights to 8, 4, and 2 bits. Report accuracy and a few qualitative samples at each precision. This is a quality experiment: the fake-quantized weights are dequantized back into ordinary PyTorch float tensors, so memory does not shrink. Expected: 8-bit should usually look close to fp16; 4-bit may show visible degradation; 2-bit should make the intelligence collapse obvious. Real memory savings still come from a runtime format such as GGUF through Ollama.
-
-6. **Build a "router" Backend.** Subclass `Backend` to dispatch between two concrete backends based on prompt length: `< 32 tokens` goes to the artifact backend (fast, local, good enough for trivial completions); `≥ 32 tokens` goes to ProdLM (slower but more capable). Run the benchmark. Expected: throughput is somewhere between artifact-only and ProdLM-only, depending on prompt mix. The exercise is the dispatching pattern — it's the same shape as a routing decision in Module 19's agent loop.
-
-7. **(Optional) Implement the toy KV cache.** Fill in the cached forward path for the course model:
-
-   - `MultiHeadAttention.forward_cached`
-   - `Block.forward_cached`
-   - `TransformerLM.forward_cached`
-   - `generate_cached`
-
-   The cache containers are already implemented. The tests compare cached outputs against the regular full-sequence path, so the target is not "make it faster at all costs"; the target is "same math, less repeated projection work." Run:
-
-   ```bash
-   pytest tests/test_multi_head_attention.py -k cached
-   pytest tests/test_transformer.py -k cached
-   pytest tests/test_sampling.py -k cached
-   ```
-
-   Expected: greedy `generate_cached` returns exactly the same token IDs as `generate` until the cache reaches `max_seq_len`. This toy cache does not implement rolling windows, paged attention, batching, or preallocated buffers; production servers do.
-
-8. **(Optional) Streaming.** Subclass `OllamaBackend` and add a `complete_stream(prompt, ...) -> Iterator[str]` method that yields tokens as they arrive. Hint: `urlopen` returns a stream; iterate `resp` line-by-line, parse each line as JSON (the streaming format), yield the `"response"` field. Demo: print tokens to stdout as the model generates. The UX difference between streaming and non-streaming for a 3B-class model is striking.
-
-9. **Inference-stack post-mortem (the deliverable).** Write 3–4 paragraphs in `docs/inference-postmortem.md` covering:
-
-   - **What you ran.** Models, quantization levels, throughput numbers, latency percentiles.
-   - **Where the gaps were.** Which prompts your artifact can attempt at all, which only ProdLM handles, which neither handles.
-   - **The cost-quality frontier.** A table or plot of `(model_size, quantization) → (memory, latency, eval_accuracy)`. Even three points (your strongest artifact, llama3.2:1b Q4, llama3.2:3b Q4) is enough to draw the shape.
-   - **What you'd use for the rest of the course.** Pick one ProdLM model + quant level as your "default backend" for Modules 17–20. Justify the choice in 2–3 sentences. (Spoiler: probably `llama3.2:3b` Q4_K_M unless you have ≥ 32 GB, in which case `llama3.1:8b` Q4_K_M is a better choice for the agent module.)
-
-   This is the deliverable. Not the interface code — the *characterization* of which backend you're going to depend on for the rest of the course, and why.
+1. **Backend smoke test.** Compare artifact and ProdLM completions on a few prompts.
+2. **Benchmark ProdLM.** Measure latency, throughput, and wall-clock behavior.
+3. **MLX backend.** Implement the same backend interface through MLX.
+4. **ProdLM evaluation.** Re-run a Module 15-style eval through the ProdLM adapter.
+5. **Quantization quality.** Compare fp16 and fake-quantized BaseLM outputs.
+6. **Router backend.** Dispatch between a tiny artifact and ProdLM.
+7. **Optional KV cache.** Implement the toy cached forward path.
+8. **Optional streaming.** Add a streaming completion method.
+9. **Inference post-mortem.** Summarize speed, quality, memory, and routing tradeoffs.
 
 ## Pitfalls to expect
 

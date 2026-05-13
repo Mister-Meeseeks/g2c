@@ -424,68 +424,17 @@ pytest tests/test_rag.py -v                       # verbose
 
 ## Exercises
 
-These exercises require Ollama running with both an inference model AND an embedding model. If you already ran `./prodlm.sh`, both defaults should be pulled:
+Open the working notebook with `.venv/bin/python scripts/open_notebook.py 17`. The notebook carries the exact indexing, retrieval, and RAG pipeline prompts. Run `./prodlm.sh` first if you have not already pulled the local chat and embedding models.
 
-```bash
-./prodlm.sh --model-id llama3.2:3b # pulls the chat model and nomic-embed-text
-ollama serve                       # if not already running
-```
-
-The exercises are written assuming `llama3.2:3b` for inference and `nomic-embed-text` for embeddings; substitute as needed for your hardware budget.
-
-1. **Index your own notes.** Pick a corpus you actually care about — your `docs/` directory, your meeting notes, your bookmarked links exported as text, the course's `docs/modules/` directory. Write a small script that walks the directory, calls `chunk_text` on each `.md` file, and indexes everything into a `NumpyVectorStore` using `OllamaEmbedder`. Report:
-    - Total documents.
-    - Total chunks (and chunks-per-document distribution).
-    - Total embedding wall time and tokens-per-second equivalent (via `time.perf_counter` around the indexing loop).
-
-   Then run a few hand-authored questions and inspect the top-3 retrieved chunks for each. Are the results obviously relevant? Where does retrieval fail?
-
-2. **Compare HashEmbedder vs OllamaEmbedder on the same corpus.** Index your corpus twice — once with `HashEmbedder(dim=512)`, once with `OllamaEmbedder(dim=768)`. For 10 questions, retrieve top-3 from each and tabulate:
-    - Where does HashEmbedder match OllamaEmbedder?
-    - Where does it differ? (Lexical-overlap questions where both should agree; paraphrase questions where the hash embedder fails.)
-    - On a question whose phrasing differs from the source document, does the hash embedder retrieve the right chunk at all?
-
-   This exercise is the empirical demonstration of "lexical vs semantic" — feel the gap.
-
-3. **Build the end-to-end RAG chatbot.** Wire your `OllamaEmbedder` + `NumpyVectorStore` (loaded from Exercise 1) + `DenseRetriever` + `OllamaBackend("llama3.2:3b")` into a `RAGPipeline`. Build a tiny CLI:
-
-   ```python
-   while True:
-       q = input("? ")
-       if not q.strip():
-           break
-       ans = pipeline.answer(q, k=5, max_new_tokens=256, temperature=0.2)
-       print(ans.answer)
-       print()
-       print("Sources:")
-       for r in ans.retrieved:
-           print(f"  [{r.rank}] (score={r.score:.3f}) {r.chunk.source}")
-   ```
-
-   Run a 10-question session. Try: questions answerable by your corpus, questions that aren't, questions about facts your corpus contains but phrased very differently. Save the transcript.
-
-4. **Persist the index.** `NumpyVectorStore` is in-memory — a restart drops everything. Write `save_store(store, path)` and `load_store(path)` helpers. Use `np.save` for `store.vectors` and pickle (or `json` + a Chunk-rehydrator) for `store.chunks`. Add tests for round-tripping. Now your indexing is amortized across runs: re-embedding the corpus is the slow step, and you only pay it when the corpus changes.
-
-5. **Probe failure modes.** Construct three categories of question:
-    - **Answerable from the corpus.** Should retrieve the right chunk and produce a grounded answer.
-    - **Answerable but phrased adversarially.** "What's the city in Spain that has soccer teams?" when the source says "Madrid is the capital of Spain and home to Real Madrid." A dense embedder should retrieve; a hash embedder might not.
-    - **Not answerable from the corpus.** "What's the population of Pluto?" The model should say "I don't know based on the provided context" — but might hallucinate.
-
-   Build a 30-question test set across these three buckets. Report the model's behavior in each (correct / partially correct / hallucinated / refused). The "hallucination on unanswerable questions" rate is your RAG pipeline's calibration. Lower is better.
-
-6. **Hybrid retrieval (BM25 + dense).** Implement a tiny BM25 scorer (the function is ~30 lines: term frequencies, IDFs, document-length normalization) and combine its scores with `DenseRetriever`'s via reciprocal-rank fusion (`score = 1/(60+rank_dense) + 1/(60+rank_bm25)`). Re-run Exercise 5's question set and compare hybrid retrieval to dense-only. On keyword-heavy queries (named entities, code identifiers, exact numbers), hybrid should noticeably win.
-
-7. **Re-rank with a cross-encoder.** Pull a small cross-encoder via Ollama or HuggingFace (`bge-reranker-v2-m3` is a popular option, ~560 MB). Retrieve top-20 with the dense embedder, then re-rank top-5 with the cross-encoder. Wrap as a `RerankRetriever(base, reranker)` that subclasses `DenseRetriever`. Measure: how many cross-encoder calls per query, what's the latency cost, and does retrieval accuracy improve on Exercise 5's adversarial bucket?
-
-8. **Smarter chunker.** The `chunk_text` you built is a fixed-size sliding window. Write `chunk_text_recursive(text, *, source, chunk_size, chunk_overlap, separators=["\n\n", "\n", " ", ""])` that recursively tries each separator: split on the strongest available, then if any sub-chunk is still too big, recurse with a weaker separator. This is LangChain's `RecursiveCharacterTextSplitter` algorithm. Compare retrieval quality to the sliding window on a markdown-heavy corpus.
-
-9. **The deliverable: RAG post-mortem.** Write 3–4 paragraphs in `docs/rag-postmortem.md` covering:
-    - **What you indexed.** Corpus, chunk size / overlap, embedder, dim, vector count.
-    - **What worked.** Question types where retrieval reliably succeeded.
-    - **Where it broke.** Question types where retrieval failed; specific examples; whether the cause was chunking, embedding, or model abstention.
-    - **What you'd build next.** Hybrid retrieval? Re-ranking? A smarter chunker? A larger embedder? Justify the next investment in 2–3 sentences.
-
-   This is the actual deliverable. The pipeline code is the starting point; the *characterization* of where it works and where it fails is what you keep.
+1. **Index your own notes.** Build a vector index over a corpus you care about.
+2. **Compare embedders.** Measure HashEmbedder vs OllamaEmbedder on the same questions.
+3. **End-to-end RAG chatbot.** Wire embedder, store, retriever, prompt builder, and backend.
+4. **Persist the index.** Save and reload chunks plus vectors.
+5. **Probe failure modes.** Test answerable, adversarial, and unanswerable questions.
+6. **Hybrid retrieval.** Combine lexical and dense ranking.
+7. **Cross-encoder reranking.** Add a slower reranker after dense retrieval.
+8. **Smarter chunking.** Compare fixed windows with recursive chunking.
+9. **RAG post-mortem.** Characterize where retrieval helps and where it breaks.
 
 ## Pitfalls to expect
 

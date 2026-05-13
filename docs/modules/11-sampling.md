@@ -333,47 +333,16 @@ pytest tests/test_sampling.py -v               # verbose
 
 ## Exercises
 
-1. **Sweep temperature on your strongest saved model.** The notebook auto-loads the strongest reusable artifact it can find, in this order: `ShakespeareLM-1M`, `StoryLM-5M`, `StoryLM-10M`, `StoryLM-30M`, `TinyLLM-30M`, `TinyLLM-100M`. Decode a 200-token sample at `temperature ∈ {0.1, 0.5, 0.7, 1.0, 1.3, 2.0}` from the same prompt with the same seed (`generator=torch.Generator().manual_seed(0)`). Print all six samples side by side.
+Open the working notebook with `.venv/bin/python scripts/open_notebook.py 11`. The notebook auto-loads the strongest available model artifact unless you override it.
 
-2. **Compare top-k vs top-p.** Same loaded artifact, same prompt, same seed. At fixed `temperature=0.8`, decode 200 tokens with:
-
-     - No filter (baseline)
-     - `top_k=10`
-     - `top_k=50`
-     - `top_p=0.7`
-     - `top_p=0.9`
-     - `top_p=0.95`
-
-   Compare the outputs qualitatively. 
-
-3. **Quantify the looping problem.** Decode 500 tokens at `T=0.0` (greedy) and compute the *type-token ratio* — the number of distinct tokens divided by the total number of tokens. Then do the same at `T=0.7`, `T=0.7 + repetition_penalty=1.2`, and `T=0.7 + repetition_penalty=1.5`. Plot type-token ratio vs penalty. 
-
-4. **Build an interactive playground.** Wrap `generate` in a small CLI loop:
-
-   ```python
-   while True:
-       prompt = input("> ")
-       if prompt == "/quit": break
-       ids = tokenize(prompt)
-       out = generate(model, ids, max_new_tokens=200,
-                       temperature=0.8, top_p=0.9)
-       print(detokenize(out))
-   ```
-
-   Add `/temp 0.5`, `/top_p 0.95`, `/seed 42` commands so you can change settings without restarting. Spend 10 minutes typing prompts and watching the model react. This is the fastest way to build intuition for what each knob does — read the syllabus, then *play*.
-
-5. **Implement greedy two ways.** Verify that:
-
-     - `generate(..., temperature=0.0)` (the explicit greedy path)
-     - `generate(..., temperature=1.0, top_k=1)` (multinomial over a single non-`-inf` token)
-
-   produce identical outputs from the same prompt. 
-
-6. **Logit biasing.** Add a `forbid_ids: list[int] | None` argument to a copy of `generate` that sets `last_logits[:, forbid_ids] = float('-inf')` before the warpers run. Use it to forbid token IDs corresponding to a few "bad" tokens (your tokenizer has probably tokenized something offensive, profane, or conversation-ruining; pick three). Generate with and without the forbid set; observe that those tokens never appear in the output. This is the simplest content-control mechanism real systems use.
-
-7. **Forced first token.** Same idea, opposite direction: add a `force_first_id` argument that, on the very first generation step, replaces the model's argmax with the forced id and continues from there. Use it to seed the model's continuation with a particular word; observe how strongly the prefix steers the rest of the generation. This is a baby version of what classifier-free guidance and logit-bias APIs do in real systems.
-
-8. **Compare `(T=0.7, top_p=0.9)` against `(T=0.0)` on a held-out set.** Tokenize a held-out passage from the same corpus family as your loaded artifact. Use your model and `generate` to *complete* the first 32 tokens of that passage with each setting. Compute the per-token cross-entropy between the model's continuation and the actual continuation (treating the actual continuation as ground truth).
+1. **Temperature sweep.** Sample the same prompt at several temperatures.
+2. **Top-k vs top-p.** Compare truncation strategies at fixed temperature.
+3. **Looping and repetition.** Quantify repetition with type-token ratio.
+4. **Interactive playground.** Build a small loop for prompt and sampler experiments.
+5. **Greedy two ways.** Verify greedy decoding is `temperature=0` behavior.
+6. **Logit biasing.** Forbid selected token IDs and observe the effect.
+7. **Forced first token.** Force an opening token and watch the continuation steer.
+8. **Held-out completion comparison.** Compare sampled completions against actual held-out text.
 
 ## Pitfalls to expect
 

@@ -219,56 +219,16 @@ Numbers are wide ballparks — context length, vocab, and Mac generation all mat
 
 ## Exercises
 
-1. **Train three sizes, plot scaling.** Build `1M`, `5M`, `20M` per the configs above, train each for 5000 steps with the standard recipe, and record final val loss + perplexity. Plot `log(val_loss)` vs `log(params)` — three points and a line of best fit. Eyeball the slope. Report:
+These are scaling experiments built on the Module 10 training workflow. Keep the notebook/config details close to the run; this page lists the experiment menu.
 
-     - The three perplexities.
-     - The slope `β` you read off (will likely be in the 0.05 to 0.15 range, with high uncertainty).
-     - One paragraph on what surprised you.
-
-   This is the headline deliverable. Everything else builds on it.
-
-2. **Read the samples out loud.** From each of your three checkpoints, generate 200 tokens at `temperature=0.8, top_p=0.9` from the same prompt with the same seed. Print all three side by side. Don't grade them on a metric — *read them*. The qualitative shape: 1M is locally-correct gibberish, 5M has short coherent phrases, 20M has paragraph-scale coherence. You're looking for the gap between sentence-level and discourse-level structure to *appear* somewhere between 5M and 20M; whether it appears that cleanly on your specific data and seed is the experimental observation.
-
-3. **Find a threshold task.** Construct a prompt that the 1M model is hopeless on but the 20M model can just barely handle. Examples that have worked at this scale:
-
-     - **A specific named character interacting.** "ROMEO. To be honest with you, mistress Juliet, I —" The 1M model rarely follows the format; the 20M model often does for one or two lines.
-     - **A two-step instruction.** "Write the word 'fire' three times, then write 'water' twice." The 1M model can't count; the 20M model sometimes can.
-     - **A rhyming requirement.** "Compose a couplet whose lines end in 'night' and 'light'." The 1M model produces unrelated text; the 20M model occasionally produces a couplet (without rhyme — that's much harder).
-
-   Document one threshold task. Sample it 10× per model size at fixed temperature; report a hand-rated success rate (yes / partial / no) for each model. The expected pattern: 1M = 0/10, 5M = 1–2/10, 20M = 3–6/10. Treat anything cleaner than that with skepticism — at this scale, single-seed variance can dominate.
-
-4. **Depth vs width at fixed parameter count.** At ~5M params, three configs are roughly equal:
-
-     - `D=224, L=6, H=4` (the reference 5M)
-     - `D=192, L=8, H=4` (deeper, narrower)
-     - `D=288, L=4, H=4` (shallower, wider)
-
-   Train all three at iso-step and iso-recipe. Compare final val loss. Real-world result (matched in nanoGPT-scale experiments): **deeper, narrower wins** at our scale, by a few percent. The wider/shallower model has more attention "communication bandwidth" per layer but fewer layers of refinement; small-LM language modeling pays for refinement.
-
-5. **Iso-FLOP, three sizes.** Repeat exercise 1, but instead of fixing `max_steps=5000` for each, fix the total FLOP budget. With FLOPs ≈ `6·N·steps·B·T`:
-
-     - 20M model: `max_steps=2000` (~7.7e13 FLOPs)
-     - 5M model: `max_steps=8000` (~7.7e13 FLOPs)
-     - 1M model: `max_steps=40000` (~7.7e13 FLOPs)
-
-   Plot the same `log(val_loss)` vs `log(params)`. The expected pattern *flips* somewhere in the 5M–20M range: the smaller models, given more passes over the data, are now closer to compute-optimal than the 20M one which is under-trained. This is the toy reproduction of Chinchilla's finding. (The 1M model with 40k steps is itself probably overtrained — you'll see val loss start to rise on TinyShakespeare. Read the curve, not just the endpoint.)
-
-6. **Calibration check.** For each of the three size-1M / 5M / 20M checkpoints, compute the **expected calibration error** (ECE) on a held-out passage:
-
-   ```python
-   import torch.nn.functional as F
-
-   def ece(model, val_ids, n_bins=10):
-       # Compute model probs over (B, T, V); compare predicted prob of
-       # the actual token to whether that token was the argmax.
-       ...
-   ```
-
-   The pattern you should see: smaller models are *more confident than they should be* — they put high probability on a single token even when the true continuation is uncertain — so their ECE is high. Larger models are more calibrated; the gap between predicted prob and empirical accuracy is narrower. This is part of why "perplexity falls as size grows" understates how much *better* a larger model actually is — it's both more accurate AND more honest about what it doesn't know.
-
-7. **Optional: a fourth, larger point.** If you have the disk and the patience, train a `D=512, L=12, H=8` config (~50M params) for 5000 steps. Plug it into your plot from exercise 1 and re-fit the slope. Four points is still not many, but it doubles your evidence for the power-law shape. Time budget: roughly 4–8 hours on MPS depending on your Mac. Skip if your training environment is not stable enough for an overnight run.
-
-8. **Optional: vocab-size sweep at fixed `D · L`.** Tokenize TinyShakespeare with three vocab sizes — 512, 2048, 8192 — and train the same architecture (~5M params) on each. Vocab affects both `N` (via `2·V·D`) and the per-token entropy of the dataset. The expected pattern: per-token val loss is *not* the right comparison across vocab sizes (smaller vocab → higher per-token entropy by construction), but `bits-per-character` is invariant. Compute `bpc = val_loss * tokens_per_char / log(2)` for each tokenizer and compare. This is harder to interpret cleanly, which is itself the lesson — "perplexity" is not a vocab-independent quantity.
+1. **Train three sizes.** Plot validation loss against parameter count.
+2. **Read the samples.** Compare qualitative improvement across model sizes.
+3. **Find a threshold task.** Identify a prompt where the larger model crosses a capability boundary.
+4. **Depth vs width.** Compare same-budget architectures.
+5. **Iso-FLOP comparison.** Fix compute budget instead of step count.
+6. **Calibration check.** Measure expected calibration error for saved checkpoints.
+7. **Optional larger point.** Add a larger model if your machine and time allow.
+8. **Optional vocab sweep.** Compare vocab sizes using bits-per-character, not raw perplexity.
 
 ## Pitfalls to expect
 

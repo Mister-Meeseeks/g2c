@@ -16,11 +16,16 @@ Module 01 builds the **backward pass** — the autodiff machinery that converts 
 ---
 ## Where this fits in
 
-A neural network is a function with millions to billions of adjustable knobs. Training it is the process of repeatedly nudging each knob in the direction that makes the output less wrong. To do that, you need the partial derivative of the loss with respect to every knob. For any nontrivial network, computing those derivatives by hand would be hopeless — there are too many, and they share structure.
+Modern AI is built on many ideas — transformers, attention, tokenization, pretraining, fine-tuning, RLHF, tool use, agents — but underneath almost all of them is the same basic engine: **gradient-based learning**. Gradients are what let a model take an error signal — “this prediction was a little wrong” — and turn it into millions or billions of tiny adjustments across its internal parameters.
 
-**Reverse-mode automatic differentiation** is the algorithm that solves this. It computes all those derivatives in one pass over a graph, in time proportional to the forward pass. Modern deep learning frameworks (PyTorch, JAX, MLX, TensorFlow) are, at their core, fast and well-engineered implementations of this single idea applied to tensors.
+**Neural networks** are the primary form of gradient based learning. A neural net is just a circuit made up of individual differentiable functions (meaning they have a gradient). That matters because neural networks are not just fitting outputs. They are learning the internal representations that make future outputs easier to produce.
 
-We start with the *scalar* version. No tensors, no broadcasting, no GPU. Just numbers and a small Python class. The reason: every confusing thing about deep learning training — gradient flow, vanishing gradients, the role of nonlinearities, why some architectures train and others don't — is easier to see when the machinery is laid bare. Once you've built this from scratch, `loss.backward()` is no longer magic. It's something you wrote.
+This is the reason neural networks became the dominant primitive in deep learning. Other methods can be powerful: nearest-neighbor systems lean on stored examples, support vector machines learn separators, trees split the input space, and Gaussian processes reason over functions with elegant uncertainty. But neural networks trained with gradients have a special combination of properties: they scale to huge datasets, run efficiently as dense linear algebra on modern hardware, and can be stacked into deep systems where every layer is trained by the same learning signal. A single objective can shape the whole network, from low-level features to abstract patterns.
+
+![Gradients](01-autodiff/Module01-Gradients.png)
+*What makes neural nets special?*
+
+For this course, we do not start with gradients because every student needs to become an expert in calculus or optimization. We start here because gradients explain the basic “learning motion” behind the systems students already know as ChatGPT-like models. Once you understand that a model improves by repeatedly nudging its internal representation toward better predictions, many later ideas become easier to place: pretraining is gradient learning at internet scale; fine-tuning is gradient learning on a narrower behavior; embeddings are learned representations; transformers are architectures designed to make this learning process work well over sequences. Gradients are the thread that ties the whole stack together.
 
 This module is the analogue of NAND gates in *NAND to Tetris*. Everything else stacks on top.
 
@@ -36,6 +41,10 @@ Every computation can be drawn as a graph:
 ```
 
 Here `d = a * b` and `e = d + c`. Each node holds a value (computed forward) and a gradient (computed backward). The gradient at a node is `de/dnode` — how much the final output `e` changes per unit change in the node's value.
+
+**Reverse-mode automatic differentiation** is the algorithm that solves this. It computes all those derivatives in one pass over a graph, in time proportional to the forward pass. Modern deep learning frameworks (PyTorch, JAX, MLX, TensorFlow) are, at their core, fast and well-engineered implementations of this single idea applied to tensors.
+
+We start with the *scalar* version. No tensors, no broadcasting, no GPU. Just numbers and a small Python class. The reason: every confusing thing about deep learning training — gradient flow, vanishing gradients, the role of nonlinearities, why some architectures train and others don't — is easier to see when the machinery is laid bare. Once you've built this from scratch, `loss.backward()` is no longer magic. It's something you wrote.
 
 **The forward pass** computes node values by walking the graph from inputs to outputs, applying each operation.
 
@@ -142,21 +151,13 @@ pytest tests/test_autodiff.py -v         # verbose: list every test
 
 ## Exercises
 
-To start setup a Jupyter notebook for the exercise set by running:
+Open the working notebook with `.venv/bin/python scripts/open_notebook.py 01`. The notebook carries the exact prompts; this page lists the exercise arc.
 
-```bash
-.venv/bin/python scripts/open_notebook.py 01
-```
-
-1. **Forward and backward by hand.** Take the expression `f = (a * b + b**2) * tanh(c)` with `a=1, b=2, c=0.5`. Compute the forward pass and all three gradients by hand on paper. Then verify against your engine.
-
-2. **Gradient checking.** Implement a function that takes an expression and a tunable input, and compares the analytic gradient (from `.backward()`) against a finite-difference estimate `(f(x + h) - f(x - h)) / (2h)` for small `h`. Verify your engine on at least three nontrivial expressions.
-
-3. **A neuron from scratch.** Build a single neuron `y = tanh(w1*x1 + w2*x2 + b)` using only `Value`. Compute the gradient of the loss `(y_target - y)**2` with respect to `w1`, `w2`, `b`. Manually update the weights for one step.
-
-4. **XOR with a tiny MLP.** Build a 2-2-1 MLP (2 inputs, 2 hidden units with tanh, 1 output) using only your `Value` class — no PyTorch, no NumPy. Train it on the XOR truth table. Verify that loss decreases over a few hundred steps. (XOR is the canonical "needs a hidden layer" test case.)
-
-5. **Topology stress test.** Build an expression that uses the same `Value` multiple times (e.g., `f = a * a + a`). Verify that gradient accumulation works: `df/da` should be `2a + 1`, not just `1` or `2a`.
+1. **Forward and backward by hand.** Trace one scalar expression end to end.
+2. **Gradient checking.** Compare `.backward()` against finite differences.
+3. **A neuron from scratch.** Train one `Value`-based neuron for one update step.
+4. **XOR with a tiny MLP.** Use only your scalar engine to fit a nonlinear toy problem.
+5. **Topology stress test.** Verify gradient accumulation when one `Value` feeds multiple paths.
 
 ## Pitfalls to expect
 

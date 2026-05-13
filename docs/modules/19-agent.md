@@ -437,67 +437,18 @@ pytest tests/test_agent.py -v                       # verbose
 
 ## Exercises
 
-These exercises require ProdLM running through Ollama with a local instruction model that can follow ReAct-style formatting:
+Open the working notebook with `.venv/bin/python scripts/open_notebook.py 19`. These exercises require ProdLM running through Ollama with a local instruction model that can follow ReAct-style formatting; run `./prodlm.sh` first if needed.
 
-```bash
-./prodlm.sh --model-id llama3.2:3b      # fast default, comfortable on M1+
-# or, on larger machines:
-./prodlm.sh --model-id llama3.1:8b      # better multi-step behavior, slower
-ollama serve
-```
-
-Llama 3.2:3b is the fastest reasonable choice. Llama 3.1:8b handles multi-step reasoning better at the cost of latency and memory. You can substitute another local instruction model; the requirement is not native tool calling, but reliable adherence to the `Thought:` / `Action:` / `Action Input:` / `Observation:` / `Final Answer:` format.
-
-1. **One-shot calculator.** Wire `OllamaBackend("llama3.2:3b")` + a registry containing only `make_calculator()` into an `Agent` with `plan=False`. Ask 10 single-step arithmetic questions. Most should resolve in 1 tool call + final answer (= 2 steps). Report:
-    - Steps per question (mean, max).
-    - Tool-call success rate.
-    - Cases where the model emits Final Answer without calling the calculator (and whether the answer is right).
-
-2. **Multi-step file task.** Wire `make_calculator()` + `make_read_file(root=Path("data/numbers/"))`. Drop a few text files into `data/numbers/`, each with a list of numbers. Ask: *"Read `nums.txt` and tell me the average."* The model should call `read_file`, then `calculator`, then answer. Run 5 such two-step tasks; report which ones the model gets right end-to-end. Compare with `plan=True` vs `plan=False` — does the plan help?
-
-3. **Stress-test loop detection.** Construct a task where the model is likely to repeat the same call (e.g., a tool that returns ambiguous output). Run with `loop_detection=True` and `loop_detection=False`; compare. Record the cases where loop detection saves a runaway loop vs where it cuts off legitimate retries. Tabulate: when is loop detection a net positive?
-
-4. **The plan contribution.** Take a 3-tool task ("read this file, run this Python on its contents, give me the result"). Run three configurations:
-    - `plan=False` (pure ReAct)
-    - `plan=True` with the default planner
-    - `plan=True` with a hand-written plan injected (skip the planning phase, pass `Plan(...)` directly — you'll need to either modify `Agent.run` or call the loop pieces manually)
-   
-   Report success rates and step counts. Is the planner helping, hurting, or neutral?
-
-5. **Recovery characterization.** Wire a tool that fails about 30% of the time (random `raise`). Run 20 tasks. Report:
-    - Recovery rate after a tool error (does the model retry / try a different tool?).
-    - Cases where the model gives up and emits Final Answer without solving the problem.
-    - Cases where the model loops on the failing tool (and whether `loop_detection` caught them).
-
-6. **Add a custom tool.** Write a tool specific to your work — query your local database, fetch from an internal API, run a domain lint. Register it in a `ToolRegistry` and exercise it through `Agent.run`. The point: you have arbitrary affordances now. What does it look like to use them under ReAct? Where does the model overcall vs undercall the tool?
-
-7. **The scratchpad cap.** Run a 6-tool task with `scratchpad_max_chars=2000` and again with no cap. Does the truncation break the agent's reasoning? When? Where would you summarize old steps instead of dropping them?
-
-8. **Build the deliverable CLI.** A small interactive loop:
-
-   ```python
-   while True:
-       q = input("? ")
-       if not q.strip():
-           break
-       result = agent.run(q)
-       print(result.final_answer or f"(stuck — {result.stopped_reason})")
-       print(f"({len(result.steps)} steps, "
-             f"{result.metadata['n_tool_calls']} tool calls, "
-             f"plan={'yes' if result.plan else 'no'})")
-       print()
-   ```
-   
-   Run a 10-question session covering: arithmetic, file reading, Python execution, ambiguous questions, questions with no good tool. Save the transcript.
-
-9. **Failure-mode catalog.** From your CLI runs in Exercise 8, identify three distinct failure modes the agent exhibits. For each, write down:
-    - **What happens.** A specific transcript.
-    - **Why.** Your hypothesis about the cause.
-    - **One mitigation.** A specific change to the prompt, the loop, the registry, or the stop conditions that would help. Don't actually implement it — articulating the mitigation precisely is the exercise.
-   
-   The catalog is the actual deliverable. The pipeline code is the substrate; the *characterization* is what you keep.
-
-10. **Compare with Module 18.** Take one of your Exercise 8 tasks and run it through Module 18's `run_with_tools` (no Thought lines, no plan, no loop detection). Side-by-side: which steps does the simpler loop save? Which does it lose? Where does ReAct's overhead pay off, and where is it just tax?
+1. **One-shot calculator.** Compare simple tool use with and without planning.
+2. **Multi-step file task.** Read data, compute with a tool, and answer.
+3. **Loop detection.** Compare runs with loop detection on and off.
+4. **Plan contribution.** Measure whether explicit planning helps multi-tool tasks.
+5. **Recovery characterization.** Study behavior after tool errors.
+6. **Custom tool.** Add a domain-specific affordance and test how the agent uses it.
+7. **Scratchpad cap.** Explore transcript truncation and reasoning continuity.
+8. **Deliverable CLI.** Build an interactive agent loop.
+9. **Failure-mode catalog.** Name concrete agent failures and mitigations.
+10. **Compare Module 18.** Identify where ReAct earns its overhead.
 
 ## Pitfalls to expect
 

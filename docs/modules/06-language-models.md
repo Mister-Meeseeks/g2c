@@ -217,27 +217,15 @@ pytest tests/test_lm.py -v          # verbose
 
 ## Exercises
 
-Open the working notebook copy with:
+Open the working notebook with `.venv/bin/python scripts/open_notebook.py 06`. The notebook starts with a test gate, then walks through prediction, training, sampling, and comparison.
 
-```bash
-.venv/bin/python scripts/open_notebook.py 06
-```
-
-The notebook starts with an executable test gate, then uses the implemented pieces for prediction, inspection, generation, and comparison.
-
-1. **Context windows and targets.** Turn one token stream into supervised `(context, target)` examples. Predict the windows by hand for a tiny sequence, then inspect what `get_batch` returns.
-
-2. **Counts bigram model.** Fit a counts table on a tiny stream, print the raw counts, then inspect the smoothed next-token probabilities row by row.
-
-3. **Neural bigram and MLP shapes.** Verify that both neural models return `(batch, vocab_size)` logits. Compare `[a, b]` vs. `[b, a]` through the MLP to see why concatenation preserves order.
-
-4. **Perplexity and autoregressive sampling.** Check the two sanity cases: a uniform model has perplexity `vocab_size`, and a perfect deterministic model has perplexity 1. Then sample from the deterministic model to make the predict-append-repeat loop visible.
-
-5. **Train all three on the same tokenized corpus and compare.** `./setup.sh` prepares `data/tinyshakespeare.txt`; the notebook has only a small fallback if that file is missing. Fit the counts model, train the neural bigram and MLP, and report validation perplexity in one table.
-
-6. **Sample from each model and read the text.** Generate from the counts bigram, neural bigram, and MLP. Compare their failure modes: repeated fragments, locally plausible pairs, and the limits of a fixed small context.
-
-7. **Plot training curves.** Plot training cross-entropy and validation perplexity for the neural bigram and MLP. Use the counts bigram perplexity as a horizontal baseline.
+1. **Context windows and targets.** Turn a token stream into supervised next-token examples.
+2. **Counts bigram model.** Inspect counts, smoothing, and next-token probabilities.
+3. **Neural bigram and MLP shapes.** Verify logits and context-order behavior.
+4. **Perplexity and sampling.** Connect cross-entropy to predict-append-repeat generation.
+5. **Train all three models.** Compare counts, neural bigram, and MLP validation perplexity.
+6. **Read generated text.** Compare failure modes qualitatively.
+7. **Plot training curves.** Use the counts model as a baseline for neural training curves.
 
 ## Pitfalls to expect
 

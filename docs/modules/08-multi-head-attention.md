@@ -182,33 +182,13 @@ pytest tests/test_multi_head_attention.py -v          # verbose
 
 ## Exercises
 
-1. **Verify the reshape is mathematically correct.** Construct `MultiHeadAttention(embedding_dim=4, num_heads=2, causal=False)`. Force the Q and K projections to the identity. Feed `x = torch.tensor([[[1., 0., 0., 1.], [0., 1., 1., 0.]]])` (shape `(1, 2, 4)`). Compute `attn.attention_weights(x)` and compare against the per-head softmax you compute by hand:
+Open the working notebook with `.venv/bin/python scripts/open_notebook.py 08`. The notebook carries the detailed prompts, plots, and training cells.
 
-   - Head 0 sees `x_h0 = [[1, 0], [0, 1]]` (the first 2 dims of each position).
-   - Head 1 sees `x_h1 = [[0, 1], [1, 0]]` (the last 2 dims).
-   - For each head, expected weights are `softmax(x_h @ x_h.T / sqrt(2))`.
-
-   The test `test_attention_weights_use_sqrt_head_dim_scaling` automates a randomized version of this check — exercise 1 is to convince yourself you understand it on paper.
-
-2. **Confirm reshape order matters.** Replace `q.view(B, T, H, head_dim).transpose(1, 2)` with `q.view(B, T, head_dim, H).transpose(1, 2)` (note the swapped last two dims of `view`). Run the test suite; observe that the heads now "see" interleaved slices of the embedding instead of contiguous ones. The shapes are still right, the tests *might* still pass for degenerate inputs, but the operation is fundamentally different from canonical multi-head attention. Revert and articulate (in a notebook cell or a comment) what the difference is.
-
-3. **Train a tiny LM at H = 1, 4, 8.** Following the pattern from exercise 3 of Module 07: build a tiny attention-only LM with a `TokenEmbedding`, an additive positional encoding, one `MultiHeadAttention`, and an output `Linear` to vocab logits. Train three configurations on a short tokenized corpus, with the same fixed `embedding_dim = 64` and the same training budget:
-
-   - `MultiHeadAttention(embedding_dim=64, num_heads=1)`  (head_dim = 64)
-   - `MultiHeadAttention(embedding_dim=64, num_heads=4)`  (head_dim = 16)
-   - `MultiHeadAttention(embedding_dim=64, num_heads=8)`  (head_dim = 8)
-
-   Plot the validation loss curves on the same axes. The parameter counts are identical (verified by `test_parameters_independent_of_head_count`); any difference in loss is purely due to the structural difference. The expected pattern: more heads ≥ fewer heads at small scale, with diminishing returns. At very small `head_dim` (e.g., `head_dim = 1`) you should see degradation — heads need enough subspace to be useful.
-
-4. **Visualize per-head attention patterns.** Take any of the trained models from exercise 3, run a forward pass on a chosen sentence, and plot `attn.attention_weights(x)` as an `H × 1` grid of heatmaps (one per head) using `matplotlib.imshow`. With token labels on the axes. Look for patterns:
-
-   - Does any head look like a "previous-token" head (most weight just below the diagonal)?
-   - Does any head look near-uniform (a "no-op" / copy head)?
-   - Does any head spike on specific token pairs?
-
-   At Module 08 + tiny training, you may not see anything truly interpretable. That's fine — the mechanism is what matters here. The actual interpretable patterns appear after Module 10's pretraining at scale.
-
-5. **Parameter counts at varying H.** Verify analytically that `MultiHeadAttention(embedding_dim=D, num_heads=H)` has parameter count `4 * (D*D + D)`, independent of `H`. Compute it programmatically for a few `(D, H)` pairs by summing `p.numel()` over `attn.parameters()`. Convince yourself that "more heads" is a free structural change at fixed `D`.
+1. **Verify the reshape.** Check by hand that each head sees the intended slice.
+2. **Reshape order matters.** Break and restore the canonical head layout.
+3. **Train at multiple head counts.** Compare `H = 1, 4, 8` at fixed embedding size.
+4. **Visualize per-head patterns.** Plot one heatmap per head after tiny training.
+5. **Parameter counts.** Confirm head count changes structure, not parameter count, at fixed `D`.
 
 ## Pitfalls to expect
 

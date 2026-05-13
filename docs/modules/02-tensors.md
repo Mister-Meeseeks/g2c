@@ -151,42 +151,14 @@ pytest tests/test_tensors.py -v          # verbose
 
 ## Exercises
 
-To start setup a Jupyter notebook for the exercise set by running:
+Open the working notebook with `.venv/bin/python scripts/open_notebook.py 02`. The notebook has the exact shape tables, arrays, and answer cells.
 
-```bash
-.venv/bin/python scripts/open_notebook.py 02
-```
-
-1. **Shape tracing.** For each expression, write the output shape or mark it invalid. For invalid expressions, name the mismatched dimensions.
-
-   - `A @ B` where `A.shape == (2, 3)` and `B.shape == (3, 4)`
-   - `B @ A` for the same `A` and `B`
-   - `x @ W + b` where `x.shape == (5, 2)`, `W.shape == (2, 6)`, and `b.shape == (6,)`
-   - `x @ W + b_bad` where `b_bad.shape == (5,)`
-
-2. **Manual matmul.** Compute this product by hand, showing the dot product for each output entry. Then, after your implementations pass the matmul tests, verify the same result with `matmul_loops`, `matmul_numpy`, and `matmul_torch`.
-
-   ```
-   [[ 1, 2, 0],      [[2,  1],
-    [-1, 3, 4]]  @    [0, -2],
-                      [5,  3]]
-   ```
-
-3. **Benchmark and interpret matmul.** In the Module 02 notebook, time loop matmul, NumPy matmul, PyTorch CPU matmul, and PyTorch MPS matmul at increasing square sizes. Before running, write down your predicted ordering. After running, plot time vs. size on a log-log scale and answer: which implementation has the best constant factor, where does MPS start to win, and why does the Python loop become unusable so quickly?
-
-4. **Broadcasting predictions.** Before running code, predict each output shape or mark it invalid. For valid cases, identify which dimensions stretch.
-
-   - `(3, 4) + (4,)`
-   - `(2, 1, 3) + (1, 5, 1)`
-   - `(5, 1) + (1, 4)`
-   - `(2, 3) + (3, 2)`
-   - `() + (2, 3, 4)`
-
-   Then verify your predictions with `broadcast_shapes` and at least two `TinyArray` examples.
-
-5. **Softmax stability.** Explain why a naive softmax over `[1000.0, 1001.0]` overflows in float32. Then compute the stable version by subtracting the max first, and verify that adding the same constant to every logit does not change the output distribution.
-
-6. **A tiny classifier forward pass.** In the Module 02 notebook, implement `classifier_forward(x, W, b)` on top of `linear` and `softmax`: random weights, a batch of inputs, logits, and an output probability distribution over classes. Annotate every shape. Check that each row of probabilities sums to 1. No training in this module — we don't have tensor-shaped autograd yet.
+1. **Shape tracing.** Predict valid and invalid matmul / broadcast shapes.
+2. **Manual matmul.** Compute a small matrix product and verify it with your implementations.
+3. **Benchmark and interpret matmul.** Compare loop, NumPy, torch CPU, and torch MPS performance.
+4. **Broadcasting predictions.** Predict which axes stretch, then verify with `TinyArray`.
+5. **Softmax stability.** Explain overflow and why subtracting the max preserves probabilities.
+6. **Classifier forward pass.** Implement a linear + softmax forward pass with explicit shape annotations.
 
 ## Pitfalls to expect
 

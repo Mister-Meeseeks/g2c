@@ -317,32 +317,14 @@ If feedback shows a weak spot, ask the agent for a few focused practice problems
 
 ## Exercises
 
-Open the working notebook with `.venv/bin/python scripts/open_notebook.py 00`. Each exercise has `Question:` / `Answer:` cells where you write your response. If you'd like a hint instead of a grade, write the request in the answer string and ask a coding agent for help. Blank answers are skipped rather than counted wrong.
+Open the working notebook with `.venv/bin/python scripts/open_notebook.py 00`. The notebook has the exact prompts and `Question:` / `Answer:` cells. If you'd like a hint instead of a grade, write the request in the answer string and ask a coding agent for help. Blank answers are skipped rather than counted wrong.
 
-1. **Shape trace.** Let `B = 4`, `T = 8`, `C = 16`, and `V = 1000`. Token IDs have shape `(B, T)`. An embedding table has shape `(V, C)`. What is the shape after embedding lookup? If the final projection has shape `(C, V)`, what shape are the logits?
-
-2. **Matmul by hand.** Compute:
-
-   ```text
-   A = [[1, 2, 3],
-        [4, 5, 6]]
-
-   B = [[10, 20],
-        [30, 40],
-        [50, 60]]
-
-   A @ B = ?
-   ```
-
-   Then state the input and output shapes.
-
-3. **Backprop by hand.** For `z = w*x + b`, `a = tanh(z)`, `L = (a - target)^2`, write `dL/dw`, `dL/db`, and `dL/dx` as products of local derivatives.
-
-4. **Softmax and loss.** Given logits `[2.0, 1.0, 0.0]` and target class `0`, compute the softmax probabilities approximately and then the negative log likelihood.
-
-5. **Training-loop narration.** In five sentences or fewer, explain what happens in `forward -> loss -> backward -> step -> zero_grad`.
-
-6. **Environment check.** Run `./setup.sh`. If MPS is unavailable on an Apple Silicon machine, fix that before Module 02.
+1. **Shape trace.** Follow token IDs through embedding lookup and projection to vocabulary logits.
+2. **Matmul by hand.** Compute a small matrix product and state the input/output shapes.
+3. **Backprop by hand.** Write one-neuron gradients as products of local derivatives.
+4. **Softmax and loss.** Convert small logits into probabilities and negative log likelihood.
+5. **Training-loop narration.** Explain `forward -> loss -> backward -> step -> zero_grad` in a few sentences.
+6. **Environment check.** Run `./setup.sh` and confirm the course environment is ready.
 
 ## Pitfalls to expect
 

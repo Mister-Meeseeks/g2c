@@ -376,96 +376,18 @@ pytest tests/test_assistant.py -v                       # verbose
 
 ## Exercises
 
-These exercises require ProdLM configured with a local instruction model:
+Open the working notebook with `.venv/bin/python scripts/open_notebook.py 20`. These exercises assemble the full assistant and capture the final post-mortem; run `./prodlm.sh` first if ProdLM is not configured.
 
-```bash
-./prodlm.sh --model-id llama3.2:3b
-```
-
-`llama3.2:3b` is the fastest reasonable default on an M-series laptop. Larger local instruction models may handle multi-step tasks better at the cost of latency and memory.
-
-1. **Wire up the assistant.** Build a simple integration script in `notebooks/20-capstone.ipynb`:
-
-   ```python
-   from pathlib import Path
-
-   from g2c.artifacts import find_repo_root
-   from g2c.assistant import Assistant, AssistantConfig
-   from g2c.inference import load_prodlm_backend
-   from g2c.tools import (
-       ToolRegistry, make_calculator,
-       make_read_file, make_run_python,
-   )
-   
-   repo_root = find_repo_root()
-   backend = load_prodlm_backend(repo_root=repo_root)
-   registry = ToolRegistry([
-       make_calculator(),
-       make_read_file(root=Path("data/")),
-       make_run_python(),
-   ])
-   assistant = Assistant(backend, registry, config=AssistantConfig())
-   
-   turn = assistant.chat("What's 47 * 23?")
-   print(turn.final_answer)
-   ```
-
-   Run 5-10 questions of varying complexity. Note where it works and where it doesn't.
-
-2. **The eval gate.** Author 5-10 `EvalCase`s covering the assistant's main use cases (arithmetic, file reading, Python execution, a couple of corpus questions). Save them in `notebooks/20-eval-cases.py`. Run `run_evaluation(assistant, cases)` and report the pass rate. Now make a small change to the system prompt or sampling temperature, re-run, and see whether the gate detects the change. The point: this is your regression test going forward.
-
-3. **Multi-turn calculator.** Have a 5-turn conversation:
-   - "What's 7 * 8?"
-   - "Multiply that by 3."
-   - "Now subtract 100."
-   - "Convert to a percentage of 200."
-   - "Show me the final number."
-   
-   Does the model correctly reference "that" in turn 2? Does conversation memory let it do this? Try with `max_history_messages=2` and observe where it fails.
-
-4. **Add RAG.** Index the course's own `docs/` directory using Module 17. Plug the retriever into the assistant. Ask 5 questions whose answers are in the docs ("what does Module 7 build?", "what's the calculator tool's interface?"). Compare with `rag_enabled=True` vs `rag_enabled=False`. Where does retrieval help? Where does it hurt (wrong chunks dragging the answer off-course)?
-
-5. **Convert RAG to a tool (the design fork).** Write a `make_search` tool that takes a `query` argument, calls the retriever, and returns formatted chunks. Register it in the assistant's tool registry. Disable prefix-style RAG (`rag_enabled=False`). Now the model has to *decide* when to call `search`. Run the same 5 questions from Exercise 4. Compare:
-    - Does the model call `search` when it should?
-    - Does it skip it on questions where the answer is in its parametric memory?
-    - How many extra steps does this add per turn?
-   
-   Write up your conclusion: when is prefix-style better, when is tool-style better?
-
-6. **Compare backends.** Swap your tiny pretrained-from-scratch model (Module 10's checkpoint, via `LocalTransformerBackend`) into the assistant. Run the same 5-10 EvalCases from Exercise 2. Report:
-    - Pass rate.
-    - Where exactly does the from-scratch model fail? (Format compliance, tool selection, world knowledge?)
-    - Side-by-side: a few exact transcripts where the pretrained model got it right and the tiny one got it wrong.
-   
-   This is the "where does from-scratch stop being viable" data point that goes in the post-mortem.
-
-7. **Conversation truncation stress test.** Set `max_history_messages=4`. Have an 8-turn conversation where turn 8 references something from turn 1. Does the model lose the thread? At what `max_history` does the reference work reliably? Where would summarization (compress old turns into a single "previously: ..." message) help?
-
-8. **Failure-mode catalog.** From your CLI sessions, identify five distinct failure modes the assistant exhibits. For each, write down:
-    - **What happens.** A specific transcript.
-    - **Where the bug is.** Was it the model? The retriever? The agent loop? The conversation history? Use the `AssistantTurn` fields (`retrieved_context`, `contextualized_message`, `agent_run.steps`) to localize.
-    - **One mitigation.** A specific change to the prompt, the config, the retriever, or the tool registry that would help. Don't actually implement it — articulating the mitigation is the exercise.
-   
-   The catalog is direct input to the post-mortem.
-
-9. **Build the deliverable CLI.** Add a small wrapper script `scripts/g2c-chat` (or similar) that wires everything up and calls `run_cli(assistant)`. Include:
-    - Reasonable defaults loaded from a config file or constants.
-    - A `--reset-conversation` flag.
-    - A `--save-on-exit <path>` flag.
-   
-   Use the CLI for a full work session. Take notes on the friction.
-
-10. **Write the post-mortem.** This is **the deliverable** of the course. Save as `docs/capstone-postmortem.md`. Required sections:
-
-    - **What I built.** A short architecture description. What modules feed what. (Use the diagrams from this lesson page if useful.)
-    - **What each layer does.** One paragraph each on the autograd, transformer, sampling, SFT/DPO, inference, RAG, tools, agent, and conversation layers. Plain language. The version of "what does an LLM do" you'd give a thoughtful colleague.
-    - **What works well.** Three concrete capabilities the assistant has, with example transcripts.
-    - **What breaks.** Three concrete failure modes, with example transcripts, hypothesized causes, and proposed mitigations (this is the catalog from Exercise 8).
-    - **Where the from-scratch model stops being viable.** A precise characterization (Exercise 6's data points). Where exactly does it break? With what symptoms? Why?
-    - **What I'd do next.** Three things you'd build/improve if you continued working on this. Persistent memory? Better retrieval? Multi-agent? Streaming? Production sandboxing? Pick the three with highest expected value and explain why.
-    - **What I learned.** One paragraph. The candid version. The post-mortem is an honest document.
-    
-    Length target: 1500-3000 words. Don't pad it. The post-mortem is what you keep — the code is the substrate that produced the post-mortem.
+1. **Wire up the assistant.** Connect backend, tools, and conversation state.
+2. **Eval gate.** Build a small regression suite for the assistant.
+3. **Multi-turn calculator.** Test whether conversation memory carries references forward.
+4. **Add RAG.** Compare answers with and without retrieved context.
+5. **RAG as a tool.** Let the model decide when to search.
+6. **Compare backends.** Swap in a tiny from-scratch model and characterize the failure boundary.
+7. **Conversation truncation.** Stress-test limited history.
+8. **Failure-mode catalog.** Localize failures to model, retrieval, tools, agent loop, or memory.
+9. **Deliverable CLI.** Package the assistant into a usable local command loop.
+10. **Capstone post-mortem.** Write the final architecture and lessons-learned document.
 
 ## Pitfalls to expect
 

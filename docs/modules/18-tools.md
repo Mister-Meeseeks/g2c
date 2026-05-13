@@ -321,72 +321,17 @@ pytest tests/test_tools.py -v                       # verbose
 
 ## Exercises
 
-These exercises require Ollama running with a tool-calling-capable chat model:
+Open the working notebook with `.venv/bin/python scripts/open_notebook.py 18`. These exercises require ProdLM running with a local instruction model that can follow tool-call formatting; run `./prodlm.sh` first if needed.
 
-```bash
-ollama pull llama3.2:3b           # tool-calling enabled
-# or
-ollama pull qwen2.5:7b            # also tool-calling
-ollama serve
-```
-
-Llama 3.2 specifically is fine-tuned on tool-call data; it emits `<tool_call>` blocks reliably given a properly-formatted prompt. Qwen 2.5 also works but needs the prompt to include a clearer call-format reminder.
-
-1. **Get the model to use the calculator reliably.** Wire `OllamaBackend("llama3.2:3b")` + a registry containing only `make_calculator()` into `run_with_tools`. Ask 20 arithmetic questions where the answer is easy for a tool but the model gets it wrong on its own (large multiplications, square roots of non-perfect-squares, expressions with deep parenthesization). Examples:
-    - `"What's 3220000 times 7?"`
-    - `"What's the result of (123 * 456 + 789) / 11?"`
-    - `"What's 2^32?"`
-    
-   Report:
-    - Tool-call rate (out of 20, how many called the calculator?)
-    - Correctness rate when it called the tool.
-    - Failure modes when it didn't call the tool. Is it confidently guessing wrong, or close-but-wrong?
-
-2. **Multi-tool task: read + compute.** Wire `make_calculator()` + `make_read_file(root=Path("data/numbers/"))`. Drop a few text files into `data/numbers/`, each with a list of numbers. Ask the model: *"Read `data/numbers/foo.txt` and tell me the average."* The model should call `read_file`, then `calculator`, then answer. Try 5 such two-step tasks; report which steps the model gets right.
-
-3. **Stress-test malformed outputs.** Some prompts cause models to emit malformed `<tool_call>` blocks — missing closing tag, JSON typos, mixing positional and named args. Run a few prompts that elicit these (e.g., asking for tools with very long descriptions, or with parameters whose names clash with Python keywords). Inspect the failure modes:
-    - Does `parse_tool_calls` skip them (good)?
-    - Does the model recover on the next step when it sees the empty step (or does it loop)?
-    - When does `max_steps` kick in?
-   
-   Document the recovery patterns. The goal is to characterize "where does the parser tolerate and where does it just give up."
-
-4. **`run_python` for a small data task.** Wire `make_run_python(timeout=10)` and `make_read_file(root=Path("data/"))`. Drop a CSV in `data/`, ask the model to "compute the mean of column X." It should `read_file` the CSV, then `run_python` to parse + average. Compare to letting the model do it with raw multiplication in its head — the python-tool version should be much more reliable.
-
-5. **Add a custom tool.** Write a tool that does something specific to your work — query your local database, fetch from an internal HTTP API, run a domain-specific lint. Register it in a `ToolRegistry` and exercise it through `run_with_tools`. The point: you now have the ability to give the model arbitrary affordances. What does it look like to use them?
-
-6. **The Toolformer-style ablation.** Repeat Exercise 1 with three configurations:
-    - **No tool prompt.** Just `"You are a helpful assistant."` and the user question. Model uses only its own arithmetic.
-    - **Tool prompt + tool available.** What this module builds.
-    - **Tool prompt + tool *not* available.** The system prompt mentions a calculator but the registry is empty. The model still tries to call it; we see what happens (parsed call, "unknown tool" error, model recovery).
-   
-   Tabulate accuracy for each configuration. The gap between (a) and (b) is the tool's net win; the gap between (b) and (c) is the prompt's contribution alone.
-
-7. **Add citation enforcement.** In Module 17 the model produced citations against retrieved chunks; here, the model produces tool results with `call_id`s. Modify `run_with_tools` (or write a wrapper) that checks: when the model emits a final answer that references "[1]" or "as the calculator showed," the corresponding tool call must actually exist in `steps`. Surface unverified citations as a warning. This is one half of "did the model actually use the tools" — citation grounding for tool-using assistants.
-
-8. **Build the deliverable.** Write a small CLI that loops:
-
-   ```python
-   while True:
-       q = input("? ")
-       if not q.strip():
-           break
-       result = run_with_tools(backend, registry, q, max_steps=5)
-       print(result.final_answer or "(stuck — max_steps hit)")
-       print()
-       print(f"({len(result.steps)} steps, "
-             f"{sum(len(s.tool_calls) for s in result.steps)} tool calls)")
-   ```
-   
-   Run a 10-question session covering: arithmetic, file reading, Python execution, ambiguous questions, questions with no good tool. Save the transcript.
-
-9. **Write the post-mortem.** 3–4 paragraphs in `docs/tools-postmortem.md`:
-    - **What you wired up.** Tools, model, max_steps, system prompt.
-    - **What worked.** Tasks where the loop reliably succeeded.
-    - **Where it broke.** Tasks where the model failed to call the right tool, called the wrong tool, or looped. Be specific.
-    - **What you'd build next.** ReAct-style explicit Thought/Action/Observation turns? A planning step? Better recovery on bad calls? Multi-tool fan-out? The next investment, in 2-3 sentences.
-   
-   This is the actual deliverable. The pipeline code is the substrate; the *characterization* is what you keep going into Module 19's agent loop.
+1. **Calculator reliability.** Measure when the model calls the calculator and whether it is correct.
+2. **Read + compute.** Chain file reading with calculation.
+3. **Malformed outputs.** Stress-test parser and validator recovery.
+4. **Python tool.** Use a sandboxed Python tool for a small data task.
+5. **Custom tool.** Register one tool from your own work context.
+6. **Tool ablation.** Compare no-tool, tool-available, and tool-missing setups.
+7. **Citation enforcement.** Check whether final answers are grounded in actual tool results.
+8. **Deliverable CLI.** Build a small tool-using chat loop.
+9. **Tools post-mortem.** Document what worked, where it broke, and what to improve next.
 
 ## Pitfalls to expect
 

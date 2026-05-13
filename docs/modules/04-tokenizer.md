@@ -168,27 +168,16 @@ pytest tests/test_tokenizer.py -v          # verbose
 
 ## Exercises
 
-Set up or resume the working notebook for this exercise set by running:
+Open or resume the working notebook with `.venv/bin/python scripts/open_notebook.py 04`. The notebook has the exact prompts, inspection tables, and artifact cells.
 
-```bash
-.venv/bin/python scripts/open_notebook.py 04
-```
-
-1. **Pair counts and merge behavior.** Predict the adjacent-pair counts for a tiny integer sequence before running your helper. Then predict the non-overlapping merge result for `[1, 1, 1]`. This is the easiest place to catch the overlap rule before it gets buried inside full BPE training.
-
-2. **Train BPE on a tiny corpus.** Use `"the the the"` or another very small repeated string and inspect the learned merges. The goal is to connect one `train_step()` call, then the full scaffolded `train()` loop, to concrete `merges` and `vocab` entries you can read by hand.
-
-3. **Encode, decode, and verify round-trip.** Encode text that includes punctuation, whitespace, and multi-byte Unicode, then decode it back. Explain why byte-level BPE can handle unseen text, why earliest learned merges get priority, and what makes decoding lossless.
-
-4. **Special tokens as atomic markers.** Create `BPETokenizer.with_course_special_tokens()`, encode a tiny chat string such as `"<|user|>\nHello<|end|>"`, and verify that `<|user|>` and `<|end|>` each become one ID. Explain why this is different from ordinary text like `"Hello"`, which is free to split into bytes or BPE pieces.
-
-5. **Compare vocab size vs. compression.** Train several tokenizers at different vocab sizes and tokenize the same passage with each. Report token count and compression ratio, then explain the tradeoff: larger vocabularies shorten sequences but make the embedding table larger.
-
-6. **Inspect learned tokens.** Print early and late learned vocab entries. Early learned IDs should usually be short, high-frequency byte patterns; later learned IDs tend to be longer and more corpus-specific. Pick a few and explain why they make sense for your training text.
-
-7. **Pre-tokenization demo.** Try a simple pre-split before BPE so merges do not freely cross every boundary. A minimal version is: split text into whitespace and non-whitespace spans, then compare adjacent-pair counts with and without those boundaries. The useful question is not "which one is correct?" but "what kinds of merges does each procedure encourage?"
-
-The notebook ends with a **Mini Milestone** section that turns your tokenizer into reusable artifacts. It uses `g2c.artifacts` to train or load configured tokenizers with progress updates, save each tokenizer plus a small encoded inspection sample under `artifacts/tokenizers/`, and keep path/loading logic reusable outside the notebook. Full pre-tokenized corpora are separate later artifacts; the durable thing here is the learned tokenizer table. The notebook then prints inspection views: a pseudo-random text window tokenized as strings, frequent final tokens after encoding, frequent learned final tokens after encoding, greedy longest learned tokens that skip substring duplicates, and a frequency plot. `ShakespeareTokenizer` is enabled by default. `StoryTokenizer` and `G2CTokenizer` are configured but disabled until you choose to run the larger dataset path.
+1. **Pair counts and merge behavior.** Predict tiny BPE pair counts and non-overlapping merges.
+2. **Train BPE on a tiny corpus.** Connect `train_step`, `merges`, and `vocab` by hand.
+3. **Encode, decode, and round-trip.** Verify lossless byte-level tokenization.
+4. **Special tokens.** Confirm course control tokens stay atomic.
+5. **Vocab size vs compression.** Compare token counts across vocab sizes.
+6. **Inspect learned tokens.** Look at early, late, frequent, and long learned tokens.
+7. **Pre-tokenization demo.** See how boundary choices shape possible merges.
+8. **Mini milestone.** Save reusable tokenizer artifacts for later modules.
 
 ## Pitfalls to expect
 

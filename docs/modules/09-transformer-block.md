@@ -305,43 +305,13 @@ pytest tests/test_transformer.py -v          # verbose
 
 ## Exercises
 
-1. **Implement post-norm and watch it (mis)train.**  In a notebook, define a `PostNormBlock` by editing your `Block.forward` to use the post-norm formula:
+Open the working notebook with `.venv/bin/python scripts/open_notebook.py 09`. The notebook contains the ablations and plotting scaffolds.
 
-   ```python
-   x = self.ln1(x + self.attn(x))
-   x = self.ln2(x + self.ffn(x))
-   ```
-
-   Stack 6 of these into a small LM (vocab = 50, D = 64, H = 4, T = 32, no warmup, lr = 1e-3) and train for 1000 steps on a tokenized short corpus. Train an identical pre-norm `TransformerLM` on the same data with the same hyperparameters. Plot both training-loss curves on the same axes.
-
-2. **Strip residual connections.** Edit `Block.forward` (or make a `ResidualFreeBlock` variant) to drop the residual additions:
-
-   ```python
-   x = self.attn(self.ln1(x))      # NO + x
-   x = self.ffn(self.ln2(x))       # NO + x
-   ```
-
-   Train a small LM with this block at `num_layers = 1, 2, 4, 8`. The 1-layer model trains. The 2-layer model trains slowly. The 4-layer and 8-layer models fail to train at all — loss is stuck near `log(vocab_size)`, the uniform-baseline. The visceral signal: gradients literally cannot reach the early layers without the residual highway.
-
-3. **Strip layer normalization.** Replace `self.ln1(x)` and `self.ln2(x)` with the identity (just `x`). Same training setup as exercise 2. The signs of failure are different: the model usually doesn't reach a crashed state, but training is unstable, with oscillating loss curves and frequent NaNs at higher learning rates. The residual-stream magnitude grows unchecked across blocks; by layer 4 or 5 it's so large that attention softmaxes saturate.
-
-4. **Compare scaling at fixed total parameter budget.** Build three `TransformerLM`s with approximately equal parameter counts:
-
-   - `(num_layers=1, embedding_dim=128, num_heads=4)` — wide and shallow.
-   - `(num_layers=4, embedding_dim=64, num_heads=4)` — balanced.
-   - `(num_layers=8, embedding_dim=48, num_heads=4)` — deep and narrow.
-
-   Verify the parameter counts are within a few percent of each other (the FFN's 4× expansion makes per-block cost grow as `D²`, so matching the budget exactly takes a calculator). Train all three on the same dataset for the same number of steps. Plot validation loss. Modern wisdom: balanced/deeper wins for language modeling at reasonable scales — but the gap is small at the toy scales here.
-
-5. **Parameter-count sanity check.** Compute analytically the parameter count of `TransformerLM(vocab_size=V, embedding_dim=D, num_layers=N, num_heads=H, max_seq_len=T_max)` (with default `hidden_dim = 4D`):
-
-   - Token embedding: `V × D`
-   - Positional embedding: `T_max × D`
-   - Per block: 2 LNs (`2 × 2D`) + MHA (`4 × (D² + D)`) + FFN (`(D × 4D + 4D) + (4D × D + D)` = `8D² + 5D`)
-   - Final LN: `2D`
-   - Unembedding head: `D × V + V`
-
-   Sum it up symbolically; verify by summing `p.numel()` over `m.parameters()` for a few `(V, D, N, H, T_max)` tuples. Notice that for typical `D ≫ T_max ≪ V`, the dominant term is `V × D` (the embeddings) at small scales and `12 N D²` (the blocks) at large scales.
+1. **Post-norm ablation.** Compare post-norm and pre-norm training curves.
+2. **Remove residuals.** Watch deeper blocks stop training without the residual highway.
+3. **Remove layer norm.** Observe unstable activation scale and loss behavior.
+4. **Depth vs width.** Compare similarly sized transformer configurations.
+5. **Parameter-count sanity check.** Derive and verify the full `TransformerLM` parameter count.
 
 ## Pitfalls to expect
 

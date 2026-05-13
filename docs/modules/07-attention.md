@@ -162,23 +162,13 @@ pytest tests/test_attention.py -v          # verbose
 
 ## Exercises
 
-1. **Implement and verify on a hand-computed 3-token toy.** Build a `SelfAttention(embedding_dim=2, causal=False)`. With `torch.manual_seed(0)` for reproducibility, feed it `x = torch.tensor([[[1., 0.], [0., 1.], [1., 1.]]])` (shape `(1, 3, 2)`). Pull out `q`, `k`, `v` by calling the projections directly, compute `Q @ K.T / sqrt(2)` by hand on a piece of paper, apply softmax row-wise, multiply by `V`, apply `out_proj`. Verify your by-hand result matches `attn(x)` to within `1e-5`. The point is to convince yourself there's no magic happening — every step is linear algebra you can do on paper.
+Open the working notebook with `.venv/bin/python scripts/open_notebook.py 07`. The notebook contains the runnable attention visualizations and small training probes.
 
-2. **Visualize the attention pattern on a real sentence.** In `notebooks/clean/07-attention.ipynb`: tokenize the canonical sentence with the Module 04 BPE. Embed with a small `TokenEmbedding` plus a `LearnedPositionalEmbedding` (both untrained — random init is fine for visualization). Pass through a `SelfAttention(causal=False)`. Pull out `attn.attention_weights(x)` and plot it as a heatmap (`matplotlib.imshow`) with token labels on the axes. Treat this as a negative control: the pattern should be near-uniform random because nothing is trained. The notebook also plots attention minus the uniform `1 / T` baseline so small random deviations are visible without pretending they are semantic. Re-run with the second sentence *"the animal didn't cross the street because it was too wide"* — same token "it" referring to a different antecedent. After Module 10's pretraining, you'd hope a trained head would put more mass on "animal" in the first sentence and "street" in the second. You will not see this yet; that's a teaser for trained-attention visualization later.
-
-   Optional probe: the notebook can also train a tiny character-level causal attention model on TinyShakespeare for a short run, then compare before/after attention on a fixed Shakespeare prompt. This usually shows sharper, less-uniform attention without asking the model to solve full language understanding.
-
-   Optional revisit: after Module 10 has saved a `ShakespeareLM` artifact, the notebook can load that trained model, run a short forward pass on a Shakespeare prompt, and plot the first layer's attention heads. That view is still not semantic proof — tiny trained heads are messy — but it gives you a real contrast against the random negative-control plot.
-
-3. **The strip-mask experiment — feel the cheat.** Build a tiny attention-only language model: `TokenEmbedding`, additive positional encoding, one `SelfAttention`, then an output `Linear` to vocab logits. Train it with a sequence-wide language-modeling objective where input positions `0..T-1` predict targets `1..T`. This is the standard transformer LM shape: logits are `(B, T, V)`, targets are `(B, T)`, and each row predicts the next token. In the notebook, ignore the final row of each window so the comparison isolates positions whose next-token target is present as the following input token. Run two configurations:
-   - `SelfAttention(causal=True)` — train loss decreases gradually.
-   - `SelfAttention(causal=False)` — train loss collapses to ~0 within a handful of steps because the model can copy the answer directly through attention.
-
-   The collapse is the visceral signal that causal masking is doing load-bearing work. Anyone who has ever debugged a "my training loss is suspiciously perfect" issue in a language model has seen this.
-
-4. **Count parameters at a few sizes.** Compute the parameter count of `SelfAttention(embedding_dim=D)` analytically (it's `4 * (D*D + D)`). Verify by summing `p.numel()` over `attn.parameters()` for `D = 64, 128, 256, 512`. Notice that the parameter count grows quadratically in `D` but is independent of `T` — the structural property that makes attention sequence-length-agnostic.
-
-5. **Feel the `O(T²)` cost.** Time `attn(x)` for `x` of shape `(1, T, 128)` at `T = 64, 256, 1024, 4096`. Plot wall time vs `T` on a log-log scale. The slope should be very close to 2.
+1. **Hand-compute attention.** Verify every step of a 3-token self-attention example.
+2. **Visualize attention.** Compare random attention with a lightly trained attention probe.
+3. **Strip-mask experiment.** Show how non-causal attention cheats on next-token prediction.
+4. **Parameter counts.** Verify attention parameter count grows with `D`, not `T`.
+5. **Quadratic cost.** Time attention as sequence length increases.
 
 ## Pitfalls to expect
 

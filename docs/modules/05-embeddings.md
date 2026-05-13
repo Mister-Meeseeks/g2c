@@ -200,25 +200,15 @@ The notebook skips the pretrained analogy section if `data/glove.6B.50d.txt` is 
 
 ## Exercises
 
-Set up or resume the working notebook for this exercise set by running:
+Open or resume the working notebook with `.venv/bin/python scripts/open_notebook.py 05`. The notebook contains the exact prompts, plots, and answer cells.
 
-```bash
-.venv/bin/python scripts/open_notebook.py 05
-```
-
-1. **Token and learned position lookups.** Predict the output shape when token IDs shaped `(B, T)` index an embedding table shaped `(V, C)`. Verify that token vectors are literal rows from the table, then explain why a `(T, C)` learned position table broadcasts cleanly across a `(B, T, C)` batch.
-
-2. **Inspect sinusoidal positional encoding.** Build a small sinusoidal table and check the position-zero values. Plot the heatmap and describe the multi-frequency pattern. The point is to see the formula as a table, not just to pass the constructor tests.
-
-3. **Inspect RoPE table construction.** Instantiate a small RoPE table, inspect `cos[0]` and `sin[0]`, and explain the split-halves pairing convention. Make sure you can say why the cos/sin tables have shape `(max_seq_len, embedding_dim)`.
-
-4. **Verify RoPE's relative-position behavior.** Run the notebook's rotated-dot-product check for several absolute position pairs with the same relative offset. Explain why the scores match and why that property is useful for attention.
-
-5. **Train tiny co-occurrence embeddings.** Use the notebook's skip-gram scaffold: tokenize a small corpus, generate center/context pairs, train a tiny model, and plot the learned embedding rows in 2D. Look for any visible structure, but be honest about what a tiny corpus can and cannot learn.
-
-6. **Try pretrained vector analogies.** `./datasets.sh glove` prepares `data/glove.6B.50d.txt` for this exercise, downloading and extracting it if needed. Load a small subset, check analogies like `king - man + woman`, and plot a 2D projection of the selected pretrained vectors. Compare that result with your tiny trained embeddings and explain what corpus scale changes.
-
-7. **Compare positional schemes side-by-side.** Plot learned, sinusoidal, and RoPE tables as heatmaps. Identify which table is learned, which ones are fixed, and what visual pattern sinusoidal and RoPE share.
+1. **Token and position lookups.** Trace embedding and positional table shapes.
+2. **Sinusoidal positions.** Inspect the fixed table and its multi-frequency pattern.
+3. **RoPE table construction.** Verify the split-halves cos/sin convention.
+4. **RoPE relative positions.** Check that equal offsets produce equal rotated dot products.
+5. **Tiny co-occurrence embeddings.** Train and visualize a small embedding model.
+6. **Pretrained vector analogies.** Compare tiny embeddings with GloVe-scale structure.
+7. **Positional schemes side by side.** Compare learned, sinusoidal, and RoPE heatmaps.
 
 ## Pitfalls to expect
 
