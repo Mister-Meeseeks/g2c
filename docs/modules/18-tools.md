@@ -335,35 +335,13 @@ Open the working notebook with `.venv/bin/python scripts/open_notebook.py 18`. T
 
 ## Pitfalls to expect
 
-- **Strict-mode "no extra keys" surprises.** Our validator rejects argument keys not in the schema's `properties`. JSON Schema's default is *additional properties allowed*; ours is *additional properties disallowed*. The reason: if the model invents a parameter, we'd rather catch it (and feed back an error) than silently drop it. If you wanted lenient behavior, the change is one line.
-
-- **`json.loads` raises on trailing content.** `json.loads('{"a":1}xxx')` raises `JSONDecodeError`. The parser handles this by skipping the block; if you implement parser parsing differently and don't catch the exception, a malformed block will crash the loop.
-
-- **Non-greedy regex matters.** Without `?`, `<tool_call>...A...</tool_call>...<tool_call>...B...</tool_call>` matches as one giant block. Always `re.compile(r"<tool_call>(.*?)</tool_call>", re.DOTALL)`. The `?` is the difference between "two calls" and "one call with garbled JSON."
-
-- **`re.DOTALL` is required.** Without it, `.` doesn't match newlines, and a multi-line JSON body wouldn't be captured. Models often emit `<tool_call>\n{...}\n</tool_call>` with the JSON on its own line.
-
-- **`call_id` collisions.** If you generate `call_id` purely from a counter (`call_0`, `call_1`, ...), two parser invocations on the same conversation produce ids that collide across turns. The recipe uses `call_{i}_{uuid4().hex[:8]}` — uniqueness within and across parses.
-
-- **Forgetting `start=1` doesn't apply here.** The parser's `enumerate(...)` starts at 0; `call_0_...` is the first call's id. Unlike Module 17's citation indexing (where `[0]` would confuse the model), tool ids are internal — the model never sees the index, only the id string.
-
-- **Calculator: rejecting `bool` constants explicitly.** `True + 1` parses as `BinOp(Constant(True), Add, Constant(1))`. The walker's `Constant` branch must reject `bool` before checking for `int`/`float`, because `isinstance(True, int)` is True. Same trap as the validator's bool-vs-int issue, in a different place.
-
-- **Calculator: `MatMult` is not on the list.** Python's `@` operator parses to `ast.MatMult`, which is NOT in `_BINOPS`. If a student copies the operator list from elsewhere and includes `MatMult`, the calculator silently accepts `5 @ 3` — which raises `TypeError` at execution. The right behavior: refuse `MatMult` at the AST check, never reach execution.
-
-- **The tool-calling format the model emits and what the parser expects must match.** Llama 3.2 emits `<tool_call>...</tool_call>`. Llama 3.2's "ipython" mode emits `<|python_tag|>...`. Qwen 2.5 emits `<tool_call>` mostly but sometimes drops the closing tag. If you see the model emit calls but the parser sees zero, the formats don't match — pick one and align both ends.
-
-- **Forgetting the `Assistant:` marker after each turn.** The transcript grows like "user message → assistant turn 1 → tool results → assistant turn 2 → ...". After splicing tool results, the next prompt must end with `"\nAssistant:"` so the model knows it's its turn. Without it, the model often produces a `User:` block (continuing the wrong role) and the loop breaks down.
-
-- **Passing `chunks` instead of `arguments` from the parser.** A common student bug: the parser builds a `ToolCall` from `obj["name"]` but accidentally uses `obj` itself as the arguments dict (instead of `obj["arguments"]`). The dispatcher then passes `{"name": ..., "arguments": {...}}` to the tool, which crashes. Read the JSON path carefully — `arguments` is one level down.
-
-- **`subprocess.run` with `shell=True`.** If you pass `["python", "-c", code]`, you're safe. If you pass `f"python -c {code}"` and `shell=True`, you've introduced shell injection — the code is interpreted by the shell first. Always use the list form.
-
-- **`run_python` cwd surprises.** The subprocess runs from the parent's cwd. If your test runs from one directory and your real session from another, the same code can produce different results. Pass `cwd=` explicitly if you care.
-
-- **`max_steps` budget calibration.** Default is 5. If the model needs to call several tools in sequence, 5 might not be enough. If the model loops on bad calls, 5 might be too generous. Tune per-task; Module 19's agent will replace this with goal-tracking.
-
-- **The model emits a final answer AND a tool call.** Some models emit "the answer is 42" followed by a `<tool_call>` block they didn't quite mean to send. The current loop reads the call as authoritative ("there are tool calls — keep going"). If you want "answer present means stop," that's a different policy — a wrapper on the parser, or a post-call check on the loop.
+- **Parser/format mismatch.** The model's emitted tool-call format must exactly match what the parser expects. If you see calls in text but zero parsed calls, align the template first.
+- **Permissive parser, strict validator.** Parsing should skip malformed blocks; validation should reject unknown tools, missing args, wrong types, and extra keys.
+- **Regex greediness.** Tool-call extraction needs non-greedy matching and `DOTALL`, or multiple/multiline calls collapse into one bad block.
+- **Arguments one level down.** Dispatch `obj["arguments"]`, not the whole parsed JSON object.
+- **Unsafe Python execution.** Never use `shell=True` for `run_python`; pass a list of arguments and keep timeouts/cwd explicit.
+- **Tool-call loops.** `max_steps` is a safety cap, not a reasoning strategy. Multi-step recovery becomes Module 19's agent loop.
+- **Final answer plus tool call.** Decide which wins. The course loop treats a parsed tool call as authoritative and continues.
 
 
 ## M-series notes

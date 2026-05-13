@@ -386,31 +386,13 @@ Open the working notebook with `.venv/bin/python scripts/open_notebook.py 14`. T
 
 ## Pitfalls to expect
 
-- **Forgetting `torch.no_grad()` on the reference forwards.** Doesn't break correctness — roughly doubles peak memory. Always wrap reference forwards in `with torch.no_grad():`.
-
-- **Reference and policy share the same model object.** A subtle bug: `ref_model = model` (assignment, not copy). Symptom: log-ratios stay zero, loss stays at log(2).
-
-- **The mask covers prompt tokens.** If the loss-mask is `1` on prompt tokens, the log-prob "sums" include the prompt's log-probability. Since the prompt are identical, this *cancels in the log-ratio*. This bug is silent but wastes compute.
-
-- **The mask doesn't cover `<|end|>`.** Similar to Module 13: if `<|end|>` is masked out, the model never learns to stop.
-
-- **β = 0.** The DPO logits are identically zero, the loss is constant `log 2`, and the gradient is zero. Training is a complete no-op. 
-
-- **Length bias.** If your dataset's chosen completions are systematically longer than rejected, DPO learns "be longer." This is the headline DPO failure mode at every scale. Audit before training over the dataset; they should be within 10–20% of each other.
-
-- **`sequence_logprob` returns a scalar instead of `(B,)`.** DPO needs per-example log-probs because the formula does *per-example* log-ratios before averaging. Symptom: `dpo_loss` raises a shape error or, worse, broadcasts silently and produces nonsense.
-
-- **Mean-pooling instead of sum.** The DPO derivation depends on log-probabilities being sums. Length-normalizing changes the objective.
-
-- **Reference forgetting between sessions.** If you save and reload checkpoints between training sessions, make sure you re-establish the reference correctly. Always reload the original SFT'd checkpoint for the reference, even when resuming.
-
-- **lr too high.** DPO's gradient signal is sequence-level so the effective magnitude per step is larger than SFT's per-token signal. Default to `max_lr=1e-4` for DPO.
-
-- **Implicit-reward collapse.** If both `chosen_reward` and `rejected_reward` go to large negatives, the policy is making both completions less likely than reference. This is the hardest DPO failure to debug because the loss curve hides it, but generation is gibberish. Log both `chosen_reward` and `rejected_reward`, not just the margin. If both are very negative, lower lr or raise β.
-
-- **Comparing pre/post DPO loss directly.** The DPO loss is on a different scale than the SFT loss — they're not comparable as numbers. The right comparison metrics are: (a) reward margin, (b) accuracy, (c) qualitative samples on held-out prompts. Don't read "DPO loss went from 0.69 to 0.42" as "the model got 39% better."
-  
-- **Broken reproducibility.** Pass `torch.Generator().manual_seed(seed)` to `DPOTrainer`. Especially important for the β sweep. Variance across runs at the same β is moderate at toy scale (1.5–2× the variance across β values), so you want to control the seed when comparing.
+- **Reference model accidentally trains.** The reference must be a separate frozen copy. Use `torch.no_grad()` for reference forwards.
+- **Prompt tokens in the mask.** DPO should score completions, not the shared prompt. Keep the mask on chosen/rejected assistant tokens plus `<|end|>`.
+- **`sequence_logprob` shape.** DPO needs one summed log-prob per example, shape `(B,)`, before averaging the loss.
+- **Length bias.** If chosen completions are systematically longer, the model learns "be longer." Audit pairs before training.
+- **`beta` extremes.** `beta=0` is a no-op; very large or tiny values can hide whether the policy is actually moving.
+- **DPO loss is not SFT loss.** Compare reward margin, preference accuracy, and held-out samples instead of reading DPO loss as a direct quality score.
+- **Reward collapse.** Log chosen and rejected rewards, not just the margin. If both go very negative, lower LR or adjust `beta`.
 
 ## M-series notes
 

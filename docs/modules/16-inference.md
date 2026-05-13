@@ -413,33 +413,13 @@ Open the working notebook with `.venv/bin/python scripts/open_notebook.py 16`. T
 
 ## Pitfalls to expect
 
-- **Forgetting to slice off the prompt in `LocalTransformerBackend.complete`.** `g2c.sampling.generate` returns `prompt + new_tokens`; the wrapper must slice with `full[len(prompt_ids):]` to get just the new tokens. A wrapper that returns the full sequence in `completion` will report a "completion" that starts with the input prompt — surprising and wrong.
-
-- **Off-by-one in the slice.** `full[len(prompt_ids):]` is correct (start after the last prompt token); `full[len(prompt_ids) - 1:]` includes the last prompt token; `full[len(prompt_ids) + 1:]` skips the first generated token. Pin this in tests by checking that `result.completion_tokens == len(full) - len(prompt_ids)`.
-
-- **Ollama not running.** Easy to forget. The first call fails with `OllamaError("Could not reach Ollama at ...")`. Quickest check: `curl http://localhost:11434/api/tags` in another terminal. Empty list ⇒ Ollama is up but no models pulled. Connection refused ⇒ Ollama daemon isn't running. Recovery: `ollama serve` in a separate terminal (or restart the Ollama macOS app).
-
-- **Configured the wrong tag.** `./prodlm.sh --model-id llama3.2:3b` and `./prodlm.sh --model-id llama3.2:3b-instruct-fp16` point at different files. The default suffix (no `-q...` part) is usually Q4_K_M, but check `ollama list` to confirm. A manifest that points at a tag you have not pulled produces `404` errors at request time.
-
-- **Greedy decoding produces "the same answer" between backends.** When `temperature=0`, both `LocalTransformerBackend` and `OllamaBackend` should be deterministic. If they're not, your Ollama call is hitting a non-zero temperature default — pass `temperature=0.0` explicitly.
-
-- **Wall-clock latency includes JSON encoding.** For 64-token outputs, JSON encoding/decoding is microseconds — negligible. For 4096-token outputs, it can be milliseconds — still small but visible. The `latency_ms` field is wall-clock; `metadata["server_total_duration_ms"]` is what Ollama reports. Compare both if a number looks off.
-
-- **`urllib.request.urlopen` is blocking.** Calling `complete` in a tight loop blocks the entire process per call. For interactive UIs, wrap in a thread or `asyncio.to_thread`. Don't try to make `urlopen` async — it isn't, and the workarounds are subtle.
-
-- **Time math in the wrong unit.** Ollama returns durations in **nanoseconds**. Wall-clock `time.perf_counter()` returns **seconds**. `InferenceResult.latency_ms` is **milliseconds**. Three different units in three different places. Conversions: `ns → ms` is `/1e6`; `s → ms` is `*1000`. Get one wrong and your `tok/s` is off by 1000× — which is sometimes plausible-looking ("the model does 30,000 tok/s!") and sometimes obviously wrong ("the model does 0.003 tok/s").
-
-- **The `Backend` ABC enforces implementation, not behavior.** A subclass that returns `latency_ms=42.0` regardless of actual time technically satisfies the interface; it just lies about timing. There's no contract beyond "returns an `InferenceResult`." Don't rely on subclasses you didn't write to be honest about their timings — wrap them in your own timer if you're benchmarking.
-
-- **`test_real_pipeline_smoke` skips silently.** When Modules 04 / 09 / 11 aren't implemented, the smoke test auto-skips. If you expect it to run and it doesn't, check `pytest -v` to see the skip reason.
-
-- **Forgetting to pass `eos_id` to `LocalTransformerBackend`.** Without an EOS, generation runs to `max_new_tokens` every time — even when the model would have emitted the chat-template `<|end|>` token. `ArtifactBackend` handles the course end tokens automatically; raw `LocalTransformerBackend` does not. For chat-template prompts, you almost always want `eos_id=tokenizer.encode("<|end|>")[0]` (or whatever your end token resolves to).
-
-- **`urllib.request` doesn't follow non-default redirects.** If you're proxying Ollama through a load balancer that issues 3xx redirects, the default `urlopen` handles them. If you're proxying through one that issues 308s (permanent redirects, common in Cloudflare-style setups), the handler chain is different. For local-only Ollama, this never comes up — but it bites once you start running Ollama on a remote machine.
-
-- **Comparing throughput across machines is meaningless.** A 30 tok/s number on M2 16GB and a 60 tok/s number on M3 Max 64GB tell you about the machines, not the models. Within a single machine, different model/quant combinations are comparable; across machines they aren't. For a write-up, always note the machine.
-
-- **Streaming and non-streaming have different request bodies.** When you set `stream: true` (exercise 7), the response is NDJSON, not a single JSON object. `json.loads(resp.read())` fails on the first chunk. Iterate `resp` line by line and `json.loads` each line.
+- **Ollama not running or wrong model tag.** Check `ollama list` and `ollama ps` before debugging code. A missing server or missing tag looks like an inference bug until you verify the runtime.
+- **Prompt/completion slicing.** Local generation returns prompt plus continuation; backend wrappers must return only the generated portion.
+- **Forgetting EOS.** Without an end token, local generation runs to `max_new_tokens` even when the model would have stopped.
+- **Timing units.** Ollama reports nanoseconds, `perf_counter()` reports seconds, and the course result object stores milliseconds. Unit mistakes make throughput numbers useless.
+- **Comparing across machines.** Throughput is only comparable within one hardware/runtime setup. Always note machine, model, quantization, context length, and max tokens.
+- **Streaming format mismatch.** Non-streaming returns one JSON object; streaming returns NDJSON chunks. Parse them differently.
+- **Backend interface vs behavior.** A class can satisfy the interface while giving misleading latency or token counts. Wrap timings yourself when benchmarking.
 
 
 ## M-series notes

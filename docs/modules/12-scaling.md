@@ -232,23 +232,12 @@ These are scaling experiments built on the Module 10 training workflow. Keep the
 
 ## Pitfalls to expect
 
-- **Single-seed conclusions.** A 5M model trained from one seed can land 5–10% higher or lower than the seed-mean. If you see "20M is *worse* than 5M" on a single seed, run another seed before believing it.
-
-- **Lr too high for the largest model.** The recipe of `max_lr=3e-3` is calibrated for ~1M params with SGD. At 20M params, that lr can produce occasional grad-norm spikes that the gradient clip mostly contains but that nevertheless degrade final loss. If your 20M run looks unstable (loss curve has spikes, val loss is higher than the 5M model's), drop `max_lr` to `1e-3` and re-run. Larger models are usually more — not less — sensitive to lr at fixed schedule.
-
-- **Forgetting to crop training context to `max_seq_len`.** `Trainer.context_length` must be ≤ `model.max_seq_len`. If you ramp `max_seq_len` for the larger configs and forget to update the trainer's `context_length`, the larger models train on the same window length and you measure something different from what you think.
-
-- **Comparing across seeds, batch sizes, lr schedules.** A clean comparison fixes seeds, batch size, context length, lr, schedule, optimizer, and dataset across runs. Vary *only* the architecture. If one knob slips between runs, the resulting plot answers a different question — sometimes silently.
-
-- **Cross-vocab comparisons.** Perplexity at vocab size `V₁` and perplexity at vocab size `V₂` are not directly comparable. A smaller vocab means each token carries more information, so per-token loss is higher *by construction*. Stick with one tokenizer for the main comparison;
-- 
-- **MPS giving slightly different loss curves than CPU.** Floating-point ops on MPS are not bit-identical to those on CPU; over 5000 steps the divergence accumulates. Don't expect MPS and CPU runs from the same seed to produce the same final loss — the difference is usually in the 4th significant figure, but spotting that the divergence exists at all has tripped up scaling-experiment writeups.
-
-- **The 1M model's val loss plateau being at the wrong level.** TinyShakespeare's per-token entropy under a 2048-vocab BPE is around `log(20–40) ≈ 3.0–3.7` nats, depending on the exact split. If your 1M model plateaus near `4.5+`, it's underfit for the budget; if it plateaus near `3.0`, it's at the irreducible floor and the 5M model can't improve much over it. Read the absolute value, not just the relative gap.
-
-- **Mistaking convergence for a finished run.** A 20M model at 5000 steps has not converged on TinyShakespeare — its loss curve still has noticeable downward slope at step 4999. The "final" val loss you report is therefore a function of `max_steps`, not just architecture. Note this in the writeup. (The Chinchilla compute-optimal recipe says we'd want ~400M tokens of training for a 20M model; we're feeding it ~20M tokens, an order of magnitude short.)
-
-- **Catastrophic seeds.** Occasionally a run lands on a bad initialization and never recovers — val loss plateaus 20–30% above where it should be. You'll see it as an outlier in your plot. Don't include it in the fit; rerun with a different seed and replace.
+- **Changing more than one variable.** A clean scaling comparison fixes seed, batch size, context length, tokenizer, data, optimizer, and schedule. Vary one architecture knob at a time.
+- **Single-seed conclusions.** Tiny runs have visible variance. If one result contradicts the trend, rerun before treating it as evidence.
+- **Learning rate too high for larger models.** Larger models often need a smaller max LR at the same schedule. Spiky loss or worse-than-smaller validation loss is a sign to back off.
+- **Context-length mismatch.** `Trainer.context_length` must be `<= model.max_seq_len`; otherwise you are not measuring the architecture you think you are.
+- **Cross-vocab perplexity comparisons.** Raw per-token perplexity is not comparable across vocabularies. Use one tokenizer for the main comparison, or switch to bits-per-character.
+- **Calling an undertrained run "converged."** A larger model can still be improving at the end of a fixed step budget. Report the budget and the curve shape, not just the final number.
 
 ## M-series notes
 

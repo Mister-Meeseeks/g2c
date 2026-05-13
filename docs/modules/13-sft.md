@@ -321,27 +321,12 @@ Open the working notebook with `.venv/bin/python scripts/open_notebook.py 13`. T
 
 ## Pitfalls to expect
 
-- **Loss mask off-by-one.** The most common bug. The mask is aligned with `y = ids[1:]`, not with `ids` directly. A mask aligned with `ids` (forgot to shift) trains the model to predict each *prompt* token from its prefix.
-
-- **Marker drift between training and inference.** SFT trains the model on `<|user|>\nFoo\n<|assistant|>\nBar<|end|>`, where each marker is an atomic reserved token. If your inference-time prompt assembly uses `<|USER|>`, omits `<|end|>`, or skips a newline, the model sees an unfamiliar prefix and reverts toward base behavior.
-  
-- **Dividing loss by full token acount** The denominator is the count of masked tokens only. If you accidentally divide by the full batch dimension, the gradient magnitude will mismatched.
-
-- **Forgetting `<|end|>` in the loss mask.** If `<|end|>` is in the assistant content but the mask is `0` at its position, the model never learns to emit `<|end|>`.
-
-- **Pad tokens included in the loss.** When you pad short examples to a common length, the padded positions must be masked OUT of the loss. 
-
-- **LR too high.** The pretraining default at SFT step counts of 500–1000 produces visibly damaged models — the loss curve looks fine but generation is gibberish. 
-
-- **Step count too high.** Even at correct lr, training too long memorizes individual examples 500–1000 steps on 50–500 examples is about the right scale.
-
-- **Examples too long.** A SFT example whose user turn is too long consumes most of one batch's token budgets on mask `0` user tokens that contribute zero gradient. 
-
-- **Inconsistent style.** Inconsistency in the assistant's response style (sometimes terse, sometimes preamble; sometimes JSON, sometimes prose) propagates directly to the model's output distribution. 
-
-- **Catastrophic forgetting.** With high lr, long training, or both, the SFT'd model can *lose* its base capacity — coherent prose generation, tokenization-level patterns, even basic English. The loss curve does NOT show this clearly; it's a behavioral failure visible only on out-of-distribution prompts. 
-
-- **Format collapse.** The model emits assistant format on every prompt, even when that format is wrong. There is no clean fix at toy scale — at production scale, you'd mix pretraining batches into the SFT corpus to prevent it. Accept it as a property of toy SFT and include OOD prompts in your eval to characterize how bad it is.
+- **Loss-mask off-by-one.** The mask aligns with next-token targets, not raw input IDs. A one-token shift trains the wrong positions.
+- **Prompt-format drift.** Training and inference must use the same special tokens, newlines, and `<|end|>` convention.
+- **Wrong denominator.** Average the loss over masked assistant tokens only. Padding and user tokens should not affect the gradient scale.
+- **Forgetting `<|end|>`.** If the end marker is not in the supervised span, the model will not learn when to stop.
+- **Learning rate or step count too high.** SFT can damage base behavior even when the SFT loss looks good. Always compare base vs SFT on a few out-of-distribution prompts.
+- **Inconsistent response style.** At toy data scale, style noise shows up directly in generations.
 
 ## M-series notes
 

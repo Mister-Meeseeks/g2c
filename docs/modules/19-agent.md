@@ -452,37 +452,14 @@ Open the working notebook with `.venv/bin/python scripts/open_notebook.py 19`. T
 
 ## Pitfalls to expect
 
-- **The `\s*` newline-gobbling regex bug in the parser.** A regex like `r"Action\s*:\s*([^\n]+)"` looks safe but `\s*` matches *all* whitespace including `\n`. Given input `"Action:\nAction Input: ..."` it consumes the newline and captures the next line's content as the action name. The fix: post-colon whitespace must be `[ \t]*` (horizontal only). The test `test_thought_does_not_eat_next_marker` pins this; if it fails or your action names look like "Action Input: {...}", this is the bug.
-
-- **Final Answer not winning over Action.** When the model emits both, Final Answer must be authoritative (the model is signaling "I'm done"). If the parser returns the Action, the loop keeps going past where it should stop — burning tokens and confusing the model.
-
-- **Empty Final Answer treated as a real answer.** The parser should treat `"Final Answer:"` followed by nothing (or whitespace) as a parse error, not a valid empty answer. Returning a blank `final_answer=""` to the user is rarely what you want.
-
-- **`json.dumps(args)` vs `repr(args)` in the scratchpad.** Python repr uses single quotes (`{'key': 'value'}`); JSON uses double (`{"key": "value"}`). The model originally emitted JSON; rendering back as Python repr trains it to think the format changed mid-conversation. Always `json.dumps`.
-
-- **Forgetting the `[error]` prefix on error observations.** Without it, the model often parrots the error string back as if it were a successful answer ("The calculator returned: missing required arguments"). With it, instruction-tuned models reliably treat the observation as a recovery signal.
-
-- **Forgetting the trailing `Thought:` nudge after the scratchpad.** Without it, instruction-tuned models often start the next turn with prose ("I think we should..."), which the parser tolerates but which costs tokens and accuracy. The `_build_prompt` helper appends `\n\nThought:` after rendering everything else; if you remove it, format compliance drops.
-
-- **Loop detection comparing args via `==` on dicts.** Two dicts with the same keys in different insertion order can compare equal in Python (since 3.7's preserved insertion order doesn't affect `==`), but the safer approach is `json.dumps(args, sort_keys=True)` — it's explicitly canonical and works even if you switch to `OrderedDict` somewhere.
-
-- **Loop detection over too long a window.** Comparing the last action against ALL prior actions (instead of just the immediately preceding one) catches more loops but also catches legitimate retries (paginated reads, re-checks). The simple "two in a row" rule is a tradeoff; tighten it only if you know you need to.
-
-- **Halt-on-stuck triggering on a single bad parse.** Models occasionally emit a single weird turn (a code fence around their reasoning, an extra `Observation:` they shouldn't have produced) and the next turn is fine. With `halt_on_stuck=True`, you cut them off after one strike. Default `False` is more forgiving; flip to `True` only when you have a good reason.
-
-- **Plan rendered into the prompt but the model ignores it.** This is fine — the plan is a soft prior, not a hard contract. If the model deviates because the world doesn't match the plan, that's *good* behavior. If you want hard plan enforcement, you'd build a different system (state-machine agent, plan-verifier wrapper). Module 19 does soft planning by design.
-
-- **`make_plan` raising and crashing the run.** The agent's `run` method wraps the planning call in `try/except` and falls through to `plan=None` on any exception. If you replace `make_plan` with a stricter version that raises, the whole run dies. The graceful-degradation contract is load-bearing.
-
-- **Running on the from-scratch Module 10 model.** Your self-trained StudentLM/StoryLM artifact was not trained on ReAct or tool-use data. It may generate text, but it will not reliably follow the agent markers. Use ProdLM with an instruction-tuned model for the main path. Module 16's caveat continues to apply: the from-scratch model is for comparison, not the required agent backend.
-
-- **`max_steps` calibrated wrong.** Default is 8. If the model needs to call several tools sequentially after a planning step, 8 might not be enough. If the model loops on bad calls, 8 might be too generous. Tune per-task; check `result.stopped_reason == "max_steps"` to know when you've hit the cap.
-
-- **Forgetting Module 18's `validate_arguments` is still scaffolded.** The agent's tool dispatch goes through `dispatch_tool_call` → `validate_arguments`. If you build Module 19 without finishing Module 18's scaffold first, the integration tests will fail with `NotImplementedError` from inside the dispatcher. Finish 18 → test 18 → start 19.
-
-- **`scratchpad_max_chars` set too low.** If the cap is smaller than a typical step's rendered size, the scratchpad ends up rendering only the very last step, and the model effectively forgets what it just tried. The cap should be at LEAST a few times the average step size; production agents usually summarize old steps instead of dropping them.
-
-- **Confusing `Action.tool` (Module 19) with `ToolCall.name` (Module 18).** They mean the same thing but use different field names. The agent's parser produces `Action(tool=...)`; the dispatcher needs `ToolCall(name=...)`. The agent module's `run` does the conversion — if you build a custom dispatch path, watch for this.
+- **Parser whitespace.** Do not let regex whitespace consume newlines between `Action:` and `Action Input:`. Horizontal whitespace only after markers.
+- **Final answer wins.** If the model emits both a final answer and an action, stop on the final answer.
+- **Scratchpad format drift.** Render action inputs with `json.dumps`, and mark tool errors clearly so the model can recover.
+- **Loop detection tradeoff.** Too little detection permits runaway calls; too much blocks legitimate retries. Start with repeated identical actions.
+- **Planning is advisory.** The plan is a soft prior in the prompt, not a state machine. Deviation is not automatically failure.
+- **Wrong backend.** A from-scratch Module 10 model was not trained for ReAct formatting. Use ProdLM for the main path and tiny models only as comparison.
+- **Step budget too small or too large.** Check `stopped_reason` before assuming the agent reasoned badly.
+- **Scratchpad cap too low.** If old observations are dropped too aggressively, the model repeats itself or forgets the task.
 
 
 ## M-series notes

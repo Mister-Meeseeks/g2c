@@ -438,39 +438,14 @@ Open the working notebook with `.venv/bin/python scripts/open_notebook.py 17`. T
 
 ## Pitfalls to expect
 
-- **Forgetting the L2-normalization in `HashEmbedder.embed`.** `NumpyVectorStore.search`'s dot-product trick assumes unit-norm vectors. Without normalization, the *ranking* is preserved (norms are positive scalars; argmax is stable) but the absolute scores become uninterpretable, and the cosine similarity is wrong by a factor of the norms. Failure mode: scores look "high" or "low" with no clear meaning.
-
-- **Off-by-one in the chunker stride.** `start += chunk_size - chunk_overlap` is right. `start += chunk_size` skips the overlap entirely. `start += chunk_overlap` makes near-zero progress and creates a near-infinite list. The test `test_chunk_text_overlap_correct` pins the right value; if it's wrong, stop and re-derive.
-
-- **Forgetting the `if end == len(text): break` exit condition.** Without it, the loop emits a chunk that goes past the end, then advances `start` past `len(text)` and exits — but produces a final chunk whose `end` is `start + chunk_size` (greater than `len(text)`). The Chunk constructor rejects this. Failure mode: the chunker raises on every doc longer than one chunk.
-
-- **0-based vs 1-based citations.** The test pins 1-based (`[1]`, `[2]`, `[3]`). `enumerate(chunks)` defaults to 0-based; you must pass `start=1`. Forgetting silently produces a `[0]` in the prompt — which the model will sometimes parrot ("...as cited in [0]...") and sometimes fix.
-
-- **Confusing prompt index vs retriever rank.** Both are 1-based, both correspond chunk-by-chunk, but they live in different objects. `RetrievedChunk.rank` is the retriever's ordering; the citation index `[i]` is the prompt's ordering. As long as `assemble_rag_prompt` iterates `chunks` in order, the two agree. Don't hand-mix — let the order propagate cleanly.
-
-- **`np.argpartition(scores, -k)` returns UNSORTED indices.** The top-k indices are in the last k positions of the result, but in arbitrary order. You must `argsort` those k entries before returning. Failure mode: the top-k chunks are correct, but their order within the k is meaningless — the "top result" might not be the most similar one. Subtle but real.
-
-- **`np.argsort` defaults to ascending.** For "most similar first," reverse the order: `np.argsort(sims)[::-1]` or `np.argsort(-sims)`. The test `test_search_returns_descending_order` pins this; if it fails, you have anti-retrieval.
-
-- **Embedding the query and the corpus with different embedders.** They must be the same embedder (or at least the same model) — vectors from different embedders aren't comparable. The retriever uses one embedder for both. If you ever swap embedders mid-pipeline, you must re-embed the whole corpus.
-
-- **Calling `OllamaEmbedder` against a chat model tag.** `nomic-embed-text` is an embedding model; `llama3.2:3b` is a chat model. `OllamaEmbedder("llama3.2:3b")` will fail at request time — Ollama returns a 400 because the model doesn't have an embedding head. The error wraps as `OllamaEmbedError`. If you're confused why the embed call is failing, check `ollama list` for an `*-embed-*` tag.
-
-- **Wrong dim in the OllamaEmbedder constructor.** `nomic-embed-text` is 768-dim. If you instantiate `OllamaEmbedder(dim=384)` and then call it, the response will have 768-dim vectors but you'll get an `OllamaEmbedError("returned a 768-dim vector for ...; OllamaEmbedder was configured with dim=384")`. The fix is to look up the model's actual dim and pass it.
-
-- **Empty `chunks` to `assemble_rag_prompt`.** Allowed but pathological — the prompt has `Context:\n\nQuestion: ...` with literally no context. The model is told "answer using ONLY the context" but given none. A well-behaved instruction-tuned model defaults to "I don't know"; many will hallucinate. Decide upstream whether to short-circuit (return "no context found") before assembling.
-
-- **Mixing `Chunk` and `RetrievedChunk` in `assemble_rag_prompt`.** The `_coerce_chunks` helper handles both — caller can pass either. But if you pass something that's NEITHER, you get `TypeError("chunks must contain Chunk or RetrievedChunk, ...")`. Common cause: passing the raw `(chunk, score)` tuples from `NumpyVectorStore.search` directly. Wrap in `RetrievedChunk` first, OR strip to just the chunks.
-
-- **The HashEmbedder produces zero rows for very short strings.** If your `ngram_range` is `(3, 5)` and the input is `"ab"` (2 chars), there are no n-grams of length ≥ 3 — the row stays zero. Cosine similarity against a zero row is 0. Failure mode: extremely short chunks (or chunks of mostly punctuation) retrieve poorly. The fix: lower the `ngram_range` floor, or filter out very short chunks at index time.
-
-*  **Using Python's built-in `hash()` instead of `hashlib.blake2b`** Python's built-in `hash()` is salted differently per process — different runs of the same code produce different hashes — so it's unusable for embeddings. BLAKE2b is fast and stable across runs.
-
-- **The chunker's `metadata` dict shared across all chunks.** Without `dict(metadata)` on each Chunk creation, all chunks share a reference to the same dict. A caller mutating `chunks[0].metadata` then sees the change in `chunks[1].metadata`. Defensive copy at chunk-creation time prevents this.
-
-- **`Chunk` is frozen but `Chunk.metadata` is not.** `dataclass(frozen=True)` freezes attribute assignment, not nested objects. `c.text = "x"` raises; `c.metadata["k"] = 1` doesn't. Treat the metadata as read-only after indexing — mutating it desyncs from any persisted state.
-
-- **`pipeline.answer` returns the model's raw completion.** No post-processing, no citation extraction, no fact-checking. If the model hallucinates `"[7]"` (a citation index that doesn't exist among the retrieved chunks), the pipeline doesn't catch it. Citation verification is a separate step — Exercise 7 of Module 19 (agent loops) is one place to put it.
+- **Chunk stride off-by-one.** The step is `chunk_size - overlap`; using `overlap` as the step creates too many chunks, and using `chunk_size` removes overlap entirely.
+- **Vector normalization.** Cosine search assumes unit vectors. Normalize embeddings before storing or comparing.
+- **Unsorted top-k.** `argpartition` finds candidates but does not sort them. Sort the final top-k before returning.
+- **Wrong embedding model.** Use the same embedder for corpus and query, and do not call an embedding endpoint with a chat-model tag.
+- **Embedding dimension mismatch.** The vector store and embedder must agree on dimension; model swaps usually require rebuilding the index.
+- **Citation numbering.** Prompt citations are 1-based and should follow the order of retrieved chunks.
+- **Empty retrieval context.** Decide how to handle no useful chunks before asking the model to answer from an empty context.
+- **RAG does not verify itself.** Retrieval and citation formatting reduce hallucination risk; they do not prove the generated answer is grounded.
 
 
 ## M-series notes

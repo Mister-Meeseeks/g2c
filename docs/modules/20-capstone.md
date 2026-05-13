@@ -391,37 +391,14 @@ Open the working notebook with `.venv/bin/python scripts/open_notebook.py 20`. T
 
 ## Pitfalls to expect
 
-- **Adding the user message to the conversation BEFORE rendering history.** If you reorder steps in `chat`, the current question shows up twice — once as the latest line in "Previous conversation:" and once as the current question. The model gets confused and often answers the prior question instead. The test `test_history_does_not_double_include_current_message` pins this; if it fails, this is the bug.
-
-- **Forgetting that `agent_run.final_answer` may be `None`.** When the agent times out or detects a duplicate action, it returns no answer. If you blindly do `conversation.add_assistant(agent_run.final_answer)`, you crash on a None content. The recipe records a synthetic placeholder; the `AssistantTurn` keeps `final_answer=None` so callers can detect the failure. Two channels.
-
-- **Mixing scratchpad and conversation memory.** The scratchpad's tool-call records are *intra-task*; once the task ends, they're noise. If you accidentally feed prior agent runs' scratchpad content into the next turn's prompt, the model often re-tries old tool calls instead of doing fresh work. Keep them separate; the agent owns the scratchpad, the assistant owns the conversation.
-
-- **Wrapping the retriever in `try/except` inside `chat`.** Tempting (the agent does this for tool errors), but wrong. A broken retriever is a config bug, not a model bug. Catching it silently means the user gets RAG-off behavior without knowing why retrieval is silently failing. Let it raise.
-
-- **`max_history_messages` set too small.** If the cap is smaller than a typical exchange's important context, the model loses references that span more than a couple of turns. Default is 20; the right number depends on the use case. Not a hard rule; it IS a hard tradeoff (longer history = bigger prompt = slower / more expensive / closer to context cap).
-
-- **`max_history_messages=None` (unlimited) on a long session.** Eventually the prompt exceeds the model's context window and either the backend errors or silently drops content. Production assistants either summarize old turns or use a vector store for long-term memory. We don't; the cap is the workaround.
-
-- **RAG'ing on every turn, even when irrelevant.** The retriever fires for "hi how are you" the same as it fires for "what's in foo.md". The retrieved chunks are usually noise that the model has to ignore. Two mitigations: (a) `use_rag=False` per-call when you know retrieval doesn't apply; (b) tool-style RAG (Exercise 5) so the model decides. Both have downsides.
-
-- **Eval cases that test the model rather than the assistant.** "What's the capital of Bolivia" tests the model's parametric knowledge. "What's the calculator tool's name" tests integration. The Module 20 eval is a regression gate for *your* code; lean toward integration questions, not factual recall ones. Module 15's eval is for the model's properties.
-
-- **The eval substring check being too liberal.** `expected_substring="4"` matches "the answer is 4" and also matches "I gave you 4 reasons why this is hard". Pick substrings that are specific enough to be evidence of the right answer, not just any answer. `expected_substring="The answer is 4"` is overly strict; `expected_substring="42"` (for "what's 6*7") is just right.
-
-- **The eval substring check being case-sensitive.** The assistant's response casing is non-deterministic ("Madrid" vs "MADRID" vs "madrid"). The harness lowercases both sides; if you change this, you'll get flaky failures. Don't change it.
-
-- **CLI commands without leading slashes.** "exit" is a valid chat message; "/exit" is a command. The CLI's parser checks for a leading `/`. If you accidentally drop the slash, the CLI will dutifully send `"exit"` as a message and the model will probably respond with something polite about leaving.
-
-- **Confusing `Message` (the conversation primitive) with `AgentStep` (Module 19's per-iteration record).** Both wrap (role/role-equivalent, content/content-equivalent), but at different levels. `Message` is one user/assistant exchange in the conversation. `AgentStep` is one ReAct iteration inside one agent run inside one chat turn. They live at different layers of the stack.
-
-- **Not running the eval suite often enough.** The whole point of the regression gate is that it's cheap (seconds, no manual labor) and catches regressions before they pile up. If you only run it once a week, you'll see five regressions at once and not know which change caused which. Run it after every config / prompt edit. Make it part of your inner loop.
-
-- **Conflating the assistant's `max_steps` with the conversation's length.** `max_steps` is per-chat-turn (the agent's loop cap). Conversation length is across-chat-turns (number of user/assistant exchanges in the history). Independent settings; don't unify them.
-
-- **Forgetting to reset between eval cases.** `run_evaluation(assistant, cases, reset_each=True)` is the default; if you flip it to False, cases share conversation state and case 2's question can be "interpreted in light of" case 1's exchange. This is sometimes what you want (multi-turn eval) but is rarely what you want for a regression gate.
-
-- **The CLI's `/save` not flushing before exit.** The CLI's standard pattern is "type `/save path`, then exit." If `/save` doesn't write synchronously, you lose the transcript on exit. The CLI uses `Path.write_text` which writes synchronously; if you replace it with anything that buffers, beware.
+- **Duplicating the current user message.** Render history before adding the current turn, or the latest question appears twice.
+- **No final answer.** Agent runs can stop without an answer. Store that failure explicitly instead of adding `None` as assistant text.
+- **Scratchpad vs conversation memory.** Tool traces are intra-task scratchpad; user/assistant messages are cross-turn conversation. Keep them separate.
+- **Silent RAG failure.** A broken retriever is configuration failure. Do not hide it and silently answer without retrieval.
+- **History cap tradeoff.** Too little history breaks references; unlimited history eventually exceeds context. The cap is a design choice, not a default to ignore.
+- **RAG on irrelevant turns.** Prefix retrieval can inject noise. Use per-turn control or tool-style RAG when the model should decide.
+- **Eval cases testing the wrong layer.** Module 20 evals should test assistant integration, not only the base model's factual memory.
+- **Regression gates only help if run.** Re-run the small eval suite after prompt, config, retriever, or tool changes.
 
 
 ## M-series notes

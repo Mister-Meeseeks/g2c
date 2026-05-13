@@ -480,31 +480,13 @@ Open the working notebook with `.venv/bin/python scripts/open_notebook.py 15`. T
 
 ## Pitfalls to expect
 
-- **The eval is too small to be statistically meaningful.** 20 examples × 4-option MC has a standard error of ~0.10 on accuracy at p=0.5. A 5-percentage-point difference between models is noise at this scale. Use 50–200 examples for any comparison you want to take seriously, even at toy scale.
-
-- **Multiple-choice scoring depends on the choices' surface form.** "Madrid" and "Madrid." score differently because they're different token sequences. Be consistent: end every choice with the same trailing format markers (e.g. `<|end|>` in the chat-template setup).
-
-- **Length-bias in raw multiple-choice scoring.** A long incorrect option can score lower than a short incorrect option *just because it's longer*. If accuracy seems suspiciously biased toward shorter choices, switch on `length_normalize=True`. lm-eval-harness exposes both `acc` and `acc_norm` for exactly this reason.
-
-- **ECE without `min(int(c * n_bins), n_bins - 1)`.** A confidence of exactly 1.0 (which happens) maps to bin index `n_bins`, which is out of range. Symptom: `IndexError`
-
-- **ECE on a tiny eval set.** With N < 20 examples and n_bins=10, most bins are empty or contain 1–2 examples. The metric is noisy. Reduce `n_bins` to 5 (or 3) for tiny sets.
-
-- **Mean confidence != accuracy on a perfectly calibrated model.** Only on average — for any specific model, `mean_confidence` and `accuracy` can differ even with ECE=0. . Don't read `mean_confidence ≠ accuracy` as "miscalibrated".
-
-- **The mask is off by one.**  A mask off by one silently changes the score by including or excluding one prompt boundary token's log-prob.
-
-- **`numeric_match` matching the wrong number.** "Half of 100 is 50" extracts `100` as the first number, not `50`. Strip the prefix before matching, OR write your references to expect numbers in particular positions, OR use a stricter regex.
-
-- **`contains_match` matching unintended substrings.** Searching for `"no"` matches `"Norway"`, `"snow"`, `"annoy"`, etc. 
-
-- **The matcher silently does the wrong thing.** If you want partial-match semantics, use `contains_match`, not `normalized_match`. Pick the matcher to match the question.
-
-- **Asymmetric matcher errors.** `normalized_match()` is Symmetric. `contains_match()` is not. Predictions are searched for references, not vice versa. If you cross prediction and reference roles by accident, your accuracy plummets silently.
-
-- **Generation eval is non-deterministic.** Same input, different output across runs. If you're comparing models, fix the seed (`torch.Generator().manual_seed(seed)`) or use temperature=0 . Production benchmarks always use deterministic decoding.
-
-- **Forgetting `torch.no_grad()`** Eval is inference-only. The harness will run, but slowly and memory-hungry.
+- **Tiny eval sets are noisy.** A few dozen examples can show failure modes, but not small quality deltas. Use more examples for comparisons you care about.
+- **Surface form affects MC scores.** Keep answer choices similarly formatted and length-normalized when needed.
+- **Matcher choice matters.** `normalized_match`, `contains_match`, and `numeric_match` encode different success criteria. Pick the one that matches the task.
+- **Substring matches can lie.** Searching for `"no"` also matches `"snow"`. Use specific references or stricter regexes.
+- **ECE is unstable on tiny sets.** Reduce bin count for small evals, and handle confidence `1.0` as the final bin.
+- **Generation eval is non-deterministic.** Fix the seed or use temperature 0 when comparing models.
+- **Forgetting `torch.no_grad()`.** Eval is inference-only; tracking gradients just wastes memory.
 
 ## M-series notes
 
