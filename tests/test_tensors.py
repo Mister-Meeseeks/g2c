@@ -27,6 +27,7 @@ import torch
 from g2c.tensors import (
     TinyArray,
     broadcast_shapes,
+    classifier_forward,
     linear,
     matmul_loops,
     matmul_numpy,
@@ -342,3 +343,20 @@ def test_softmax_along_first_dim():
     x = torch.randn(4, 8)
     y = softmax(x, dim=0)
     assert torch.allclose(y.sum(dim=0), torch.ones(8), atol=1e-6)
+
+
+# ----------------------------------------------------------------------
+# classifier_forward (provided notebook scaffold)
+# ----------------------------------------------------------------------
+
+def test_classifier_forward_returns_logits_and_probs():
+    x = torch.tensor([[1.0, 2.0], [3.0, 4.0]])
+    W = torch.tensor([[1.0, -1.0, 0.5], [0.0, 2.0, -0.5]])
+    b = torch.tensor([0.1, 0.2, -0.3])
+
+    logits, probs = classifier_forward(x, W, b)
+
+    assert torch.allclose(logits, linear(x, W, b))
+    assert torch.allclose(probs, softmax(logits, dim=-1))
+    assert probs.shape == (2, 3)
+    assert torch.allclose(probs.sum(dim=-1), torch.ones(2))

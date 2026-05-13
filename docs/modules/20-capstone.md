@@ -1,4 +1,4 @@
-# Module 20 — Capstone: a tiny ChatGPT
+# Module 20 — Capstone: TinyGPT
 
 > **Question this module answers:** *Can I integrate everything?*
 

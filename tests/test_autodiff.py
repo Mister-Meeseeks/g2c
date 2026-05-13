@@ -18,10 +18,20 @@ Suggested order to implement & turn green:
 from __future__ import annotations
 
 import math
+import random
 
 import pytest
 
-from g2c.autodiff import Value, numerical_grad
+from g2c.autodiff import (
+    ScalarMLP,
+    ScalarNeuron,
+    Value,
+    numerical_grad,
+    single_neuron_forward,
+    train_xor_step,
+    xor_loss,
+    zero_grad,
+)
 
 
 # ----------------------------------------------------------------------
@@ -36,6 +46,31 @@ def test_value_construction():
 
 def test_value_repr_runs():
     repr(Value(1.0))  # should not raise
+
+
+def test_scalar_neuron_construction_parameters():
+    neuron = ScalarNeuron(3, rng=random.Random(0))
+    params = neuron.parameters()
+    assert len(params) == 4
+    assert all(isinstance(param, Value) for param in params)
+
+
+def test_scalar_neuron_rejects_nonpositive_inputs():
+    with pytest.raises(ValueError):
+        ScalarNeuron(0, rng=random.Random(0))
+
+
+def test_scalar_mlp_construction_parameters():
+    model = ScalarMLP(rng=random.Random(0))
+    assert len(model.parameters()) == 9
+
+
+def test_zero_grad_resets_scalar_parameters():
+    params = [Value(1.0), Value(2.0)]
+    params[0].grad = 0.5
+    params[1].grad = -1.5
+    zero_grad(params)
+    assert [param.grad for param in params] == [0.0, 0.0]
 
 
 # ----------------------------------------------------------------------
@@ -315,3 +350,52 @@ def test_numerical_grad_matches_analytic_compound():
 
     numeric = numerical_grad(f, Value(0.7))
     assert analytic == pytest.approx(numeric, rel=1e-3)
+
+
+# ----------------------------------------------------------------------
+# Module 01 notebook helpers — editor-backed scalar XOR pieces
+# ----------------------------------------------------------------------
+
+def test_single_neuron_forward_matches_formula():
+    w1 = Value(0.2)
+    w2 = Value(-0.3)
+    b = Value(0.1)
+    out = single_neuron_forward(0.75, 0.25, w1, w2, b)
+    expected = math.tanh(0.2 * 0.75 - 0.3 * 0.25 + 0.1)
+    assert out.data == pytest.approx(expected)
+
+
+def test_scalar_neuron_forward_known_weights():
+    neuron = ScalarNeuron(2, rng=random.Random(0))
+    neuron.w[0].data = 0.5
+    neuron.w[1].data = -0.25
+    neuron.b.data = 0.1
+    out = neuron((2.0, 4.0))
+    assert out.data == pytest.approx(math.tanh(0.5 * 2.0 - 0.25 * 4.0 + 0.1))
+
+
+def test_scalar_neuron_rejects_wrong_input_width():
+    neuron = ScalarNeuron(2, rng=random.Random(0))
+    with pytest.raises(ValueError):
+        neuron((1.0,))
+
+
+def test_scalar_mlp_forward_returns_value():
+    model = ScalarMLP(rng=random.Random(0))
+    assert isinstance(model((0.0, 1.0)), Value)
+
+
+def test_xor_loss_returns_scalar_value():
+    model = ScalarMLP(rng=random.Random(0))
+    loss = xor_loss(model)
+    assert isinstance(loss, Value)
+    assert loss.data >= 0.0
+
+
+def test_train_xor_step_reduces_loss_over_many_steps():
+    model = ScalarMLP(rng=random.Random(0))
+    start = xor_loss(model).data
+    for _ in range(300):
+        train_xor_step(model, lr=0.05)
+    end = xor_loss(model).data
+    assert end < start

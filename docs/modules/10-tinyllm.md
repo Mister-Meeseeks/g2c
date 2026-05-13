@@ -138,6 +138,8 @@ class Trainer:
 
 ## How to run the tests
 
+Tests live in `tests/test_pretraining.py`. Initial state: 9 passed, 19 failed.
+
 When debugging, run prerequisite tests first to localize failures:
 
 ```bash

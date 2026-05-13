@@ -29,7 +29,14 @@ from g2c.embeddings import (
     LearnedPositionalEmbedding,
     RotaryEmbedding,
     SinusoidalPositionalEmbedding,
+    SkipGramEmbeddingModel,
     TokenEmbedding,
+    analogy,
+    load_glove_subset,
+    make_skipgram_pairs,
+    nearest_by_cosine,
+    normalized,
+    train_skipgram,
 )
 
 
@@ -52,6 +59,15 @@ def test_token_emb_parameters_yields_weight():
     params = list(emb.parameters())
     assert len(params) == 1
     assert params[0] is emb.weight
+
+
+def test_skipgram_model_construction_parameters():
+    model = SkipGramEmbeddingModel(vocab_size=25, embedding_dim=8)
+    params = model.parameters()
+    assert len(params) == 3
+    assert params[0].shape == (25, 8)
+    assert params[1].shape == (8, 25)
+    assert params[2].shape == (25,)
 
 
 # ----------------------------------------------------------------------
@@ -279,3 +295,92 @@ def test_rotary_relative_position_property():
     c = rotated_dot(7, 9)
     assert a == pytest.approx(b, abs=1e-4)
     assert a == pytest.approx(c, abs=1e-4)
+
+
+# ----------------------------------------------------------------------
+# Module 05 notebook helpers — skip-gram and vector similarity
+# ----------------------------------------------------------------------
+
+def test_make_skipgram_pairs_window_one():
+    centers, contexts = make_skipgram_pairs([10, 20, 30], window=1)
+    assert torch.equal(centers, torch.tensor([10, 20, 20, 30]))
+    assert torch.equal(contexts, torch.tensor([20, 10, 30, 20]))
+
+
+def test_make_skipgram_pairs_rejects_bad_window():
+    with pytest.raises(ValueError):
+        make_skipgram_pairs([1, 2, 3], window=0)
+
+
+def test_skipgram_model_forward_shape():
+    model = SkipGramEmbeddingModel(vocab_size=10, embedding_dim=4)
+    logits = model(torch.tensor([1, 2, 3]))
+    assert logits.shape == (3, 10)
+
+
+def test_train_skipgram_reduces_loss():
+    torch.manual_seed(0)
+    centers, contexts = make_skipgram_pairs([0, 1, 0, 1, 0, 1, 0, 1], window=1)
+    model = SkipGramEmbeddingModel(vocab_size=2, embedding_dim=4)
+
+    losses = train_skipgram(
+        model,
+        centers,
+        contexts,
+        steps=80,
+        batch_size=8,
+        lr=0.2,
+        generator=torch.Generator().manual_seed(0),
+    )
+
+    assert losses[-1] < losses[0]
+
+
+def test_normalized_unit_norm_and_zero_safe():
+    v = torch.tensor([3.0, 4.0])
+    assert torch.allclose(normalized(v), torch.tensor([0.6, 0.8]))
+    assert torch.allclose(normalized(torch.zeros(2)), torch.zeros(2))
+
+
+def test_load_glove_subset(tmp_path):
+    path = tmp_path / "mini_glove.txt"
+    path.write_text(
+        "king 1.0 0.0\n"
+        "queen 0.8 0.2\n"
+        "cat 0.0 1.0\n",
+        encoding="utf-8",
+    )
+
+    vectors = load_glove_subset(path, {"king", "cat"})
+
+    assert set(vectors) == {"king", "cat"}
+    assert torch.allclose(vectors["king"], torch.tensor([1.0, 0.0]))
+
+
+def test_nearest_by_cosine_excludes_and_sorts():
+    vectors = {
+        "east": torch.tensor([1.0, 0.0]),
+        "northeast": torch.tensor([1.0, 1.0]),
+        "north": torch.tensor([0.0, 1.0]),
+        "west": torch.tensor([-1.0, 0.0]),
+    }
+    rows = nearest_by_cosine(
+        torch.tensor([1.0, 0.0]),
+        vectors,
+        exclude={"east"},
+        top_k=2,
+    )
+    assert [word for word, _ in rows] == ["northeast", "north"]
+    assert rows[0][1] > rows[1][1]
+
+
+def test_analogy_uses_vector_arithmetic():
+    vectors = {
+        "king": torch.tensor([1.0, 1.0]),
+        "man": torch.tensor([1.0, 0.0]),
+        "woman": torch.tensor([0.0, 1.0]),
+        "queen": torch.tensor([0.0, 2.0]),
+        "prince": torch.tensor([0.5, 1.0]),
+    }
+    rows = analogy("king", "man", "woman", vectors, top_k=1)
+    assert rows[0][0] == "queen"

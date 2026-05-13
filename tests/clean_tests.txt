@@ -150,6 +150,10 @@ tests/test_attention.py::test_construction_stores_args
 tests/test_attention.py::test_parameters_count
 tests/test_autodiff.py::test_value_construction
 tests/test_autodiff.py::test_value_repr_runs
+tests/test_autodiff.py::test_scalar_neuron_construction_parameters
+tests/test_autodiff.py::test_scalar_neuron_rejects_nonpositive_inputs
+tests/test_autodiff.py::test_scalar_mlp_construction_parameters
+tests/test_autodiff.py::test_zero_grad_resets_scalar_parameters
 tests/test_dpo.py::test_dpo_trainer_bad_batch_size_raises
 tests/test_dpo.py::test_dpo_trainer_bad_beta_raises
 tests/test_dpo.py::test_dpo_trainer_construction_defaults
@@ -164,6 +168,9 @@ tests/test_embeddings.py::test_learned_pos_requires_grad
 tests/test_embeddings.py::test_learned_pos_weight_shape
 tests/test_embeddings.py::test_rotary_odd_dim_raises
 tests/test_embeddings.py::test_sinusoidal_odd_dim_raises
+tests/test_embeddings.py::test_skipgram_model_construction_parameters
+tests/test_embeddings.py::test_normalized_unit_norm_and_zero_safe
+tests/test_embeddings.py::test_load_glove_subset
 tests/test_embeddings.py::test_token_emb_parameters_yields_weight
 tests/test_embeddings.py::test_token_emb_requires_grad
 tests/test_embeddings.py::test_token_emb_weight_shape

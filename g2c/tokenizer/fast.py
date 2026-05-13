@@ -260,6 +260,14 @@ def train_fast(
             trainer=trainer,
             length=total_chunks,
         )
+    if capture_native_progress and native_reporter.update_count == 0:
+        _emit_progress(
+            progress_callback,
+            phase="fast_native_progress",
+            native_stage="Rust trainer",
+            current=vocab_size,
+            total=vocab_size,
+        )
     del iterator, native_reporter, trainer
     gc.collect()
     _emit_progress(
@@ -465,6 +473,7 @@ class _NativeProgressReporter:
         self.callback = callback
         self.max_updates = max_updates
         self.last_bucket_by_stage: dict[str, int] = {}
+        self.update_count = 0
 
     def __call__(self, payload: dict[str, object]) -> None:
         if self.callback is None:
@@ -487,6 +496,7 @@ class _NativeProgressReporter:
             return
 
         self.last_bucket_by_stage[stage] = bucket
+        self.update_count += 1
         _emit_progress(
             self.callback,
             phase="fast_native_progress",

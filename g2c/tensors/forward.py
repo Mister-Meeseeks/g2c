@@ -60,3 +60,18 @@ def softmax(x: torch.Tensor, dim: int = -1) -> torch.Tensor:
     max = x.max(dim=dim, keepdim=True).values
     e = torch.exp(x - max)
     return e / e.sum(dim=dim, keepdim=True)
+
+
+def classifier_forward(
+    x: torch.Tensor,
+    W: torch.Tensor,
+    b: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Return ``(logits, probabilities)`` for one linear classifier.
+
+    This is notebook scaffolding, not a new algorithm: `linear` produces raw
+    scores, and `softmax` turns those scores into row-wise class probabilities.
+    """
+    logits = linear(x, W, b)
+    probs = softmax(logits, dim=-1)
+    return logits, probs

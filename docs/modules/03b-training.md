@@ -9,9 +9,9 @@ The model architecture is only half the story. The training recipe controls whet
 ---
 ## Before you start
 
-* **Review** [[03-nn]] for neural net overview and [[02-tensors]] for tensor arithmetic. 
-* **Review** [[PyTorch Primer]] if any PyTorch code feels unfamiliar or confusing
-* **Finish** the `g2c/nn` implementation from [[03-nn]]. It's used in this section's exercises
+* *Review* [[03-nn]] for neural net overview and [[02-tensors]] for tensor arithmetic.
+* *Review* [[PyTorch Primer]] if any PyTorch code feels unfamiliar or confusing.
+* *Finish* the `g2c/nn` implementation from [[03-nn]] — it's used in this section's exercises.
 
 ---
 ## Where this fits
@@ -244,12 +244,15 @@ def cosine_with_warmup(
 
 ## How to run the tests
 
-Tests live in `tests/test_training.py`.
+Tests live in `tests/test_training.py`. Initial state: 7 passed, 14 failed.
 
 ```bash
 source .venv/bin/activate
 
-pytest tests/test_training.py -x
+pytest tests/test_training.py             # run all module-03b tests
+pytest tests/test_training.py -x          # stop at first failure
+pytest tests/test_training.py -k adamw    # only AdamW tests
+pytest tests/test_training.py -v          # verbose
 ```
 
 ## Exercises

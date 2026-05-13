@@ -123,6 +123,25 @@ def numerical_grad(f, val: Value, h: float = 1e-5) -> float: ...
 
 Estimates `df/dval` by finite differences. Use it to verify your analytic gradients.
 
+### `nn.py` — scalar neural-network helpers
+
+```python
+def single_neuron_forward(x1, x2, w1, w2, b) -> Value: ...
+
+class ScalarNeuron:
+    def __call__(self, x) -> Value: ...
+
+class ScalarMLP:
+    def __call__(self, x) -> Value: ...
+
+def xor_loss(model: ScalarMLP) -> Value: ...
+def train_xor_step(model: ScalarMLP, lr: float) -> float: ...
+```
+
+These are the editor-backed helpers the notebook uses for the XOR exercise.
+They still use only your `Value` engine; they just keep the reusable code in
+`g2c/autodiff/nn.py` instead of in a fragile notebook cell.
+
 ### End-to-end usage
 
 ```python
@@ -139,7 +158,9 @@ Keep the implementation small — well under 100 lines. Legibility wins.
 
 ## How to run the tests
 
-Tests are in `tests/test_autodiff.py`. Initial state: 2 passed, 42 failed.
+Tests are in `tests/test_autodiff.py`. The construction tests pass from the
+start; the operation, backward, gradient-checking, and scalar-XOR helper tests
+turn green as you implement the TODOs.
 
 ```bash
 source .venv/bin/activate

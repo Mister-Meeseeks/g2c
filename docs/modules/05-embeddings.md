@@ -152,6 +152,15 @@ class SinusoidalPositionalEmbedding(Module):
 class RotaryEmbedding(Module):
     def __init__(self, max_seq_len: int, embedding_dim: int): ...   # scaffolded (cos/sin)
     def forward(self, x: torch.Tensor) -> torch.Tensor: ...
+
+def make_skipgram_pairs(ids: list[int], window: int = 2): ...
+
+class SkipGramEmbeddingModel:
+    def __call__(self, center_ids: torch.Tensor) -> torch.Tensor: ...
+
+def train_skipgram(model, center_ids, context_ids, ...): ...
+def nearest_by_cosine(query, vectors, top_k=5): ...
+def analogy(a, b, c, vectors, top_k=5): ...
 ```
 
 A typical use looks like this (built fully in Module 07, sketched here):
@@ -169,9 +178,15 @@ A typical use looks like this (built fully in Module 07, sketched here):
 
 For RoPE, the addition is replaced by `RotaryEmbedding` applied inside attention to Q and K — that's a Module 07 concern.
 
+The skip-gram and cosine-similarity helpers support the notebook experiments.
+They are intentionally small, but the idea comes back later: Module 17 retrieval
+also ranks text chunks by vector similarity.
+
 ## How to run the tests
 
-Tests live in `tests/test_embeddings.py`. Initial state: 7 passed, 24 failed.
+Tests live in `tests/test_embeddings.py`. Construction tests pass from the
+start; lookup forwards, positional tables, RoPE, skip-gram pairing, and vector
+similarity turn green as you implement the TODOs.
 
 ```bash
 source .venv/bin/activate
@@ -200,7 +215,7 @@ The notebook skips the pretrained analogy section if `data/glove.6B.50d.txt` is 
 
 ## Exercises
 
-Open or resume the working notebook with `.venv/bin/python scripts/open_notebook.py 05`. The notebook contains the exact prompts, plots, and answer cells.
+Open or resume the working notebook with `.venv/bin/python scripts/open_notebook.py 05`. The notebook contains the exact prompts, plots, and answer cells; implementation work lives in `g2c/embeddings/`.
 
 1. **Token and position lookups.** Trace embedding and positional table shapes.
 2. **Sinusoidal positions.** Inspect the fixed table and its multi-frequency pattern.

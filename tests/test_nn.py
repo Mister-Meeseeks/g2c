@@ -12,6 +12,7 @@ Suggested order to implement & turn green:
   6. CrossEntropyLoss.forward  → test_cross_entropy_*
   7. SGD.step                  → test_sgd_step_*
   8. End-to-end                → test_train_linear_regression
+  9. Notebook training helpers → test_*_helper_*
 
 Construction tests, parameter-counting tests, and `MSELoss` (which is
 implemented for you) pass from the start.
@@ -22,6 +23,7 @@ import math
 
 import pytest
 import torch
+from torch.utils.data import DataLoader, TensorDataset
 
 from g2c.nn import (
     SGD,
@@ -33,7 +35,14 @@ from g2c.nn import (
     Sequential,
     Sigmoid,
     Tanh,
+    accuracy_from_logits,
+    build_2d_classifier,
+    build_mnist_mlp,
+    evaluate_accuracy,
     resolve_device,
+    train_classifier,
+    train_linear_regression,
+    train_one_epoch,
 )
 
 
@@ -376,3 +385,81 @@ def test_train_linear_regression():
 
     assert model.W.item() == pytest.approx(3.0, abs=0.05)
     assert model.b.item() == pytest.approx(2.0, abs=0.05)
+
+
+# ----------------------------------------------------------------------
+# Module 03 notebook helpers — editor-backed training routines
+# ----------------------------------------------------------------------
+
+def test_train_linear_regression_helper_recovers_line():
+    torch.manual_seed(0)
+    x = torch.linspace(-1.0, 1.0, 100).unsqueeze(1)
+    y = 3.0 * x + 2.0
+
+    model, losses = train_linear_regression(x, y, steps=400, lr=0.1)
+
+    assert losses[-1] < losses[0]
+    assert model.W.item() == pytest.approx(3.0, abs=0.05)
+    assert model.b.item() == pytest.approx(2.0, abs=0.05)
+
+
+def test_build_2d_classifier_structure():
+    model = build_2d_classifier(hidden=7)
+    assert isinstance(model, Sequential)
+    assert [type(layer).__name__ for layer in model.layers] == ["Linear", "ReLU", "Linear"]
+    assert model.layers[0].W.shape == (2, 7)
+    assert model.layers[-1].W.shape == (7, 2)
+
+
+def test_accuracy_from_logits():
+    logits = torch.tensor([[0.1, 2.0], [3.0, 0.2], [0.4, 0.8]])
+    targets = torch.tensor([1, 1, 1])
+    assert accuracy_from_logits(logits, targets) == pytest.approx(2 / 3)
+
+
+def test_train_classifier_reduces_loss():
+    torch.manual_seed(0)
+    x = torch.tensor(
+        [
+            [-1.0, -1.0],
+            [-1.0, 1.0],
+            [1.0, -1.0],
+            [1.0, 1.0],
+        ]
+    )
+    y = torch.tensor([0, 0, 1, 1])
+    model = build_2d_classifier(hidden=4)
+
+    losses = train_classifier(model, x, y, steps=100, lr=0.1)
+
+    assert losses[-1] < losses[0]
+    assert accuracy_from_logits(model(x), y) >= 0.75
+
+
+def test_build_mnist_mlp_structure_with_and_without_relu():
+    with_relu = build_mnist_mlp(hidden=32, use_relu=True)
+    without_relu = build_mnist_mlp(hidden=32, use_relu=False)
+
+    assert [type(layer).__name__ for layer in with_relu.layers] == ["Linear", "ReLU", "Linear"]
+    assert [type(layer).__name__ for layer in without_relu.layers] == ["Linear", "Linear"]
+    assert with_relu(torch.randn(5, 784)).shape == (5, 10)
+    assert without_relu(torch.randn(5, 784)).shape == (5, 10)
+
+
+def test_train_one_epoch_and_evaluate_accuracy_helpers():
+    torch.manual_seed(0)
+    images = torch.zeros(8, 1, 28, 28)
+    images[4:, :, 0, 0] = 1.0
+    labels = torch.tensor([0, 0, 0, 0, 1, 1, 1, 1])
+    loader = DataLoader(TensorDataset(images, labels), batch_size=4, shuffle=False)
+
+    model = build_mnist_mlp(hidden=8)
+    optimizer = SGD(model.parameters(), lr=0.2)
+    loss_fn = CrossEntropyLoss()
+
+    first_loss = train_one_epoch(model, loader, optimizer, loss_fn)
+    second_loss = train_one_epoch(model, loader, optimizer, loss_fn)
+    acc = evaluate_accuracy(model, loader)
+
+    assert second_loss <= first_loss
+    assert 0.0 <= acc <= 1.0

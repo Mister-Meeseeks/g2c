@@ -12,7 +12,20 @@ from collections.abc import Sequence
 import matplotlib.pyplot as plt
 import torch
 
-__all__ = ["plot_mnist_training_curves", "plot_sample_predictions"]
+from g2c.nn import (
+    CrossEntropyLoss,
+    SGD,
+    build_mnist_mlp,
+    evaluate_accuracy,
+    train_one_epoch,
+)
+
+__all__ = [
+    "compare_with_and_without_relu",
+    "plot_mnist_training_curves",
+    "plot_sample_predictions",
+    "run_weight_decay_experiment",
+]
 
 _MNIST_MEAN = 0.1307
 _MNIST_STD = 0.3081
@@ -118,3 +131,138 @@ def plot_sample_predictions(
 
     fig.suptitle("predictions per epoch (green = correct, red = wrong)", fontsize=10)
     plt.show()
+
+
+def _train_mnist_experiment(
+    *,
+    hidden: int,
+    use_relu: bool,
+    weight_decay: float,
+    train_loader,
+    test_loader,
+    epochs: int,
+    lr: float,
+) -> dict[str, object]:
+    """Train one MNIST MLP and return curves.
+
+    This is notebook scaffolding, not a module deliverable. The conceptual
+    training pieces live in `g2c.nn.train`; this wrapper just keeps repetitive
+    experiment bookkeeping out of the notebook.
+    """
+    model = build_mnist_mlp(hidden=hidden, use_relu=use_relu)
+    optimizer = SGD(model.parameters(), lr=lr, weight_decay=weight_decay)
+    loss_fn = CrossEntropyLoss()
+    train_losses: list[float] = []
+    test_accuracies: list[float] = []
+
+    for epoch in range(epochs):
+        train_loss = train_one_epoch(model, train_loader, optimizer, loss_fn)
+        test_acc = evaluate_accuracy(model, test_loader)
+        train_losses.append(train_loss)
+        test_accuracies.append(test_acc)
+        print(
+            f"epoch {epoch + 1:>2}/{epochs} | "
+            f"loss {train_loss:.4f} | test acc {test_acc:.3f}"
+        )
+
+    return {
+        "model": model,
+        "train_losses": train_losses,
+        "test_accuracies": test_accuracies,
+    }
+
+
+def run_weight_decay_experiment(
+    train_loader,
+    test_loader,
+    *,
+    hidden: int = 256,
+    epochs: int = 5,
+    lr: float = 0.08,
+    weight_decay: float = 1e-4,
+) -> dict[str, dict[str, object]]:
+    """Compare matched MNIST MLPs with and without weight decay."""
+    results: dict[str, dict[str, object]] = {}
+    settings = [
+        ("no_weight_decay", 0.0),
+        ("weight_decay", weight_decay),
+    ]
+
+    for label, wd in settings:
+        print(f"\n{label}")
+        results[label] = _train_mnist_experiment(
+            hidden=hidden,
+            use_relu=True,
+            weight_decay=wd,
+            train_loader=train_loader,
+            test_loader=test_loader,
+            epochs=epochs,
+            lr=lr,
+        )
+
+    plt.figure(figsize=(7, 3.5))
+    for label, result in results.items():
+        plt.plot(result["train_losses"], marker="o", label=f"{label} train loss")
+    plt.xlabel("epoch")
+    plt.ylabel("train loss")
+    plt.title("Weight decay comparison")
+    plt.grid(True, alpha=0.3)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+    plt.figure(figsize=(7, 3.5))
+    for label, result in results.items():
+        plt.plot(result["test_accuracies"], marker="o", label=f"{label} test acc")
+    plt.xlabel("epoch")
+    plt.ylabel("test accuracy")
+    plt.ylim(0.0, 1.0)
+    plt.title("Validation accuracy with and without weight decay")
+    plt.grid(True, alpha=0.3)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+    return results
+
+
+def compare_with_and_without_relu(
+    train_loader,
+    test_loader,
+    *,
+    hidden: int = 128,
+    epochs: int = 5,
+    lr: float = 0.08,
+) -> dict[str, dict[str, object]]:
+    """Train matched MNIST models with and without the hidden ReLU."""
+    results: dict[str, dict[str, object]] = {}
+    settings = [
+        ("with_relu", True),
+        ("without_relu", False),
+    ]
+
+    for label, use_relu in settings:
+        print(f"\n{label}")
+        results[label] = _train_mnist_experiment(
+            hidden=hidden,
+            use_relu=use_relu,
+            weight_decay=0.0,
+            train_loader=train_loader,
+            test_loader=test_loader,
+            epochs=epochs,
+            lr=lr,
+        )
+
+    plt.figure(figsize=(7, 3.5))
+    for label, result in results.items():
+        plt.plot(result["test_accuracies"], marker="o", label=f"{label} test acc")
+    plt.xlabel("epoch")
+    plt.ylabel("test accuracy")
+    plt.ylim(0.0, 1.0)
+    plt.title("Effect of removing the nonlinearity")
+    plt.grid(True, alpha=0.3)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+    return results

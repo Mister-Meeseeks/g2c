@@ -24,6 +24,7 @@ from g2c.tokenizer import BPETokenizer
 
 __all__ = [
     "inspect_tokenizer_artifact",
+    "learned_vocab_window",
     "make_artifact_display",
     "run_and_inspect_tokenizer_artifact",
 ]
@@ -208,6 +209,28 @@ def make_artifact_display(label: str):
 def _display_token_bytes(token_bytes: bytes) -> str:
     text = token_bytes.decode("utf-8", errors="backslashreplace")
     return text.replace("\n", "\\n").replace("\t", "\\t")
+
+
+def learned_vocab_window(
+    tokenizer: BPETokenizer,
+    n: int = 20,
+) -> tuple[list[tuple[int, str]], list[tuple[int, str]]]:
+    """Return first and last learned vocab entries as printable pairs.
+
+    This is an inspection helper for the Module 04 notebook. Token IDs below
+    `base_vocab_size` are the original byte vocabulary; IDs at or above it are
+    learned by BPE merges.
+    """
+    if n < 0:
+        raise ValueError("n must be non-negative")
+    learned_ids = sorted(
+        token_id for token_id in tokenizer.vocab if token_id >= tokenizer.base_vocab_size
+    )
+    rows = [
+        (token_id, _display_token_bytes(tokenizer.vocab[token_id]))
+        for token_id in learned_ids
+    ]
+    return rows[:n], rows[-n:] if n else []
 
 
 def _shorten(text: str, width: int = 36) -> str:
