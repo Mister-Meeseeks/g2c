@@ -317,7 +317,7 @@ If feedback shows a weak spot, ask the agent for a few focused practice problems
 
 ## Exercises
 
-Open the working notebook with `.venv/bin/python scripts/open_notebook.py 00`. The notebook has the exact prompts and `Question:` / `Answer:` cells. If you'd like a hint instead of a grade, write the request in the answer string and ask a coding agent for help. Blank answers are skipped rather than counted wrong.
+Open the working notebook with `./notebook.sh 00` (or `./notebook.sh 00 --fresh` to reset from the clean scaffold). The notebook has the exact prompts and `Question:` / `Answer:` cells. If you'd like a hint instead of a grade, write the request in the answer string and ask a coding agent for help. Blank answers are skipped rather than counted wrong.
 
 1. **Shape trace.** Follow token IDs through embedding lookup and projection to vocabulary logits.
 2. **Matmul by hand.** Compute a small matrix product and state the input/output shapes.

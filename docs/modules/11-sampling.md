@@ -333,7 +333,7 @@ pytest tests/test_sampling.py -v               # verbose
 
 ## Exercises
 
-Open the working notebook with `.venv/bin/python scripts/open_notebook.py 11`. The notebook auto-loads the strongest available model artifact unless you override it.
+Open the working notebook with `./notebook.sh 11` (or `./notebook.sh 11 --fresh` to reset from the clean scaffold). The notebook auto-loads the strongest available model artifact unless you override it.
 
 1. **Temperature sweep.** Sample the same prompt at several temperatures.
 2. **Top-k vs top-p.** Compare truncation strategies at fixed temperature.

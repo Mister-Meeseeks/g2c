@@ -168,7 +168,7 @@ pytest tests/test_tokenizer.py -v          # verbose
 
 ## Exercises
 
-Open or resume the working notebook with `.venv/bin/python scripts/open_notebook.py 04`. The notebook has the exact prompts, inspection tables, and artifact cells.
+Open or resume the working notebook with `./notebook.sh 04` (or `./notebook.sh 04 --fresh` to reset from the clean scaffold). The notebook has the exact prompts, inspection tables, and artifact cells.
 
 1. **Pair counts and merge behavior.** Predict tiny BPE pair counts and non-overlapping merges.
 2. **Train BPE on a tiny corpus.** Connect `train_step`, `merges`, and `vocab` by hand.

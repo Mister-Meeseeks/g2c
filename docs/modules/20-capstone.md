@@ -376,7 +376,7 @@ pytest tests/test_assistant.py -v                       # verbose
 
 ## Exercises
 
-Open the working notebook with `.venv/bin/python scripts/open_notebook.py 20`. These exercises assemble the full assistant and capture the final post-mortem; run `./prodlm.sh` first if ProdLM is not configured.
+Open the working notebook with `./notebook.sh 20` (or `./notebook.sh 20 --fresh` to reset from the clean scaffold). These exercises assemble the full assistant and capture the final post-mortem; run `./prodlm.sh` first if ProdLM is not configured.
 
 1. **Wire up the assistant.** Connect backend, tools, and conversation state.
 2. **Eval gate.** Build a small regression suite for the assistant.

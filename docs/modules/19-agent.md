@@ -437,7 +437,7 @@ pytest tests/test_agent.py -v                       # verbose
 
 ## Exercises
 
-Open the working notebook with `.venv/bin/python scripts/open_notebook.py 19`. These exercises require ProdLM running through Ollama with a local instruction model that can follow ReAct-style formatting; run `./prodlm.sh` first if needed.
+Open the working notebook with `./notebook.sh 19` (or `./notebook.sh 19 --fresh` to reset from the clean scaffold). These exercises require ProdLM running through Ollama with a local instruction model that can follow ReAct-style formatting; run `./prodlm.sh` first if needed.
 
 1. **One-shot calculator.** Compare simple tool use with and without planning.
 2. **Multi-step file task.** Read data, compute with a tool, and answer.

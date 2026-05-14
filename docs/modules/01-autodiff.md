@@ -172,7 +172,7 @@ pytest tests/test_autodiff.py -v         # verbose: list every test
 
 ## Exercises
 
-Open the working notebook with `.venv/bin/python scripts/open_notebook.py 01`. The notebook carries the exact prompts; this page lists the exercise arc.
+Open the working notebook with `./notebook.sh 01` (or `./notebook.sh 01 --fresh` to reset from the clean scaffold). The notebook carries the exact prompts; this page lists the exercise arc.
 
 1. **Forward and backward by hand.** Trace one scalar expression end to end.
 2. **Gradient checking.** Compare `.backward()` against finite differences.

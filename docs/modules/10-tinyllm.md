@@ -158,7 +158,7 @@ pytest tests/test_pretraining.py -k trainer -v
 
 ## Exercises
 
-Open the working notebook with `.venv/bin/python scripts/open_notebook.py 10`. Each exercise has `Question:` / `Answer:` cells inside the notebook. If you'd like a hint instead of a grade, write the request in the answer string and ask a coding agent for help. Blank answers are skipped rather than counted wrong.
+Open the working notebook with `./notebook.sh 10` (or `./notebook.sh 10 --fresh` to reset from the clean scaffold). Each exercise has `Question:` / `Answer:` cells inside the notebook. If you'd like a hint instead of a grade, write the request in the answer string and ask a coding agent for help. Blank answers are skipped rather than counted wrong.
 
 1. **Implement the trainer step.** Fill in `Trainer.train_step` and run the focused tests.
 2. **Prepare the first corpus.** Load tokenizer/data artifacts, split tokens, and inspect batch shapes.

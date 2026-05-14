@@ -305,7 +305,7 @@ pytest tests/test_transformer.py -v          # verbose
 
 ## Exercises
 
-Open the working notebook with `.venv/bin/python scripts/open_notebook.py 09`. The notebook contains the ablations and plotting scaffolds.
+Open the working notebook with `./notebook.sh 09` (or `./notebook.sh 09 --fresh` to reset from the clean scaffold). The notebook contains the ablations and plotting scaffolds.
 
 1. **Post-norm ablation.** Compare post-norm and pre-norm training curves.
 2. **Remove residuals.** Watch deeper blocks stop training without the residual highway.

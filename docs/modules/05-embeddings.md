@@ -215,7 +215,7 @@ The notebook skips the pretrained analogy section if `data/embeddings/glove.6B.5
 
 ## Exercises
 
-Open or resume the working notebook with `.venv/bin/python scripts/open_notebook.py 05`. The notebook contains the exact prompts, plots, and answer cells; implementation work lives in `g2c/embeddings/`.
+Open or resume the working notebook with `./notebook.sh 05` (or `./notebook.sh 05 --fresh` to reset from the clean scaffold). The notebook contains the exact prompts, plots, and answer cells; implementation work lives in `g2c/embeddings/`.
 
 1. **Token and position lookups.** Trace embedding and positional table shapes.
 2. **Sinusoidal positions.** Inspect the fixed table and its multi-frequency pattern.

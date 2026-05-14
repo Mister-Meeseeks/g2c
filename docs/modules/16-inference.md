@@ -399,7 +399,7 @@ pytest tests/test_inference.py -v                       # verbose
 
 ## Exercises
 
-Open the working notebook with `.venv/bin/python scripts/open_notebook.py 16`. These exercises compare your saved artifacts with ProdLM and focus on inference behavior.
+Open the working notebook with `./notebook.sh 16` (or `./notebook.sh 16 --fresh` to reset from the clean scaffold). These exercises compare your saved artifacts with ProdLM and focus on inference behavior.
 
 1. **Backend smoke test.** Compare artifact and ProdLM completions on a few prompts.
 2. **Benchmark ProdLM.** Measure latency, throughput, and wall-clock behavior.

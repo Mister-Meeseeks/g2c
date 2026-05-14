@@ -151,7 +151,7 @@ pytest tests/test_tensors.py -v          # verbose
 
 ## Exercises
 
-Open the working notebook with `.venv/bin/python scripts/open_notebook.py 02`. The notebook has the exact shape tables, arrays, and answer cells.
+Open the working notebook with `./notebook.sh 02` (or `./notebook.sh 02 --fresh` to reset from the clean scaffold). The notebook has the exact shape tables, arrays, and answer cells.
 
 1. **Shape tracing.** Predict valid and invalid matmul / broadcast shapes.
 2. **Manual matmul.** Compute a small matrix product and verify it with your implementations.

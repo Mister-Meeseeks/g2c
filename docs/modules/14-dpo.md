@@ -373,7 +373,7 @@ pytest tests/test_dpo.py -v                    # verbose
 
 ## Exercises
 
-Open the working notebook with `.venv/bin/python scripts/open_notebook.py 14`. The notebook contains the preference-data format, trainer setup, plots, and comparison prompts.
+Open the working notebook with `./notebook.sh 14` (or `./notebook.sh 14 --fresh` to reset from the clean scaffold). The notebook contains the preference-data format, trainer setup, plots, and comparison prompts.
 
 1. **Hand-author preference data.** Create chosen/rejected examples around simple behavior preferences.
 2. **Run DPO.** Train policy vs reference and compare SFT/DPO outputs.
