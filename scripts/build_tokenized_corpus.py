@@ -299,7 +299,11 @@ def standard_job_for_tokenizer(
 def _tinystories_preset(repo_root: Path) -> str:
     spec = resolve_corpus("tinystories", repo_root=repo_root)
     if spec is None:
-        return "full"
+        return (
+            "100MB"
+            if resolve_corpus("tinystories-100MB", repo_root=repo_root) is not None
+            else "full"
+        )
     for source in spec.sources:
         for shard in source.shards:
             if "100MB" in shard.path.name:

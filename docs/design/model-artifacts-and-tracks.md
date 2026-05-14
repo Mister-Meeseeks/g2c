@@ -101,6 +101,7 @@ are weak.
 Typical artifacts:
 
 - `ShakespeareLM-1M`
+- `StoryLM-1M`
 - `StoryLM-5M`
 - `StoryLM-5M-SFT`
 - `StoryLM-5M-DPO`
@@ -195,6 +196,7 @@ rather than parsing the name.
 Base models (self-trained):
 
 - `ShakespeareLM-1M`: the first real Transformer language-model milestone.
+- `StoryLM-1M`: the small TinyStories scaling anchor from Module 12.
 - `StoryLM-5M`: smaller TinyStories model for weak hardware and fast loops.
 - `StoryLM-30M`: default TinyStories model, intended to feel meaningfully
   language-like.
@@ -381,6 +383,8 @@ It should produce some subset of:
 - `StoryLM-30M`;
 - optional `TinyLLM-30M` if the broader corpus path is available.
 
+Module 12 can add `StoryLM-1M` as the low-end TinyStories scaling point.
+
 ### Module 11 - Sampling and Decoding
 
 Module 11 should not change weights. It should reuse saved base models and save
@@ -388,9 +392,12 @@ sampling traces that show how decoding changes behavior.
 
 ### Module 12 - Scaling Experiments
 
-Module 12 should compare artifacts across size, data, tokenizer, and compute
-budgets. It may create additional checkpoints, but the core output is a scaling
-comparison report.
+Module 12 should make the clean scaling comparison inside one corpus family:
+`StoryLM-1M`, `StoryLM-5M`, and `StoryLM-30M` on TinyStories with the
+StoryTokenizer. It may create the `StoryLM-1M` checkpoint if missing, but should
+reuse the longer Module 10 runs for the 5M and 30M points. Cross-corpus
+comparisons with ShakespeareLM or TinyLLM are useful context, not the headline
+scaling curve.
 
 ### Module 13 - Instruction Tuning
 

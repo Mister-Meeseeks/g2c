@@ -282,14 +282,14 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 - **Question.** What gets better with size, and how cleanly does it scale?
 - **Goal.** Empirically measure how a few capabilities scale within MacBook range.
 - **Concepts.** Parameter scaling; compute-optimal training (Chinchilla); emergent capabilities; the difference between smooth and threshold-looking improvements; the "evaluation matters" caveat.
-- **Build.** No new package code — a series of training runs at different parameter counts and a comparison plot.
+- **Build.** No new package code — a TinyStories-only StoryLM comparison, with a small `StoryLM-1M` anchor trained here if missing.
 - **Exercises.**
-  - Train ~1M, ~5M, ~20M-param models on the same dataset for the same compute budget. Compare perplexity, sample quality, and a few hand-built eval prompts.
-  - Plot perplexity vs params on log-log; sketch the slope.
-  - Identify a task where the smallest model is hopeless and the largest is shaky — note where the threshold sits.
+  - Compare `StoryLM-1M`, `StoryLM-5M`, and `StoryLM-30M` on the same TinyStories tokenizer/corpus family.
+  - Plot validation loss/perplexity vs params and inspect the compute spent by each run.
+  - Read samples and next-token distributions to identify qualitative differences across scale.
 - **Deliverable.** A scaling-experiments notebook with plots and qualitative samples.
 - **Reading.** Kaplan et al. 2020; Hoffmann et al. "Chinchilla"; Wei et al. "Emergent Abilities of Large Language Models" (and the BIG-bench debate paper that followed).
-- **M-series notes.** This is the most compute-hungry week. Plan for several training runs of a few hours each. 32GB+ helps.
+- **M-series notes.** Reuse `StoryLM-5M` and `StoryLM-30M` from Module 10; Module 12 should usually train only the small `StoryLM-1M` anchor.
 
 ### Week 13 — Instruction tuning (SFT) — [module ↗](modules/13-sft.md)
 

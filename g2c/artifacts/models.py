@@ -59,6 +59,11 @@ DEFAULT_MODEL_ARTIFACT_SPECS: tuple[ModelArtifactSpec, ...] = (
         aliases=("ShakespeareLM",),
     ),
     ModelArtifactSpec(
+        canonical_name="StoryLM-1M",
+        display_name="StoryLM 1M",
+        rank=15,
+    ),
+    ModelArtifactSpec(
         canonical_name="StoryLM-5M",
         display_name="StoryLM 5M",
         rank=20,
@@ -426,8 +431,8 @@ def load_best_model_artifact(
     Downstream notebooks use this to avoid hard-coding one Module 10 artifact.
     The search order is:
 
-    ``ShakespeareLM-1M -> StoryLM-5M -> StoryLM-10M -> StoryLM-30M ->
-    TinyLLM-30M -> TinyLLM-100M``.
+    ``ShakespeareLM-1M -> StoryLM-1M -> StoryLM-5M -> StoryLM-10M ->
+    StoryLM-30M -> TinyLLM-30M -> TinyLLM-100M``.
 
     Current legacy names such as ``StoryLM-Small``, ``StoryLM``, and
     ``TinyLLM`` are treated as aliases for the explicit tier names.

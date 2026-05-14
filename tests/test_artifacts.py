@@ -807,6 +807,7 @@ def test_fast_tokenizer_artifact_skips_full_training_text_encode(tmp_path):
 def test_available_model_artifacts_resolves_aliases_by_tier(tmp_path):
     repo = make_repo(tmp_path)
     _save_tiny_tokenizer_artifact(repo, "TinyTok")
+    _save_tiny_model_artifact(repo, "StoryLM-1M", tokenizer_name="TinyTok")
     _save_tiny_model_artifact(repo, "StoryLM-Small", tokenizer_name="TinyTok")
     _save_tiny_model_artifact(repo, "ShakespeareLM-1M", tokenizer_name="TinyTok")
 
@@ -814,6 +815,7 @@ def test_available_model_artifacts_resolves_aliases_by_tier(tmp_path):
 
     assert [artifact.name for artifact in available] == [
         "ShakespeareLM-1M",
+        "StoryLM-1M",
         "StoryLM-Small",
     ]
     assert available[-1].canonical_name == "StoryLM-5M"

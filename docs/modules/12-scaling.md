@@ -2,18 +2,18 @@
 
 > **Question this module answers:** *What gets better with size, and how cleanly does it scale?*
 
-![Three tiny GPTs trained on the same TinyShakespeare corpus, side by side: 1M / 5M / 20M parameters. Each column shows the model's parameter count up top, its final validation perplexity in the middle (e.g. 6.5 → 4.8 → 4.0), and a 100-token continuation from the same prompt at the bottom. The 1M sample is locally-correct but largely nonsense; the 5M sample has short coherent phrases; the 20M sample has multi-line dialogue-like text. A panel below plots final loss vs parameter count on log-log axes — the three points fall close to a straight line whose negative slope is the empirical scaling exponent. A small caveat box on the right notes "iso-step, not iso-FLOP — the 20M model has consumed roughly 20× more compute per step." A second caveat box reminds the reader that "perplexity ≠ capability" — even at 20M, the model still confidently invents quotes, and several "emergent" tasks the larger model passes are actually still random chance.](12-scaling/Module12-Hero.png)
+![Three StoryLM models trained on TinyStories, side by side: roughly 1M, 5M, and 30M parameters. Each column shows the model's parameter count, validation perplexity, and a short continuation from the same story prompt. The smallest model is locally plausible but unstable; the middle model can form simple story beats; the largest model is more coherent across sentences. A panel below plots final validation loss against parameter count. Caveats note that this is an iso-step comparison unless compute is normalized, and that perplexity is not the same as capability.](12-scaling/Module12-Hero.png)
 
-Scaling laws tell us how model quality varies with model size. We frame scaling and model size through the lens of number of parameters, total compute power, and training data size. The rest of this lesson is about exploring this relationship, both quantitatively and behaviorally. This is the first module where we don't write new package code. You can think of this as a "lab week"
+Scaling laws tell us how model quality varies with model size. We frame scaling and model size through the lens of parameter count, total compute, and training data size. The rest of this lesson explores that relationship quantitatively and behaviorally. This is a lab week: no new package code, just careful comparisons.
 
 ---
 ## Before you start
 
 * *Review* power laws on log-log axes — `y = A · x^α` plots as a straight line with slope `α`
 * *Review* FLOPs as a unit of compute — used here to standardize comparisons across model sizes and training runs
-* *Finish* Modules 10–11 — you'll be training and sampling from three sizes of `TransformerLM` checkpoints
+* *Finish* Modules 10–11 — especially the `StoryLM-5M` and `StoryLM-30M` artifacts from the Module 10 notebook
 * *Run* `.venv/bin/python scripts/artifact_status.py --module 12` to see which saved model artifacts are available
-* *Run* `./datasets.sh --small` or `./datasets.sh` only if you want larger scaling runs than your current artifacts support
+* *Run* `./datasets.sh --tiny` or `./datasets.sh --small` if the TinyStories corpus or `StoryTokenizer` artifact is missing
 
 ---
 ## Where this fits in
@@ -25,11 +25,11 @@ The honest answer to these questions is empirical: people trained models at many
 ```
    Validation loss
         ▲
-        │  ●  (1M)
+        │  ●  (StoryLM-1M)
         │
-        │      ●  (5M)
+        │      ●  (StoryLM-5M)
         │
-        │           ●  (20M)
+        │           ●  (StoryLM-30M)
         │
         │
         │
@@ -44,7 +44,9 @@ The Kaplan paper (2020) made this concrete. The Chinchilla paper (2022) correcte
 
 You won't reproduce these exponents at MacBook scale, but you will see *the same shape*. You'll most likely see a slightly different exponent because (a) the optimizer is different, (b) the dataset is tiny, (c) you only have a few points. The lesson isn't "I matched Chinchilla's slope." The lesson is "scaling has a shape, and that shape is not subjective."
 
-The other empirical observation is harder to capture in a quantitative law: some capabilities show up *suddenly* with size. The 1M model can't generate a single grammatically-correct sentence; the 5M model can form simple sentences; the 20M model can hold a thought across a paragraph. The qualitative gap between sample texts at different sizes is the headline observation of the module — and the part you have to *read*, not plot.
+The clean experiment in this module stays inside TinyStories: `StoryLM-1M`, `StoryLM-5M`, and `StoryLM-30M`. Same tokenizer, same corpus family, same objective. That restriction matters. `ShakespeareLM`, `StoryLM`, and `TinyLLM` are all useful artifacts, but mixing them in one scaling curve confounds model size with corpus and tokenizer changes.
+
+The other empirical observation is harder to capture in a quantitative law: some capabilities show up *suddenly* with size. The 1M StoryLM is often locally plausible but unstable; the 5M model can form simple story beats; the 30M model is more likely to preserve a situation across several sentences. The qualitative gap between sample texts at different sizes is the headline observation of the module — and the part you have to *read*, not just plot.
 
 ## The big idea
 
@@ -96,9 +98,9 @@ Two ways to compare three models, and they give different answers:
     for 5000 steps)                  it has used 6·N·T_total
                                      ≈ same FLOPs)
 
-      1M:  5000 steps                  1M:  20,000 steps
-      5M:  5000 steps                   5M:   4,000 steps
-     20M:  5000 steps                  20M:   1,000 steps
+      1M:  5000 steps                  1M:  25,000 steps
+      5M:  5000 steps                   5M:   5,000 steps
+     30M:  5000 steps                  30M:     900 steps
 
    What you measure:                What you measure:
    "How well does this size         "What size of model gets
@@ -114,7 +116,7 @@ Two ways to compare three models, and they give different answers:
 
 The two comparisons answer different questions. **Iso-step** answers "more parameters = better, all else equal?" — the answer is yes, monotonically. **Iso-FLOP** answers "if I have a fixed compute budget, what size should I train?" — the answer at large scale is "a smaller model than you'd think, trained for longer."
 
-![Iso-step vs iso-FLOP side by side as two laps-around-the-track experiments. Panel A (iso-step): every model — 1M, 5M, 20M — runs the same 5000 steps; compute per step grows ~6·N·T_step, so the 20M model burns ~20× more compute total than the 1M one. Same dataset passes, more capacity wins, larger model lower loss. Panel B (iso-FLOP): every model gets the same total compute budget (~7.7e13 FLOPs in the example), so the 1M model gets 75,000 steps, the 5M model 15,000, and the 20M model only 1000. Tokens-seen totals shift accordingly (~30M / ~30M / ~3M). The smaller models do many laps; the 20M model does one short lap and is undertrained. A "When to use which" panel pins the choice: iso-step when comparing capacity at fixed dataset, iso-FLOP when comparing what size to train under a real compute constraint. The Chinchilla intuition — smaller-but-longer beats larger-but-shorter on a fixed budget — falls out of panel B.](12-scaling/Module12-IsoFlop.png)
+![Iso-step vs iso-FLOP side by side as two laps-around-the-track experiments. Panel A (iso-step): every model — 1M, 5M, 30M — runs the same number of steps; compute per step grows with parameter count, so the 30M model spends far more total compute. Panel B (iso-FLOP): every model gets the same compute budget, so smaller models get more steps and larger models get fewer. A "When to use which" panel pins the choice: iso-step when comparing capacity at fixed training-loop budget, iso-FLOP when comparing what size to train under a real compute constraint.](12-scaling/Module12-IsoFlop.png)
 *Both comparisons appear in this module. Reading the same checkpoints under both lenses is the cleanest way to internalize that "scaling laws" is not one curve — it's at least two, and which one matters depends on whether your real-world constraint is data or compute.*
 
 ### Counting parameters and FLOPs
@@ -137,19 +139,21 @@ You'll need rough parameter and FLOP counts to plan runs. The exact formulas:
       positional embeddings:   max_seq_len · D
       L blocks:                L · 12 · D²
       final LayerNorm:         2 · D
-      unembedding head:        D · V
+      output bias:             V
       ──────────────────────────────────
-      total:                   ≈ 2 · V · D  +  L · 12 · D²
+      total:                   ≈ V · D  +  max_seq_len · D  +  L · 12 · D²
 
 
-  Reference points (V = 2048):
+  Reference points (V = 4096, max_seq_len = 256):
 
-      D = 128, L = 4    →   ≈ 525K + 786K   ≈    1.3M
-      D = 224, L = 6    →   ≈ 917K + 3.6M   ≈    4.5M
-      D = 384, L = 10   →   ≈ 1.5M + 17.7M  ≈   19.2M
+      D = 128, L = 4    →   StoryLM-1M   ≈    1.35M
+      D = 256, L = 6    →   StoryLM-5M   ≈    5.86M
+      D = 512, L = 9    →   StoryLM-30M  ≈   30.60M
 ```
 
-![Anatomy of a transformer's parameter count. Inside one block: self-attention's four projections (Q, K, V, output) total 4·D²; the feedforward network with 4D inner width totals 8·D²; LayerNorms and biases are negligible — block total ≈ 12·D². Whole-model breakdown: 2·V·D for token + unembedding, max_seq_len·D for positional embeddings, L·12·D² for the stack, plus a final LayerNorm. A pie chart showing where the parameters actually live — for typical D and L, the FFN is ~65–75% of the total, attention projections are ~25–35%, and embeddings shrink to a few percent as the model grows because they scale linearly in D while the blocks scale quadratically. A "how parameters scale" panel pins the rules: doubling D quadruples per-block params (D² scaling), doubling L doubles total block params (linear scaling). Three example configurations (1M / 5M / 20M) show the formula evaluated end-to-end and matched against `sum(p.numel() for p in model.parameters())`.](12-scaling/Module12-ParamAnatomy.png)
+Our `TransformerLM` uses tied embeddings: the output projection reuses the input token embedding matrix. That saves one full `D · V` table compared with an untied model, so the formula above has `V · D`, not `2 · V · D`.
+
+![Anatomy of a transformer's parameter count. Inside one block: self-attention's four projections total about 4·D²; the feedforward network with 4D inner width totals about 8·D²; LayerNorms and biases are small. Whole-model breakdown: V·D for tied token/unembedding weights, max_seq_len·D for positional embeddings, and L·12·D² for the stack. Three StoryLM configurations show the formula evaluated against exact parameter counts.](12-scaling/Module12-ParamAnatomy.png)
 *The headline takeaway: parameters mostly live in the FFN.*
 
 For FLOPs:
@@ -199,35 +203,41 @@ The other Schaeffer-style observation, applicable at every scale:
 ---
 ## What you'll build
 
-This module has **no new package code**. The deliverable is a notebook that runs three TransformerLM trainings at different sizes against the course corpuses.
+This module has **no new package code**. The deliverable is a notebook that compares three TinyStories models at different sizes:
+
+- `StoryLM-1M`: trained in this notebook if missing
+- `StoryLM-5M`: saved from Module 10
+- `StoryLM-30M`: saved from Module 10
+
+The restriction to TinyStories is intentional. It gives you one clean scaling comparison before you start mixing in broader corpora, instruction tuning, and assistant behavior.
 
 ### How long these runs take
 
-Rough M-series budget at the reference configs and `max_steps=5000`:
+Rough M-series budget:
 
 ```
-   ┌───────┬─────────────┬─────────────┬──────────────┐
-   │ size  │  M1 / M2 8GB │  M2 Pro 32GB │  M3 Max 64GB │
-   ├───────┼─────────────┼─────────────┼──────────────┤
-   │  1M   │    ~5 min    │    ~3 min    │    ~2 min    │
-   │  5M   │   ~30 min    │   ~15 min    │    ~8 min    │
-   │ 20M   │   ~3 hours   │    ~1 hour   │   ~30 min    │
-   └───────┴─────────────┴─────────────┴──────────────┘
+   ┌────────────┬──────────────────────────────────────────────┐
+   │ artifact   │ role in Module 12                            │
+   ├────────────┼──────────────────────────────────────────────┤
+   │ StoryLM-1M │ train here if missing; short local run       │
+   │ StoryLM-5M │ reuse Module 10 artifact                     │
+   │ StoryLM-30M│ reuse Module 10 artifact                     │
+   └────────────┴──────────────────────────────────────────────┘
 ```
 
-Numbers are wide ballparks — context length, vocab, and Mac generation all matter. If your 20M run is on track to finish overnight rather than over coffee, halve `max_steps` (and note this in the writeup) rather than abandoning the comparison.
+The `StoryLM-1M` run is deliberately small. On most M-series machines it should be a coffee-break run, not a monster training session. If you do not have the `StoryLM-5M` or `StoryLM-30M` artifacts yet, go back to Module 10 rather than trying to recreate the whole ladder here.
 
 ## Exercises
 
 These are scaling experiments built on the Module 10 training workflow. Keep the notebook/config details close to the run; this page lists the experiment menu.
 
-1. **Train three sizes.** Plot validation loss against parameter count.
-2. **Read the samples.** Compare qualitative improvement across model sizes.
-3. **Find a threshold task.** Identify a prompt where the larger model crosses a capability boundary.
-4. **Depth vs width.** Compare same-budget architectures.
-5. **Iso-FLOP comparison.** Fix compute budget instead of step count.
-6. **Calibration check.** Measure expected calibration error for saved checkpoints.
-7. **Optional larger point.** Add a larger model if your machine and time allow.
+1. **Train the low-end anchor.** Create `StoryLM-1M` if it is missing.
+2. **Load the StoryLM ladder.** Compare `StoryLM-1M`, `StoryLM-5M`, and `StoryLM-30M`.
+3. **Plot loss vs size.** Plot validation loss and perplexity against parameter count.
+4. **Read the samples.** Compare qualitative improvement across model sizes.
+5. **Inspect next-token distributions.** Probe whether larger models put probability mass on more plausible continuations.
+6. **Compare iso-step and iso-FLOP.** Use the artifact metadata to estimate how much compute each run consumed.
+7. **Optional larger point.** Add another TinyStories model if your machine and time allow.
 8. **Optional vocab sweep.** Compare vocab sizes using bits-per-character, not raw perplexity.
 
 ## Pitfalls to expect
@@ -241,17 +251,17 @@ These are scaling experiments built on the Module 10 training workflow. Keep the
 
 ## M-series notes
 
-This is the most compute-hungry week of the course.
+This is a compute-aware week, but it should not be another monster run if Module 10 artifacts already exist.
 
-- **Plan around the 20M run.** It is the constraint. On an M1/M2 base machine, a 5000-step 20M run is a 2–3 hour commitment; on an M3 Max with 64GB it's well under an hour. If your 20M run is queued for "overnight" rather than "next coffee break," halve `max_steps` and *report this* — it's a real result that the comparison was constrained by available compute.
+- **Plan around artifact reuse.** `StoryLM-5M` and `StoryLM-30M` come from Module 10. Module 12 should usually train only `StoryLM-1M`.
 
-- **MPS vs CPU.** The 1M model trains comfortably on either. The 5M and 20M models are MPS-essential — CPU runs at this size are an order of magnitude slower. `Trainer(..., device="auto")` is the default path; print `trainer.device` at the start of a run so you know whether you are actually on MPS.
+- **MPS vs CPU.** The 1M StoryLM trains comfortably on MPS and can run on CPU if needed. `Trainer(..., device="auto")` is the default path; print `trainer.device` at the start of a run so you know whether you are actually on MPS.
 
-- **Memory headroom.** The 20M model with `(B=32, T=128, V=2048)` peaks at roughly 600 MB during backward. Running another model in another tab adds the same. If you OOM, halve `batch_size` to `16` before touching `T`. Watch Activity Monitor's "Memory pressure" graph during training — yellow is OK, red means you're swapping and your training is silently CPU-bound for memory reasons.
+- **Memory headroom.** The 1M run is small. Maybe 2GB of memory usage. The notebook may load `StoryLM-5M` and `StoryLM-30M` for sampling, but that is inference, not backprop. If memory pressure turns yellow or red, restart the kernel and load only the model you are inspecting.
 
-- **Long runs and laptop sleep.** macOS aggressively sleeps the GPU when the laptop is on battery. Plug in for the 20M run. `caffeinate -di python train.py` at the command line prevents the system from sleeping during a notebook-launched script.
+- **Long runs and laptop sleep.** If you choose to add an optional larger TinyStories point, plug in. macOS aggressively sleeps the GPU when the laptop is on battery.
 
-- **Storage.** Three checkpoints at 1M / 5M / 20M parameters take roughly 4MB / 20MB / 80MB on disk in fp32. The tokenized corpus is in the tens of MB. The training-history JSONs are kilobytes. Total: under 200MB for the headline experiment. The 50M optional run (exercise 7) adds another ~200MB. Comfortable on any modern Mac SSD.
+- **Storage.** `StoryLM-1M` adds only a small checkpoint and artifact. The larger storage cost is the TinyStories corpus/tokenized cache already prepared for Module 10.
 
 ---
 ## Reading
@@ -276,10 +286,12 @@ Optional:
 
 ## Deliverable checklist
 
-- [ ] Three trained checkpoints at ~1M, ~5M, ~20M parameters, trained on the same corpus with the same recipe. Saved to disk; the run history (loss / lr / grad_norm) saved as JSON or CSV alongside.
-- [ ] Notebook: `notebooks/12-scaling-runs.ipynb`. Loads the three checkpoints, prints `total_params(model)` for each (verifying they're roughly the target sizes), prints final val loss / perplexity for each, and runs `generate(temperature=0.8, top_p=0.9)` from the same prompt for each model. Three sample texts visible in the notebook output.
-- [ ] Notebook: `notebooks/12-scaling-plot.ipynb`. The headline log-log plot of `val_loss` vs `params`. Three points + a fit line. The fitted slope and one-paragraph commentary visible.
-- [ ] One-paragraph writeup of a threshold task (exercise 3) — the prompt, the success rates per size, and a sentence on what makes the task "threshold" rather than "smooth."
+- [ ] Working copy of `12-scaling.ipynb` completed (open it from the clean scaffold with `./notebook.sh 12`).
+- [ ] `StoryLM-1M`, `StoryLM-5M`, and `StoryLM-30M` loaded or clearly marked missing.
+- [ ] A table showing exact parameter count, vocab size, step count, tokens seen, final validation loss, and perplexity for each available StoryLM artifact.
+- [ ] A loss/perplexity-vs-parameter-count plot for the StoryLM ladder.
+- [ ] Three sample texts from the same TinyStories prompt, one per available StoryLM size.
+- [ ] One-paragraph writeup of a qualitative capability difference between two sizes.
 - [ ] You can explain — out loud, without notes — what the difference between iso-step and iso-FLOP is, and why they answer different questions.
 - [ ] You can explain — out loud, without notes — why "loss falls as a power of N" is a *different* claim from "capability X emerges at N", and which of the two you can or can't see at MacBook scale.
 - [ ] You can explain — out loud, without notes — what the irreducible loss `L∞` is and why no model — of any size — can fall below it.

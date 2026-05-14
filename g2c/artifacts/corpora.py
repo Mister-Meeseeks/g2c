@@ -256,11 +256,15 @@ def _resolve_tinystories(
         candidate_groups = (
             _tinystories_shards(sample_dir, "TinyStories-train-100MB"),
             _single_path_shards(sample_dir / "TinyStories-train-100MB.txt"),
+            _tinystories_shards(tinystories_dir, "TinyStories-train-100MB"),
+            _single_path_shards(tinystories_dir / "TinyStories-train-100MB.txt"),
         )
     elif split == "train":
         candidate_groups = (
             _tinystories_shards(tinystories_dir, "TinyStories-train"),
             _single_path_shards(tinystories_dir / "TinyStories-train.txt"),
+            _tinystories_shards(tinystories_dir, "TinyStories-train-100MB"),
+            _single_path_shards(tinystories_dir / "TinyStories-train-100MB.txt"),
             _tinystories_shards(sample_dir, "TinyStories-train-100MB"),
             _single_path_shards(sample_dir / "TinyStories-train-100MB.txt"),
         )

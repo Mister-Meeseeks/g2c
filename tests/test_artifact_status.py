@@ -127,7 +127,7 @@ def _write_tokenizer_artifact(repo: Path, name: str, *, source: str) -> None:
 
 
 def _write_tokenized_corpus_artifact(repo: Path, name: str) -> None:
-    artifact_dir = repo / "data" / "cache" / name
+    artifact_dir = repo / "data" / "cache" / "token-corpus" / name
     artifact_dir.mkdir(parents=True)
     (artifact_dir / "tokens.uint16.bin").write_bytes(b"\x00\x00\x01\x00")
     (artifact_dir / "manifest.json").write_text(
