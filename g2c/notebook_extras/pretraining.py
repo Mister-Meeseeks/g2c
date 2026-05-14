@@ -116,7 +116,7 @@ def format_training_progress(metrics: dict, *, max_steps: int, tokens_per_step: 
 
 
 def make_encode_progress(label: str) -> Callable[[dict], None]:
-    """Return a progress callback for ``load_or_encode_tokenized_*`` artifacts."""
+    """Return a progress callback for ``encode_text_to_tensor`` runs."""
     start = time.perf_counter()
     handle = None
 

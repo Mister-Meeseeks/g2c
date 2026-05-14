@@ -150,7 +150,7 @@ def write_baselm_manifest(
     model_id: str = DEFAULT_BASELM_MODEL_ID,
     repo_root: str | Path | None = None,
     revision: str | None = None,
-    cache_dir: str | Path = "data/baselm/huggingface",
+    cache_dir: str | Path = "data/cache/baselm/huggingface",
     torch_dtype: str = "float32",
     trust_remote_code: bool = False,
     tokenizer_path: str = "hf_tokenizer",

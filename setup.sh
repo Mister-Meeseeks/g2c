@@ -23,6 +23,46 @@ ok()   { printf "${GREEN} ok${NC} %s\n" "$*"; }
 warn() { printf "${YELLOW}warn${NC} %s\n" "$*"; }
 fail() { printf "${RED}fail${NC} %s\n" "$*" >&2; exit 1; }
 
+usage() {
+    cat <<'EOF'
+Usage:
+    ./setup.sh [--full] [-h|--help]
+
+Default:
+    Bootstrap the venv, install Python dependencies, download TinyShakespeare,
+    build the Shakespeare tokenizer artifact, and run the smoke test. Larger
+    optional assets are left to be installed on demand.
+
+--full:
+    After the default setup, also run:
+        ./datasets.sh    # GloVe + full TinyStories + full G2C corpus (Modules 05, 10)
+        ./baselm.sh      # pretrained BaseLM artifact (Modules 13-15)
+        ./prodlm.sh      # ProdLM Ollama runtime (Modules 16-20)
+
+-h, --help:
+    Show this help and exit.
+EOF
+}
+
+MODE="default"
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --full)
+            MODE="full"
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            printf "Unknown option: %s\n\n" "$1" >&2
+            usage >&2
+            exit 1
+            ;;
+    esac
+done
+
 # ---- 1. Python 3.11+ ---------------------------------------------------------
 info "Checking Python 3.11+"
 if ! command -v python3 >/dev/null 2>&1; then
@@ -146,6 +186,14 @@ info "Running smoke test"
 # ran end-to-end (smoke test passed, deps installed). Removed and rewritten on
 # every successful run so it always reflects the latest setup.
 date -u +"%Y-%m-%dT%H:%M:%SZ" > .venv/.g2c-setup-complete
+
+if [[ "$MODE" == "full" ]]; then
+    info "--full: running ./datasets.sh, ./baselm.sh, ./prodlm.sh"
+    ./datasets.sh
+    ./baselm.sh
+    ./prodlm.sh
+    ok "Full install complete."
+fi
 
 echo ""
 ok "Setup complete."

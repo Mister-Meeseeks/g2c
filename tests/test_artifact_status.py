@@ -38,7 +38,9 @@ def test_artifact_status_full_track_satisfies_smaller_tracks(tmp_path, monkeypat
     monkeypatch.setattr("scripts.artifact_status.GLOVE_MIN_BYTES", 1)
     _write_tinystories_full(repo)
     _write_g2c_corpus(repo, "data/datasets/g2c-corpus-v1")
-    (repo / "data" / "embeddings" / "glove.6B.50d.txt").write_text("x", encoding="utf-8")
+    glove_path = repo / "data" / "embeddings" / "glove.6B.50d.txt"
+    glove_path.parent.mkdir(parents=True, exist_ok=True)
+    glove_path.write_text("x", encoding="utf-8")
     _write_tokenizer_artifact(repo, "StoryTokenizer", source="tinystories")
     _write_tokenizer_artifact(repo, "G2CTokenizer", source="g2c")
     _write_tokenized_corpus_artifact(repo, "StoryLM-tinystories-full-v4096")
@@ -125,7 +127,7 @@ def _write_tokenizer_artifact(repo: Path, name: str, *, source: str) -> None:
 
 
 def _write_tokenized_corpus_artifact(repo: Path, name: str) -> None:
-    artifact_dir = repo / "artifacts" / "tokenized-corpora" / name
+    artifact_dir = repo / "data" / "cache" / name
     artifact_dir.mkdir(parents=True)
     (artifact_dir / "tokens.uint16.bin").write_bytes(b"\x00\x00\x01\x00")
     (artifact_dir / "manifest.json").write_text(

@@ -211,7 +211,7 @@ Exercise 6 uses pretrained GloVe vectors. They are optional and larger than the 
 ./datasets.sh glove
 ```
 
-The notebook skips the pretrained analogy section if `data/glove.6B.50d.txt` is missing.
+The notebook skips the pretrained analogy section if `data/embeddings/glove.6B.50d.txt` is missing.
 
 ## Exercises
 

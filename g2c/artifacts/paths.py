@@ -34,15 +34,20 @@ def tokenizer_artifact_dir(name: str, repo_root: str | Path | None = None) -> Pa
 
 
 def tokenized_corpora_root(repo_root: str | Path | None = None) -> Path:
-    """Return the directory containing tokenized corpus artifacts."""
-    return artifacts_root(repo_root) / "tokenized-corpora"
+    """Return the directory containing tokenized corpus cache directories.
+
+    Tokenized corpora are reproducible caches keyed by tokenizer+source+vocab,
+    not durable course artifacts, so they live under ``data/cache/`` rather
+    than ``artifacts/``.
+    """
+    return find_repo_root(repo_root) / "data" / "cache"
 
 
 def tokenized_corpus_artifact_dir(
     name: str,
     repo_root: str | Path | None = None,
 ) -> Path:
-    """Return the directory for one named tokenized corpus artifact."""
+    """Return the directory for one named tokenized corpus cache."""
     if not name:
         raise ValueError("tokenized corpus artifact name must be non-empty")
     return tokenized_corpora_root(repo_root) / name

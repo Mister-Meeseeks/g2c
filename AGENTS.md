@@ -38,7 +38,11 @@ The student is the repo author. Both roles are live.
 - `notebooks/solutions/NN-*.ipynb` — working or solved notebook copies; use `.venv/bin/python scripts/open_notebook.py NN` to create or resume, and `--fresh` to archive the existing copy before resetting from clean
 - `docs/rubrics/module-NN.md` — course-owned grading rubric for written answers; use for review, not as a replacement for the student's work
 - `docs/design/model-artifacts-and-tracks.md` — durable model artifact, hardware track, and Modules 10-20 backend plan
-- `data/` — datasets; anything large is gitignored
+- `data/` — local, mostly-gitignored working tree:
+  - `data/datasets/` — raw corpora and benchmark datasets (TinyShakespeare, TinyStories, G2C Corpus v1, MNIST).
+  - `data/embeddings/` — pretrained embedding artifacts (GloVe).
+  - `data/cache/` — reproducible caches (safe to wipe; rebuilt by setup/build scripts). Includes the HF hub cache `data/cache/baselm/` backing the `BaseLM` artifact's weights and tokenized-corpus caches like `data/cache/StoryLM-tinystories-full-v4096/`.
+  - `data/work/moduleNN/` — module-specific working files (see entry above).
 - `tests/test_<topic>.py` — tests for each module's public API
 
 ## When working on a module

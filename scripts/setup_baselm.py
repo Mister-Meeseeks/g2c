@@ -35,7 +35,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--revision", default=None, help="Optional HF revision.")
     parser.add_argument(
         "--cache-dir",
-        default="data/baselm/huggingface",
+        default="data/cache/baselm/huggingface",
         help="HF cache directory, relative to repo root unless absolute.",
     )
     parser.add_argument(

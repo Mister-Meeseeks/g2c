@@ -113,6 +113,8 @@ Then bootstrap the project environment:
 
 The script is idempotent. It creates a project-local venv at `./.venv`, installs `g2c` (editable) plus dev dependencies, prepares the small TinyShakespeare corpus, and runs a smoke test that verifies PyTorch's MPS backend works on your machine. Re-run it any time to re-verify.
 
+To bootstrap everything in one shot — venv + all optional datasets, BaseLM, and ProdLM — run `./setup.sh --full`. It chains `./datasets.sh`, `./baselm.sh`, and `./prodlm.sh` after the normal setup. See `./setup.sh --help` for details.
+
 The first run may download `data/tinyshakespeare.txt` for language-model training. Larger optional datasets live behind `datasets.sh` so the normal setup stays fast. You can wait until a module asks for one, or preload all optional course data up front:
 
 ```bash
@@ -179,6 +181,15 @@ For notebook exercises, open the working copy through the launcher:
 .venv/bin/python scripts/open_notebook.py 01           # create/resume notebooks/solutions/01-*.ipynb
 .venv/bin/python scripts/open_notebook.py 01 --fresh   # archive the old working copy, then reset from notebooks/clean/
 ```
+
+Or, if you'd rather not think about per-module setup, use the one-stop wrapper:
+
+```bash
+./notebook.sh 01           # runs setup.sh, runs the module's tests, then opens the notebook
+./notebook.sh 13 --fresh   # also runs ./baselm.sh before opening (other modules pull in datasets.sh / prodlm.sh as needed)
+```
+
+See `./notebook.sh --help` for the full module → extras mapping.
 
 Each module's notebook holds both the runnable cells and the written exercises. Written prompts appear inline as `"Question: ..."` / `"Answer: "` string-literal code cells; you fill in the answer string. When you're ready, ask a coding agent to grade the notebook — partial work is fine, blank answers are skipped.
 

@@ -78,7 +78,7 @@ BaseLM is a role, not a fixed model. Pick any small open-weight base model
 that runs comfortably on your machine and serves the pedagogy well. Bind it
 with `./baselm.sh --model-id <hf-model-id>`; the chosen backend is recorded
 in `artifacts/models/BaseLM/manifest.json` and the model weights live in the
-local HF hub cache under `data/baselm/huggingface/`. Notebooks reference the
+local HF hub cache under `data/cache/baselm/huggingface/`. Notebooks reference the
 role `BaseLM`, not the underlying model, so swapping the backend does not
 require notebook edits.
 
@@ -293,7 +293,7 @@ Training and eval data should be saved as data artifacts rather than hidden in
 notebook outputs:
 
 ```text
-data/g2c-corpus-v1/
+data/datasets/g2c-corpus-v1/
   manifest.json
   raw/
     fineweb-edu-dedup/
@@ -349,16 +349,16 @@ fixed.
 Build commands:
 
 ```bash
-./datasets.sh              # full preload, including data/g2c-corpus-v1/
-./datasets.sh --small      # preload with data/g2c-corpus-v1-small/
+./datasets.sh              # full preload, including data/datasets/g2c-corpus-v1/
+./datasets.sh --small      # preload with data/datasets/g2c-corpus-v1-small/
 ./datasets.sh --tiny       # only a 100MB TinyStories sample
 ./datasets.sh g2c-corpus-small
 ./datasets.sh g2c-corpus-full
 ./datasets.sh g2c-corpus-full --codesearchnet-js-ratio 0.2
 ```
 
-The small corpus is stored under `data/g2c-corpus-v1-small/`; the full corpus is
-stored under `data/g2c-corpus-v1/`. Both use compressed raw text shards. Quotas
+The small corpus is stored under `data/datasets/g2c-corpus-v1-small/`; the full corpus is
+stored under `data/datasets/g2c-corpus-v1/`. Both use compressed raw text shards. Quotas
 are measured in uncompressed normalized UTF-8 bytes, not compressed file size.
 Later tokenizer/training scripts should read `manifest.json` instead of assuming
 a fixed file list.

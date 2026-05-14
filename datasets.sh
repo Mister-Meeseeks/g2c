@@ -168,7 +168,7 @@ download_tinystories() {
 }
 
 download_tinystories_sample() {
-    local dir="data/datasets/tinystories"
+    local dir="data/datasets/tinystories-100MB"
     local sample_file="$dir/TinyStories-train-100MB.txt"
     local train_url="https://huggingface.co/datasets/roneneldan/TinyStories/resolve/main/TinyStories-train.txt"
     local sample_bytes=100000000

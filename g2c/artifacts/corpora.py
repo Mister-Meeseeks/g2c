@@ -251,17 +251,18 @@ def _resolve_tinystories(
     sample_only: bool = False,
 ) -> CorpusSpec | None:
     tinystories_dir = root / "data" / "datasets" / "tinystories"
+    sample_dir = root / "data" / "datasets" / "tinystories-100MB"
     if split == "train" and sample_only:
         candidate_groups = (
-            _tinystories_shards(tinystories_dir, "TinyStories-train-100MB"),
-            _single_path_shards(tinystories_dir / "TinyStories-train-100MB.txt"),
+            _tinystories_shards(sample_dir, "TinyStories-train-100MB"),
+            _single_path_shards(sample_dir / "TinyStories-train-100MB.txt"),
         )
     elif split == "train":
         candidate_groups = (
             _tinystories_shards(tinystories_dir, "TinyStories-train"),
             _single_path_shards(tinystories_dir / "TinyStories-train.txt"),
-            _tinystories_shards(tinystories_dir, "TinyStories-train-100MB"),
-            _single_path_shards(tinystories_dir / "TinyStories-train-100MB.txt"),
+            _tinystories_shards(sample_dir, "TinyStories-train-100MB"),
+            _single_path_shards(sample_dir / "TinyStories-train-100MB.txt"),
         )
     elif sample_only:
         candidate_groups = ()

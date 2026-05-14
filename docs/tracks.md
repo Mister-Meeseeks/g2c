@@ -15,6 +15,21 @@ Notebooks and later modules should load the strongest compatible local artifact
 they can find, print what they selected, and fall back gracefully when a larger
 artifact is missing.
 
+## What You Decide
+
+The conceptual path is identical across tracks. Four independent choices set up
+your local experience:
+
+| Decision | Command | Tiny | Standard | Stretch |
+|---|---|---|---|---|
+| Dataset footprint | `./datasets.sh` | `--tiny` | `--small` | (no flag) |
+| Module 10 model | Module 10 notebook | `ShakespeareLM-1M`, `StoryLM-5M` | `StoryLM-30M`, `TinyLLM-30M` | `TinyLLM-100M` |
+| BaseLM (Modules 13-15) | `./baselm.sh --model-id` | small HF base | small HF base | small HF base |
+| ProdLM (Modules 16-20) | `./prodlm.sh --model-id` | 1.5B-3B instruct | 7B-8B instruct | 14B-class instruct |
+
+BaseLM is a per-need fallback rather than a hardware tier — pick any small
+open-weight base model that runs comfortably on your machine.
+
 ## Tracks
 
 | Track | Command | Intended use | Downloads | Free disk target | Heavy one-time work |
@@ -109,18 +124,18 @@ Use these as planning ranges, not promises.
 | Step | Typical track | Time shape | Cached output |
 |---|---|---|---|
 | `./setup.sh` | all | minutes | `.venv/`, TinyShakespeare, `ShakespeareTokenizer` |
-| GloVe download/extract | Standard/Full | minutes, network-bound | `data/glove.6B.50d.txt` |
+| GloVe download/extract | Standard/Full | minutes, network-bound | `data/embeddings/glove.6B.50d.txt` |
 | TinyStories sample | Tiny | minutes, network-bound | compressed 100MB shards |
 | Full TinyStories | Standard/Full | several minutes to tens of minutes | compressed 100MB shards |
-| G2C corpus small | Standard | tens of minutes-ish | `data/g2c-corpus-v1-small/` |
-| G2C corpus full | Full | long: network plus processing | `data/g2c-corpus-v1/` |
+| G2C corpus small | Standard | tens of minutes-ish | `data/datasets/g2c-corpus-v1-small/` |
+| G2C corpus full | Full | long: network plus processing | `data/datasets/g2c-corpus-v1/` |
 | StoryTokenizer | Tiny/Standard/Full | minutes | `artifacts/tokenizers/StoryTokenizer/` |
 | G2CTokenizer | Standard/Full | minutes to tens of minutes | `artifacts/tokenizers/G2CTokenizer/` |
-| Tokenized TinyStories | Tiny/Standard/Full | minutes | `artifacts/tokenized-corpora/StoryLM-*` |
-| Tokenized G2C corpus | Standard/Full | minutes to tens of minutes | `artifacts/tokenized-corpora/TinyLLM-*` |
+| Tokenized TinyStories | Tiny/Standard/Full | minutes | `data/cache/StoryLM-*` |
+| Tokenized G2C corpus | Standard/Full | minutes to tens of minutes | `data/cache/TinyLLM-*` |
 | StoryLM 5M/30M training | Module 10 | minutes to about hour-class | checkpoints and model artifacts |
 | TinyLLM 30M-100M training | Module 10/12 | multi-hour or overnight | checkpoints and model artifacts |
-| BaseLM fetch | Modules 13-15 | model-size and network dependent | `./baselm.sh`, HF cache under `data/baselm/` |
+| BaseLM fetch | Modules 13-15 | model-size and network dependent | `./baselm.sh`, HF cache under `data/cache/baselm/` |
 | ProdLM fetch | Modules 16-20 | model-size and network dependent | `./prodlm.sh`, external Ollama model cache |
 
 Downloads and tokenized corpora are one-time setup costs. Training runs are the
