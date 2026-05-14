@@ -46,6 +46,8 @@ from .models import (
     load_training_checkpoint,
     model_artifact_dir,
     model_artifact_exists,
+    parse_artifact_name,
+    resolve_artifact_name,
     save_model_artifact,
     save_training_checkpoint,
 )
@@ -128,6 +130,8 @@ __all__ = [
     "load_tokenized_corpus_artifact",
     "model_artifact_dir",
     "model_artifact_exists",
+    "parse_artifact_name",
+    "resolve_artifact_name",
     "save_huggingface_model_artifact",
     "save_model_artifact",
     "save_training_checkpoint",

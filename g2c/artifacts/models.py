@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import os
 import pickle
+import re
 import subprocess
 import uuid
 from dataclasses import dataclass
@@ -29,6 +30,10 @@ from g2c.transformer import TransformerLM
 from .paths import artifacts_root
 
 CHECKPOINT_BACKUP_SUFFIX = ".bak"
+
+_SIZE_TOKEN_RE = re.compile(r"^(\d+(?:\.\d+)?)([KMB])$")
+_STAGE_NAMES = frozenset({"SFT", "DPO"})
+_SIZED_FAMILIES = frozenset({"ShakespeareLM", "StoryLM", "TinyLLM"})
 
 
 @dataclass(frozen=True)
@@ -256,6 +261,88 @@ def artifact_spec_for_name(
     return None
 
 
+def parse_artifact_name(name: str) -> tuple[str, str | None, str | None]:
+    """Split an artifact name into ``(family, size, stage)``.
+
+    ``size`` is the size token (e.g. ``"5M"``, ``"30M"``) if present, else
+    ``None``. ``stage`` is ``"SFT"`` or ``"DPO"`` if present, else ``None``.
+    Unrecognized components (legacy qualifiers like ``"Small"``) are ignored.
+    """
+    parts = name.split("-")
+    family = parts[0]
+    size: str | None = None
+    stage: str | None = None
+    for part in parts[1:]:
+        if part in _STAGE_NAMES:
+            stage = part
+        elif _SIZE_TOKEN_RE.match(part):
+            size = part
+    return family, size, stage
+
+
+def _size_token_to_int(token: str) -> int:
+    match = _SIZE_TOKEN_RE.match(token)
+    if not match:
+        raise ValueError(f"not a size token: {token!r}")
+    val, unit = float(match.group(1)), match.group(2)
+    mult = {"K": 1_000, "M": 1_000_000, "B": 1_000_000_000}[unit]
+    return int(val * mult)
+
+
+def resolve_artifact_name(
+    name: str,
+    *,
+    repo_root: str | Path | None = None,
+    specs: tuple[ModelArtifactSpec, ...] = DEFAULT_MODEL_ARTIFACT_SPECS,
+) -> str:
+    """Resolve ``name`` to a canonical on-disk artifact name.
+
+    Resolution rules, applied in order:
+
+    1. If ``name`` exists on disk as-is, return it unchanged.
+    2. If ``name`` matches a known spec alias (e.g. ``"StoryLM-Small"`` is
+       aliased to ``"StoryLM-5M"``), return that spec's canonical name if it
+       exists on disk.
+    3. If ``name`` is a family-level alias -- a sized family
+       (``ShakespeareLM`` / ``StoryLM`` / ``TinyLLM``) with the size token
+       omitted -- return the largest available ``<family>-<size>[-<stage>]``
+       artifact on disk at the same stage.
+
+    Raises ``FileNotFoundError`` if no candidate exists.
+    """
+    if not name:
+        raise ValueError("artifact name must be non-empty")
+
+    if model_artifact_exists(name, repo_root=repo_root):
+        return name
+
+    spec = artifact_spec_for_name(name, specs=specs)
+    if spec is not None and model_artifact_exists(spec.canonical_name, repo_root=repo_root):
+        return spec.canonical_name
+
+    family, size, stage = parse_artifact_name(name)
+    if family in _SIZED_FAMILIES and size is None:
+        models_dir = artifacts_root(repo_root) / "models"
+        candidates: list[tuple[int, str]] = []
+        if models_dir.exists():
+            for entry in models_dir.iterdir():
+                if not entry.is_dir():
+                    continue
+                ef, es, est = parse_artifact_name(entry.name)
+                if ef != family or es is None or est != stage:
+                    continue
+                if model_artifact_exists(entry.name, repo_root=repo_root):
+                    candidates.append((_size_token_to_int(es), entry.name))
+        if candidates:
+            candidates.sort(reverse=True)
+            return candidates[0][1]
+
+    raise FileNotFoundError(
+        f"no model artifact resolves to {name!r}. Checked literal name, known "
+        "aliases, and family-level alias scan."
+    )
+
+
 def load_model_artifact_with_tokenizer(
     name: str,
     *,
@@ -264,8 +351,23 @@ def load_model_artifact_with_tokenizer(
     torch_dtype: str | torch.dtype | None = None,
     specs: tuple[ModelArtifactSpec, ...] = DEFAULT_MODEL_ARTIFACT_SPECS,
 ) -> LoadedModelArtifact:
-    """Load one named model artifact plus its referenced tokenizer artifact."""
+    """Load one named model artifact plus its referenced tokenizer artifact.
+
+    The ``name`` argument may be a canonical artifact name, a spec alias
+    (e.g. ``"StoryLM-Small"``), or a family-level alias with the size token
+    omitted (e.g. ``"StoryLM"``, ``"StoryLM-SFT"``); see
+    :func:`resolve_artifact_name`.
+    """
     from .baselm import huggingface_model_artifact_exists, load_huggingface_model_artifact
+
+    try:
+        name = resolve_artifact_name(name, repo_root=repo_root, specs=specs)
+    except FileNotFoundError:
+        # Fall through; the existence checks below will raise the original
+        # not-found error from the underlying loader if the name truly is
+        # missing. This preserves error messages for direct callers that
+        # already handled non-existence.
+        pass
 
     if huggingface_model_artifact_exists(name, repo_root=repo_root):
         return load_huggingface_model_artifact(

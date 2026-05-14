@@ -33,6 +33,8 @@ from g2c.artifacts import (
     load_tokenizer_artifact,
     load_tokenizer_source_text,
     load_torch_checkpoint,
+    parse_artifact_name,
+    resolve_artifact_name,
     save_model_artifact,
     tokenized_corpus_artifact_exists,
     tokenizer_artifact_exists,
@@ -686,43 +688,6 @@ def test_load_or_encode_tokenized_pair_uses_artifact_and_cache(tmp_path):
     assert torch.equal(cached_val_ids, val_ids)
 
 
-def test_load_or_encode_tokenized_corpus_reads_legacy_data_cache(tmp_path):
-    repo = make_repo(tmp_path)
-    data_path = repo / "data" / "tinyshakespeare.txt"
-    data_path.parent.mkdir(parents=True)
-    data_path.write_text("hello artifact", encoding="utf-8")
-    config = TokenizerArtifactConfig(
-        name="LegacyCacheTokenizer",
-        source="tinyshakespeare",
-        vocab_size=256,
-        max_chars=20,
-        special_tokens=(),
-    )
-    train_or_load_tokenizer_artifact(config, repo_root=repo)
-
-    _, ids = load_or_encode_tokenized_corpus(
-        "abcdef",
-        "LegacyCacheTokenizer",
-        label="legacy-unit",
-        repo_root=repo,
-    )
-    new_cache_dir = repo / "artifacts" / "tokenized-cache"
-    legacy_cache_dir = repo / "data" / "tokenizer-cache"
-    legacy_cache_dir.mkdir(parents=True)
-    for path in new_cache_dir.glob("*.pkl.gz"):
-        path.rename(legacy_cache_dir / path.name)
-    new_cache_dir.rmdir()
-
-    _, cached_ids = load_or_encode_tokenized_corpus(
-        "abcdef",
-        "LegacyCacheTokenizer",
-        label="legacy-unit",
-        repo_root=repo,
-    )
-
-    assert torch.equal(cached_ids, ids)
-
-
 def test_tokenized_corpus_artifact_builds_uint16_memmap_and_batches(tmp_path):
     repo = make_repo(tmp_path)
     data_dir = repo / "data" / "tinystories"
@@ -967,6 +932,83 @@ def test_load_model_artifact_with_tokenizer_loads_named_alias(tmp_path):
     assert loaded.display_name == "StoryLM 5M"
     assert loaded.model.vocab_size == 256
     assert loaded.tokenizer.encode_fast("abc") == list(b"abc")
+
+
+def test_parse_artifact_name_extracts_family_size_stage():
+    assert parse_artifact_name("ShakespeareLM-1M") == ("ShakespeareLM", "1M", None)
+    assert parse_artifact_name("StoryLM-30M-SFT") == ("StoryLM", "30M", "SFT")
+    assert parse_artifact_name("TinyLLM-100M-DPO") == ("TinyLLM", "100M", "DPO")
+    assert parse_artifact_name("StoryLM") == ("StoryLM", None, None)
+    assert parse_artifact_name("StoryLM-SFT") == ("StoryLM", None, "SFT")
+    assert parse_artifact_name("BaseLM") == ("BaseLM", None, None)
+    assert parse_artifact_name("BaseLM-SFT") == ("BaseLM", None, "SFT")
+    # Legacy qualifiers don't parse as size or stage.
+    assert parse_artifact_name("StoryLM-Small") == ("StoryLM", None, None)
+
+
+def test_resolve_artifact_name_returns_literal_when_on_disk(tmp_path):
+    repo = make_repo(tmp_path)
+    _save_tiny_tokenizer_artifact(repo, "TinyTok")
+    _save_tiny_model_artifact(repo, "StoryLM-30M", tokenizer_name="TinyTok")
+
+    assert resolve_artifact_name("StoryLM-30M", repo_root=repo) == "StoryLM-30M"
+
+
+def test_resolve_artifact_name_maps_static_alias_to_canonical(tmp_path):
+    repo = make_repo(tmp_path)
+    _save_tiny_tokenizer_artifact(repo, "TinyTok")
+    _save_tiny_model_artifact(repo, "StoryLM-5M", tokenizer_name="TinyTok")
+
+    # Legacy alias from the spec table.
+    assert resolve_artifact_name("StoryLM-Small", repo_root=repo) == "StoryLM-5M"
+
+
+def test_resolve_artifact_name_family_alias_picks_largest(tmp_path):
+    repo = make_repo(tmp_path)
+    _save_tiny_tokenizer_artifact(repo, "TinyTok")
+    _save_tiny_model_artifact(repo, "StoryLM-5M", tokenizer_name="TinyTok")
+    _save_tiny_model_artifact(repo, "StoryLM-30M", tokenizer_name="TinyTok")
+
+    assert resolve_artifact_name("StoryLM", repo_root=repo) == "StoryLM-30M"
+
+
+def test_resolve_artifact_name_family_alias_respects_stage(tmp_path):
+    repo = make_repo(tmp_path)
+    _save_tiny_tokenizer_artifact(repo, "TinyTok")
+    _save_tiny_model_artifact(repo, "TinyLLM-30M", tokenizer_name="TinyTok")
+    _save_tiny_model_artifact(repo, "TinyLLM-30M-SFT", tokenizer_name="TinyTok")
+    _save_tiny_model_artifact(repo, "TinyLLM-100M-SFT", tokenizer_name="TinyTok")
+
+    # No DPO exists -> not found, even though SFT variants exist.
+    import pytest
+
+    with pytest.raises(FileNotFoundError):
+        resolve_artifact_name("TinyLLM-DPO", repo_root=repo)
+
+    # SFT alias picks the largest SFT, not the bare 30M.
+    assert resolve_artifact_name("TinyLLM-SFT", repo_root=repo) == "TinyLLM-100M-SFT"
+
+
+def test_resolve_artifact_name_baselm_passes_through_unchanged(tmp_path):
+    repo = make_repo(tmp_path)
+    # Stub a BaseLM artifact directory with the minimal manifest fields needed.
+    baselm_dir = repo / "artifacts" / "models" / "BaseLM"
+    baselm_dir.mkdir(parents=True)
+    (baselm_dir / "config.json").write_text("{}", encoding="utf-8")
+    (baselm_dir / "manifest.json").write_text(
+        json.dumps({"name": "BaseLM", "kind": "huggingface_causal_lm"}),
+        encoding="utf-8",
+    )
+
+    assert resolve_artifact_name("BaseLM", repo_root=repo) == "BaseLM"
+
+
+def test_resolve_artifact_name_raises_when_missing(tmp_path):
+    repo = make_repo(tmp_path)
+    import pytest
+
+    with pytest.raises(FileNotFoundError):
+        resolve_artifact_name("StoryLM-30M", repo_root=repo)
 
 
 def test_baselm_manifest_registers_external_model_artifact(tmp_path):

@@ -38,9 +38,13 @@ BaseLM and ProdLM are prepared separately because they are model artifacts, not
 dataset tracks:
 
 ```bash
-./baselm.sh
-./prodlm.sh --model-id llama3.2:3b
+./baselm.sh --model-id <hf-model-id>
+./prodlm.sh --model-id <ollama-tag>
 ```
+
+Both scripts have sensible defaults if you omit `--model-id`. Pick any small
+HF causal LM for BaseLM and any local instruct model for ProdLM that fits your
+machine (see the design doc for hardware-tier guidance).
 
 All dataset commands are intended to be idempotent. Rerunning should skip
 completed downloads and completed artifacts.
@@ -57,6 +61,15 @@ The normal `./setup.sh` path stays small. It prepares the Python environment,
 TinyShakespeare, and the `ShakespeareTokenizer` artifact used by the first
 Module 10 smoke run.
 
+A note on the `vNNNN` suffix: a tokenizer artifact stores its trained vocab as
+the *maximum* usable size. Downstream artifacts (tokenized corpora, models)
+record the slice they actually use through the `vNNNN` suffix and the manifest
+field `vocab_size` / `effective_vocab_size`. A BPE tokenizer truncated to its
+first N merges is still a valid tokenizer, so one trained `StoryTokenizer` can
+back multiple smaller-vocab corpora and models. If `StoryTokenizer` reports a
+trained vocab of 8192 but `StoryLM-tinystories-full-v4096` and `StoryLM` both
+pin `vocab_size: 4096`, that is the system working as intended.
+
 ## Artifact Roles
 
 | Role | Meaning |
@@ -64,12 +77,29 @@ Module 10 smoke run.
 | `ShakespeareLM` | Tiny baseline model from Module 10. Useful for proving the loop works, not for quality. |
 | `StoryLM` | TinyStories-trained model. More coherent stories, still not a general assistant. |
 | `TinyLLM` | Broader G2C-corpus model trained from scratch. Best self-trained candidate for assistant-shaped experiments. |
-| `BaseLM` | Small external pretrained base model for Modules 13-15 when self-trained models are too weak. Qwen-0.6B is the current reference candidate, but the role is not tied to Qwen. |
+| `BaseLM` | Small external pretrained base model for Modules 13-15 when self-trained models are too weak. The role is model-agnostic -- run `./baselm.sh --model-id <hf-model-id>` to bind it to any small HF causal LM that fits your machine. |
 | `ProdLM` | Local pretrained instruct model for Modules 16-20. Usually served through Ollama, llama.cpp, or another local runtime. |
+| `<base>-SFT` / `<base>-DPO` | Derived artifacts produced by Modules 13 and 14. The base is whichever of `StoryLM-<N>`, `TinyLLM-<N>`, or `BaseLM` was fine-tuned; the suffix records the last training pass. DPO artifacts are typically layered on top of the corresponding `-SFT` artifact, which is recorded in the manifest's `base_artifact` field. |
+
+### Naming and aliasing
+
+Self-trained artifacts always include an explicit parameter count in their
+on-disk name: `ShakespeareLM-1M`, `StoryLM-5M`, `StoryLM-30M`, `TinyLLM-30M`,
+`TinyLLM-30M-SFT`. The number is approximate parameter count rounded to ~2
+significant figures, following industry convention (Qwen-9B, Llama-3-8B).
+`BaseLM` and `ProdLM` carry no size suffix because we don't train them.
+`ProdLM` also takes no stage suffix because we don't post-train it.
+
+A name with the size omitted (`StoryLM`, `StoryLM-SFT`, `TinyLLM-DPO`) is an
+**alias** that resolves at load time to the largest available artifact in that
+family at that stage. Aliases are never written to disk -- only canonical full
+names are saved.
 
 Modules 10-15 should support both self-trained artifacts and the BaseLM
-fallback. Modules 16-20 should assume ProdLM for the main assistant-system
+fallback. Modules 16-18 should assume ProdLM for the main assistant-system
 experience, while keeping TinyLLM or StoryLM useful for comparison when present.
+Modules 19-20 are ProdLM-only; tiny self-trained models cannot reliably drive
+ReAct or multi-turn assistant loops, so they are not currently exposed there.
 
 ## Time Costs
 
@@ -109,7 +139,8 @@ inspect, sample, and continue.
 | 11 | Uses the strongest saved Module 10 model it can find. |
 | 12 | Scaling lab. Extends Module 10 and can stay small or go stretch. |
 | 13-15 | Prefer a capable self-trained TinyLLM when available; otherwise run `./baselm.sh` and use BaseLM. |
-| 16-20 | Use ProdLM for the main assistant path. Self-trained models are comparison backends. |
+| 16-18 | Use ProdLM for the main assistant path. The strongest self-trained artifact can also be loaded for comparison. |
+| 19-20 | ProdLM only. The deterministic exercises use a `FakeBackend`; live cells require ProdLM. Self-trained models are not currently exposed here because they do not reliably follow ReAct or multi-turn assistant formats. |
 
 ## Working Rule
 

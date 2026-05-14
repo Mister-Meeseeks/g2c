@@ -74,9 +74,13 @@ It is not the main assistant-system backend and it is not trained from scratch
 inside the course. Its role is to make SFT, DPO, and eval pedagogically useful
 when a student's StoryLM/TinyLLM artifact is too weak to show the behavior.
 
-The current reference candidate is Qwen-0.6B, but the course should keep the
-role generic. A similar small base model can fill the same slot if it runs more
-comfortably on a student's machine.
+BaseLM is a role, not a fixed model. Pick any small open-weight base model
+that runs comfortably on your machine and serves the pedagogy well. Bind it
+with `./baselm.sh --model-id <hf-model-id>`; the chosen backend is recorded
+in `artifacts/models/BaseLM/manifest.json` and the model weights live in the
+local HF hub cache under `data/baselm/huggingface/`. Notebooks reference the
+role `BaseLM`, not the underlying model, so swapping the backend does not
+require notebook edits.
 
 BaseLM setup is separate from `datasets.sh` because it is a model artifact:
 
@@ -97,9 +101,9 @@ are weak.
 Typical artifacts:
 
 - `ShakespeareLM-1M`
-- `StoryLM-Small`
-- `StoryLM-Instruct`
-- `StoryLM-DPO`
+- `StoryLM-5M`
+- `StoryLM-5M-SFT`
+- `StoryLM-5M-DPO`
 
 ### Standard Track
 
@@ -109,10 +113,10 @@ from-scratch language model artifact without assuming cloud GPUs.
 Typical artifacts:
 
 - `StoryTokenizer`
-- `StoryLM`
-- `TinyLLM` when the broader compact corpus path is available
-- `StoryLM-Instruct` or `TinyLLM-Instruct`
-- `StoryLM-DPO` or `TinyLLM-DPO`
+- `StoryLM-30M`
+- `TinyLLM-30M` when the broader compact corpus path is available
+- `StoryLM-30M-SFT` or `TinyLLM-30M-SFT`
+- `StoryLM-30M-DPO` or `TinyLLM-30M-DPO`
 
 ### Full / Stretch Track
 
@@ -121,7 +125,7 @@ more time, or a willingness to let local runs continue for hours.
 
 Typical artifacts:
 
-- `TinyLLM-Large`
+- `TinyLLM-100M`
 - larger StoryLM/TinyLLM comparison checkpoints
 - longer eval and sampling runs
 
@@ -130,21 +134,97 @@ course path should not depend on them.
 
 ## Named Artifacts
 
-The durable model artifacts are:
+### Naming grammar
+
+Every model artifact name is built from up to three components:
+
+```
+<family>[-<size>][-<stage>]
+
+family ∈ {ShakespeareLM, StoryLM, TinyLLM, BaseLM, ProdLM}
+size   = approximate parameter count, written as <N>M or <N>B (e.g. -1M, -5M, -10M, -30M, -100M, -1B)
+stage  ∈ {SFT, DPO}
+```
+
+Component rules by family:
+
+| Family | Size component | Stage component |
+|---|---|---|
+| `ShakespeareLM`, `StoryLM`, `TinyLLM` | **required** (we train them at known sizes) | optional |
+| `BaseLM` | **forbidden** (we don't train it; one pretrained checkpoint) | optional |
+| `ProdLM` | **forbidden** (backend selection, not a checkpoint) | **forbidden** |
+
+The size is the trained parameter count, bucketed onto the family's known
+size tiers (`-1M`, `-5M`, `-10M`, `-30M`, `-100M`) rather than reported
+precisely. It follows industry convention (Qwen-9B, Llama-3-8B) of putting a
+parameter count in the name rather than counting training tokens. SFT/DPO
+derivatives keep the base's size since fine-tuning does not change parameter
+count.
+
+**On-disk artifact names always include every applicable component.** Saving
+`StoryLM-30M-SFT` writes to `artifacts/models/StoryLM-30M-SFT/`, never to
+`artifacts/models/StoryLM-SFT/`. The directory name *is* the artifact key, so
+two runs at the same family/size/stage collide; the second overwrites the
+first.
+
+### Load-time aliases
+
+A name with the size component omitted is an **alias**, resolved at load time
+to the largest available artifact in that family at that stage. Aliases are
+strictly within family and within stage:
+
+- `StoryLM` → largest `StoryLM-<N>` on disk
+- `StoryLM-SFT` → largest `StoryLM-<N>-SFT` on disk
+- `TinyLLM-DPO` → largest `TinyLLM-<N>-DPO` on disk
+
+Aliases are never written to disk. `BaseLM` and `ProdLM` are already canonical
+and need no aliasing. Cross-family fallback (a notebook walking `TinyLLM →
+StoryLM → ShakespeareLM → BaseLM` when nothing better exists) is **not** part
+of the alias rule; that lives at the notebook orchestration layer.
+
+### Derived-artifact lineage
+
+Derived artifacts (`-SFT`, `-DPO`) record their parent in the manifest's
+`base_artifact` field. The chain is followable: `BaseLM-DPO` →
+`BaseLM-SFT` → `BaseLM`; `TinyLLM-30M-DPO` → `TinyLLM-30M-SFT` →
+`TinyLLM-30M`. A reader can walk back to the source by following that field
+rather than parsing the name.
+
+### Canonical artifact list
+
+Base models (self-trained):
 
 - `ShakespeareLM-1M`: the first real Transformer language-model milestone.
-- `StoryTokenizer`: TinyStories BPE tokenizer, saved because it is slow enough
-  to regenerate and needed for StoryLM checkpoints.
-- `StoryLM-Small`: smaller TinyStories model for weak hardware and fast loops.
-- `StoryLM`: default TinyStories model, intended to feel meaningfully
+- `StoryLM-5M`: smaller TinyStories model for weak hardware and fast loops.
+- `StoryLM-30M`: default TinyStories model, intended to feel meaningfully
   language-like.
-- `TinyLLM-Small`: smaller broad-corpus model when the TinyLLM path exists.
-- `TinyLLM`: broader from-scratch model used for assistant-shaped tracks.
-- `TinyLLM-Large`: optional larger local stretch model.
-- `StoryLM-Instruct`: StoryLM after story-instruction SFT.
-- `TinyLLM-Instruct`: TinyLLM after assistant-style SFT.
-- `StoryLM-DPO`: StoryLM after story-domain preference tuning.
-- `TinyLLM-DPO`: TinyLLM after assistant/tool-format preference tuning.
+- `TinyLLM-30M`: broader from-scratch model used for assistant-shaped tracks.
+- `TinyLLM-100M`: optional larger local stretch model.
+
+External base model:
+
+- `BaseLM`: small pretrained base used as a fallback for Modules 13-15 when
+  self-trained models are too weak.
+
+Backend role (no checkpoint):
+
+- `ProdLM`: local pretrained instruct backend used in Modules 16-20.
+
+Derived (SFT):
+
+- `StoryLM-<N>-SFT`: StoryLM after story-instruction SFT.
+- `TinyLLM-<N>-SFT`: TinyLLM after assistant-style SFT.
+- `BaseLM-SFT`: BaseLM after the same SFT pass.
+
+Derived (DPO):
+
+- `StoryLM-<N>-DPO`: StoryLM after story-domain preference tuning.
+- `TinyLLM-<N>-DPO`: TinyLLM after assistant/tool-format preference tuning.
+- `BaseLM-DPO`: BaseLM after preference tuning, layered on top of `BaseLM-SFT`.
+
+The companion tokenizer artifacts (`ShakespeareTokenizer`, `StoryTokenizer`,
+`G2CTokenizer`) live under `artifacts/tokenizers/` and follow a separate
+naming scheme (no size, no stage); see the Artifact Contract section.
 
 The durable non-model artifacts are:
 
@@ -172,9 +252,12 @@ unless a module has a documented reason to differ:
 artifacts/models/<artifact-name>/
   model.pt
   config.json
-  tokenizer.json
   manifest.json
 ```
+
+The tokenizer is referenced by name in `manifest.tokenizer_artifact` rather
+than duplicated inside the model directory. This lets several models share one
+tokenizer artifact without copying it.
 
 External Hugging Face model artifacts, such as `BaseLM`, keep the HF-native
 layout instead of `model.pt`:
@@ -188,8 +271,7 @@ artifacts/models/BaseLM/
 
 Fine-tuned external artifacts add `hf_model/` next to `hf_tokenizer/`.
 
-Tokenizer artifacts should be saved separately when they are reused by multiple
-models:
+Tokenizer artifacts are saved once and shared across models that use them:
 
 ```text
 artifacts/tokenizers/<tokenizer-name>/
@@ -197,6 +279,15 @@ artifacts/tokenizers/<tokenizer-name>/
   ids.uint32      # small encoded inspection sample, not the full corpus
   manifest.json
 ```
+
+A tokenizer artifact stores its trained vocab as the maximum usable size.
+Downstream consumers (tokenized corpora, model checkpoints) record the slice
+they actually use in their own manifests via the `vNNNN` name suffix and the
+`vocab_size` / `effective_vocab_size` fields. Truncating a BPE tokenizer to its
+first N merges yields a valid smaller tokenizer, so the larger artifact is a
+superset of every slice taken from it. This is why the three numbers along a
+chain need not match: `StoryTokenizer` may hold a trained vocab of 8192 while
+`StoryLM-tinystories-full-v4096` and `StoryLM` both pin a working vocab of 4096.
 
 Training and eval data should be saved as data artifacts rather than hidden in
 notebook outputs:
@@ -286,9 +377,9 @@ It should produce some subset of:
 
 - `ShakespeareLM-1M`;
 - `StoryTokenizer`;
-- `StoryLM-Small`;
-- `StoryLM`;
-- optional `TinyLLM` if the broader corpus path is available.
+- `StoryLM-5M`;
+- `StoryLM-30M`;
+- optional `TinyLLM-30M` if the broader corpus path is available.
 
 ### Module 11 - Sampling and Decoding
 
@@ -313,12 +404,17 @@ Supported tracks:
 
 It should produce:
 
-- `StoryLM-Instruct`; or
-- `TinyLLM-Instruct`.
+- `StoryLM-<N>-SFT`; or
+- `TinyLLM-<N>-SFT`; or
+- `BaseLM-SFT` when the self-trained models are too weak to show SFT
+  behavior clearly.
+
+(`<N>` carries through whichever size the base model used; e.g.
+`StoryLM-30M-SFT` from `StoryLM-30M`.)
 
 ProdLM should not be the default training target for Module 13. Fine-tuning a
 production model can be optional later, but the core lesson is weight updates on
-the student's own small model.
+the student's own small model (or, as a fallback, on BaseLM).
 
 ### Module 14 - Preference Tuning
 
@@ -333,8 +429,9 @@ Supported tracks:
 
 It should produce:
 
-- `StoryLM-DPO`; or
-- `TinyLLM-DPO`.
+- `StoryLM-<N>-DPO`; or
+- `TinyLLM-<N>-DPO`; or
+- `BaseLM-DPO` layered on top of `BaseLM-SFT` when the BaseLM track is in use.
 
 ### Module 15 - Evaluation
 
@@ -354,8 +451,9 @@ The deliverable should include:
 - optional rerun instructions for students who want to close the loop by going
   back to Module 13 or 14.
 
-Qwen-class or other ProdLM models may appear as a preview comparison, but the
-main failure-analysis target should be the student's tiny model artifacts.
+A ProdLM backend may appear as a preview comparison, but the main
+failure-analysis target should be the student's tiny model artifacts (or
+BaseLM-SFT/BaseLM-DPO when those stand in for them).
 
 ### Modules 16-20 - Assistant Systems
 
@@ -372,9 +470,15 @@ runtime configuration. These modules should save system artifacts instead:
 - agent transcripts;
 - eval reports.
 
-The runtime harness should make the contrast visible: the same messages, tools,
-and evals can run against TinyLLM/StoryLM when useful, but ProdLM is the
-default backend for actually usable assistant behavior.
+Modules 16-18 (inference, RAG, tools) keep the runtime harness backend-agnostic:
+the same messages, tools, and evals can run against TinyLLM/StoryLM when useful,
+but ProdLM is the default backend for actually usable assistant behavior.
+
+Modules 19 and 20 (agent loops, capstone) are **ProdLM-only**. Self-trained
+models are not currently a comparison backend for these modules because tiny
+from-scratch models do not reliably follow the ReAct or multi-turn assistant
+formats the loops depend on. The deterministic cells in both notebooks use a
+`FakeBackend` for architecture testing; the live cells use ProdLM exclusively.
 
 ## Pedagogical Rules
 

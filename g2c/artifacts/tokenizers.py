@@ -325,13 +325,8 @@ def load_or_encode_tokenized_corpus(
         label, (text,), tokenizer_name, tokenizer,
         repo_root=root, vocab_size=vocab_size,
     )
-    legacy_cache_path = _legacy_token_id_cache_path(
-        label, (text,), tokenizer_name, tokenizer,
-        repo_root=root, vocab_size=vocab_size,
-    )
-    existing_cache_path = _existing_cache_path(cache_path, legacy_cache_path)
-    if existing_cache_path is not None:
-        state = _load_pickle(existing_cache_path)
+    if cache_path.exists():
+        state = _load_pickle(cache_path)
         return tokenizer, _as_long_tensor(state["ids"])
 
     ids = encode_text_to_tensor(
@@ -378,17 +373,8 @@ def load_or_encode_tokenized_pair(
         repo_root=root,
         vocab_size=vocab_size,
     )
-    legacy_cache_path = _legacy_token_id_cache_path(
-        label,
-        (train_text, val_text),
-        tokenizer_name,
-        tokenizer,
-        repo_root=root,
-        vocab_size=vocab_size,
-    )
-    existing_cache_path = _existing_cache_path(cache_path, legacy_cache_path)
-    if existing_cache_path is not None:
-        state = _load_pickle(existing_cache_path)
+    if cache_path.exists():
+        state = _load_pickle(cache_path)
         return (
             tokenizer,
             _as_long_tensor(state["train_ids"]),
@@ -568,26 +554,6 @@ def _token_id_cache_path(
     return artifacts_root(root) / "tokenized-cache" / filename
 
 
-def _legacy_token_id_cache_path(
-    label: str,
-    text_parts: tuple[str, ...],
-    tokenizer_name: str,
-    tokenizer: BPETokenizer,
-    *,
-    repo_root: str | Path | None = None,
-    vocab_size: int | None = None,
-) -> Path:
-    root = find_repo_root(repo_root)
-    filename = _token_id_cache_filename(
-        label,
-        text_parts,
-        tokenizer_name,
-        tokenizer,
-        vocab_size=vocab_size,
-    )
-    return root / "data" / "tokenizer-cache" / filename
-
-
 def _token_id_cache_filename(
     label: str,
     text_parts: tuple[str, ...],
@@ -607,15 +573,6 @@ def _token_id_cache_filename(
         f"{safe_label}-{safe_tokenizer}-{total_chars}-"
         f"{text_digest}-{_tokenizer_digest(tokenizer)}-{vocab_tag}.pkl.gz"
     )
-
-
-def _existing_cache_path(primary: Path, legacy: Path) -> Path | None:
-    """Return the cache path to load, preferring the new artifact location."""
-    if primary.exists():
-        return primary
-    if legacy.exists():
-        return legacy
-    return None
 
 
 def _text_parts_digest(text_parts: tuple[str, ...]) -> tuple[int, str]:
