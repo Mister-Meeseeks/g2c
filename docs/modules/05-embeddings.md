@@ -200,7 +200,7 @@ pytest tests/test_embeddings.py -v          # verbose
 Open the working notebook copy with:
 
 ```bash
-.venv/bin/python scripts/open_notebook.py 05
+./notebook.sh 05
 ```
 
 The clean scaffold lives at `notebooks/clean/05-embeddings.ipynb`; do your work in the generated `notebooks/solutions/05-embeddings.ipynb` copy.

@@ -35,7 +35,7 @@ The student is the repo author. Both roles are live.
 - `artifacts/models/<name>/` — saved model artifacts (`model.pt`, `config.json`, `manifest.json`); tokenizer is referenced by name in the manifest, not duplicated.
 - `data/work/moduleNN/` — module-specific working files (rolling training checkpoints, hand-authored SFT/DPO datasets, sandbox directories for the tool/agent/capstone exercises). These are caches, not artifacts; safe to wipe to retrain.
 - `notebooks/clean/NN-*.ipynb` — canonical pristine notebooks tied to module NN. Written exercises live here as `Question:` / `Answer:` string-literal code cells alongside the runnable cells; this is also where students write their answers (in `notebooks/solutions/`).
-- `notebooks/solutions/NN-*.ipynb` — working or solved notebook copies; use `.venv/bin/python scripts/open_notebook.py NN` to create or resume, and `--fresh` to archive the existing copy before resetting from clean
+- `notebooks/solutions/NN-*.ipynb` — working or solved notebook copies; use `./notebook.sh NN` to create or resume, and `./notebook.sh NN --fresh` to archive the existing copy before resetting from clean
 - `docs/rubrics/module-NN.md` — course-owned grading rubric for written answers; use for review, not as a replacement for the student's work
 - `docs/design/model-artifacts-and-tracks.md` — durable model artifact, hardware track, and Modules 10-20 backend plan
 - `data/` — local, mostly-gitignored working tree:
@@ -97,7 +97,7 @@ When building scaffolding for any module that has a coding exercise, the goal is
 - **A suggested implementation order.** A docstring at the top of the test file (or a checklist in the lesson page) describing which TODOs to tackle first. Each step should turn a coherent batch of tests green so progress is visible.
 - **Embedded answer slots in the clean notebook.** For each written exercise, add a code cell of `"Question: ..."` / `"Answer: "` string literals immediately after the exercise's prompt or run cells. The closing cell of the notebook should remind the student that a coding agent can grade the notebook and that partial work is fine.
 - **A rubric for written exercises.** Add `docs/rubrics/module-NN.md` with grading criteria. Its preamble should point at `notebooks/solutions/NN-*.ipynb` (with `notebooks/clean/NN-*.ipynb` as the fallback) as the source of student answers.
-- **A workflow note at the start of exercises.** The first paragraph after every `## Exercises` heading should tell students to open the working notebook with `.venv/bin/python scripts/open_notebook.py NN`, write their answers in the `Question:` / `Answer:` cells, and ask a coding agent for hints or grading. State that partial submissions are fine because blank answers are skipped.
+- **A workflow note at the start of exercises.** The first paragraph after every `## Exercises` heading should tell students to open the working notebook with `./notebook.sh NN` (or `./notebook.sh NN --fresh` to reset from the clean scaffold), write their answers in the `Question:` / `Answer:` cells, and ask a coding agent for hints or grading. State that partial submissions are fine because blank answers are skipped.
 
 The lesson page (`docs/modules/NN-name.md`) should have a dedicated **Scaffolding and how to run the tests** section pointing the student at the `# TODO` markers and the relevant `pytest` invocations.
 
@@ -213,14 +213,14 @@ Student-facing notebooks should foreground the conceptual flow, not the plumbing
   <one short paragraph orienting the student to what this notebook is for>
 
   1. Read the lesson page (`docs/modules/NN-name.md`).
-  2. Open this notebook with `.venv/bin/python scripts/open_notebook.py NN`.
+  2. Open this notebook with `./notebook.sh NN`.
   3. Answer the `Question:` / `Answer:` cells below.
   4. When you're ready, ask a coding agent to grade your notebook.
 
   Partial work is fine. Blank `Answer: ""` strings are skipped, not counted wrong. If you'd like a hint instead of a grade, write the request inline in the answer string and the agent will tutor first.
   ```
 
-  Keep the workflow list and the trailing "Partial work is fine..." paragraph verbatim across modules. The only per-module variation is the title, the orientation paragraph, the lesson page filename, and the `open_notebook.py` argument (e.g. `03b`, `09b`).
+  Keep the workflow list and the trailing "Partial work is fine..." paragraph verbatim across modules. The only per-module variation is the title, the orientation paragraph, the lesson page filename, and the `./notebook.sh` argument (e.g. `03b`, `09b`).
 - **Configs live near consumption.** No global "Run Configuration" wall at the top. Corpus knobs go in the prep cell, model and trainer config dicts at the top of the cell that uses them, sample prompts inline with the sample cell. A small shared base is fine only if it materially cuts duplication.
 - **No user-controlled run gates.** Don't add `run_X = True/False` toggles to skip long-running cells. If a student doesn't want to run a cell, they don't run it; Jupyter handles "stop execution." Environment checks (e.g. "TinyStories not downloaded → skip with friendly message") are different and should stay.
 - **Extract notebook plumbing, not concepts.** IPython display helpers, matplotlib chart glue, and `Trainer` progress wrappers belong in `g2c/notebook_extras/<topic>.py`, not inline. Code that IS the experiment the student is meant to read (an LR sweep loop, an ablation set) stays inline. Code the lesson explicitly frames as transitional (e.g. "Module 11 will build the real generation utilities, here's a stand-in") also stays inline so the framing is visible.
