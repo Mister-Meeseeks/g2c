@@ -41,7 +41,7 @@ One-stop wrapper for opening a module notebook:
 Module → extras mapping:
   04            ./datasets.sh --tiny
   05            ./datasets.sh glove
-  10            ./datasets.sh --tiny
+  10            ./datasets.sh
   13, 14, 15    ./baselm.sh
   16-20         ./prodlm.sh
   (others)      no extras
@@ -90,7 +90,7 @@ case "$MODULE_NORM" in
     08)  TEST_FILES=("tests/test_multi_head_attention.py") ;;
     09)  TEST_FILES=("tests/test_transformer.py") ;;
     09b) TEST_FILES=("tests/test_pretraining_setup.py" "tests/test_pretraining.py") ;;
-    10)  EXTRAS+=("./datasets.sh --tiny")
+    10)  EXTRAS+=("./datasets.sh")
          TEST_FILES=("tests/test_training.py" "tests/test_pretraining_setup.py" "tests/test_pretraining.py") ;;
     11)  TEST_FILES=("tests/test_sampling.py") ;;
     13)  EXTRAS+=("./baselm.sh")

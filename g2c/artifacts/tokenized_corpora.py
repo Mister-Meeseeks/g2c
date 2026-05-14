@@ -1,7 +1,7 @@
 """Disk-backed tokenized corpus artifacts for language-model training.
 
 Raw corpora in ``data/`` stay as compressed text. This module builds one flat
-token-ID artifact under ``data/cache/``. Training notebooks can
+token-ID artifact under ``data/cache/token-corpus/``. Training notebooks can
 then create cheap train/validation views over that file without re-tokenizing.
 """
 from __future__ import annotations

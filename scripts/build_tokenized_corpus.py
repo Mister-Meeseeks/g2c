@@ -52,7 +52,7 @@ def main() -> int:
     parser.add_argument(
         "--name",
         default=None,
-        help="Artifact name under data/cache/",
+        help="Artifact name under data/cache/token-corpus/",
     )
     parser.add_argument(
         "--corpus",

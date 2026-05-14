@@ -131,8 +131,8 @@ Use these as planning ranges, not promises.
 | G2C corpus full | Full | long: network plus processing | `data/datasets/g2c-corpus-v1/` |
 | StoryTokenizer | Tiny/Standard/Full | minutes | `artifacts/tokenizers/StoryTokenizer/` |
 | G2CTokenizer | Standard/Full | minutes to tens of minutes | `artifacts/tokenizers/G2CTokenizer/` |
-| Tokenized TinyStories | Tiny/Standard/Full | minutes | `data/cache/StoryLM-*` |
-| Tokenized G2C corpus | Standard/Full | minutes to tens of minutes | `data/cache/TinyLLM-*` |
+| Tokenized TinyStories | Tiny/Standard/Full | minutes | `data/cache/token-corpus/StoryLM-*` |
+| Tokenized G2C corpus | Standard/Full | minutes to tens of minutes | `data/cache/token-corpus/TinyLLM-*` |
 | StoryLM 5M/30M training | Module 10 | minutes to about hour-class | checkpoints and model artifacts |
 | TinyLLM 30M-100M training | Module 10/12 | multi-hour or overnight | checkpoints and model artifacts |
 | BaseLM fetch | Modules 13-15 | model-size and network dependent | `./baselm.sh`, HF cache under `data/cache/baselm/` |
