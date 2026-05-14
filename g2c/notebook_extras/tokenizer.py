@@ -26,6 +26,8 @@ __all__ = [
     "inspect_tokenizer_artifact",
     "learned_vocab_window",
     "make_artifact_display",
+    "plot_frequent_token_histogram",
+    "plot_vocab_divider_histogram",
     "run_and_inspect_tokenizer_artifact",
 ]
 
@@ -384,8 +386,13 @@ def _plot_vocab_divider_tokens(
     plt.show()
 
 
-def inspect_tokenizer_artifact(artifact: TokenizerArtifact, *, seed: int = 13) -> None:
-    """Print summary stats and plot most-frequent learned tokens."""
+def inspect_tokenizer_artifact(
+    artifact: TokenizerArtifact,
+    *,
+    seed: int = 13,
+    show_plots: bool = True,
+) -> None:
+    """Print summary stats and optionally plot tokenizer histograms."""
     tokenizer = artifact.tokenizer
     text = artifact.text
     if not text:
@@ -417,9 +424,49 @@ def inspect_tokenizer_artifact(artifact: TokenizerArtifact, *, seed: int = 13) -
 
     _print_encoded_at_dividers(tokenizer, sample)
 
-    learned_frequent_rows = _most_frequent_final_tokens(tokenizer, text, top_n=20, learned_only=True)
-    _plot_frequency_rows(learned_frequent_rows, title=f"{name}: most frequent learned final tokens")
-    _plot_vocab_divider_tokens(tokenizer, text, title=f"{name}: tokens sampled at vocabulary dividers")
+    if show_plots:
+        plot_frequent_token_histogram(artifact)
+        plot_vocab_divider_histogram(artifact)
+
+
+def plot_frequent_token_histogram(
+    artifact: TokenizerArtifact,
+    *,
+    top_n: int = 20,
+    max_chars: int = 200_000,
+) -> None:
+    """Plot the most frequent learned tokens in the encoded inspection sample."""
+    if not artifact.text:
+        print(f"Skipping frequency histogram for {artifact.config.name}: no source text loaded.")
+        return
+    rows = _most_frequent_final_tokens(
+        artifact.tokenizer,
+        artifact.text,
+        top_n=top_n,
+        max_chars=max_chars,
+        learned_only=True,
+    )
+    _plot_frequency_rows(
+        rows,
+        title=f"{artifact.config.name}: most frequent learned final tokens",
+    )
+
+
+def plot_vocab_divider_histogram(
+    artifact: TokenizerArtifact,
+    *,
+    max_chars: int = 200_000,
+) -> None:
+    """Plot counts for representative tokens at vocabulary-size dividers."""
+    if not artifact.text:
+        print(f"Skipping divider histogram for {artifact.config.name}: no source text loaded.")
+        return
+    _plot_vocab_divider_tokens(
+        artifact.tokenizer,
+        artifact.text,
+        title=f"{artifact.config.name}: tokens sampled at vocabulary dividers",
+        max_chars=max_chars,
+    )
 
 
 def run_and_inspect_tokenizer_artifact(

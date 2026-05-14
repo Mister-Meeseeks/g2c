@@ -14,9 +14,14 @@ import torch
 
 from g2c.nn import (
     CrossEntropyLoss,
+    Linear,
     SGD,
+    Sequential,
+    accuracy_from_logits,
+    build_2d_classifier,
     build_mnist_mlp,
     evaluate_accuracy,
+    train_classifier,
     train_one_epoch,
 )
 
@@ -227,42 +232,101 @@ def run_weight_decay_experiment(
 
 
 def compare_with_and_without_relu(
-    train_loader,
-    test_loader,
+    x: torch.Tensor,
+    y: torch.Tensor,
     *,
-    hidden: int = 128,
-    epochs: int = 5,
-    lr: float = 0.08,
+    hidden: int = 16,
+    steps: int = 1000,
+    lr: float = 0.1,
 ) -> dict[str, dict[str, object]]:
-    """Train matched MNIST models with and without the hidden ReLU."""
+    """Train matched 2D classifiers with and without the hidden ReLU."""
     results: dict[str, dict[str, object]] = {}
     settings = [
-        ("with_relu", True),
-        ("without_relu", False),
+        ("with_relu", build_2d_classifier(hidden=hidden)),
+        ("without_relu", Sequential(Linear(2, hidden), Linear(hidden, 2))),
     ]
 
-    for label, use_relu in settings:
+    for label, model in settings:
         print(f"\n{label}")
-        results[label] = _train_mnist_experiment(
-            hidden=hidden,
-            use_relu=use_relu,
-            weight_decay=0.0,
-            train_loader=train_loader,
-            test_loader=test_loader,
-            epochs=epochs,
+        losses = train_classifier(
+            model,
+            x,
+            y,
+            steps=steps,
             lr=lr,
         )
+        accuracy = accuracy_from_logits(model(x), y)
+        print(f"final loss {losses[-1]:.4f} | train acc {accuracy:.3f}")
+        results[label] = {
+            "model": model,
+            "train_losses": losses,
+            "train_accuracy": accuracy,
+        }
 
     plt.figure(figsize=(7, 3.5))
     for label, result in results.items():
-        plt.plot(result["test_accuracies"], marker="o", label=f"{label} test acc")
-    plt.xlabel("epoch")
-    plt.ylabel("test accuracy")
-    plt.ylim(0.0, 1.0)
+        plt.plot(result["train_losses"], label=label)
+    plt.xlabel("step")
+    plt.ylabel("cross-entropy")
     plt.title("Effect of removing the nonlinearity")
     plt.grid(True, alpha=0.3)
     plt.legend()
     plt.tight_layout()
     plt.show()
 
+    _plot_2d_classifier_comparison(results, x, y)
+
     return results
+
+
+def _plot_2d_classifier_comparison(
+    results: dict[str, dict[str, object]],
+    x: torch.Tensor,
+    y: torch.Tensor,
+) -> None:
+    """Show the learned 2D decision regions for a comparison result."""
+    x_min, x_max = x[:, 0].min().item() - 0.3, x[:, 0].max().item() + 0.3
+    y_min, y_max = x[:, 1].min().item() - 0.3, x[:, 1].max().item() + 0.3
+    xs = torch.linspace(x_min, x_max, 160)
+    ys = torch.linspace(y_min, y_max, 160)
+    grid_x, grid_y = torch.meshgrid(xs, ys, indexing="xy")
+    grid = torch.stack([grid_x.reshape(-1), grid_y.reshape(-1)], dim=1)
+
+    fig, axes = plt.subplots(
+        1,
+        len(results),
+        figsize=(5 * len(results), 4.2),
+        sharex=True,
+        sharey=True,
+        constrained_layout=True,
+    )
+    if len(results) == 1:
+        axes = [axes]
+
+    for ax, (label, result) in zip(axes, results.items(), strict=True):
+        model = result["model"]
+        assert isinstance(model, Sequential)
+        with torch.no_grad():
+            logits = model(grid)
+            probs = torch.softmax(logits, dim=-1)[:, 1].reshape(grid_x.shape)
+            pred = logits.argmax(dim=-1).reshape(grid_x.shape)
+
+        ax.contourf(grid_x, grid_y, pred, levels=1, alpha=0.22, cmap="coolwarm")
+        boundary_levels = [0.5]
+        ax.contour(
+            grid_x,
+            grid_y,
+            probs,
+            levels=boundary_levels,
+            colors="black",
+            linewidths=1.6,
+        )
+        ax.scatter(x[:, 0], x[:, 1], c=y, s=12, cmap="coolwarm", edgecolors="none")
+        ax.set_title(f"{label}\ntrain acc {result['train_accuracy']:.3f}")
+        ax.set_xlabel("x1")
+        ax.set_aspect("equal")
+        ax.grid(True, alpha=0.15)
+
+    axes[0].set_ylabel("x2")
+    fig.suptitle("Decision boundary with and without ReLU")
+    plt.show()
