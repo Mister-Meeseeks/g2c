@@ -4,7 +4,7 @@
 
 ![Hero](15-evaluation/Module15-Hero.png)
 
-The last two weeks have been about tuning a base model's behavior. This week is about measuring how well we did. It's a three-pronged evaluation: closed-set scoring for capability ranking, open-set for behavior, and a calibration metric for "how well does the model know what it doesn't know". The minimum viable harness for any serious model work. A single loss number alone doesn't cut it for assistant grade models.
+The last two modules have been about tuning a base model's behavior. This week is about measuring how well we did. It's a three-pronged evaluation: closed-set scoring for capability ranking, open-set for behavior, and a calibration metric for "how well does the model know what it doesn't know". The minimum viable harness for any serious model work. A single loss number alone won't cut it for assistant grade models.
 
 ---
 ## Before you start

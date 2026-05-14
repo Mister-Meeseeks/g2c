@@ -165,7 +165,7 @@ pytest tests/test_attention.py -v          # verbose
 Open the working notebook with `.venv/bin/python scripts/open_notebook.py 07`. The notebook contains the runnable attention visualizations and small training probes.
 
 1. **Hand-compute attention.** Verify every step of a 3-token self-attention example.
-2. **Visualize attention.** Compare random attention with a lightly trained attention probe.
+2. **Visualize attention.** Plot random attention on two sentences using the reusable `G2CTokenizer` at vocab 2048 when available, with a character-tokenizer fallback, then compare with a lightly trained TinyShakespeare probe that uses `ShakespeareTokenizer` at vocab 2048 when available.
 3. **Strip-mask experiment.** Show how non-causal attention cheats on next-token prediction.
 4. **Parameter counts.** Verify attention parameter count grows with `D`, not `T`.
 5. **Quadratic cost.** Time attention as sequence length increases.
@@ -190,7 +190,8 @@ Open the working notebook with `.venv/bin/python scripts/open_notebook.py 07`. T
 
 This module is light on compute.
 
-- The viz exercise (exercise 2) is forward-pass-only on a single short sentence — milliseconds.
+- The visualization exercise is forward-pass-only on two short sentences. It uses the reusable `G2CTokenizer` when available, or a character-tokenizer fallback — milliseconds either way.
+- The optional TinyShakespeare attention probe uses `ShakespeareTokenizer` at vocab 2048 when available and caps the training stream at 1,000,000 tokens. It is still a tiny single-layer model, but the larger token stream can take a few minutes depending on hardware.
 - Exercise 3's strip-mask experiment is a few hundred training steps on a small corpus with a single attention layer — under a minute on CPU.
 - Exercise 5's `O(T²)` timing demo at `T = 4096, D = 128` allocates a 16M-entry `(T, T)` score tensor — comfortable on a 16GB machine. If you push to `T = 16384` it's a 256M-entry tensor (`~1GB` at fp32); manageable but you'll feel it.
 

@@ -221,7 +221,7 @@ Open or resume the working notebook with `.venv/bin/python scripts/open_notebook
 2. **Sinusoidal positions.** Inspect the fixed table and its multi-frequency pattern.
 3. **RoPE table construction.** Verify the split-halves cos/sin convention.
 4. **RoPE relative positions.** Check that equal offsets produce equal rotated dot products.
-5. **Tiny co-occurrence embeddings.** Train and visualize a small embedding model.
+5. **Tiny co-occurrence embeddings.** Train a small skip-gram model on TinyShakespeare, then inspect nearest learned tokens and a 2D projection. If the reusable `ShakespeareTokenizer` artifact exists, the notebook uses its full 4096-token vocabulary and the full corpus; otherwise it falls back to a smaller in-notebook tokenizer and corpus slice.
 6. **Pretrained vector analogies.** Compare tiny embeddings with GloVe-scale structure.
 7. **Positional schemes side by side.** Compare learned, sinusoidal, and RoPE heatmaps.
 
@@ -239,7 +239,7 @@ This module is light on compute.
 
 - A 32k × 256 token-embedding table is ~8M parameters, ~32MB. Fits anywhere.
 - Sinusoidal and RoPE tables for `max_seq_len = 4096, dim = 512` are around 8MB each. Trivial.
-- The exercises that move some compute (training a tiny embedding model, t-SNE on the result) all fit comfortably on CPU; MPS isn't even necessary unless your corpus is large. Plan tens of seconds to a few minutes per exercise.
+- The exercises that move some compute (training a tiny embedding model, projecting the result) all fit comfortably on CPU; MPS isn't necessary. With the reusable `ShakespeareTokenizer` artifact, the TinyShakespeare skip-gram exercise uses the full local corpus; without it, the notebook falls back to a smaller slice.
 
 ---
 ## Reading
@@ -259,6 +259,6 @@ Secondary:
 ## Deliverable checklist
 
 - [ ] All tests in `tests/test_embeddings.py` pass.
-- [ ] `notebooks/solutions/05-embeddings.ipynb`: tiny embedding model trained on a corpus, 2D visualization included.
+- [ ] `notebooks/solutions/05-embeddings.ipynb`: tiny embedding model trained on TinyShakespeare, nearest-token inspection and 2D visualization included.
 - [ ] `notebooks/solutions/05-embeddings.ipynb`: `king − man + woman ≈ queen` reproduced on pretrained vectors; honest assessment of whether your tiny model reproduces any analogies.
 - [ ] You can explain — out loud, without notes — why RoPE'd attention scores depend only on the relative position offset.

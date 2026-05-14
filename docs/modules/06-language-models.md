@@ -223,7 +223,7 @@ Open the working notebook with `.venv/bin/python scripts/open_notebook.py 06`. T
 2. **Counts bigram model.** Inspect counts, smoothing, and next-token probabilities.
 3. **Neural bigram and MLP shapes.** Verify logits and context-order behavior.
 4. **Perplexity and sampling.** Connect cross-entropy to predict-append-repeat generation.
-5. **Train all three models.** Compare counts, neural bigram, and MLP validation perplexity.
+5. **Train all three models.** Compare counts, neural bigram, and MLP validation perplexity. If the reusable `ShakespeareTokenizer` artifact exists, the notebook uses its full 4096-token vocabulary; otherwise it trains a smaller local tokenizer as a fallback.
 6. **Read generated text.** Compare failure modes qualitatively.
 7. **Plot training curves.** Use the counts model as a baseline for neural training curves.
 
@@ -243,13 +243,13 @@ Open the working notebook with `.venv/bin/python scripts/open_notebook.py 06`. T
 
 - **Perplexity blowing up on a tiny held-out set.** If `val_ids` is shorter than `context_length`, perplexity is undefined (no windows to score). The test for this throws `ValueError` from `get_batch`; for `perplexity` itself, guarantee `len(val_ids) > context_length` in the calling code.
 
-- **Comparing perplexities across vocab sizes.** A bigger vocab makes every individual prediction harder; perplexities aren't directly comparable across tokenizers. For exercise 5, train all three models on the *same* tokenized stream so the comparison is fair.
+- **Comparing perplexities across vocab sizes.** A bigger vocab makes every individual prediction harder; perplexities aren't directly comparable across tokenizers. For exercise 5, train all three models on the *same* tokenized stream so the comparison is fair. If your notebook uses the fallback tokenizer, compare those runs only to other fallback-tokenizer runs.
 
 ## M-series notes
 
 This module is light on compute.
 
-- The counts table for `vocab_size = 1024` is 4MB. At `vocab_size = 8192` it's 256MB. Fine on a 16GB machine, but getting heavy. This is a glimpse of why counts models don't scale.
+- The counts table for `vocab_size = 4096` is about 128MB; at `vocab_size = 8192` it is about 512MB for the integer counts table before any temporary tensors. Fine on a 16GB machine at the notebook sizes, but getting heavy. This is a glimpse of why counts models don't scale.
 - The neural bigram and MLP at the sizes used in exercise 5 have well under 1M parameters. CPU is fine, but MPS starts to pay off when you push steps, hidden size, or vocab size upward.
 - `train_lm(..., device="auto")` moves trainable neural models and sampled minibatches to MPS when available. CountsBigramLM stays CPU-side because it is a plain counts table.
 
