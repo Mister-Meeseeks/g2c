@@ -31,6 +31,7 @@ __all__ = [
     "sample_model_text",
     "sample_text",
     "show_model_samples",
+    "show_next_token_distribution",
     "stream_sample_text",
     "token_is_readable",
     "type_token_ratio",
@@ -335,6 +336,37 @@ def type_token_ratio(ids: torch.Tensor) -> float:
     """Return distinct-token count divided by total-token count."""
     values = [int(x) for x in ids.tolist()]
     return len(set(values)) / max(1, len(values))
+
+
+def show_next_token_distribution(
+    rows: list[tuple[str, float]],
+    *,
+    prompt: str,
+    title: str | None = None,
+) -> None:
+    """Plot and print the top next-token probabilities returned by ``next_token_rows``."""
+    import matplotlib.pyplot as plt
+
+    labels = [token_text for token_text, _ in rows]
+    probs = [prob for _, prob in rows]
+
+    fig, ax = plt.subplots(figsize=(9, 5))
+    y = list(range(len(rows)))
+    ax.barh(y, probs)
+    ax.set_yticks(y, labels)
+    ax.invert_yaxis()
+    ax.set_xlabel("probability")
+    ax.set_title(title or f"Native next-token probabilities after {prompt!r}")
+    for index, prob in enumerate(probs):
+        ax.text(prob, index, f" {prob:.4f}", va="center")
+    fig.tight_layout()
+    plt.show()
+
+    print("native next-token distribution")
+    print("token                probability")
+    print("-" * 34)
+    for token_text, prob in rows:
+        print(f"{token_text:<20} {prob:.4f}")
 
 
 def token_is_readable(tokenizer: Any, token_id: int) -> bool:

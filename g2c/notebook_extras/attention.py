@@ -29,6 +29,7 @@ from g2c.training import AdamW
 
 __all__ = [
     "TinyShakespeareAttentionProbe",
+    "TinyShakespeareProbeData",
     "attention_entropy",
     "causal_uniform_matrix",
     "choose_shakespeare_artifact_name",
@@ -105,8 +106,9 @@ def plot_random_sentence_attention(
     tokenizer_name: str = "G2CTokenizer",
     vocab_size: int = 2048,
     embedding_dim: int = 16,
+    causal: bool = True,
 ) -> None:
-    """Plot raw and uniform-centered random attention for short sentences."""
+    """Plot raw and baseline-centered random attention for short sentences."""
     if not sentences:
         raise ValueError("sentences must not be empty")
 
@@ -119,8 +121,9 @@ def plot_random_sentence_attention(
 
     token_embed = TokenEmbedding(vocab_size=actual_vocab_size, embedding_dim=embedding_dim)
     pos_embed = LearnedPositionalEmbedding(max_seq_len=128, embedding_dim=embedding_dim)
-    attention = SelfAttention(embedding_dim=embedding_dim, causal=False)
+    attention = SelfAttention(embedding_dim=embedding_dim, causal=causal)
     print("tokenizer:", tokenizer_mode)
+    print("causal mask:", causal)
 
     fig, axes = plt.subplots(
         2, len(sentences), figsize=(7 * len(sentences), 9), constrained_layout=True
@@ -135,17 +138,25 @@ def plot_random_sentence_attention(
         weights = attention.attention_weights(x)[0].detach()
         labels = _token_labels(ids, decode)
 
-        uniform = 1.0 / weights.shape[-1]
-        deviation = weights - uniform
+        if causal:
+            baseline = causal_uniform_matrix(weights.shape[-1])
+            baseline_label = "causal-uniform"
+            raw_vmax = 1.0
+        else:
+            baseline = torch.full_like(weights, 1.0 / weights.shape[-1])
+            baseline_label = "uniform"
+            raw_vmax = 0.25
+        deviation = weights - baseline
         dev_limit = max(float(deviation.abs().max()), 1e-6)
 
         print(
-            f"{sentence!r}: T={weights.shape[-1]}, uniform={uniform:.4f}, "
-            f"max={float(weights.max()):.4f}, max above uniform={float(deviation.max()):.4f}"
+            f"{sentence!r}: T={weights.shape[-1]}, "
+            f"max={float(weights.max()):.4f}, "
+            f"max above {baseline_label}={float(deviation.max()):.4f}"
         )
 
         prob_ax = axes[0, column]
-        prob_image = prob_ax.imshow(weights, vmin=0.0, vmax=0.25, cmap="viridis")
+        prob_image = prob_ax.imshow(weights, vmin=0.0, vmax=raw_vmax, cmap="viridis")
         prob_ax.set_title(sentence)
         prob_ax.set_ylabel("query position")
         fig.colorbar(prob_image, ax=prob_ax, fraction=0.046, pad=0.04)
@@ -157,7 +168,7 @@ def plot_random_sentence_attention(
             vmax=dev_limit,
             cmap="coolwarm",
         )
-        dev_ax.set_title("attention minus uniform baseline")
+        dev_ax.set_title(f"attention minus {baseline_label} baseline")
         dev_ax.set_xlabel("key position")
         dev_ax.set_ylabel("query position")
         fig.colorbar(dev_image, ax=dev_ax, fraction=0.046, pad=0.04)
@@ -267,6 +278,7 @@ def run_tinyshakespeare_attention_probe(
     *,
     repo_root: Path,
     device: str | torch.device = "auto",
+    probe_seq_len: int = 25,
     steps: int = 600,
     batch_size: int = 128,
     lr: float = 3e-3,
@@ -279,7 +291,6 @@ def run_tinyshakespeare_attention_probe(
         print("Skipping TinyShakespeare attention probe: run ./setup.sh first.")
         return None
 
-    probe_seq_len = 64
     probe_prompt_text = probe_data.text[:800]
     probe_prompt_token_ids = probe_data.encode_text(probe_prompt_text)
     if len(probe_prompt_token_ids) < probe_seq_len:
@@ -380,9 +391,9 @@ def plot_trained_shakespeare_attention_heads(
     *,
     repo_root: Path,
     artifact_name: str | None = None,
-    prompt: str = "First Citizen:\nBefore we proceed any further, hear me speak.",
+    prompt: str = "First Citizen: ",
     layer_index: int = 0,
-    max_tokens: int = 48,
+    max_tokens: int = 25,
 ) -> None:
     """Plot raw and centered head maps for a saved ShakespeareLM artifact."""
     artifact_name = artifact_name or choose_shakespeare_artifact_name(repo_root=repo_root)

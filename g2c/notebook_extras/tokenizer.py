@@ -26,6 +26,7 @@ __all__ = [
     "inspect_tokenizer_artifact",
     "learned_vocab_window",
     "make_artifact_display",
+    "measure_vocab_compression",
     "plot_frequent_token_histogram",
     "plot_vocab_divider_histogram",
     "run_and_inspect_tokenizer_artifact",
@@ -121,7 +122,8 @@ def make_artifact_display(label: str):
         elif phase == "fast_export_done":
             show(
                 Markdown(
-                    f"{label}: exported `{info['merge_count']:,}` learned merges; releasing Rust tokenizer... "
+                    f"{label}: exported `{info['merge_count']:,}` learned merges; "
+                    "releasing Rust tokenizer... "
                     f"| elapsed `{time.perf_counter() - start:.1f}s`"
                 )
             )
@@ -136,14 +138,16 @@ def make_artifact_display(label: str):
         elif phase == "fast_import_done":
             show(
                 Markdown(
-                    f"{label}: imported course tokenizer vocab `{info['vocab_size']:,}/{info['target_vocab_size']:,}` "
+                    f"{label}: imported course tokenizer vocab "
+                    f"`{info['vocab_size']:,}/{info['target_vocab_size']:,}` "
                     f"| elapsed `{time.perf_counter() - start:.1f}s`"
                 )
             )
         elif phase == "fast_encode_skipped":
             show(
                 Markdown(
-                    f"{label}: skipping full-corpus encode; tokenizer artifact will save an encoded inspection sample. "
+                    f"{label}: skipping full-corpus encode; tokenizer artifact will "
+                    "save an encoded inspection sample. "
                     f"| elapsed `{time.perf_counter() - start:.1f}s`"
                 )
             )
@@ -176,7 +180,8 @@ def make_artifact_display(label: str):
         elif phase == "fast_done":
             show(
                 Markdown(
-                    f"{label}: trained vocab `{info['vocab_size']:,}/{info['target_vocab_size']:,}` "
+                    f"{label}: trained vocab "
+                    f"`{info['vocab_size']:,}/{info['target_vocab_size']:,}` "
                     f"| sample tokens `{info['token_count']:,}` "
                     f"| chunks `{info['chunks']:,}` "
                     f"| elapsed `{info['elapsed_seconds']:.1f}s`"
@@ -184,7 +189,9 @@ def make_artifact_display(label: str):
             )
         elif phase == "saved":
             print(f"saved {label}: {info['token_count']:,} sample token IDs")
-        elif {"vocab_size", "target_vocab_size", "steps", "tokens", "last_merge_count"}.issubset(info):
+        elif {"vocab_size", "target_vocab_size", "steps", "tokens", "last_merge_count"}.issubset(
+            info
+        ):
             if progress is None:
                 show(Markdown(f"{label} tokenizer training starting..."))
             last_token = info.get("last_token_repr")
@@ -228,11 +235,32 @@ def learned_vocab_window(
     learned_ids = sorted(
         token_id for token_id in tokenizer.vocab if token_id >= tokenizer.base_vocab_size
     )
-    rows = [
-        (token_id, _display_token_bytes(tokenizer.vocab[token_id]))
-        for token_id in learned_ids
-    ]
+    rows = [(token_id, _display_token_bytes(tokenizer.vocab[token_id])) for token_id in learned_ids]
     return rows[:n], rows[-n:] if n else []
+
+
+def measure_vocab_compression(
+    tokenizer: BPETokenizer,
+    passage: str,
+    vocab_sizes: list[int],
+) -> list[dict[str, float | int]]:
+    """Re-encode a passage at several truncated BPE vocabulary sizes.
+
+    This is notebook measurement glue for Module 04. The important lesson is
+    the compression curve; the BPE implementation itself lives in
+    ``g2c.tokenizer``.
+    """
+    rows: list[dict[str, float | int]] = []
+    for vocab_size in vocab_sizes:
+        ids = tokenizer.encode_at_vocab(passage, vocab_size)
+        rows.append(
+            {
+                "vocab_size": int(vocab_size),
+                "tokens": len(ids),
+                "chars_per_token": len(passage) / max(1, len(ids)),
+            }
+        )
+    return rows
 
 
 def _shorten(text: str, width: int = 36) -> str:
@@ -248,7 +276,9 @@ def _deterministic_text_window(text: str, *, chars: int = 360, seed: int = 0) ->
 
 
 def _token_strings(tokenizer: BPETokenizer, text: str) -> list[str]:
-    return [_display_token_bytes(tokenizer.vocab[token_id]) for token_id in tokenizer.encode_fast(text)]
+    return [
+        _display_token_bytes(tokenizer.vocab[token_id]) for token_id in tokenizer.encode_fast(text)
+    ]
 
 
 def _most_frequent_final_tokens(
@@ -269,8 +299,12 @@ def _most_frequent_final_tokens(
     return rows
 
 
-def _longest_learned_tokens(tokenizer: BPETokenizer, *, top_n: int = 20) -> list[tuple[int, int, str]]:
-    learned_ids = [token_id for token_id in tokenizer.vocab if token_id >= tokenizer.base_vocab_size]
+def _longest_learned_tokens(
+    tokenizer: BPETokenizer, *, top_n: int = 20
+) -> list[tuple[int, int, str]]:
+    learned_ids = [
+        token_id for token_id in tokenizer.vocab if token_id >= tokenizer.base_vocab_size
+    ]
     learned_ids.sort(key=lambda token_id: (len(tokenizer.vocab[token_id]), token_id), reverse=True)
     selected_token_bytes: list[bytes] = []
     rows = []
@@ -352,8 +386,7 @@ def _print_encoded_at_dividers(
     for vocab in vocab_sizes:
         ids = tokenizer.encode_at_vocab(sample, vocab)
         token_strs = [
-            _shorten(repr(_display_token_bytes(tokenizer.vocab[token_id])), 16)
-            for token_id in ids
+            _shorten(repr(_display_token_bytes(tokenizer.vocab[token_id])), 16) for token_id in ids
         ]
         display = " ".join(token_strs)
         if len(display) > 220:
@@ -373,8 +406,7 @@ def _plot_vocab_divider_tokens(
         return
     counts = Counter(tokenizer.encode_fast(text[:max_chars]))
     rows = [
-        (idx, _display_token_bytes(tokenizer.vocab[idx]), counts.get(idx, 0))
-        for idx in indices
+        (idx, _display_token_bytes(tokenizer.vocab[idx]), counts.get(idx, 0)) for idx in indices
     ]
     labels = [f"#{idx}: {_shorten(repr(token), 24)}" for idx, token, _ in reversed(rows)]
     bar_counts = [count for _, _, count in reversed(rows)]
@@ -419,7 +451,10 @@ def inspect_tokenizer_artifact(
     _print_rows(
         "Longest learned tokens, greedily excluding byte substrings",
         ("token_id", "bytes", "token"),
-        [(token_id, length, repr(_shorten(token, 120))) for token_id, length, token in longest_rows],
+        [
+            (token_id, length, repr(_shorten(token, 120)))
+            for token_id, length, token in longest_rows
+        ],
     )
 
     _print_encoded_at_dividers(tokenizer, sample)

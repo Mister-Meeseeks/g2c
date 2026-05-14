@@ -1,4 +1,5 @@
 """Visualization helpers for the Module 03B training notebook."""
+
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
@@ -9,10 +10,32 @@ import torch
 
 from g2c.nn import CrossEntropyLoss, Sequential
 
-__all__ = ["plot_optimizer_decision_snapshots"]
+__all__ = ["make_xor_data", "plot_optimizer_decision_snapshots"]
 
 
 OptimizerRun = tuple[type, float, float]
+
+
+def make_xor_data(
+    n_per_corner: int = 128,
+    noise: float = 0.18,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Return the XOR-style 2D classification dataset used in Module 03B."""
+    torch.manual_seed(0)
+    centers = torch.tensor(
+        [
+            [-1.0, -1.0],
+            [-1.0, 1.0],
+            [1.0, -1.0],
+            [1.0, 1.0],
+        ]
+    )
+    labels = torch.tensor([0, 1, 1, 0])
+    x = centers.repeat_interleave(n_per_corner, dim=0)
+    y = labels.repeat_interleave(n_per_corner)
+    x = x + noise * torch.randn_like(x)
+    order = torch.randperm(len(x))
+    return x[order], y[order]
 
 
 def plot_optimizer_decision_snapshots(

@@ -3,7 +3,9 @@
 These helpers are not part of the course deliverable. They wrap the
 student-built ``SFTTrainer`` with notebook progress display and plotting so
 the Module 13 notebook can focus on dataset construction, masking, and behavior
-inspection.
+inspection. They also provide chat-template sampling and base-vs-SFT comparison
+helpers that hide the encode/generate/decode boilerplate so the notebook keeps
+the chat-prefix construction visible while the rendering plumbing moves out.
 """
 
 from __future__ import annotations
@@ -13,14 +15,110 @@ import time
 from typing import Any
 
 import matplotlib.pyplot as plt
+import torch
 from IPython.display import Markdown, display
 
-from g2c.sft import SFTExample, SFTTrainer
+from g2c.artifacts import LoadedModelArtifact
+from g2c.notebook_extras.sampling import decode_ids, encode_prompt, eos_id
+from g2c.sft import ChatTemplate, SFTExample, SFTTrainer
 
 __all__ = [
+    "chat_sample",
     "plot_sft_history",
+    "sample_continuation",
+    "show_base_vs_sft",
     "train_sft_with_progress",
 ]
+
+
+def sample_continuation(
+    artifact: LoadedModelArtifact,
+    prompt: str,
+    *,
+    max_new_tokens: int = 80,
+    temperature: float = 0.7,
+    top_k: int | None = None,
+    top_p: float | None = 0.9,
+    repetition_penalty: float = 1.1,
+    stop_id: int | None = None,
+    seed: int = 0,
+) -> str:
+    """Sample from ``artifact`` and return only the newly generated text."""
+    from g2c.sampling import generate
+
+    prompt_ids = encode_prompt(artifact, prompt)
+    effective_stop = eos_id(artifact) if stop_id is None else stop_id
+    generator = torch.Generator().manual_seed(seed)
+    out = generate(
+        artifact.model,
+        prompt_ids,
+        max_new_tokens=max_new_tokens,
+        temperature=temperature,
+        top_k=top_k,
+        top_p=top_p,
+        repetition_penalty=repetition_penalty,
+        eos_id=effective_stop,
+        generator=generator,
+    )
+    return decode_ids(artifact, out[len(prompt_ids):])
+
+
+def chat_sample(
+    artifact: LoadedModelArtifact,
+    user_text: str,
+    *,
+    template: ChatTemplate | None = None,
+    assistant_prefix: str = "",
+    **gen_kwargs: Any,
+) -> str:
+    """Apply the chat template to ``user_text`` and sample an assistant continuation.
+
+    Stops on the chat template's END marker (``<|end|>``) when present in the
+    artifact tokenizer, falling back to the artifact's default EOS otherwise.
+    """
+    if template is None:
+        template = ChatTemplate()
+    prompt = (
+        template.render([{"role": "user", "content": user_text}])
+        + f"{template.ASSISTANT}\n"
+        + assistant_prefix
+    )
+    stop_id = artifact.tokenizer.special_to_id.get(template.END)
+    return sample_continuation(artifact, prompt, stop_id=stop_id, **gen_kwargs)
+
+
+def show_base_vs_sft(
+    base_artifact: LoadedModelArtifact,
+    sft_artifact: LoadedModelArtifact,
+    prompts: list[str],
+    *,
+    template: ChatTemplate | None = None,
+    assistant_prefix: str = "",
+    seed: int = 0,
+    **gen_kwargs: Any,
+) -> None:
+    """Print base and SFT chat responses side-by-side for each prompt."""
+    for prompt in prompts:
+        print("\nPROMPT:", prompt)
+        print("-" * 80)
+        print("BASE:")
+        print(chat_sample(
+            base_artifact,
+            prompt,
+            template=template,
+            assistant_prefix=assistant_prefix,
+            seed=seed,
+            **gen_kwargs,
+        ))
+        print("\nSFT:")
+        print(chat_sample(
+            sft_artifact,
+            prompt,
+            template=template,
+            assistant_prefix=assistant_prefix,
+            seed=seed,
+            **gen_kwargs,
+        ))
 
 _BAR_WIDTH = 28
 

@@ -7,15 +7,17 @@ the model's progress visible.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 
 import matplotlib.pyplot as plt
 import torch
 
+from g2c.artifacts import find_repo_root
 from g2c.nn import (
+    SGD,
     CrossEntropyLoss,
     Linear,
-    SGD,
     Sequential,
     accuracy_from_logits,
     build_2d_classifier,
@@ -27,6 +29,9 @@ from g2c.nn import (
 
 __all__ = [
     "compare_with_and_without_relu",
+    "load_mnist_subset",
+    "make_circles_data",
+    "plot_2d_decision_boundary",
     "plot_mnist_training_curves",
     "plot_sample_predictions",
     "run_weight_decay_experiment",
@@ -34,6 +39,87 @@ __all__ = [
 
 _MNIST_MEAN = 0.1307
 _MNIST_STD = 0.3081
+
+
+def make_circles_data(
+    n: int = 400,
+    noise: float = 0.08,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Return a small nonlinear 2D classification dataset for notebook demos."""
+    n_outer = n // 2
+    n_inner = n - n_outer
+    outer_theta = 2 * math.pi * torch.rand(n_outer)
+    inner_theta = 2 * math.pi * torch.rand(n_inner)
+
+    outer = torch.stack([torch.cos(outer_theta), torch.sin(outer_theta)], dim=1)
+    inner = 0.45 * torch.stack([torch.cos(inner_theta), torch.sin(inner_theta)], dim=1)
+    x = torch.cat([outer, inner], dim=0) + noise * torch.randn(n, 2)
+    y = torch.cat([torch.zeros(n_outer), torch.ones(n_inner)]).long()
+    return x, y
+
+
+def plot_2d_decision_boundary(
+    model: Sequential,
+    x: torch.Tensor,
+    y: torch.Tensor,
+    *,
+    grid_size: int = 120,
+) -> None:
+    """Plot a 2D classifier's predicted regions over the training points."""
+    x_min, x_max = x[:, 0].min().item() - 0.3, x[:, 0].max().item() + 0.3
+    y_min, y_max = x[:, 1].min().item() - 0.3, x[:, 1].max().item() + 0.3
+    xs = torch.linspace(x_min, x_max, grid_size)
+    ys = torch.linspace(y_min, y_max, grid_size)
+    grid_x, grid_y = torch.meshgrid(xs, ys, indexing="xy")
+    grid = torch.stack([grid_x.reshape(-1), grid_y.reshape(-1)], dim=1)
+
+    with torch.no_grad():
+        pred = model(grid).argmax(dim=-1).reshape(grid_x.shape)
+
+    plt.contourf(grid_x, grid_y, pred, levels=1, alpha=0.25, cmap="coolwarm")
+    plt.scatter(x[:, 0], x[:, 1], c=y, s=12, cmap="coolwarm")
+    plt.gca().set_aspect("equal")
+    plt.show()
+
+
+def load_mnist_subset(
+    batch_size: int = 128,
+    train_limit: int | None = None,
+    test_limit: int | None = None,
+):
+    """Return train/test DataLoaders for MNIST, optionally limited for quick runs."""
+    from torch.utils.data import DataLoader, Subset
+    from torchvision import datasets, transforms
+
+    data_dir = find_repo_root() / "data"
+    transform = transforms.Compose(
+        [
+            transforms.ToTensor(),
+            transforms.Normalize((_MNIST_MEAN,), (_MNIST_STD,)),
+        ]
+    )
+
+    train_dataset = datasets.MNIST(
+        root=data_dir,
+        train=True,
+        download=True,
+        transform=transform,
+    )
+    test_dataset = datasets.MNIST(
+        root=data_dir,
+        train=False,
+        download=True,
+        transform=transform,
+    )
+
+    if train_limit is not None:
+        train_dataset = Subset(train_dataset, range(train_limit))
+    if test_limit is not None:
+        test_dataset = Subset(test_dataset, range(test_limit))
+
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+    return train_loader, test_loader
 
 
 def plot_mnist_training_curves(
@@ -126,9 +212,7 @@ def plot_sample_predictions(
             for spine in ax.spines.values():
                 spine.set_visible(False)
 
-    axes[0, 0].set_ylabel(
-        "true", rotation=0, fontsize=8, labelpad=20, ha="right", va="center"
-    )
+    axes[0, 0].set_ylabel("true", rotation=0, fontsize=8, labelpad=20, ha="right", va="center")
     for i in range(n_epochs):
         axes[i + 1, 0].set_ylabel(
             f"ep {i + 1}", rotation=0, fontsize=8, labelpad=20, ha="right", va="center"
@@ -165,10 +249,7 @@ def _train_mnist_experiment(
         test_acc = evaluate_accuracy(model, test_loader)
         train_losses.append(train_loss)
         test_accuracies.append(test_acc)
-        print(
-            f"epoch {epoch + 1:>2}/{epochs} | "
-            f"loss {train_loss:.4f} | test acc {test_acc:.3f}"
-        )
+        print(f"epoch {epoch + 1:>2}/{epochs} | loss {train_loss:.4f} | test acc {test_acc:.3f}")
 
     return {
         "model": model,

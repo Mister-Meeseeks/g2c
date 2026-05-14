@@ -165,7 +165,7 @@ pytest tests/test_attention.py -v          # verbose
 Open the working notebook with `.venv/bin/python scripts/open_notebook.py 07`. The notebook contains the runnable attention visualizations and small training probes.
 
 1. **Hand-compute attention.** Verify every step of a 3-token self-attention example.
-2. **Visualize attention.** Plot random attention on two sentences using the reusable `G2CTokenizer` at vocab 2048 when available, with a character-tokenizer fallback, then compare with a lightly trained TinyShakespeare probe that uses `ShakespeareTokenizer` at vocab 2048 when available.
+2. **Visualize attention.** Plot random causal attention on two sentences using the reusable `G2CTokenizer` at vocab 2048 when available, with a character-tokenizer fallback. The mask should already be visible; training only changes how probability is distributed over allowed past tokens. Then compare with a lightly trained TinyShakespeare probe that uses `ShakespeareTokenizer` at vocab 2048 when available.
 3. **Strip-mask experiment.** Show how non-causal attention cheats on next-token prediction.
 4. **Parameter counts.** Verify attention parameter count grows with `D`, not `T`.
 5. **Quadratic cost.** Time attention as sequence length increases.
