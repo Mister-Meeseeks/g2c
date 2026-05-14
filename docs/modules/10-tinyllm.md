@@ -17,8 +17,7 @@ This is the payoff week for Phase III. Module 09 built the architecture. Module 
 	* `g2c/pretraining` from  [[09b-pretraining]]
 	* `g2c/training` from [[03b-training]]. 
 	* The trained tokenizers from [[04-tokenizer]] notebook (optional; `datasets.sh` will generate if missing)
-* *Run* `.venv/bin/python scripts/artifact_status.py --module 10` to see which local artifact path is ready
-* *Run* `./datasets.sh --tiny`, `./datasets.sh --small`, or `./datasets.sh` if you want to prepare a larger track before the optional scale-up runs
+* *Run*  `./datasets.sh` pre-prepare the datasets used for the large training runs.
 
 ---
 ## Where this fits in

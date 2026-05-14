@@ -16,8 +16,7 @@ The last two modules have been about tuning a base model's behavior. This week i
 	* [[PyTorch Primer]] if any PyTorch code is unfamiliar or confusing
 * *Finish*
 	* `g2c/sampling` from [[11-sampling]]
-	* [[14-dpo]] The eval harness will use the post-trained model generated and saved in this notebook
-* *Run* `.venv/bin/python scripts/artifact_status.py --module 15` if you are deciding between a self-trained model and the BaseLM path. If you need BaseLM, run `./baselm.sh`.
+	* [[14-dpo]] notebook. The eval harness will use the post-trained model generated and saved in this notebook
 
 ---
 ## Where this fits in

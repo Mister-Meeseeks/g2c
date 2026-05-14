@@ -16,7 +16,6 @@ Preference tuning changes the training signal from "imitate this answer" to "pre
 	* `g2c/nn` from [[03-nn]] 
 	* `g2c/training` from [[03b-training]] 
 	* A post-SFT instruct model from the [[13-sft.md]] exercise notebook
-* *Run* `.venv/bin/python scripts/artifact_status.py --module 14` to confirm you have a usable self-trained model artifact or should use the BaseLM path. If you need BaseLM, run `./baselm.sh`.
 
 ---
 ## Where this fits in

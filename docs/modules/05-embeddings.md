@@ -197,22 +197,6 @@ pytest tests/test_embeddings.py -k rotary   # only the RoPE tests
 pytest tests/test_embeddings.py -v          # verbose
 ```
 
-Open the working notebook copy with:
-
-```bash
-./notebook.sh 05
-```
-
-The clean scaffold lives at `notebooks/clean/05-embeddings.ipynb`; do your work in the generated `notebooks/solutions/05-embeddings.ipynb` copy.
-
-Exercise 6 uses pretrained GloVe vectors. They are optional and larger than the normal setup assets:
-
-```bash
-./datasets.sh glove
-```
-
-The notebook skips the pretrained analogy section if `data/embeddings/glove.6B.50d.txt` is missing.
-
 ## Exercises
 
 Open or resume the working notebook with `./notebook.sh 05` (or `./notebook.sh 05 --fresh` to reset from the clean scaffold). The notebook contains the exact prompts, plots, and answer cells; implementation work lives in `g2c/embeddings/`.

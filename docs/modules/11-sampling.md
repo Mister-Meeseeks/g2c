@@ -15,7 +15,8 @@ You trained a model in Module 10, and now you need to actually generate text fro
 * *Finish* 
 	* `g2c/transformer` ([[09-transformer-block]]) 
 	* At least one trained model from [[10-tinyllm]] notebook (`ShakespeareLM`, `StoryLM`, or `TinyLLM`), or run `./baselm.sh` and explicitly load `BaseLM` for comparison
-* *Run* `.venv/bin/python scripts/artifact_status.py --module 11` if you are not sure which saved model the notebook will auto-load
+* *Run*
+	* `./baselm.sh` (optional) if you want to run the notebook with a more powerful model
 
 ---
 ## Where this fits in
