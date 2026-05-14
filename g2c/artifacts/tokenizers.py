@@ -7,9 +7,6 @@ here so later modules can reuse the same artifacts.
 """
 from __future__ import annotations
 
-import gzip
-import hashlib
-import pickle
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -34,7 +31,7 @@ from g2c.tokenizer.persistence import (
 )
 
 from .corpora import load_corpus_text
-from .paths import artifacts_root, find_repo_root, tokenizer_artifact_dir
+from .paths import find_repo_root, tokenizer_artifact_dir
 
 ArtifactProgressCallback = Callable[[dict[str, object]], None]
 ArtifactStatusCallback = Callable[[dict[str, object]], None]
@@ -175,7 +172,7 @@ def load_tinystories_text(
         repo_root=root,
     )
     if train_text is not None and not allow_sample:
-        tinystories_dir = root / "data" / "tinystories"
+        tinystories_dir = root / "data" / "datasets" / "tinystories"
         has_full_train = (
             (tinystories_dir / "TinyStories-train-shards.json").exists()
             or (tinystories_dir / "TinyStories-train.txt").exists()
@@ -299,111 +296,6 @@ def load_required_tokenizer(
             "For TinyStories, set RUN_TINYSTORIES_TOKENIZER = True in Module 04."
         ) from exc
     return artifact.tokenizer
-
-
-def load_or_encode_tokenized_corpus(
-    text: str,
-    tokenizer_name: str,
-    *,
-    label: str = "corpus",
-    repo_root: str | Path | None = None,
-    progress_callback: ArtifactProgressCallback | None = None,
-    vocab_size: int | None = None,
-) -> tuple[BPETokenizer, torch.Tensor]:
-    """Load cached token IDs for `text`, or encode them with a tokenizer artifact.
-
-    ``vocab_size`` controls the effective vocab used at encode time:
-    ``None`` = full tokenizer vocab, ``0`` = byte + reserved special tokens
-    only, ``N`` = truncate learned merges to those with ID < N. The cache key
-    includes this so different effective vocabs don't collide on disk.
-    """
-    root = find_repo_root(repo_root)
-    tokenizer = load_required_tokenizer(tokenizer_name, repo_root=root)
-    # Validate up front so we fail fast before touching the cache path.
-    tokenizer.effective_vocab_size(vocab_size)
-    cache_path = _token_id_cache_path(
-        label, (text,), tokenizer_name, tokenizer,
-        repo_root=root, vocab_size=vocab_size,
-    )
-    if cache_path.exists():
-        state = _load_pickle(cache_path)
-        return tokenizer, _as_long_tensor(state["ids"])
-
-    ids = encode_text_to_tensor(
-        tokenizer,
-        text,
-        progress_callback=progress_callback,
-        vocab_size=vocab_size,
-    )
-    _save_pickle(
-        {
-            "ids": ids,
-            "tokenizer_name": tokenizer_name,
-            "kind": "tokenized-corpus",
-            "vocab_size": vocab_size,
-        },
-        cache_path,
-    )
-    return tokenizer, ids
-
-
-def load_or_encode_tokenized_pair(
-    train_text: str,
-    val_text: str,
-    tokenizer_name: str,
-    *,
-    label: str,
-    repo_root: str | Path | None = None,
-    train_progress_callback: ArtifactProgressCallback | None = None,
-    val_progress_callback: ArtifactProgressCallback | None = None,
-    vocab_size: int | None = None,
-) -> tuple[BPETokenizer, torch.Tensor, torch.Tensor]:
-    """Load cached train/validation token IDs, or encode both text splits.
-
-    See ``load_or_encode_tokenized_corpus`` for ``vocab_size`` semantics.
-    """
-    root = find_repo_root(repo_root)
-    tokenizer = load_required_tokenizer(tokenizer_name, repo_root=root)
-    tokenizer.effective_vocab_size(vocab_size)
-    cache_path = _token_id_cache_path(
-        label,
-        (train_text, val_text),
-        tokenizer_name,
-        tokenizer,
-        repo_root=root,
-        vocab_size=vocab_size,
-    )
-    if cache_path.exists():
-        state = _load_pickle(cache_path)
-        return (
-            tokenizer,
-            _as_long_tensor(state["train_ids"]),
-            _as_long_tensor(state["val_ids"]),
-        )
-
-    train_ids = encode_text_to_tensor(
-        tokenizer,
-        train_text,
-        progress_callback=train_progress_callback,
-        vocab_size=vocab_size,
-    )
-    val_ids = encode_text_to_tensor(
-        tokenizer,
-        val_text,
-        progress_callback=val_progress_callback,
-        vocab_size=vocab_size,
-    )
-    _save_pickle(
-        {
-            "tokenizer_name": tokenizer_name,
-            "kind": "tokenized-pair",
-            "train_ids": train_ids,
-            "val_ids": val_ids,
-            "vocab_size": vocab_size,
-        },
-        cache_path,
-    )
-    return tokenizer, train_ids, val_ids
 
 
 def train_or_load_tokenizer_artifact(
@@ -532,113 +424,6 @@ def _normalize_config(
     if isinstance(config, TokenizerArtifactConfig):
         return config
     return TokenizerArtifactConfig.from_mapping(config)
-
-
-def _token_id_cache_path(
-    label: str,
-    text_parts: tuple[str, ...],
-    tokenizer_name: str,
-    tokenizer: BPETokenizer,
-    *,
-    repo_root: str | Path | None = None,
-    vocab_size: int | None = None,
-) -> Path:
-    root = find_repo_root(repo_root)
-    filename = _token_id_cache_filename(
-        label,
-        text_parts,
-        tokenizer_name,
-        tokenizer,
-        vocab_size=vocab_size,
-    )
-    return artifacts_root(root) / "tokenized-cache" / filename
-
-
-def _token_id_cache_filename(
-    label: str,
-    text_parts: tuple[str, ...],
-    tokenizer_name: str,
-    tokenizer: BPETokenizer,
-    *,
-    vocab_size: int | None = None,
-) -> str:
-    total_chars, text_digest = _text_parts_digest(text_parts)
-    safe_label = label.replace("/", "-")
-    safe_tokenizer = tokenizer_name.replace("/", "-")
-    # `v{N}` (or `vfull`) keeps caches at different effective vocab sizes
-    # separate. Without it a switch from full vocab to a truncated vocab
-    # would silently serve a stale ID stream.
-    vocab_tag = "vfull" if vocab_size is None else f"v{vocab_size}"
-    return (
-        f"{safe_label}-{safe_tokenizer}-{total_chars}-"
-        f"{text_digest}-{_tokenizer_digest(tokenizer)}-{vocab_tag}.pkl.gz"
-    )
-
-
-def _text_parts_digest(text_parts: tuple[str, ...]) -> tuple[int, str]:
-    h = hashlib.sha256()
-    total_chars = 0
-    for part in text_parts:
-        total_chars += len(part)
-        h.update(part.encode("utf-8"))
-        h.update(b"\0")
-    return total_chars, h.hexdigest()[:16]
-
-
-def _tokenizer_digest(tokenizer: BPETokenizer) -> str:
-    payload = repr(
-        {
-            "special_tokens": tokenizer.special_tokens,
-            "merges": sorted(tokenizer.merges.items()),
-        }
-    ).encode("utf-8")
-    return hashlib.sha256(payload).hexdigest()[:16]
-
-
-def _as_long_tensor(value) -> torch.Tensor:
-    if isinstance(value, torch.Tensor):
-        return value.to(dtype=torch.long)
-    return torch.as_tensor(value, dtype=torch.long)
-
-
-def _smallest_signed_int_dtype(max_id: int) -> torch.dtype:
-    """Return the narrowest signed int dtype that fits IDs in ``[0, max_id]``."""
-    if max_id < 2**15:
-        return torch.int16
-    if max_id < 2**31:
-        return torch.int32
-    return torch.int64
-
-
-def _downcast_for_storage(ids: torch.Tensor) -> torch.Tensor:
-    """Cast a token ID tensor to the smallest signed int that fits its values.
-
-    Used only for on-disk cache writes. Saves 4-8x disk vs raw int64 since every
-    course tokenizer's vocab fits in int16. ``_as_long_tensor`` widens back to
-    ``torch.long`` on load, so callers see the long-tensor contract unchanged.
-    """
-    if ids.numel() == 0:
-        return ids.to(torch.int16)
-    target = _smallest_signed_int_dtype(int(ids.max().item()))
-    return ids.to(target) if ids.dtype != target else ids
-
-
-def _load_pickle(path: Path) -> dict[str, object]:
-    with gzip.open(path, "rb") as f:
-        state = pickle.load(f)
-    if not isinstance(state, dict):
-        raise ValueError(f"token ID cache must contain a dict: {path}")
-    return state
-
-
-def _save_pickle(state: dict[str, object], path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    storage_state = dict(state)
-    for key, value in storage_state.items():
-        if isinstance(value, torch.Tensor):
-            storage_state[key] = _downcast_for_storage(value)
-    with gzip.open(path, "wb") as f:
-        pickle.dump(storage_state, f)
 
 
 def _config_from_manifest(name: str, manifest: Mapping[str, object]) -> TokenizerArtifactConfig:

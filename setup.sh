@@ -119,8 +119,8 @@ if ! command -v curl >/dev/null 2>&1; then
     fail "curl not found; needed to download TinyShakespeare"
 fi
 
-TINY_SHAKESPEARE_FILE="data/tinyshakespeare.txt"
-TINY_SHAKESPEARE_URL="https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt"
+TINY_SHAKESPEARE_FILE="data/datasets/tinyshakespeare.txt"
+TINY_SHAKESPEARE_URL="https://raw.githubusercontent.com/karpathy/char-rnn/master/data/datasets/tinyshakespeare/input.txt"
 
 info "Checking TinyShakespeare corpus"
 if [[ -f "$TINY_SHAKESPEARE_FILE" ]]; then

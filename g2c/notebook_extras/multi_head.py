@@ -97,7 +97,7 @@ class TinyMultiHeadLM(Module):
 
 def load_mha_text(repo_root: Path, max_chars: int = SHAKESPEARE_TRAIN_CHARS) -> str:
     """Load a TinyShakespeare slice for the Module 08 comparison."""
-    path = repo_root / "data" / "tinyshakespeare.txt"
+    path = repo_root / "data" / "datasets" / "tinyshakespeare.txt"
     if path.exists():
         return path.read_text(encoding="utf-8")[:max_chars]
     base = """

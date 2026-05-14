@@ -33,7 +33,7 @@ The student is the repo author. Both roles are live.
 - `g2c/notebook_extras/<topic>.py` — non-pedagogical notebook helpers (progress bars, matplotlib glue, run-orchestration wrappers) used by notebooks but not implemented by students
 - `g2c/artifacts/models.py` — `save_model_artifact` / `load_model_artifact` implementing the durable model artifact convention from `docs/design/model-artifacts-and-tracks.md`. Use these rather than ad-hoc `torch.save` calls when persisting a trained model that downstream modules consume.
 - `artifacts/models/<name>/` — saved model artifacts (`model.pt`, `config.json`, `manifest.json`); tokenizer is referenced by name in the manifest, not duplicated.
-- `data/module*-*.ckpt` — rolling training checkpoints (model + optimizer + step + history). These are caches, not artifacts; safe to wipe to retrain.
+- `data/work/moduleNN/` — module-specific working files (rolling training checkpoints, hand-authored SFT/DPO datasets, sandbox directories for the tool/agent/capstone exercises). These are caches, not artifacts; safe to wipe to retrain.
 - `notebooks/clean/NN-*.ipynb` — canonical pristine notebooks tied to module NN. Written exercises live here as `Question:` / `Answer:` string-literal code cells alongside the runnable cells; this is also where students write their answers (in `notebooks/solutions/`).
 - `notebooks/solutions/NN-*.ipynb` — working or solved notebook copies; use `.venv/bin/python scripts/open_notebook.py NN` to create or resume, and `--fresh` to archive the existing copy before resetting from clean
 - `docs/rubrics/module-NN.md` — course-owned grading rubric for written answers; use for review, not as a replacement for the student's work

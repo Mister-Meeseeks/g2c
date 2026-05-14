@@ -423,7 +423,7 @@ def _tinystories_full_item(repo_root: Path) -> StatusItem:
 
 
 def _glove_item(repo_root: Path) -> StatusItem:
-    path = repo_root / "data" / "glove.6B.50d.txt"
+    path = repo_root / "data" / "embeddings" / "glove.6B.50d.txt"
     if _has_glove(repo_root):
         return StatusItem(
             "GloVe 6B 50d",
@@ -456,7 +456,7 @@ def _has_tinystories_full(repo_root: Path) -> bool:
 
 
 def _has_glove(repo_root: Path) -> bool:
-    path = repo_root / "data" / "glove.6B.50d.txt"
+    path = repo_root / "data" / "embeddings" / "glove.6B.50d.txt"
     return path.exists() and path.stat().st_size >= GLOVE_MIN_BYTES
 
 

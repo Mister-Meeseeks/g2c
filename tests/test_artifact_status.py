@@ -37,8 +37,8 @@ def test_artifact_status_full_track_satisfies_smaller_tracks(tmp_path, monkeypat
     repo = make_repo(tmp_path)
     monkeypatch.setattr("scripts.artifact_status.GLOVE_MIN_BYTES", 1)
     _write_tinystories_full(repo)
-    _write_g2c_corpus(repo, "data/g2c-corpus-v1")
-    (repo / "data" / "glove.6B.50d.txt").write_text("x", encoding="utf-8")
+    _write_g2c_corpus(repo, "data/datasets/g2c-corpus-v1")
+    (repo / "data" / "embeddings" / "glove.6B.50d.txt").write_text("x", encoding="utf-8")
     _write_tokenizer_artifact(repo, "StoryTokenizer", source="tinystories")
     _write_tokenizer_artifact(repo, "G2CTokenizer", source="g2c")
     _write_tokenized_corpus_artifact(repo, "StoryLM-tinystories-full-v4096")
@@ -71,7 +71,7 @@ def test_artifact_status_module_13_accepts_baselm_artifact(tmp_path):
 
 
 def _write_tinystories_sample(repo: Path) -> None:
-    data_dir = repo / "data" / "tinystories"
+    data_dir = repo / "data" / "datasets" / "tinystories"
     data_dir.mkdir(parents=True)
     with gzip.open(
         data_dir / "TinyStories-train-100MB-0000.txt.gz",
@@ -82,7 +82,7 @@ def _write_tinystories_sample(repo: Path) -> None:
 
 
 def _write_tinystories_full(repo: Path) -> None:
-    data_dir = repo / "data" / "tinystories"
+    data_dir = repo / "data" / "datasets" / "tinystories"
     data_dir.mkdir(parents=True)
     (data_dir / "TinyStories-train.txt").write_text("once upon a time", encoding="utf-8")
     (data_dir / "TinyStories-valid.txt").write_text("the end", encoding="utf-8")

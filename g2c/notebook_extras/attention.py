@@ -184,7 +184,7 @@ def load_tinyshakespeare_probe_data(
     max_tokens: int = SHAKESPEARE_PROBE_MAX_TOKENS,
 ) -> TinyShakespeareProbeData | None:
     """Load TinyShakespeare IDs for the optional attention-probe visualization."""
-    path = repo_root / "data" / "tinyshakespeare.txt"
+    path = repo_root / "data" / "datasets" / "tinyshakespeare.txt"
     if not path.exists():
         return None
     text = path.read_text(encoding="utf-8")

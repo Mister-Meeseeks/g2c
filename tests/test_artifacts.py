@@ -25,8 +25,6 @@ from g2c.artifacts import (
     load_corpus_bytes,
     load_corpus_text,
     load_model_artifact_with_tokenizer,
-    load_or_encode_tokenized_corpus,
-    load_or_encode_tokenized_pair,
     load_required_tokenizer,
     load_run_state,
     load_tinystories_text,
@@ -84,7 +82,7 @@ def test_tokenizer_config_accepts_mapping_defaults():
 
 def test_load_tokenizer_source_text_reads_tinyshakespeare(tmp_path):
     repo = make_repo(tmp_path)
-    data_path = repo / "data" / "tinyshakespeare.txt"
+    data_path = repo / "data" / "datasets" / "tinyshakespeare.txt"
     data_path.parent.mkdir(parents=True)
     data_path.write_text("abcdef", encoding="utf-8")
 
@@ -185,7 +183,7 @@ def test_load_run_state_reconstructs_model_and_history(tmp_path):
 
 def test_load_tinystories_text_reads_compressed_shards(tmp_path):
     repo = make_repo(tmp_path)
-    data_dir = repo / "data" / "tinystories"
+    data_dir = repo / "data" / "datasets" / "tinystories"
     data_dir.mkdir(parents=True)
     with gzip.open(data_dir / "TinyStories-train-0000.txt.gz", "wt", encoding="utf-8") as f:
         f.write("train shard one ")
@@ -204,7 +202,7 @@ def test_load_tinystories_text_reads_compressed_shards(tmp_path):
 
 def test_load_corpus_bytes_wraps_and_uses_chunk_offset(tmp_path):
     repo = make_repo(tmp_path)
-    data_dir = repo / "data" / "tinystories"
+    data_dir = repo / "data" / "datasets" / "tinystories"
     data_dir.mkdir(parents=True)
     for index, text in enumerate(("aaa", "bbb", "ccc")):
         with gzip.open(
@@ -239,7 +237,7 @@ def test_load_corpus_bytes_wraps_and_uses_chunk_offset(tmp_path):
 
 def test_iter_corpus_text_chunks_streams_without_joining(tmp_path):
     repo = make_repo(tmp_path)
-    data_dir = repo / "data" / "tinystories"
+    data_dir = repo / "data" / "datasets" / "tinystories"
     data_dir.mkdir(parents=True)
     with gzip.open(data_dir / "TinyStories-train-0000.txt.gz", "wt", encoding="utf-8") as f:
         f.write("abcdefghij")
@@ -258,8 +256,8 @@ def test_iter_corpus_text_chunks_streams_without_joining(tmp_path):
 
 def test_load_g2c_corpus_preserves_source_weights_and_prefers_full(tmp_path):
     repo = make_repo(tmp_path)
-    small_dir = repo / "data" / "g2c-corpus-v1-small"
-    full_dir = repo / "data" / "g2c-corpus-v1"
+    small_dir = repo / "data" / "datasets" / "g2c-corpus-v1-small"
+    full_dir = repo / "data" / "datasets" / "g2c-corpus-v1"
     _write_g2c_manifested_shard(small_dir, "tinystories", "S" * 100)
     _write_g2c_manifested_shards(
         full_dir,
@@ -276,8 +274,8 @@ def test_load_g2c_corpus_preserves_source_weights_and_prefers_full(tmp_path):
 
 def test_load_g2c_corpus_explicit_small_ignores_full(tmp_path):
     repo = make_repo(tmp_path)
-    small_dir = repo / "data" / "g2c-corpus-v1-small"
-    full_dir = repo / "data" / "g2c-corpus-v1"
+    small_dir = repo / "data" / "datasets" / "g2c-corpus-v1-small"
+    full_dir = repo / "data" / "datasets" / "g2c-corpus-v1"
     _write_g2c_manifested_shard(small_dir, "tinystories", "S" * 100)
     _write_g2c_manifested_shard(full_dir, "tinystories", "F" * 100)
 
@@ -288,7 +286,7 @@ def test_load_g2c_corpus_explicit_small_ignores_full(tmp_path):
 
 def test_load_tinystories_sample_alias_ignores_full(tmp_path):
     repo = make_repo(tmp_path)
-    data_dir = repo / "data" / "tinystories"
+    data_dir = repo / "data" / "datasets" / "tinystories"
     data_dir.mkdir(parents=True)
     with gzip.open(data_dir / "TinyStories-train-0000.txt.gz", "wt", encoding="utf-8") as f:
         f.write("full")
@@ -305,7 +303,7 @@ def test_load_tinystories_sample_alias_ignores_full(tmp_path):
 
 def test_load_tokenizer_source_text_uses_logical_g2c_source(tmp_path):
     repo = make_repo(tmp_path)
-    corpus_dir = repo / "data" / "g2c-corpus-v1-small"
+    corpus_dir = repo / "data" / "datasets" / "g2c-corpus-v1-small"
     _write_g2c_manifested_shards(
         corpus_dir,
         {
@@ -348,7 +346,7 @@ def test_build_tokenized_corpus_standard_jobs_reflect_local_corpus_variant(tmp_p
     repo = make_repo(tmp_path)
     _write_tokenizer_manifest(repo, "StoryTokenizer", "tinystories")
     _write_tokenizer_manifest(repo, "G2CTokenizer", "g2c")
-    data_dir = repo / "data" / "tinystories"
+    data_dir = repo / "data" / "datasets" / "tinystories"
     data_dir.mkdir(parents=True)
     with gzip.open(
         data_dir / "TinyStories-train-100MB-0000.txt.gz",
@@ -356,7 +354,7 @@ def test_build_tokenized_corpus_standard_jobs_reflect_local_corpus_variant(tmp_p
         encoding="utf-8",
     ) as f:
         f.write("sample")
-    _write_g2c_manifested_shard(repo / "data" / "g2c-corpus-v1-small", "tinystories", "S")
+    _write_g2c_manifested_shard(repo / "data" / "datasets" / "g2c-corpus-v1-small", "tinystories", "S")
 
     story_job = standard_job_for_tokenizer("StoryTokenizer", repo)
     g2c_job = standard_job_for_tokenizer("G2CTokenizer", repo)
@@ -496,7 +494,7 @@ def test_tokenized_corpus_cli_progress_log_style_prints_lines(capsys):
 
 def test_train_or_load_tokenizer_artifact_saves_and_reloads(tmp_path):
     repo = make_repo(tmp_path)
-    data_path = repo / "data" / "tinyshakespeare.txt"
+    data_path = repo / "data" / "datasets" / "tinyshakespeare.txt"
     data_path.parent.mkdir(parents=True)
     data_path.write_text("hello artifact", encoding="utf-8")
     config = TokenizerArtifactConfig(
@@ -525,7 +523,7 @@ def test_train_or_load_tokenizer_artifact_saves_and_reloads(tmp_path):
 
 def test_tokenizer_artifacts_default_to_course_special_tokens(tmp_path):
     repo = make_repo(tmp_path)
-    data_path = repo / "data" / "tinyshakespeare.txt"
+    data_path = repo / "data" / "datasets" / "tinyshakespeare.txt"
     data_path.parent.mkdir(parents=True)
     data_path.write_text("hello<|endoftext|>artifact", encoding="utf-8")
     config = TokenizerArtifactConfig(
@@ -550,7 +548,7 @@ def test_tokenizer_artifacts_default_to_course_special_tokens(tmp_path):
 
 def test_load_tokenizer_artifact_loads_without_source_text_or_ids(tmp_path):
     repo = make_repo(tmp_path)
-    data_path = repo / "data" / "tinyshakespeare.txt"
+    data_path = repo / "data" / "datasets" / "tinyshakespeare.txt"
     data_path.parent.mkdir(parents=True)
     data_path.write_text("hello artifact", encoding="utf-8")
     config = TokenizerArtifactConfig(
@@ -573,7 +571,7 @@ def test_load_tokenizer_artifact_loads_without_source_text_or_ids(tmp_path):
 
 def test_load_tokenizer_artifact_can_load_sample_ids_and_text(tmp_path):
     repo = make_repo(tmp_path)
-    data_path = repo / "data" / "tinyshakespeare.txt"
+    data_path = repo / "data" / "datasets" / "tinyshakespeare.txt"
     data_path.parent.mkdir(parents=True)
     data_path.write_text("hello artifact", encoding="utf-8")
     config = TokenizerArtifactConfig(
@@ -601,7 +599,7 @@ def test_load_tokenizer_artifact_can_load_sample_ids_and_text(tmp_path):
 
 def test_load_required_tokenizer_returns_saved_tokenizer(tmp_path):
     repo = make_repo(tmp_path)
-    data_path = repo / "data" / "tinyshakespeare.txt"
+    data_path = repo / "data" / "datasets" / "tinyshakespeare.txt"
     data_path.parent.mkdir(parents=True)
     data_path.write_text("hello artifact", encoding="utf-8")
     config = TokenizerArtifactConfig(
@@ -618,79 +616,9 @@ def test_load_required_tokenizer_returns_saved_tokenizer(tmp_path):
     assert tokenizer.encode_fast("abc") == list(b"abc")
 
 
-def test_load_or_encode_tokenized_corpus_uses_artifact_and_cache(tmp_path):
-    repo = make_repo(tmp_path)
-    data_path = repo / "data" / "tinyshakespeare.txt"
-    data_path.parent.mkdir(parents=True)
-    data_path.write_text("hello artifact", encoding="utf-8")
-    config = TokenizerArtifactConfig(
-        name="CorpusTokenizer",
-        source="tinyshakespeare",
-        vocab_size=256,
-        max_chars=20,
-        special_tokens=(),
-    )
-    train_or_load_tokenizer_artifact(config, repo_root=repo)
-
-    tokenizer, ids = load_or_encode_tokenized_corpus(
-        "abcdef",
-        "CorpusTokenizer",
-        label="unit",
-        repo_root=repo,
-    )
-    cached_tokenizer, cached_ids = load_or_encode_tokenized_corpus(
-        "abcdef",
-        "CorpusTokenizer",
-        label="unit",
-        repo_root=repo,
-    )
-
-    assert tokenizer.vocab == cached_tokenizer.vocab
-    assert torch.equal(ids, torch.tensor(list(b"abcdef"), dtype=torch.long))
-    assert torch.equal(cached_ids, ids)
-    assert list((repo / "artifacts" / "tokenized-cache").glob("*.pkl.gz"))
-    assert not (repo / "data" / "tokenizer-cache").exists()
-
-
-def test_load_or_encode_tokenized_pair_uses_artifact_and_cache(tmp_path):
-    repo = make_repo(tmp_path)
-    data_path = repo / "data" / "tinyshakespeare.txt"
-    data_path.parent.mkdir(parents=True)
-    data_path.write_text("hello artifact", encoding="utf-8")
-    config = TokenizerArtifactConfig(
-        name="PairTokenizer",
-        source="tinyshakespeare",
-        vocab_size=256,
-        max_chars=20,
-        special_tokens=(),
-    )
-    train_or_load_tokenizer_artifact(config, repo_root=repo)
-
-    tokenizer, train_ids, val_ids = load_or_encode_tokenized_pair(
-        "abcd",
-        "ef",
-        "PairTokenizer",
-        label="unit-pair",
-        repo_root=repo,
-    )
-    cached_tokenizer, cached_train_ids, cached_val_ids = load_or_encode_tokenized_pair(
-        "abcd",
-        "ef",
-        "PairTokenizer",
-        label="unit-pair",
-        repo_root=repo,
-    )
-
-    assert tokenizer.vocab == cached_tokenizer.vocab
-    assert torch.equal(train_ids, torch.tensor(list(b"abcd"), dtype=torch.long))
-    assert torch.equal(val_ids, torch.tensor(list(b"ef"), dtype=torch.long))
-    assert torch.equal(cached_train_ids, train_ids)
-    assert torch.equal(cached_val_ids, val_ids)
-
-
 def test_tokenized_corpus_artifact_builds_uint16_memmap_and_batches(tmp_path):
     repo = make_repo(tmp_path)
-    data_dir = repo / "data" / "tinystories"
+    data_dir = repo / "data" / "datasets" / "tinystories"
     data_dir.mkdir(parents=True)
     with gzip.open(data_dir / "TinyStories-train-0000.txt.gz", "wt", encoding="utf-8") as f:
         f.write("abcdefghijklmnopqrstuvwxyz")
@@ -790,7 +718,7 @@ def test_tokenized_corpus_chunked_split_samples_inside_chunks(tmp_path):
 
 def test_tokenized_corpus_artifact_preserves_special_tokens_across_chunks(tmp_path):
     repo = make_repo(tmp_path)
-    data_dir = repo / "data" / "tinystories"
+    data_dir = repo / "data" / "datasets" / "tinystories"
     data_dir.mkdir(parents=True)
     text = "aa<|endoftext|>bb"
     with gzip.open(data_dir / "TinyStories-train-0000.txt.gz", "wt", encoding="utf-8") as f:
@@ -820,7 +748,7 @@ def test_tokenized_corpus_artifact_preserves_special_tokens_across_chunks(tmp_pa
 
 def test_train_or_load_tokenizer_artifact_saves_sample_ids(tmp_path):
     repo = make_repo(tmp_path)
-    data_path = repo / "data" / "tinyshakespeare.txt"
+    data_path = repo / "data" / "datasets" / "tinyshakespeare.txt"
     data_path.parent.mkdir(parents=True)
     data_path.write_text("abcdefghijklmnopqrstuvwxyz", encoding="utf-8")
     config = TokenizerArtifactConfig(
@@ -846,7 +774,7 @@ def test_train_or_load_tokenizer_artifact_saves_sample_ids(tmp_path):
 def test_fast_tokenizer_artifact_skips_full_training_text_encode(tmp_path):
     repo = make_repo(tmp_path)
     text = "abab abcabc " * 20
-    data_path = repo / "data" / "tinyshakespeare.txt"
+    data_path = repo / "data" / "datasets" / "tinyshakespeare.txt"
     data_path.parent.mkdir(parents=True)
     data_path.write_text(text, encoding="utf-8")
     config = TokenizerArtifactConfig(
@@ -1089,7 +1017,7 @@ def test_train_or_load_tokenizer_artifact_missing_source_returns_none(tmp_path):
 
 
 def _save_tiny_tokenizer_artifact(repo: Path, name: str) -> None:
-    data_path = repo / "data" / "tinyshakespeare.txt"
+    data_path = repo / "data" / "datasets" / "tinyshakespeare.txt"
     data_path.parent.mkdir(parents=True, exist_ok=True)
     data_path.write_text("abcdefghijklmnopqrstuvwxyz", encoding="utf-8")
     config = TokenizerArtifactConfig(

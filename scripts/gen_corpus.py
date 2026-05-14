@@ -625,7 +625,7 @@ def dry_run(args: argparse.Namespace, specs: list[SourceSpec]) -> None:
 
 def make_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--out", type=Path, default=Path("data/g2c-corpus-v1"))
+    parser.add_argument("--out", type=Path, default=Path("data/datasets/g2c-corpus-v1"))
     parser.add_argument("--preset", choices=sorted(PRESETS), default="small")
     parser.add_argument(
         "--force",
@@ -665,7 +665,7 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--cosmopedia-split", default="train")
     parser.add_argument(
         "--tinystories-path",
-        default="data/tinystories/TinyStories-train.txt",
+        default="data/datasets/tinystories/TinyStories-train.txt",
         help=(
             "local TinyStories file to prefer before streaming from URL; "
             "if missing, compressed TinyStories-train-*.txt.gz shards are used"

@@ -190,13 +190,13 @@ def resolve_corpus(
 
     if corpus == "g2c-corpus-full":
         return _resolve_g2c_dir(
-            root / "data" / "g2c-corpus-v1",
+            root / "data" / "datasets" / "g2c-corpus-v1",
             split=normalized_split,
             repo_root=root,
         )
     if corpus == "g2c-corpus-small":
         return _resolve_g2c_dir(
-            root / "data" / "g2c-corpus-v1-small",
+            root / "data" / "datasets" / "g2c-corpus-v1-small",
             split=normalized_split,
             repo_root=root,
         )
@@ -206,7 +206,7 @@ def resolve_corpus(
         return _resolve_single_file_corpus(
             name="tinyshakespeare",
             root=root,
-            path=root / "data" / "tinyshakespeare.txt",
+            path=root / "data" / "datasets" / "tinyshakespeare.txt",
             split=normalized_split,
         )
     if normalized == "tinystories-100MB":
@@ -250,7 +250,7 @@ def _resolve_tinystories(
     *,
     sample_only: bool = False,
 ) -> CorpusSpec | None:
-    tinystories_dir = root / "data" / "tinystories"
+    tinystories_dir = root / "data" / "datasets" / "tinystories"
     if split == "train" and sample_only:
         candidate_groups = (
             _tinystories_shards(tinystories_dir, "TinyStories-train-100MB"),
@@ -284,8 +284,8 @@ def _resolve_tinystories(
 
 def _resolve_g2c(root: Path, split: str) -> CorpusSpec | None:
     for corpus_dir in (
-        root / "data" / "g2c-corpus-v1",
-        root / "data" / "g2c-corpus-v1-small",
+        root / "data" / "datasets" / "g2c-corpus-v1",
+        root / "data" / "datasets" / "g2c-corpus-v1-small",
     ):
         spec = _resolve_g2c_dir(corpus_dir, split=split, repo_root=root)
         if spec is not None:

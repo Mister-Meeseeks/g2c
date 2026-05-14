@@ -95,9 +95,9 @@ python_bin() {
 }
 
 download_glove() {
-    local glove_file="data/glove.6B.50d.txt"
-    local glove_zip="data/glove.6B.zip"
-    local glove_url="https://downloads.cs.stanford.edu/nlp/data/glove.6B.zip"
+    local glove_file="data/embeddings/glove.6B.50d.txt"
+    local glove_zip="data/embeddings/glove.6B.zip"
+    local glove_url="https://downloads.cs.stanford.edu/nlp/data/embeddings/glove.6B.zip"
     local glove_min_bytes=171350079
 
     require_tool curl
@@ -131,7 +131,7 @@ download_glove() {
 }
 
 download_tinystories() {
-    local dir="data/tinystories"
+    local dir="data/datasets/tinystories"
     local train_file="$dir/TinyStories-train.txt"
     local valid_file="$dir/TinyStories-valid.txt"
     local train_url="https://huggingface.co/datasets/roneneldan/TinyStories/resolve/main/TinyStories-train.txt"
@@ -168,7 +168,7 @@ download_tinystories() {
 }
 
 download_tinystories_sample() {
-    local dir="data/tinystories"
+    local dir="data/datasets/tinystories"
     local sample_file="$dir/TinyStories-train-100MB.txt"
     local train_url="https://huggingface.co/datasets/roneneldan/TinyStories/resolve/main/TinyStories-train.txt"
     local sample_bytes=100000000
@@ -389,10 +389,10 @@ main() {
 
     case "$target" in
         all)
-            download_all full "data/g2c-corpus-v1" "$@"
+            download_all full "data/datasets/g2c-corpus-v1" "$@"
             ;;
         --small)
-            download_all small "data/g2c-corpus-v1-small" "$@"
+            download_all small "data/datasets/g2c-corpus-v1-small" "$@"
             ;;
         --tiny)
             if [[ $# -gt 0 ]]; then
@@ -416,10 +416,10 @@ main() {
             download_tinystories
             ;;
         g2c-corpus-small)
-            build_g2c_corpus small "data/g2c-corpus-v1-small" "$@"
+            build_g2c_corpus small "data/datasets/g2c-corpus-v1-small" "$@"
             ;;
         g2c-corpus-full)
-            build_g2c_corpus full "data/g2c-corpus-v1" "$@"
+            build_g2c_corpus full "data/datasets/g2c-corpus-v1" "$@"
             ;;
         *)
             usage >&2
