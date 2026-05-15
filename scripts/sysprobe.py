@@ -101,6 +101,20 @@ CANONICAL_SHAPES: list[ModelShape] = [
         context_length=256,
     ),
     ModelShape(
+        # The TinyLLM-30M config runs at 4× more tokens/step than StoryLM-30M
+        # (B=16, T=512 vs B=8, T=256), so its activation memory is the
+        # dominant signal in the 30M tier.
+        name="TinyLLM-30M",
+        vocab_size=8192,
+        embedding_dim=512,
+        num_layers=8,
+        num_heads=8,
+        max_seq_len=512,
+        hidden_dim=2048,
+        batch_size=16,
+        context_length=512,
+    ),
+    ModelShape(
         name="TinyLLM-100M",   # stretch track
         vocab_size=8192,
         embedding_dim=768,
@@ -318,6 +332,9 @@ class ProbeResult:
     status: str           # "ok", "tight", "fail", "skip"
     peak_memory_gb: float | None
     tokens_per_sec: float | None
+    batch_size: int = 0
+    context_length: int = 0
+    steps_run: int = 0
     note: str = ""
 
 
@@ -359,10 +376,34 @@ def build_torch_transformer(shape: ModelShape, device: str):
     return TestTransformer().to(device)
 
 
-def probe_training(shape: ModelShape, device: str) -> ProbeResult:
+def _mps_allocated_gb() -> float | None:
+    import torch
+    for attr in ("driver_allocated_memory", "current_allocated_memory"):
+        fn = getattr(torch.mps, attr, None)
+        if callable(fn):
+            return fn() / (1024 ** 3)
+    return None
+
+
+def probe_training(shape: ModelShape, device: str, n_steps: int = 100,
+                   progress_cb=None) -> ProbeResult:
+    """Run training steps and report observed peak memory + tail throughput.
+
+    Memory: we sample `driver_allocated_memory` after every step and keep
+    the running max. This is still not a true within-step peak (transient
+    backward spikes can be missed), but over `n_steps` it converges to a
+    realistic high-water mark for the allocator, which is what predicts
+    long-run training memory.
+
+    Throughput: timed over the last 20% of steps (steady state) rather
+    than from step 1, so allocator warmup and lazy init don't depress
+    the number.
+    """
     import torch
 
     params_m = shape.param_count() / 1e6
+    B, T = shape.batch_size, shape.context_length
+
     try:
         if device == "mps":
             torch.mps.empty_cache()
@@ -370,11 +411,10 @@ def probe_training(shape: ModelShape, device: str) -> ProbeResult:
         model = build_torch_transformer(shape, device)
         opt = torch.optim.AdamW(model.parameters(), lr=1e-3)
 
-        B, T = shape.batch_size, shape.context_length
+        # Single warmup pass so optimizer state is allocated before we
+        # start sampling memory and timing.
         ids = torch.randint(0, shape.vocab_size, (B, T), device=device)
         targets = torch.randint(0, shape.vocab_size, (B, T), device=device)
-
-        # Warmup
         logits = model(ids)
         loss = torch.nn.functional.cross_entropy(
             logits.reshape(-1, shape.vocab_size), targets.reshape(-1)
@@ -385,10 +425,22 @@ def probe_training(shape: ModelShape, device: str) -> ProbeResult:
         if device == "mps":
             torch.mps.synchronize()
 
-        # Timed steps
-        n_steps = 5
-        t0 = time.perf_counter()
-        for _ in range(n_steps):
+        peak_gb = _mps_allocated_gb() if device == "mps" else None
+        timing_starts_at = max(1, int(n_steps * 0.8))
+        timed_elapsed = 0.0
+        timed_steps = 0
+
+        for step in range(n_steps):
+            # Re-randomize each step so the allocator sees varied input
+            # patterns, matching a real DataLoader more closely than a
+            # single reused tensor would.
+            ids = torch.randint(0, shape.vocab_size, (B, T), device=device)
+            targets = torch.randint(0, shape.vocab_size, (B, T), device=device)
+
+            if step == timing_starts_at and device == "mps":
+                torch.mps.synchronize()
+            t0 = time.perf_counter() if step >= timing_starts_at else None
+
             logits = model(ids)
             loss = torch.nn.functional.cross_entropy(
                 logits.reshape(-1, shape.vocab_size), targets.reshape(-1)
@@ -396,20 +448,24 @@ def probe_training(shape: ModelShape, device: str) -> ProbeResult:
             loss.backward()
             opt.step()
             opt.zero_grad()
-        if device == "mps":
-            torch.mps.synchronize()
-        elapsed = time.perf_counter() - t0
 
-        tokens_per_step = B * T
-        tok_per_sec = (n_steps * tokens_per_step) / elapsed
+            if step >= timing_starts_at:
+                if device == "mps":
+                    torch.mps.synchronize()
+                timed_elapsed += time.perf_counter() - t0
+                timed_steps += 1
 
-        peak_gb = None
-        if device == "mps":
-            for attr in ("driver_allocated_memory", "current_allocated_memory"):
-                fn = getattr(torch.mps, attr, None)
-                if callable(fn):
-                    peak_gb = fn() / (1024 ** 3)
-                    break
+            if device == "mps":
+                sample = _mps_allocated_gb()
+                if sample is not None and (peak_gb is None or sample > peak_gb):
+                    peak_gb = sample
+
+            if progress_cb is not None and (step + 1) % 10 == 0:
+                progress_cb(step + 1, n_steps)
+
+        tok_per_sec = None
+        if timed_steps > 0 and timed_elapsed > 0:
+            tok_per_sec = (timed_steps * B * T) / timed_elapsed
 
         return ProbeResult(
             shape_name=shape.name,
@@ -417,6 +473,9 @@ def probe_training(shape: ModelShape, device: str) -> ProbeResult:
             status="ok",
             peak_memory_gb=peak_gb,
             tokens_per_sec=tok_per_sec,
+            batch_size=B,
+            context_length=T,
+            steps_run=n_steps,
         )
 
     except (RuntimeError, MemoryError) as e:
@@ -428,6 +487,8 @@ def probe_training(shape: ModelShape, device: str) -> ProbeResult:
             status="fail",
             peak_memory_gb=None,
             tokens_per_sec=None,
+            batch_size=B,
+            context_length=T,
             note="OOM" if is_oom else msg[:120],
         )
 
@@ -843,14 +904,21 @@ def print_system(sysinfo: SystemInfo) -> None:
 
 
 def print_training(results: list[ProbeResult]) -> None:
-    header("Training probe (forward + backward + AdamW step, on MPS)")
-    print(f"  {'model':<14} {'params':>8} {'status':^9} {'peak mem':>9}  "
-          f"{'throughput':>14}  notes")
-    print(f"  {'-'*14} {'-'*8} {'-'*7:^9} {'-'*9:>9}  {'-'*14:>14}  {'-'*40}")
+    header("Training probe (forward + backward + AdamW, on MPS)")
+    print(f"  {'model':<14} {'params':>8} {'shape':>11}  {'status':^9} "
+          f"{'peak mem':>9}  {'throughput':>14}  notes")
+    print(f"  {'-'*14} {'-'*8} {'-'*11:>11}  {'-'*7:^9} {'-'*9:>9}  "
+          f"{'-'*14:>14}  {'-'*40}")
     for r in results:
+        shape_str = f"B={r.batch_size},T={r.context_length}"
         print(f"  {r.shape_name:<14} {r.param_count_m:>6.1f}M  "
-              f"{fmt_status(r.status)} {fmt_gb(r.peak_memory_gb):>9}  "
+              f"{shape_str:>11}  {fmt_status(r.status)} "
+              f"{fmt_gb(r.peak_memory_gb):>9}  "
               f"{fmt_tps(r.tokens_per_sec):>14}  {r.note}")
+    print(f"\n  {DIM}peak mem is the max of `mps.driver_allocated_memory` "
+          f"sampled after each of {results[0].steps_run if results else 0} "
+          f"training steps. Add ~0.5-2 GB on top for a real Trainer's "
+          f"tokenized corpus, DataLoader buffers, and logging state.{RESET}")
 
 
 def print_inference(results: list[ProbeResult]) -> None:
@@ -891,7 +959,7 @@ def print_recommendation(training: list[ProbeResult],
         by_name = {r.shape_name: r for r in training}
         tracks = [
             ("Tiny track",     ["StoryLM-1M", "StoryLM-5M"]),
-            ("Standard track", ["StoryLM-30M"]),
+            ("Standard track", ["StoryLM-30M", "TinyLLM-30M"]),
             ("Stretch track",  ["TinyLLM-100M"]),
         ]
         for track_name, sizes in tracks:
@@ -947,6 +1015,10 @@ def main() -> int:
                         help="skip training/inference probes")
     parser.add_argument("--skip-prodlm", action="store_true",
                         help="skip ProdLM probe (no network needed)")
+    parser.add_argument("--steps", type=int, default=100,
+                        help="training steps per size for the training probe "
+                             "(default 100; larger = more accurate memory "
+                             "high-water mark, but takes longer)")
     parser.add_argument("--context-length", type=int, default=4096,
                         help="ProdLM context length for KV-cache estimate (default 4096)")
     parser.add_argument("--json", metavar="PATH",
@@ -969,10 +1041,20 @@ def main() -> int:
             print(f"\n{YELLOW}MPS unavailable — running on CPU. Numbers will not "
                   f"reflect production behavior.{RESET}")
 
-        header("Running training probes (this takes ~30s)")
+        header(f"Running training probes ({args.steps} steps each — "
+               f"this takes several minutes for the larger sizes)")
+
+        def _show_progress(name: str):
+            def cb(done: int, total: int) -> None:
+                print(f"\033[2K\r  {DIM}probing {name}  "
+                      f"step {done}/{total}{RESET}", end="", flush=True)
+            return cb
+
         for shape in CANONICAL_SHAPES:
-            print(f"\033[2K\r  {DIM}probing {shape.name}...{RESET}", end="", flush=True)
-            r = probe_training(shape, device)
+            print(f"\033[2K\r  {DIM}probing {shape.name}...{RESET}",
+                  end="", flush=True)
+            r = probe_training(shape, device, n_steps=args.steps,
+                               progress_cb=_show_progress(shape.name))
             training_results.append(r)
         print("\033[2K\r", end="")  # clear in-place status line
         print_training(training_results)
