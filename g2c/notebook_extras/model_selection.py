@@ -13,6 +13,8 @@ from g2c.artifacts import (
     best_model_artifact,
     best_model_artifact_with_suffix,
     model_artifact_exists,
+    resolve_artifact_name,
+    stage_root_name,
 )
 from g2c.inference import resolve_preferred_artifact_name
 
@@ -31,7 +33,7 @@ def select_base_artifact_name(selection: str, *, repo_root: str | Path | None = 
                 "BaseLM is not configured. Run ./baselm.sh or set "
                 "MODEL_SELECTION = 'course'."
             )
-        return "BaseLM"
+        return resolve_artifact_name("BaseLM", repo_root=repo_root)
     if selection == "course":
         candidate = best_model_artifact(repo_root=repo_root)
         if candidate is None:
@@ -64,7 +66,7 @@ def select_sampling_artifact_name(
     if selection == "BaseLM":
         if not baselm_artifact_exists(repo_root=repo_root):
             raise RuntimeError("BaseLM is not configured. Run ./baselm.sh before selecting it.")
-        return "BaseLM"
+        return resolve_artifact_name("BaseLM", repo_root=repo_root)
     if not selection:
         raise ValueError("MODEL_ARTIFACT_NAME must be None, 'BaseLM', or an artifact name.")
     return selection
@@ -94,7 +96,7 @@ def select_sft_artifact_name(selection: str, *, repo_root: str | Path | None = N
         return candidate.name
     if not selection:
         raise ValueError("MODEL_SELECTION must be 'BaseLM', 'course', or an artifact name.")
-    return selection if selection.endswith("-SFT") else f"{selection}-SFT"
+    return selection if selection.endswith("-SFT") else f"{stage_root_name(selection)}-SFT"
 
 
 def select_eval_artifact_name(selection: str, *, repo_root: str | Path | None = None) -> str:

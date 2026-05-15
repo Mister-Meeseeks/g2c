@@ -363,7 +363,7 @@ def causal_uniform_matrix(seq_len: int) -> torch.Tensor:
 
 def choose_shakespeare_artifact_name(*, repo_root: Path) -> str | None:
     """Return the strongest ShakespeareLM artifact available locally."""
-    for name in ("ShakespeareLM-1M", "ShakespeareLM"):
+    for name in ("ShakespeareLM-1M-base", "ShakespeareLM-1M", "ShakespeareLM"):
         if model_artifact_exists(name, repo_root=repo_root):
             return name
     return None

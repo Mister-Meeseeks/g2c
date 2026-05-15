@@ -137,13 +137,13 @@ def _write_tokenized_corpus_artifact(repo: Path, name: str) -> None:
 
 
 def _write_baselm_artifact(repo: Path) -> None:
-    artifact_dir = repo / "artifacts" / "models" / "BaseLM"
+    artifact_dir = repo / "artifacts" / "models" / "BaseLM-base"
     artifact_dir.mkdir(parents=True)
     (artifact_dir / "config.json").write_text(
         json.dumps({"kind": "huggingface_causal_lm", "model_id": "org/test"}),
         encoding="utf-8",
     )
     (artifact_dir / "manifest.json").write_text(
-        json.dumps({"kind": "huggingface_causal_lm", "name": "BaseLM"}),
+        json.dumps({"kind": "huggingface_causal_lm", "name": "BaseLM-base"}),
         encoding="utf-8",
     )

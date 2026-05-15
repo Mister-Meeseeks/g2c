@@ -511,10 +511,10 @@ class TestArtifactSelection:
         assert resolve_preferred_artifact_name("course", repo_root=tmp_path) == "TinyLLM-30M-SFT"
 
     def test_resolve_preferred_artifact_name_course_falls_back_to_base(self, tmp_path) -> None:
-        _write_artifact_marker(tmp_path, "StoryLM-5M")
-        _write_artifact_marker(tmp_path, "TinyLLM-30M")
+        _write_artifact_marker(tmp_path, "StoryLM-5M-base")
+        _write_artifact_marker(tmp_path, "TinyLLM-30M-base")
 
-        assert resolve_preferred_artifact_name("course", repo_root=tmp_path) == "TinyLLM-30M"
+        assert resolve_preferred_artifact_name("course", repo_root=tmp_path) == "TinyLLM-30M-base"
 
     def test_resolve_preferred_artifact_name_course_ignores_baselm(self, tmp_path) -> None:
         _write_artifact_marker(tmp_path, "BaseLM-DPO")

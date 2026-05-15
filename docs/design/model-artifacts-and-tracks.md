@@ -77,9 +77,9 @@ when a student's StoryLM/TinyLLM artifact is too weak to show the behavior.
 BaseLM is a role, not a fixed model. Pick any small open-weight base model
 that runs comfortably on your machine and serves the pedagogy well. Bind it
 with `./baselm.sh --model-id <hf-model-id>`; the chosen backend is recorded
-in `artifacts/models/BaseLM/manifest.json` and the model weights live in the
+in `artifacts/models/BaseLM-base/manifest.json` and the model weights live in the
 local HF hub cache under `data/cache/baselm/huggingface/`. Notebooks reference the
-role `BaseLM`, not the underlying model, so swapping the backend does not
+role `BaseLM`, not the exact artifact directory, so swapping the backend does not
 require notebook edits.
 
 BaseLM setup is separate from `datasets.sh` because it is a model artifact:
@@ -100,9 +100,9 @@ are weak.
 
 Typical artifacts:
 
-- `ShakespeareLM-1M`
-- `StoryLM-1M`
-- `StoryLM-5M`
+- `ShakespeareLM-1M-base`
+- `StoryLM-1M-base`
+- `StoryLM-5M-base`
 - `StoryLM-5M-SFT`
 - `StoryLM-5M-DPO`
 
@@ -114,8 +114,8 @@ from-scratch language model artifact without assuming cloud GPUs.
 Typical artifacts:
 
 - `StoryTokenizer`
-- `StoryLM-30M`
-- `TinyLLM-30M` when the broader compact corpus path is available
+- `StoryLM-30M-base`
+- `TinyLLM-30M-base` when the broader compact corpus path is available
 - `StoryLM-30M-SFT` or `TinyLLM-30M-SFT`
 - `StoryLM-30M-DPO` or `TinyLLM-30M-DPO`
 
@@ -126,7 +126,7 @@ more time, or a willingness to let local runs continue for hours.
 
 Typical artifacts:
 
-- `TinyLLM-100M`
+- `TinyLLM-100M-base`
 - larger StoryLM/TinyLLM comparison checkpoints
 - longer eval and sampling runs
 
@@ -144,15 +144,15 @@ Every model artifact name is built from up to three components:
 
 family ∈ {ShakespeareLM, StoryLM, TinyLLM, BaseLM, ProdLM}
 size   = approximate parameter count, written as <N>M or <N>B (e.g. -1M, -5M, -10M, -30M, -100M, -1B)
-stage  ∈ {SFT, DPO}
+stage  ∈ {base, SFT, DPO}
 ```
 
 Component rules by family:
 
 | Family | Size component | Stage component |
 |---|---|---|
-| `ShakespeareLM`, `StoryLM`, `TinyLLM` | **required** (we train them at known sizes) | optional |
-| `BaseLM` | **forbidden** (we don't train it; one pretrained checkpoint) | optional |
+| `ShakespeareLM`, `StoryLM`, `TinyLLM` | **required** (we train them at known sizes) | **required on disk** |
+| `BaseLM` | **forbidden** (we don't train it; one pretrained checkpoint) | **required on disk** |
 | `ProdLM` | **forbidden** (backend selection, not a checkpoint) | **forbidden** |
 
 The size is the trained parameter count, bucketed onto the family's known
@@ -162,10 +162,11 @@ parameter count in the name rather than counting training tokens. SFT/DPO
 derivatives keep the base's size since fine-tuning does not change parameter
 count.
 
-**On-disk artifact names always include every applicable component.** Saving
-`StoryLM-30M-SFT` writes to `artifacts/models/StoryLM-30M-SFT/`, never to
-`artifacts/models/StoryLM-SFT/`. The directory name *is* the artifact key, so
-two runs at the same family/size/stage collide; the second overwrites the
+**On-disk artifact names always include every applicable component.** The base
+stage is explicit: `StoryLM-30M-base`, `TinyLLM-30M-base`, `BaseLM-base`.
+Saving `StoryLM-30M-SFT` writes to `artifacts/models/StoryLM-30M-SFT/`, never
+to `artifacts/models/StoryLM-SFT/`. The directory name *is* the artifact key,
+so two runs at the same family/size/stage collide; the second overwrites the
 first.
 
 ### Load-time aliases
@@ -174,38 +175,42 @@ A name with the size component omitted is an **alias**, resolved at load time
 to the largest available artifact in that family at that stage. Aliases are
 strictly within family and within stage:
 
-- `StoryLM` → largest `StoryLM-<N>` on disk
+- `StoryLM` → largest `StoryLM-<N>-base` on disk
+- `StoryLM-30M` → `StoryLM-30M-DPO`, then `StoryLM-30M-SFT`, then
+  `StoryLM-30M-base` when a notebook wants the strongest available stage
 - `StoryLM-SFT` → largest `StoryLM-<N>-SFT` on disk
 - `TinyLLM-DPO` → largest `TinyLLM-<N>-DPO` on disk
 
-Aliases are never written to disk. `BaseLM` and `ProdLM` are already canonical
-and need no aliasing. Cross-family fallback (a notebook walking `TinyLLM →
-StoryLM → ShakespeareLM → BaseLM` when nothing better exists) is **not** part
-of the alias rule; that lives at the notebook orchestration layer.
+Aliases are never written to disk. `BaseLM` is a role/selector for
+`BaseLM-DPO`, then `BaseLM-SFT`, then `BaseLM-base` depending on context.
+`ProdLM` is a backend role, not a model artifact. Cross-family fallback (a
+notebook walking `TinyLLM → StoryLM → ShakespeareLM → BaseLM` when nothing
+better exists) is **not** part of the alias rule; that lives at the notebook
+orchestration layer.
 
 ### Derived-artifact lineage
 
 Derived artifacts (`-SFT`, `-DPO`) record their parent in the manifest's
 `base_artifact` field. The chain is followable: `BaseLM-DPO` →
-`BaseLM-SFT` → `BaseLM`; `TinyLLM-30M-DPO` → `TinyLLM-30M-SFT` →
-`TinyLLM-30M`. A reader can walk back to the source by following that field
-rather than parsing the name.
+`BaseLM-SFT` → `BaseLM-base`; `TinyLLM-30M-DPO` → `TinyLLM-30M-SFT` →
+`TinyLLM-30M-base`. A reader can walk back to the source by following that
+field rather than parsing the name.
 
 ### Canonical artifact list
 
 Base models (self-trained):
 
-- `ShakespeareLM-1M`: the first real Transformer language-model milestone.
-- `StoryLM-1M`: the small TinyStories scaling anchor from Module 12.
-- `StoryLM-5M`: smaller TinyStories model for weak hardware and fast loops.
-- `StoryLM-30M`: default TinyStories model, intended to feel meaningfully
+- `ShakespeareLM-1M-base`: the first real Transformer language-model milestone.
+- `StoryLM-1M-base`: the small TinyStories scaling anchor from Module 12.
+- `StoryLM-5M-base`: smaller TinyStories model for weak hardware and fast loops.
+- `StoryLM-30M-base`: default TinyStories model, intended to feel meaningfully
   language-like.
-- `TinyLLM-30M`: broader from-scratch model used for assistant-shaped tracks.
-- `TinyLLM-100M`: optional larger local stretch model.
+- `TinyLLM-30M-base`: broader from-scratch model used for assistant-shaped tracks.
+- `TinyLLM-100M-base`: optional larger local stretch model.
 
 External base model:
 
-- `BaseLM`: small pretrained base used as a fallback for Modules 13-15 when
+- `BaseLM-base`: small pretrained base used as a fallback for Modules 13-15 when
   self-trained models are too weak.
 
 Backend role (no checkpoint):
@@ -261,11 +266,11 @@ The tokenizer is referenced by name in `manifest.tokenizer_artifact` rather
 than duplicated inside the model directory. This lets several models share one
 tokenizer artifact without copying it.
 
-External Hugging Face model artifacts, such as `BaseLM`, keep the HF-native
+External Hugging Face model artifacts, such as `BaseLM-base`, keep the HF-native
 layout instead of `model.pt`:
 
 ```text
-artifacts/models/BaseLM/
+artifacts/models/BaseLM-base/
   config.json
   manifest.json
   hf_tokenizer/
@@ -377,13 +382,13 @@ Module 10 is the first durable model-artifact boundary.
 
 It should produce some subset of:
 
-- `ShakespeareLM-1M`;
+- `ShakespeareLM-1M-base`;
 - `StoryTokenizer`;
-- `StoryLM-5M`;
-- `StoryLM-30M`;
-- optional `TinyLLM-30M` if the broader corpus path is available.
+- `StoryLM-5M-base`;
+- `StoryLM-30M-base`;
+- optional `TinyLLM-30M-base` if the broader corpus path is available.
 
-Module 12 can add `StoryLM-1M` as the low-end TinyStories scaling point.
+Module 12 can add `StoryLM-1M-base` as the low-end TinyStories scaling point.
 
 ### Module 11 - Sampling and Decoding
 
@@ -393,9 +398,9 @@ sampling traces that show how decoding changes behavior.
 ### Module 12 - Scaling Experiments
 
 Module 12 should make the clean scaling comparison inside one corpus family:
-`StoryLM-1M`, `StoryLM-5M`, and `StoryLM-30M` on TinyStories with the
-StoryTokenizer. It may create the `StoryLM-1M` checkpoint if missing, but should
-reuse the longer Module 10 runs for the 5M and 30M points. Cross-corpus
+`StoryLM-1M-base`, `StoryLM-5M-base`, and `StoryLM-30M-base` on TinyStories
+with the StoryTokenizer. It may create the `StoryLM-1M-base` checkpoint if
+missing, but should reuse the longer Module 10 runs for the 5M and 30M points. Cross-corpus
 comparisons with ShakespeareLM or TinyLLM are useful context, not the headline
 scaling curve.
 
@@ -417,7 +422,7 @@ It should produce:
   behavior clearly.
 
 (`<N>` carries through whichever size the base model used; e.g.
-`StoryLM-30M-SFT` from `StoryLM-30M`.)
+`StoryLM-30M-SFT` from `StoryLM-30M-base`.)
 
 ProdLM should not be the default training target for Module 13. Fine-tuning a
 production model can be optional later, but the core lesson is weight updates on

@@ -32,7 +32,9 @@ from .paths import artifacts_root
 CHECKPOINT_BACKUP_SUFFIX = ".bak"
 
 _SIZE_TOKEN_RE = re.compile(r"^(\d+(?:\.\d+)?)([KMB])$")
-_STAGE_NAMES = frozenset({"SFT", "DPO"})
+BASE_STAGE = "base"
+BASE_STAGE_SUFFIX = f"-{BASE_STAGE}"
+_STAGE_NAMES = frozenset({BASE_STAGE, "SFT", "DPO"})
 _SIZED_FAMILIES = frozenset({"ShakespeareLM", "StoryLM", "TinyLLM"})
 
 
@@ -47,8 +49,18 @@ class ModelArtifactSpec:
 
     @property
     def names(self) -> tuple[str, ...]:
-        """Return artifact names to search, canonical first."""
+        """Return base artifact names to search, new convention first."""
+        return (self.base_artifact_name, self.canonical_name, *self.aliases)
+
+    @property
+    def stage_root_names(self) -> tuple[str, ...]:
+        """Return names used as roots for SFT/DPO artifacts."""
         return (self.canonical_name, *self.aliases)
+
+    @property
+    def base_artifact_name(self) -> str:
+        """Return the canonical on-disk name for the base-stage artifact."""
+        return f"{self.canonical_name}{BASE_STAGE_SUFFIX}"
 
 
 DEFAULT_MODEL_ARTIFACT_SPECS: tuple[ModelArtifactSpec, ...] = (
@@ -205,7 +217,7 @@ def available_model_artifacts_with_suffix(
 
     found: list[AvailableModelArtifact] = []
     for spec in specs:
-        for base_name in spec.names:
+        for base_name in spec.stage_root_names:
             name = f"{base_name}{suffix}"
             if model_artifact_exists(name, repo_root=repo_root):
                 found.append(
@@ -270,8 +282,9 @@ def parse_artifact_name(name: str) -> tuple[str, str | None, str | None]:
     """Split an artifact name into ``(family, size, stage)``.
 
     ``size`` is the size token (e.g. ``"5M"``, ``"30M"``) if present, else
-    ``None``. ``stage`` is ``"SFT"`` or ``"DPO"`` if present, else ``None``.
-    Unrecognized components (legacy qualifiers like ``"Small"``) are ignored.
+    ``None``. ``stage`` is ``"base"``, ``"SFT"``, or ``"DPO"`` if present,
+    else ``None``. Unrecognized components (legacy qualifiers like ``"Small"``)
+    are ignored.
     """
     parts = name.split("-")
     family = parts[0]
@@ -294,6 +307,44 @@ def _size_token_to_int(token: str) -> int:
     return int(val * mult)
 
 
+def is_base_stage_artifact_name(name: str) -> bool:
+    """Return whether ``name`` is explicitly a base-stage artifact."""
+    return name.endswith(BASE_STAGE_SUFFIX)
+
+
+def stage_root_name(name: str) -> str:
+    """Return the stage root used before ``-base``, ``-SFT``, or ``-DPO``."""
+    if name.endswith(BASE_STAGE_SUFFIX):
+        return name[: -len(BASE_STAGE_SUFFIX)]
+    for stage in ("SFT", "DPO"):
+        suffix = f"-{stage}"
+        if name.endswith(suffix):
+            return name[: -len(suffix)]
+    return name
+
+
+def canonical_base_artifact_name(
+    name: str,
+    *,
+    specs: tuple[ModelArtifactSpec, ...] = DEFAULT_MODEL_ARTIFACT_SPECS,
+) -> str:
+    """Return the canonical save name for a base-stage artifact.
+
+    SFT/DPO names and already-explicit ``*-base`` names are returned unchanged.
+    Known course tiers are normalized to ``<tier>-base``. Unknown unsuffixed
+    names also get ``-base`` so new base artifacts follow the same convention.
+    """
+    if not name:
+        raise ValueError("artifact name must be non-empty")
+    _, _, stage = parse_artifact_name(name)
+    if stage is not None:
+        return name
+    spec = artifact_spec_for_name(name, specs=specs)
+    if spec is not None:
+        return spec.base_artifact_name
+    return f"{name}{BASE_STAGE_SUFFIX}"
+
+
 def resolve_artifact_name(
     name: str,
     *,
@@ -304,43 +355,61 @@ def resolve_artifact_name(
 
     Resolution rules, applied in order:
 
-    1. If ``name`` exists on disk as-is, return it unchanged.
-    2. If ``name`` matches a known spec alias (e.g. ``"StoryLM-Small"`` is
-       aliased to ``"StoryLM-5M"``), return that spec's canonical name if it
-       exists on disk.
+    1. If ``name`` matches a known base spec or alias, prefer the explicit
+       ``*-base`` artifact and fall back to the legacy unsuffixed artifact.
+    2. If ``name`` exists on disk as-is, return it unchanged.
     3. If ``name`` is a family-level alias -- a sized family
        (``ShakespeareLM`` / ``StoryLM`` / ``TinyLLM``) with the size token
-       omitted -- return the largest available ``<family>-<size>[-<stage>]``
-       artifact on disk at the same stage.
+       omitted -- return the largest available ``<family>-<size>-base`` or
+       legacy ``<family>-<size>`` artifact on disk at the same stage.
 
     Raises ``FileNotFoundError`` if no candidate exists.
     """
     if not name:
         raise ValueError("artifact name must be non-empty")
 
+    spec = artifact_spec_for_name(name, specs=specs)
+    if spec is not None:
+        if model_artifact_exists(spec.base_artifact_name, repo_root=repo_root):
+            return spec.base_artifact_name
+        for legacy_name in (spec.canonical_name, *spec.aliases):
+            if model_artifact_exists(legacy_name, repo_root=repo_root):
+                return legacy_name
+
+    if name == "BaseLM":
+        if model_artifact_exists("BaseLM-base", repo_root=repo_root):
+            return "BaseLM-base"
+
     if model_artifact_exists(name, repo_root=repo_root):
         return name
 
-    spec = artifact_spec_for_name(name, specs=specs)
-    if spec is not None and model_artifact_exists(spec.canonical_name, repo_root=repo_root):
-        return spec.canonical_name
+    if name == "BaseLM-base" and model_artifact_exists("BaseLM", repo_root=repo_root):
+        return "BaseLM"
 
     family, size, stage = parse_artifact_name(name)
     if family in _SIZED_FAMILIES and size is None:
         models_dir = artifacts_root(repo_root) / "models"
-        candidates: list[tuple[int, str]] = []
+        candidates: list[tuple[int, int, str]] = []
         if models_dir.exists():
             for entry in models_dir.iterdir():
                 if not entry.is_dir():
                     continue
                 ef, es, est = parse_artifact_name(entry.name)
-                if ef != family or es is None or est != stage:
+                if ef != family or es is None:
                     continue
+                if stage is None:
+                    if est not in (BASE_STAGE, None):
+                        continue
+                    stage_priority = 1 if est == BASE_STAGE else 0
+                elif est != stage:
+                    continue
+                else:
+                    stage_priority = 0
                 if model_artifact_exists(entry.name, repo_root=repo_root):
-                    candidates.append((_size_token_to_int(es), entry.name))
+                    candidates.append((_size_token_to_int(es), stage_priority, entry.name))
         if candidates:
             candidates.sort(reverse=True)
-            return candidates[0][1]
+            return candidates[0][2]
 
     raise FileNotFoundError(
         f"no model artifact resolves to {name!r}. Checked literal name, known "
@@ -431,17 +500,18 @@ def load_best_model_artifact(
     Downstream notebooks use this to avoid hard-coding one Module 10 artifact.
     The search order is:
 
-    ``ShakespeareLM-1M -> StoryLM-1M -> StoryLM-5M -> StoryLM-10M ->
-    StoryLM-30M -> TinyLLM-30M -> TinyLLM-100M``.
+    ``ShakespeareLM-1M-base -> StoryLM-1M-base -> StoryLM-5M-base ->
+    StoryLM-10M-base -> StoryLM-30M-base -> TinyLLM-30M-base ->
+    TinyLLM-100M-base``.
 
-    Current legacy names such as ``StoryLM-Small``, ``StoryLM``, and
-    ``TinyLLM`` are treated as aliases for the explicit tier names.
+    Current legacy names such as ``StoryLM-30M`` plus aliases such as
+    ``StoryLM-Small``, ``StoryLM``, and ``TinyLLM`` are treated as fallbacks.
     """
     candidate = best_model_artifact(repo_root=repo_root, specs=specs)
     if candidate is None:
         if not required:
             return None
-        expected = ", ".join(spec.canonical_name for spec in specs)
+        expected = ", ".join(spec.base_artifact_name for spec in specs)
         raise FileNotFoundError(
             "No reusable model artifact found under artifacts/models/. "
             f"Expected one of: {expected}. Run Module 10 and save at least one model."
@@ -612,7 +682,8 @@ def save_model_artifact(
     exists and is the canonical source for the vocabulary.
 
     Args:
-        name: artifact name (e.g. ``"ShakespeareLM-1M"``).
+        name: artifact name (e.g. ``"ShakespeareLM-1M"``). Base-stage names
+            are saved under the explicit ``*-base`` convention.
         model: trained TransformerLM to persist.
         model_config: kwargs used to construct the model. Excludes ``vocab_size``
             (saved separately on the state dict for fast lookup).
@@ -629,6 +700,7 @@ def save_model_artifact(
     Returns:
         The artifact directory path.
     """
+    name = canonical_base_artifact_name(name)
     root = model_artifact_dir(name, repo_root)
     root.mkdir(parents=True, exist_ok=True)
 

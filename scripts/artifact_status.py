@@ -8,11 +8,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from g2c.artifacts import (
+    DEFAULT_BASELM_NAME,
     available_model_artifacts,
     baselm_artifact_exists,
     best_model_artifact,
     best_model_artifact_with_suffix,
     find_repo_root,
+    model_artifact_exists,
     resolve_corpus,
     tokenized_corpus_artifact_exists,
     tokenizer_artifact_exists,
@@ -103,7 +105,12 @@ def render_artifact_status(
     if best_model is not None:
         lines.append(f"  best: {best_model.display_name} ({best_model.name})")
     if has_baselm:
-        lines.append("  ok BaseLM             artifacts/models/BaseLM")
+        baselm_dir = (
+            DEFAULT_BASELM_NAME
+            if model_artifact_exists(DEFAULT_BASELM_NAME, repo_root=root)
+            else "BaseLM"
+        )
+        lines.append(f"  ok BaseLM             artifacts/models/{baselm_dir}")
 
     lines.extend(["", "Recommended commands"])
     lines.extend(_recommend_commands(datasets, tokenizers, tokenized))

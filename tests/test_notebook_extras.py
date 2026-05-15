@@ -18,17 +18,17 @@ class TestNotebookModelSelection:
     def test_select_base_artifact_name_uses_baselm_when_configured(self, tmp_path) -> None:
         write_baselm_manifest(repo_root=tmp_path)
 
-        assert select_base_artifact_name("BaseLM", repo_root=tmp_path) == "BaseLM"
+        assert select_base_artifact_name("BaseLM", repo_root=tmp_path) == "BaseLM-base"
 
     def test_select_base_artifact_name_errors_when_baselm_missing(self, tmp_path) -> None:
         with pytest.raises(RuntimeError, match="BaseLM is not configured"):
             select_base_artifact_name("BaseLM", repo_root=tmp_path)
 
     def test_select_base_artifact_name_course_uses_strongest_base_course_model(self, tmp_path) -> None:
-        _write_course_artifact_marker(tmp_path, "StoryLM-5M")
-        _write_course_artifact_marker(tmp_path, "TinyLLM-30M")
+        _write_course_artifact_marker(tmp_path, "StoryLM-5M-base")
+        _write_course_artifact_marker(tmp_path, "TinyLLM-30M-base")
 
-        assert select_base_artifact_name("course", repo_root=tmp_path) == "TinyLLM-30M"
+        assert select_base_artifact_name("course", repo_root=tmp_path) == "TinyLLM-30M-base"
 
     def test_select_base_artifact_name_explicit_name_passes_through(self, tmp_path) -> None:
         assert select_base_artifact_name("StoryLM-5M", repo_root=tmp_path) == "StoryLM-5M"

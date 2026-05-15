@@ -64,7 +64,8 @@ def main(argv: list[str] | None = None) -> int:
 
     repo_root = find_repo_root(args.repo_root)
     cache_dir = _resolve_cache_dir(args.cache_dir, repo_root)
-    artifact_dir = model_artifact_dir(args.name, repo_root)
+    artifact_name = DEFAULT_BASELM_NAME if args.name == "BaseLM" else args.name
+    artifact_dir = model_artifact_dir(artifact_name, repo_root)
     tokenizer_dir = artifact_dir / "hf_tokenizer"
     artifact_dir.mkdir(parents=True, exist_ok=True)
     cache_dir.mkdir(parents=True, exist_ok=True)
@@ -110,7 +111,7 @@ def main(argv: list[str] | None = None) -> int:
         trust_remote_code=args.trust_remote_code,
     )
     artifact_path = write_baselm_manifest(
-        name=args.name,
+        name=artifact_name,
         model_id=args.model_id,
         repo_root=repo_root,
         revision=args.revision,

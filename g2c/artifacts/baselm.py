@@ -18,9 +18,10 @@ import torch
 from g2c.nn import resolve_device
 from g2c.tokenizer import COURSE_SPECIAL_TOKENS
 
-from .models import LoadedModelArtifact, atomic_json_save, model_artifact_dir
+from .models import LoadedModelArtifact, atomic_json_save, model_artifact_dir, stage_root_name
 
-DEFAULT_BASELM_NAME = "BaseLM"
+BASELM_STAGE_ROOT_NAME = "BaseLM"
+DEFAULT_BASELM_NAME = "BaseLM-base"
 DEFAULT_BASELM_MODEL_ID = "Qwen/Qwen3-0.6B-Base"
 HUGGINGFACE_CAUSAL_LM_KIND = "huggingface_causal_lm"
 
@@ -123,7 +124,10 @@ def baselm_artifact_exists(
     repo_root: str | Path | None = None,
 ) -> bool:
     """Return whether ``name`` is an external Hugging Face artifact."""
-    return huggingface_model_artifact_exists(name, repo_root=repo_root)
+    return any(
+        huggingface_model_artifact_exists(candidate, repo_root=repo_root)
+        for candidate in _baselm_name_candidates(name)
+    )
 
 
 def huggingface_model_artifact_exists(
@@ -157,6 +161,8 @@ def write_baselm_manifest(
     notes: str = "",
 ) -> Path:
     """Create/update the lightweight BaseLM artifact metadata."""
+    if name == BASELM_STAGE_ROOT_NAME:
+        name = DEFAULT_BASELM_NAME
     root = model_artifact_dir(name, repo_root)
     root.mkdir(parents=True, exist_ok=True)
     config = {
@@ -174,7 +180,7 @@ def write_baselm_manifest(
     atomic_json_save(config, root / "config.json")
     manifest = {
         "name": name,
-        "display_name": name,
+        "display_name": BASELM_STAGE_ROOT_NAME if name == DEFAULT_BASELM_NAME else name,
         "kind": HUGGINGFACE_CAUSAL_LM_KIND,
         "role": "BaseLM",
         "module": "external",
@@ -206,8 +212,9 @@ def load_huggingface_model_artifact(
             "or rerun setup after installing the `baselm` extra."
         ) from exc
 
-    root = model_artifact_dir(name, repo_root)
-    if not huggingface_model_artifact_exists(name, repo_root=repo_root):
+    resolved_name = _resolve_huggingface_artifact_name(name, repo_root=repo_root)
+    root = model_artifact_dir(resolved_name, repo_root)
+    if not huggingface_model_artifact_exists(resolved_name, repo_root=repo_root):
         raise FileNotFoundError(
             f"No Hugging Face model artifact named {name!r} at {root}. "
             "Run `./baselm.sh` to create BaseLM."
@@ -253,11 +260,11 @@ def load_huggingface_model_artifact(
     if device is not None:
         wrapper.to(device)
 
-    display_name = str(manifest.get("display_name") or name)
+    display_name = str(manifest.get("display_name") or resolved_name)
     rank = int(manifest.get("rank", 0))
     return LoadedModelArtifact(
-        name=name,
-        canonical_name=name,
+        name=resolved_name,
+        canonical_name=stage_root_name(resolved_name),
         display_name=display_name,
         rank=rank,
         artifact_dir=root,
@@ -320,6 +327,23 @@ def save_huggingface_model_artifact(
     }
     atomic_json_save(manifest, root / "manifest.json")
     return root
+
+
+def _baselm_name_candidates(name: str) -> tuple[str, ...]:
+    if name in {BASELM_STAGE_ROOT_NAME, DEFAULT_BASELM_NAME}:
+        return (DEFAULT_BASELM_NAME, BASELM_STAGE_ROOT_NAME)
+    return (name,)
+
+
+def _resolve_huggingface_artifact_name(
+    name: str,
+    *,
+    repo_root: str | Path | None,
+) -> str:
+    for candidate in _baselm_name_candidates(name):
+        if huggingface_model_artifact_exists(candidate, repo_root=repo_root):
+            return candidate
+    return name
 
 
 def _artifact_path_or_model_id(

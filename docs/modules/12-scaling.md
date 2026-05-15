@@ -11,7 +11,7 @@ Scaling laws tell us how model quality varies with model size. We frame scaling 
 
 * *Review* power laws on log-log axes — `y = A · x^α` plots as a straight line with slope `α`
 * *Review* FLOPs as a unit of compute — used here to standardize comparisons across model sizes and training runs
-* *Finish* Modules 10–11 — especially the `StoryLM-5M` and `StoryLM-30M` artifacts from the Module 10 notebook
+* *Finish* Modules 10–11 — especially the `StoryLM-5M-base` and `StoryLM-30M-base` artifacts from the Module 10 notebook
 * *Run* `.venv/bin/python scripts/artifact_status.py --module 12` to see which saved model artifacts are available
 * *Run* `./datasets.sh --tiny` or `./datasets.sh --small` if the TinyStories corpus or `StoryTokenizer` artifact is missing
 
@@ -44,7 +44,7 @@ The Kaplan paper (2020) made this concrete. The Chinchilla paper (2022) correcte
 
 You won't reproduce these exponents at MacBook scale, but you will see *the same shape*. You'll most likely see a slightly different exponent because (a) the optimizer is different, (b) the dataset is tiny, (c) you only have a few points. The lesson isn't "I matched Chinchilla's slope." The lesson is "scaling has a shape, and that shape is not subjective."
 
-The clean experiment in this module stays inside TinyStories: `StoryLM-1M`, `StoryLM-5M`, and `StoryLM-30M`. Same tokenizer, same corpus family, same objective. That restriction matters. `ShakespeareLM`, `StoryLM`, and `TinyLLM` are all useful artifacts, but mixing them in one scaling curve confounds model size with corpus and tokenizer changes.
+The clean experiment in this module stays inside TinyStories: `StoryLM-1M-base`, `StoryLM-5M-base`, and `StoryLM-30M-base`. Same tokenizer, same corpus family, same objective. That restriction matters. `ShakespeareLM`, `StoryLM`, and `TinyLLM` are all useful artifacts, but mixing them in one scaling curve confounds model size with corpus and tokenizer changes.
 
 The other empirical observation is harder to capture in a quantitative law: some capabilities show up *suddenly* with size. The 1M StoryLM is often locally plausible but unstable; the 5M model can form simple story beats; the 30M model is more likely to preserve a situation across several sentences. The qualitative gap between sample texts at different sizes is the headline observation of the module — and the part you have to *read*, not just plot.
 
@@ -205,9 +205,9 @@ The other Schaeffer-style observation, applicable at every scale:
 
 This module has **no new package code**. The deliverable is a notebook that compares three TinyStories models at different sizes:
 
-- `StoryLM-1M`: trained in this notebook if missing
-- `StoryLM-5M`: saved from Module 10
-- `StoryLM-30M`: saved from Module 10
+- `StoryLM-1M-base`: trained in this notebook if missing
+- `StoryLM-5M-base`: saved from Module 10
+- `StoryLM-30M-base`: saved from Module 10
 
 The restriction to TinyStories is intentional. It gives you one clean scaling comparison before you start mixing in broader corpora, instruction tuning, and assistant behavior.
 
@@ -219,13 +219,13 @@ Rough M-series budget:
    ┌────────────┬──────────────────────────────────────────────┐
    │ artifact   │ role in Module 12                            │
    ├────────────┼──────────────────────────────────────────────┤
-   │ StoryLM-1M │ train here if missing; short local run       │
-   │ StoryLM-5M │ reuse Module 10 artifact                     │
-   │ StoryLM-30M│ reuse Module 10 artifact                     │
+   │ StoryLM-1M-base │ train here if missing; short local run  │
+   │ StoryLM-5M-base │ reuse Module 10 artifact                │
+   │ StoryLM-30M-base│ reuse Module 10 artifact                │
    └────────────┴──────────────────────────────────────────────┘
 ```
 
-The `StoryLM-1M` run is deliberately small. On most M-series machines it should be a coffee-break run, not a monster training session. If you do not have the `StoryLM-5M` or `StoryLM-30M` artifacts yet, go back to Module 10 rather than trying to recreate the whole ladder here.
+The `StoryLM-1M-base` run is deliberately small. On most M-series machines it should be a coffee-break run, not a monster training session. If you do not have the `StoryLM-5M-base` or `StoryLM-30M-base` artifacts yet, go back to Module 10 rather than trying to recreate the whole ladder here.
 
 ## Exercises
 
@@ -253,11 +253,11 @@ These are scaling experiments built on the Module 10 training workflow. Keep the
 
 This is a compute-aware week, but it should not be another monster run if Module 10 artifacts already exist.
 
-- **Plan around artifact reuse.** `StoryLM-5M` and `StoryLM-30M` come from Module 10. Module 12 should usually train only `StoryLM-1M`.
+- **Plan around artifact reuse.** `StoryLM-5M-base` and `StoryLM-30M-base` come from Module 10. Module 12 should usually train only `StoryLM-1M-base`.
 
 - **MPS vs CPU.** The 1M StoryLM trains comfortably on MPS and can run on CPU if needed. `Trainer(..., device="auto")` is the default path; print `trainer.device` at the start of a run so you know whether you are actually on MPS.
 
-- **Memory headroom.** The 1M run is small. Maybe 2GB of memory usage. The notebook may load `StoryLM-5M` and `StoryLM-30M` for sampling, but that is inference, not backprop. If memory pressure turns yellow or red, restart the kernel and load only the model you are inspecting.
+- **Memory headroom.** The 1M run is small. Maybe 2GB of memory usage. The notebook may load `StoryLM-5M-base` and `StoryLM-30M-base` for sampling, but that is inference, not backprop. If memory pressure turns yellow or red, restart the kernel and load only the model you are inspecting.
 
 - **Long runs and laptop sleep.** If you choose to add an optional larger TinyStories point, plug in. macOS aggressively sleeps the GPU when the laptop is on battery.
 
@@ -287,7 +287,7 @@ Optional:
 ## Deliverable checklist
 
 - [ ] Working copy of `12-scaling.ipynb` completed (open it from the clean scaffold with `./notebook.sh 12`).
-- [ ] `StoryLM-1M`, `StoryLM-5M`, and `StoryLM-30M` loaded or clearly marked missing.
+- [ ] `StoryLM-1M-base`, `StoryLM-5M-base`, and `StoryLM-30M-base` loaded or clearly marked missing.
 - [ ] A table showing exact parameter count, vocab size, step count, tokens seen, final validation loss, and perplexity for each available StoryLM artifact.
 - [ ] A loss/perplexity-vs-parameter-count plot for the StoryLM ladder.
 - [ ] Three sample texts from the same TinyStories prompt, one per available StoryLM size.

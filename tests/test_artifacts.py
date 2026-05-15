@@ -814,9 +814,9 @@ def test_available_model_artifacts_resolves_aliases_by_tier(tmp_path):
     available = available_model_artifacts(repo_root=repo)
 
     assert [artifact.name for artifact in available] == [
-        "ShakespeareLM-1M",
-        "StoryLM-1M",
-        "StoryLM-Small",
+        "ShakespeareLM-1M-base",
+        "StoryLM-1M-base",
+        "StoryLM-5M-base",
     ]
     assert available[-1].canonical_name == "StoryLM-5M"
     assert available[-1].display_name == "StoryLM 5M"
@@ -831,7 +831,7 @@ def test_best_model_artifact_prefers_strongest_available_alias(tmp_path):
     best = best_model_artifact(repo_root=repo)
 
     assert best is not None
-    assert best.name == "TinyLLM"
+    assert best.name == "TinyLLM-30M-base"
     assert best.canonical_name == "TinyLLM-30M"
     assert best.display_name == "TinyLLM 30M"
 
@@ -844,7 +844,7 @@ def test_load_best_model_artifact_loads_model_and_tokenizer(tmp_path):
     loaded = load_best_model_artifact(repo_root=repo, required=True)
 
     assert loaded is not None
-    assert loaded.name == "TinyLLM"
+    assert loaded.name == "TinyLLM-30M-base"
     assert loaded.model.vocab_size == 256
     assert loaded.tokenizer.encode_fast("abc") == list(b"abc")
     assert loaded.manifest["tokenizer_artifact"] == "TinyTok"
@@ -857,7 +857,7 @@ def test_load_model_artifact_with_tokenizer_loads_named_alias(tmp_path):
 
     loaded = load_model_artifact_with_tokenizer("StoryLM-Small", repo_root=repo)
 
-    assert loaded.name == "StoryLM-Small"
+    assert loaded.name == "StoryLM-5M-base"
     assert loaded.canonical_name == "StoryLM-5M"
     assert loaded.display_name == "StoryLM 5M"
     assert loaded.model.vocab_size == 256
@@ -865,6 +865,7 @@ def test_load_model_artifact_with_tokenizer_loads_named_alias(tmp_path):
 
 
 def test_parse_artifact_name_extracts_family_size_stage():
+    assert parse_artifact_name("ShakespeareLM-1M-base") == ("ShakespeareLM", "1M", "base")
     assert parse_artifact_name("ShakespeareLM-1M") == ("ShakespeareLM", "1M", None)
     assert parse_artifact_name("StoryLM-30M-SFT") == ("StoryLM", "30M", "SFT")
     assert parse_artifact_name("TinyLLM-100M-DPO") == ("TinyLLM", "100M", "DPO")
@@ -879,7 +880,19 @@ def test_parse_artifact_name_extracts_family_size_stage():
 def test_resolve_artifact_name_returns_literal_when_on_disk(tmp_path):
     repo = make_repo(tmp_path)
     _save_tiny_tokenizer_artifact(repo, "TinyTok")
-    _save_tiny_model_artifact(repo, "StoryLM-30M", tokenizer_name="TinyTok")
+    _save_tiny_model_artifact(repo, "StoryLM-30M-base", tokenizer_name="TinyTok")
+
+    assert resolve_artifact_name("StoryLM-30M-base", repo_root=repo) == "StoryLM-30M-base"
+    assert resolve_artifact_name("StoryLM-30M", repo_root=repo) == "StoryLM-30M-base"
+
+
+def test_resolve_artifact_name_falls_back_to_legacy_base_artifact(tmp_path):
+    repo = make_repo(tmp_path)
+    legacy_dir = repo / "artifacts" / "models" / "StoryLM-30M"
+    legacy_dir.mkdir(parents=True)
+    (legacy_dir / "model.pt").write_bytes(b"placeholder")
+    (legacy_dir / "config.json").write_text("{}", encoding="utf-8")
+    (legacy_dir / "manifest.json").write_text("{}", encoding="utf-8")
 
     assert resolve_artifact_name("StoryLM-30M", repo_root=repo) == "StoryLM-30M"
 
@@ -890,7 +903,7 @@ def test_resolve_artifact_name_maps_static_alias_to_canonical(tmp_path):
     _save_tiny_model_artifact(repo, "StoryLM-5M", tokenizer_name="TinyTok")
 
     # Legacy alias from the spec table.
-    assert resolve_artifact_name("StoryLM-Small", repo_root=repo) == "StoryLM-5M"
+    assert resolve_artifact_name("StoryLM-Small", repo_root=repo) == "StoryLM-5M-base"
 
 
 def test_resolve_artifact_name_family_alias_picks_largest(tmp_path):
@@ -899,13 +912,13 @@ def test_resolve_artifact_name_family_alias_picks_largest(tmp_path):
     _save_tiny_model_artifact(repo, "StoryLM-5M", tokenizer_name="TinyTok")
     _save_tiny_model_artifact(repo, "StoryLM-30M", tokenizer_name="TinyTok")
 
-    assert resolve_artifact_name("StoryLM", repo_root=repo) == "StoryLM-30M"
+    assert resolve_artifact_name("StoryLM", repo_root=repo) == "StoryLM-30M-base"
 
 
 def test_resolve_artifact_name_family_alias_respects_stage(tmp_path):
     repo = make_repo(tmp_path)
     _save_tiny_tokenizer_artifact(repo, "TinyTok")
-    _save_tiny_model_artifact(repo, "TinyLLM-30M", tokenizer_name="TinyTok")
+    _save_tiny_model_artifact(repo, "TinyLLM-30M-base", tokenizer_name="TinyTok")
     _save_tiny_model_artifact(repo, "TinyLLM-30M-SFT", tokenizer_name="TinyTok")
     _save_tiny_model_artifact(repo, "TinyLLM-100M-SFT", tokenizer_name="TinyTok")
 
@@ -919,9 +932,22 @@ def test_resolve_artifact_name_family_alias_respects_stage(tmp_path):
     assert resolve_artifact_name("TinyLLM-SFT", repo_root=repo) == "TinyLLM-100M-SFT"
 
 
-def test_resolve_artifact_name_baselm_passes_through_unchanged(tmp_path):
+def test_resolve_artifact_name_baselm_prefers_base_stage_artifact(tmp_path):
     repo = make_repo(tmp_path)
     # Stub a BaseLM artifact directory with the minimal manifest fields needed.
+    baselm_dir = repo / "artifacts" / "models" / "BaseLM-base"
+    baselm_dir.mkdir(parents=True)
+    (baselm_dir / "config.json").write_text("{}", encoding="utf-8")
+    (baselm_dir / "manifest.json").write_text(
+        json.dumps({"name": "BaseLM-base", "kind": "huggingface_causal_lm"}),
+        encoding="utf-8",
+    )
+
+    assert resolve_artifact_name("BaseLM", repo_root=repo) == "BaseLM-base"
+
+
+def test_resolve_artifact_name_baselm_falls_back_to_legacy(tmp_path):
+    repo = make_repo(tmp_path)
     baselm_dir = repo / "artifacts" / "models" / "BaseLM"
     baselm_dir.mkdir(parents=True)
     (baselm_dir / "config.json").write_text("{}", encoding="utf-8")
@@ -931,6 +957,7 @@ def test_resolve_artifact_name_baselm_passes_through_unchanged(tmp_path):
     )
 
     assert resolve_artifact_name("BaseLM", repo_root=repo) == "BaseLM"
+    assert resolve_artifact_name("BaseLM-base", repo_root=repo) == "BaseLM"
 
 
 def test_resolve_artifact_name_raises_when_missing(tmp_path):
@@ -950,7 +977,7 @@ def test_baselm_manifest_registers_external_model_artifact(tmp_path):
         cache_dir="data/test-cache",
     )
 
-    assert artifact_dir == repo / "artifacts" / "models" / "BaseLM"
+    assert artifact_dir == repo / "artifacts" / "models" / "BaseLM-base"
     assert baselm_artifact_exists(repo_root=repo)
     assert (artifact_dir / "config.json").exists()
     manifest = json.loads((artifact_dir / "manifest.json").read_text())
