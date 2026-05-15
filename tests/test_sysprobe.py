@@ -12,6 +12,8 @@ import struct
 import sys
 from pathlib import Path
 
+import pytest
+
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SYSPROBE_PATH = REPO_ROOT / "scripts" / "sysprobe.py"
@@ -227,6 +229,99 @@ def test_kv_cache_scales_with_layers_and_kv_heads():
                - 2 * sp.estimate_kv_cache_gb(base, 2048)) < 1e-9
 
 
+def test_decoder_kv_cache_matches_prodlm_formula():
+    cand = sp.ProdLMCandidate(
+        display_name="x", ollama_tag="x", hf_repo="x", gguf_filename="x",
+        n_layers=28, n_kv_heads=8, head_dim=128, nominal_params_b=0.6,
+    )
+    generic = sp.estimate_decoder_kv_cache_gb(
+        num_hidden_layers=28,
+        num_key_value_heads=8,
+        head_dim=128,
+        context_length=4096,
+        bytes_per_element=2,
+    )
+    assert abs(generic - sp.estimate_kv_cache_gb(cand, 4096)) < 1e-12
+
+
+def test_baselm_candidate_param_counts_match_size_tiers():
+    by_name = {c.display_name: c for c in sp.BASELM_INFERENCE_CANDIDATES}
+    assert 0.12 < by_name["SmolLM 135M"].param_count() / 1e9 < 0.16
+    assert 0.32 < by_name["SmolLM 360M"].param_count() / 1e9 < 0.40
+    assert 0.55 < by_name["Qwen3 0.6B Base"].param_count() / 1e9 < 0.65
+
+
+def test_estimate_baselm_inference_clamps_context_and_reports_fp32():
+    sysinfo = sp.SystemInfo(
+        platform="Darwin",
+        chip="Apple M2 Max",
+        physical_memory_gb=32.0,
+        bandwidth_gbps=400.0,
+        mps_available=True,
+        python_version="3.11",
+        torch_version="2.x",
+    )
+    smollm = next(
+        c for c in sp.BASELM_INFERENCE_CANDIDATES
+        if c.display_name == "SmolLM 135M"
+    )
+
+    result = sp.estimate_baselm_inference(smollm, sysinfo, context_length=4096)
+
+    assert result.status == "ok"
+    assert result.context_length == 2048
+    assert "context clamped" in result.note
+    assert result.notebook_memory_fp32_gb > result.notebook_memory_fp16_gb
+    assert result.notebook_memory_fp16_gb > result.model_memory_fp16_gb
+    assert result.practical_memory_gb == 28.0
+
+
+def test_estimate_baselm_posttraining_uses_course_shapes():
+    sysinfo = sp.SystemInfo(
+        platform="Darwin",
+        chip="Apple M2 Max",
+        physical_memory_gb=32.0,
+        bandwidth_gbps=400.0,
+        mps_available=True,
+        python_version="3.11",
+        torch_version="2.x",
+    )
+    qwen = next(
+        c for c in sp.BASELM_INFERENCE_CANDIDATES
+        if c.display_name == "Qwen3 0.6B Base"
+    )
+
+    sft = sp.estimate_baselm_posttraining(qwen, sysinfo, stage="SFT")
+    dpo = sp.estimate_baselm_posttraining(qwen, sysinfo, stage="DPO")
+
+    assert sft.stage == "SFT"
+    assert sft.batch_size == sp.BASELM_SFT_BATCH_SIZE
+    assert sft.context_length == sp.BASELM_POSTTRAIN_CONTEXT_LENGTH
+    assert dpo.stage == "DPO"
+    assert dpo.batch_size == sp.BASELM_DPO_BATCH_SIZE
+    assert dpo.context_length == sp.BASELM_POSTTRAIN_CONTEXT_LENGTH
+    assert sft.notebook_memory_fp32_gb > sft.notebook_memory_fp16_gb
+    assert dpo.notebook_memory_fp32_gb > dpo.notebook_memory_fp16_gb
+    assert sft.practical_memory_gb == 28.0
+    assert dpo.practical_memory_gb == 28.0
+
+
+def test_estimate_baselm_posttraining_rejects_unknown_stage():
+    sysinfo = sp.SystemInfo(
+        platform="Darwin",
+        chip="Apple M2 Max",
+        physical_memory_gb=32.0,
+        bandwidth_gbps=400.0,
+        mps_available=True,
+        python_version="3.11",
+        torch_version="2.x",
+    )
+    cand = sp.BASELM_INFERENCE_CANDIDATES[0]
+
+    with pytest.raises(ValueError, match="unknown BaseLM post-training stage"):
+        sp.estimate_baselm_posttraining(cand, sysinfo, stage="RLHF")
+
+
 # ---------------------------------------------------------------------------
 # Throughput tier classification
 # ---------------------------------------------------------------------------
@@ -259,3 +354,141 @@ def test_canonical_shapes_match_named_size_tiers():
         ratio = actual / nominal
         # The naming convention buckets to size tiers; allow loose match.
         assert 0.5 < ratio < 2.5, f"{name}: actual={actual} nominal={nominal}"
+
+
+def test_find_shape_returns_canonical_shape_by_name():
+    shape = sp.find_shape("TinyLLM-30M")
+    assert shape.name == "TinyLLM-30M"
+    assert shape.batch_size == 16
+    with pytest.raises(KeyError, match="unknown canonical shape"):
+        sp.find_shape("MissingLM")
+
+
+# ---------------------------------------------------------------------------
+# Batch sweep helpers
+# ---------------------------------------------------------------------------
+
+def test_parse_batch_list_preserves_order_and_deduplicates():
+    assert sp.parse_batch_list("8,16,16,32") == [8, 16, 32]
+    assert sp.parse_batch_list(" 4, 8 , 32 ") == [4, 8, 32]
+
+
+def test_parse_batch_list_rejects_empty_and_non_positive_values():
+    with pytest.raises(ValueError, match="at least one"):
+        sp.parse_batch_list(" , ")
+    with pytest.raises(ValueError, match="positive"):
+        sp.parse_batch_list("8,0,16")
+    with pytest.raises(ValueError, match="invalid"):
+        sp.parse_batch_list("8,big,16")
+
+
+def test_classify_training_headroom_marks_ok_tight_and_fail():
+    sysinfo = sp.SystemInfo(
+        platform="Darwin",
+        chip="Apple M2 Max",
+        physical_memory_gb=64.0,
+        bandwidth_gbps=400.0,
+        mps_available=True,
+        python_version="3.11",
+        torch_version="2.x",
+    )
+
+    def result_with_peak(peak_gb: float) -> sp.ProbeResult:
+        return sp.ProbeResult(
+            shape_name="TinyLLM-100M",
+            param_count_m=91.2,
+            status="ok",
+            peak_memory_gb=peak_gb,
+            tokens_per_sec=1000.0,
+            batch_size=8,
+            context_length=512,
+            steps_run=20,
+        )
+
+    ok = sp.classify_training_headroom(result_with_peak(10.0), sysinfo)
+    tight = sp.classify_training_headroom(result_with_peak(35.0), sysinfo)
+    fail = sp.classify_training_headroom(result_with_peak(50.0), sysinfo)
+
+    # 64 GB unified memory - 4 GB OS reserve = 60 GB practical budget.
+    # The notebook estimate is 3x probe memory.
+    assert ok.status == "ok"
+    assert ok.estimated_notebook_memory_gb == 30.0
+    assert ok.practical_memory_gb == 60.0
+
+    assert tight.status == "tight"
+    assert tight.estimated_notebook_memory_gb == 105.0
+    assert "exceeds practical memory" in tight.note
+
+    assert fail.status == "fail"
+    assert fail.estimated_notebook_memory_gb == 150.0
+    assert "exceeds 2x practical memory" in fail.note
+
+
+def test_classify_training_headroom_populates_estimates_for_ok_result():
+    sysinfo = sp.SystemInfo(
+        platform="Darwin",
+        chip="Apple M2 Max",
+        physical_memory_gb=32.0,
+        bandwidth_gbps=400.0,
+        mps_available=True,
+        python_version="3.11",
+        torch_version="2.x",
+    )
+    result = sp.ProbeResult(
+        shape_name="TinyLLM-30M",
+        param_count_m=29.4,
+        status="ok",
+        peak_memory_gb=6.5,
+        tokens_per_sec=1000.0,
+        batch_size=16,
+        context_length=512,
+        steps_run=20,
+    )
+
+    classified = sp.classify_training_headroom(result, sysinfo)
+
+    assert classified.status == "ok"
+    assert classified.estimated_notebook_memory_gb == 19.5
+    assert classified.practical_memory_gb == 28.0
+
+
+def test_probe_batch_sweep_stops_after_failed_batch(monkeypatch):
+    shape = sp.find_shape("TinyLLM-100M")
+    sysinfo = sp.SystemInfo(
+        platform="Darwin",
+        chip="Apple M2 Max",
+        physical_memory_gb=64.0,
+        bandwidth_gbps=400.0,
+        mps_available=True,
+        python_version="3.11",
+        torch_version="2.x",
+    )
+    batches_seen: list[int] = []
+
+    def fake_probe_training(swept_shape, device, n_steps=100, progress_cb=None):
+        batches_seen.append(swept_shape.batch_size)
+        status = "fail" if swept_shape.batch_size == 16 else "ok"
+        return sp.ProbeResult(
+            shape_name=swept_shape.name,
+            param_count_m=swept_shape.param_count() / 1e6,
+            status=status,
+            peak_memory_gb=None if status == "fail" else 1.0,
+            tokens_per_sec=None if status == "fail" else 1000.0,
+            batch_size=swept_shape.batch_size,
+            context_length=swept_shape.context_length,
+            steps_run=n_steps,
+        )
+
+    monkeypatch.setattr(sp, "probe_training", fake_probe_training)
+    results = sp.probe_batch_sweep(
+        shape,
+        [8, 16, 32],
+        "mps",
+        sysinfo,
+        n_steps=3,
+    )
+
+    assert batches_seen == [8, 16]
+    assert [r.batch_size for r in results] == [8, 16, 32]
+    assert [r.status for r in results] == ["ok", "fail", "skip"]
+    assert results[2].note == "skipped after B=16 failed"
