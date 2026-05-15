@@ -11,6 +11,7 @@ from g2c.artifacts import (
     TokenizedCorpus,
     TokenizedCorpusArtifact,
     TokenizerArtifactConfig,
+    DEFAULT_BASELM_MODEL_ID,
     atomic_torch_save,
     available_model_artifacts,
     baselm_artifact_exists,
@@ -984,6 +985,10 @@ def test_baselm_manifest_registers_external_model_artifact(tmp_path):
     assert manifest["kind"] == "huggingface_causal_lm"
     assert manifest["role"] == "BaseLM"
     assert manifest["model_id"] == "org/test-base"
+
+
+def test_default_baselm_model_id_is_smol_lm():
+    assert DEFAULT_BASELM_MODEL_ID == "HuggingFaceTB/SmolLM-135M"
 
 
 def test_load_model_artifact_forwards_hf_dtype_override(tmp_path, monkeypatch):

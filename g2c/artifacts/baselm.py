@@ -22,7 +22,7 @@ from .models import LoadedModelArtifact, atomic_json_save, model_artifact_dir, s
 
 BASELM_STAGE_ROOT_NAME = "BaseLM"
 DEFAULT_BASELM_NAME = "BaseLM-base"
-DEFAULT_BASELM_MODEL_ID = "Qwen/Qwen3-0.6B-Base"
+DEFAULT_BASELM_MODEL_ID = "HuggingFaceTB/SmolLM-135M"
 HUGGINGFACE_CAUSAL_LM_KIND = "huggingface_causal_lm"
 
 

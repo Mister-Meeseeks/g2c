@@ -24,7 +24,7 @@ your local experience:
 |---|---|---|---|---|
 | Dataset footprint | `./datasets.sh` | `--tiny` | `--small` | (no flag) |
 | Module 10 model | Module 10 notebook | `ShakespeareLM-1M`, `StoryLM-5M` | `StoryLM-30M`, `TinyLLM-30M` | `TinyLLM-100M` |
-| BaseLM (Modules 13-15) | `./baselm.sh --model-id` | small HF base | small HF base | small HF base |
+| BaseLM (Modules 13-16) | `./baselm.sh --model-id` | small HF base | small HF base | small HF base |
 | ProdLM (Modules 16-20) | `./prodlm.sh --model-id` | 1.5B-3B instruct | 7B-8B instruct | 14B-class instruct |
 
 BaseLM is a per-need fallback rather than a hardware tier — pick any small
@@ -92,7 +92,7 @@ pin `vocab_size: 4096`, that is the system working as intended.
 | `ShakespeareLM` | Tiny baseline model from Module 10. Useful for proving the loop works, not for quality. |
 | `StoryLM` | TinyStories-trained model. More coherent stories, still not a general assistant. |
 | `TinyLLM` | Broader G2C-corpus model trained from scratch. Best self-trained candidate for assistant-shaped experiments. |
-| `BaseLM` | Small external pretrained base model for Modules 13-15 when self-trained models are too weak. The role is model-agnostic -- run `./baselm.sh --model-id <hf-model-id>` to bind it to any small HF causal LM that fits your machine. |
+| `BaseLM` | Small external pretrained base model for Modules 13-16 when self-trained models are too weak. The role is model-agnostic -- run `./baselm.sh --model-id <hf-model-id>` to bind it to any small HF causal LM that fits your machine. |
 | `ProdLM` | Local pretrained instruct model for Modules 16-20. Usually served through Ollama, llama.cpp, or another local runtime. |
 | `<base>-SFT` / `<base>-DPO` | Derived artifacts produced by Modules 13 and 14. The base is whichever of `StoryLM-<N>`, `TinyLLM-<N>`, or `BaseLM` was fine-tuned; the suffix records the last training pass. DPO artifacts are typically layered on top of the corresponding `-SFT` artifact, which is recorded in the manifest's `base_artifact` field. |
 
@@ -135,7 +135,7 @@ Use these as planning ranges, not promises.
 | Tokenized G2C corpus | Standard/Full | minutes to tens of minutes | `data/cache/token-corpus/TinyLLM-*` |
 | StoryLM 5M/30M training | Module 10 | minutes to about hour-class | checkpoints and model artifacts |
 | TinyLLM 30M-100M training | Module 10/12 | multi-hour or overnight | checkpoints and model artifacts |
-| BaseLM fetch | Modules 13-15 | model-size and network dependent | `./baselm.sh`, HF cache under `data/cache/baselm/` |
+| BaseLM fetch | Modules 13-16 | model-size and network dependent | `./baselm.sh`, HF cache under `data/cache/baselm/` |
 | ProdLM fetch | Modules 16-20 | model-size and network dependent | `./prodlm.sh`, external Ollama model cache |
 
 Downloads and tokenized corpora are one-time setup costs. Training runs are the

@@ -36,7 +36,7 @@ Default:
 --full:
     After the default setup, also run:
         ./datasets.sh    # GloVe + full TinyStories + full G2C corpus (Modules 05, 10)
-        ./baselm.sh      # pretrained BaseLM artifact (Modules 13-15)
+        ./baselm.sh      # pretrained BaseLM artifact (Modules 13-16)
         ./prodlm.sh      # ProdLM Ollama runtime (Modules 16-20)
 
 -h, --help:
@@ -212,7 +212,7 @@ echo "    ./datasets.sh glove        # Module 05 pretrained vectors"
 echo "    ./datasets.sh tinystories  # Module 10 scale-up corpus"
 echo ""
 echo "Download/register the optional BaseLM model with:"
-echo "    ./baselm.sh                # Modules 13-15 pretrained base fallback"
+echo "    ./baselm.sh                # Modules 13-16 pretrained base fallback"
 echo ""
 echo "Configure the ProdLM runtime with:"
 echo "    ./prodlm.sh                # Modules 16-20 local production model"

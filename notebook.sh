@@ -16,6 +16,7 @@ RED='\033[0;31m'
 YELLOW='\033[1;33m'
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
+BOLD='\033[1m'
 NC='\033[0m'
 
 info() { printf "${BLUE}==>${NC} %s\n" "$*"; }
@@ -23,9 +24,32 @@ ok()   { printf "${GREEN} ok${NC} %s\n" "$*"; }
 warn() { printf "${YELLOW}warn${NC} %s\n" "$*"; }
 fail() { printf "${RED}fail${NC} %s\n" "$*" >&2; exit 1; }
 
+warn_if_notebook_kernels_running() {
+    local kernel_pids=()
+    local pid
+
+    if command -v pgrep >/dev/null 2>&1; then
+        while IFS= read -r pid; do
+            [[ -n "$pid" ]] && kernel_pids+=("$pid")
+        done < <(pgrep -f "ipykernel_launcher" 2>/dev/null || true)
+    fi
+
+    if [[ ${#kernel_pids[@]} -eq 0 ]]; then
+        return 0
+    fi
+
+    printf "\n"
+    printf "${BOLD}${YELLOW}WARNING: %s existing Jupyter kernel(s) appear to be running.${NC}\n" "${#kernel_pids[@]}"
+    printf "${YELLOW}Launching another notebook may cause memory/resource contention, especially for training, BaseLM, or ProdLM work.${NC}\n"
+    printf "${YELLOW}Consider shutting down other open notebook kernels before running heavy cells.${NC}\n"
+    printf "${YELLOW}Detected kernel PID(s): %s${NC}\n" "${kernel_pids[*]}"
+    printf "\n"
+}
+
 usage() {
     cat <<'EOF'
 Usage: ./notebook.sh <module> [open_notebook.py args]
+       ./notebook.sh [open_notebook.py args] <module>
 
 One-stop wrapper for opening a module notebook:
   1) Always runs ./setup.sh.
@@ -43,12 +67,14 @@ Module → extras mapping:
   05            ./datasets.sh glove
   10            ./datasets.sh
   13, 14, 15    ./baselm.sh
-  16-20         ./prodlm.sh
+  16            ./baselm.sh + ./prodlm.sh
+  17-20         ./prodlm.sh
   (others)      no extras
 
 Examples:
   ./notebook.sh 01
   ./notebook.sh 03b --fresh
+  ./notebook.sh --fresh 13
   ./notebook.sh 10 --no-launch
 EOF
 }
@@ -64,8 +90,27 @@ case "$1" in
         ;;
 esac
 
-MODULE="$1"
-shift
+ORIGINAL_ARGS=("$@")
+MODULE=""
+SHOULD_LAUNCH=1
+for arg in "${ORIGINAL_ARGS[@]}"; do
+    if [[ "$arg" == "--no-launch" ]]; then
+        SHOULD_LAUNCH=0
+    fi
+    case "$arg" in
+        -*)
+            ;;
+        *)
+            MODULE="$arg"
+            break
+            ;;
+    esac
+done
+
+if [[ -z "$MODULE" ]]; then
+    usage >&2
+    exit 1
+fi
 
 # Normalize for case-statement matching: lowercase + zero-pad single-digit ids.
 MODULE_NORM=$(printf "%s" "$MODULE" | tr 'A-Z' 'a-z')
@@ -99,7 +144,7 @@ case "$MODULE_NORM" in
          TEST_FILES=("tests/test_dpo.py") ;;
     15)  EXTRAS+=("./baselm.sh")
          TEST_FILES=("tests/test_eval.py") ;;
-    16)  EXTRAS+=("./prodlm.sh")
+    16)  EXTRAS+=("./baselm.sh" "./prodlm.sh")
          TEST_FILES=("tests/test_inference.py") ;;
     17)  EXTRAS+=("./prodlm.sh")
          TEST_FILES=("tests/test_rag.py") ;;
@@ -181,5 +226,9 @@ if [[ ${#NB_FILES[@]} -gt 0 ]]; then
     fi
 fi
 
+if [[ $SHOULD_LAUNCH -eq 1 ]]; then
+    warn_if_notebook_kernels_running
+fi
+
 info "Opening module $MODULE notebook"
-exec .venv/bin/python scripts/open_notebook.py "$MODULE" "$@"
+exec .venv/bin/python scripts/open_notebook.py "${ORIGINAL_ARGS[@]}"

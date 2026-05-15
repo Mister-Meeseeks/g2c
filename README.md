@@ -57,7 +57,7 @@ artifact they can find.
 - **Standard:** `./datasets.sh --small` prepares full TinyStories plus the small
   G2C corpus. This is the recommended local course experience.
 - **Full:** `./datasets.sh` prepares the full G2C corpus path for stretch runs.
-- **BaseLM:** Modules 13-15 can use a small external pretrained base model when
+- **BaseLM:** Modules 13-16 can use a small external pretrained base model when
   your self-trained model is too weak.
 - **ProdLM:** Modules 16-20 use a local pretrained instruct model sized to your
   machine. Configure it with `./prodlm.sh --model-id <ollama-tag>`; this also
@@ -126,7 +126,7 @@ The first run may download `data/tinyshakespeare.txt` for language-model trainin
 ./datasets.sh all          # same as ./datasets.sh
 ```
 
-Modules 13-15 can also use a small external pretrained base model when your
+Modules 13-16 can also use a small external pretrained base model when your
 self-trained model is too weak to make SFT/DPO behavior visible:
 
 ```bash

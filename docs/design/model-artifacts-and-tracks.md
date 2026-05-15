@@ -69,7 +69,7 @@ a `ProdLM` backend interface.
 
 ### BaseLM
 
-BaseLM is the small external pretrained base-model fallback for Modules 13-15.
+BaseLM is the small external pretrained base-model fallback for Modules 13-16.
 It is not the main assistant-system backend and it is not trained from scratch
 inside the course. Its role is to make SFT, DPO, and eval pedagogically useful
 when a student's StoryLM/TinyLLM artifact is too weak to show the behavior.
@@ -210,7 +210,7 @@ Base models (self-trained):
 
 External base model:
 
-- `BaseLM-base`: small pretrained base used as a fallback for Modules 13-15 when
+- `BaseLM-base`: small pretrained base used as a fallback for Modules 13-16 when
   self-trained models are too weak.
 
 Backend role (no checkpoint):
