@@ -341,7 +341,9 @@ def build_torch_transformer(shape: ModelShape, device: str):
                 activation="gelu",
                 dropout=0.0,
             )
-            self.blocks = nn.TransformerEncoder(layer, num_layers=shape.num_layers)
+            self.blocks = nn.TransformerEncoder(
+                layer, num_layers=shape.num_layers, enable_nested_tensor=False
+            )
             self.ln_f = nn.LayerNorm(shape.embedding_dim)
             self.head_bias = nn.Parameter(torch.zeros(shape.vocab_size))
 
@@ -885,41 +887,48 @@ def print_recommendation(training: list[ProbeResult],
                          prodlm: list[ProdLMResult]) -> None:
     header("Recommendation")
 
-    # Map training results to tracks.
-    by_name = {r.shape_name: r for r in training}
-    tracks = [
-        ("Tiny track",     ["StoryLM-1M", "StoryLM-5M"]),
-        ("Standard track", ["StoryLM-30M"]),
-        ("Stretch track",  ["TinyLLM-100M"]),
-    ]
-    for track_name, sizes in tracks:
-        statuses = [by_name[s].status for s in sizes if s in by_name]
-        if not statuses or all(s == "skip" for s in statuses):
-            verdict = f"{DIM}skipped{RESET}"
-        elif all(s == "ok" for s in statuses):
-            verdict = f"{GREEN}available{RESET}"
-        elif any(s == "ok" for s in statuses):
-            verdict = f"{YELLOW}partial — largest size at edge{RESET}"
-        else:
-            verdict = f"{RED}not feasible at canonical configs{RESET}"
-        print(f"  {track_name:<16}  {verdict}")
+    if training:
+        by_name = {r.shape_name: r for r in training}
+        tracks = [
+            ("Tiny track",     ["StoryLM-1M", "StoryLM-5M"]),
+            ("Standard track", ["StoryLM-30M"]),
+            ("Stretch track",  ["TinyLLM-100M"]),
+        ]
+        for track_name, sizes in tracks:
+            statuses = [by_name[s].status for s in sizes if s in by_name]
+            if not statuses or all(s == "skip" for s in statuses):
+                verdict = f"{DIM}skipped{RESET}"
+            elif all(s == "ok" for s in statuses):
+                verdict = f"{GREEN}available{RESET}"
+            elif any(s == "ok" for s in statuses):
+                verdict = f"{YELLOW}partial — largest size at edge{RESET}"
+            else:
+                verdict = f"{RED}not feasible at canonical configs{RESET}"
+            print(f"  {track_name:<16}  {verdict}")
+    else:
+        print(f"  Training tracks   {DIM}skipped{RESET}")
 
     print()
-    interactive = [r for r in prodlm if r.throughput_tier == "interactive"
-                   and r.status in ("ok", "tight")]
-    usable = [r for r in prodlm if r.throughput_tier == "usable"
-              and r.status in ("ok", "tight")]
-    if interactive:
-        biggest = max(interactive, key=lambda r: r.params_b or 0)
-        print(f"  Recommended ProdLM:  {GREEN}{biggest.ollama_tag}{RESET}  "
-              f"({biggest.display_name}, ~{biggest.expected_tok_per_sec:.0f} tok/s)")
-    elif usable:
-        biggest = max(usable, key=lambda r: r.params_b or 0)
-        print(f"  Recommended ProdLM:  {YELLOW}{biggest.ollama_tag}{RESET}  "
-              f"(usable, ~{biggest.expected_tok_per_sec:.0f} tok/s)")
+    if prodlm:
+        interactive = [r for r in prodlm if r.throughput_tier == "interactive"
+                       and r.status in ("ok", "tight")]
+        usable = [r for r in prodlm if r.throughput_tier == "usable"
+                  and r.status in ("ok", "tight")]
+        if interactive:
+            biggest = max(interactive, key=lambda r: r.params_b or 0)
+            print(f"  Recommended ProdLM:  {GREEN}{biggest.ollama_tag}{RESET}  "
+                  f"({biggest.display_name}, "
+                  f"~{biggest.expected_tok_per_sec:.0f} tok/s)")
+        elif usable:
+            biggest = max(usable, key=lambda r: r.params_b or 0)
+            print(f"  Recommended ProdLM:  {YELLOW}{biggest.ollama_tag}{RESET}  "
+                  f"(usable, ~{biggest.expected_tok_per_sec:.0f} tok/s)")
+        else:
+            print(f"  Recommended ProdLM:  {RED}none in interactive/usable "
+                  f"tier{RESET} — start with the smallest candidate and "
+                  f"accept slow output")
     else:
-        print(f"  Recommended ProdLM:  {RED}none in interactive/usable tier{RESET} — "
-              f"start with the smallest candidate and accept slow output")
+        print(f"  Recommended ProdLM:  {DIM}skipped{RESET}")
 
     print()
     print(f"  {DIM}Estimates are conservative; real-world throughput from "

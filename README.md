@@ -173,6 +173,8 @@ python scripts/test_clean.py    # tests that should pass on the pristine scaffol
 python -m pytest                # full suite; many tests intentionally fail until implemented
 python scripts/smoke_test.py    # re-run env health check
 python scripts/artifact_status.py # inspect local datasets, tokenizers, and model artifacts
+./sysprobe.sh                   # probe what your machine can handle (training sizes,
+                                # inference throughput, ProdLM fit before downloading)
 ```
 
 For notebook exercises, open the working copy through the launcher:
