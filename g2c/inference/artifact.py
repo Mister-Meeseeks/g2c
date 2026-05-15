@@ -9,6 +9,7 @@ used by RAG, tools, and agents.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from g2c.artifacts import (
@@ -17,6 +18,8 @@ from g2c.artifacts import (
     best_model_artifact,
     best_model_artifact_with_suffix,
     load_model_artifact_with_tokenizer,
+    model_artifact_exists,
+    resolve_artifact_name,
 )
 
 from .local import LocalTransformerBackend
@@ -115,6 +118,59 @@ def load_artifact_backend(
         torch_dtype=torch_dtype,
     )
     return ArtifactBackend(loaded)
+
+
+def resolve_preferred_artifact_name(
+    selection: str,
+    *,
+    repo_root: str | Path | None = None,
+    suffixes: tuple[str, ...] = ("-DPO", "-SFT", ""),
+) -> str:
+    """Resolve an artifact selection to the best available concrete artifact.
+
+    ``selection="course"`` means "the strongest course-trained artifact",
+    excluding BaseLM, preferring DPO, then SFT, then the base model. A concrete
+    base name such as ``"StoryLM-30M"`` resolves by trying
+    ``StoryLM-30M-DPO``, then ``StoryLM-30M-SFT``, then ``StoryLM-30M``. If
+    the caller passes an already-suffixed name such as ``"StoryLM-30M-SFT"``,
+    that exact artifact is resolved directly.
+    """
+    selection = selection.strip()
+    if not selection:
+        raise ValueError("artifact selection must be non-empty")
+
+    if selection == "course":
+        for suffix in suffixes:
+            if suffix:
+                candidate = best_model_artifact_with_suffix(
+                    suffix,
+                    repo_root=repo_root,
+                    extra_base_names=(),
+                )
+            else:
+                candidate = best_model_artifact(repo_root=repo_root)
+            if candidate is not None:
+                return candidate.name
+        raise FileNotFoundError(
+            "No course-trained DPO, SFT, or base artifact found. Run Module 10 "
+            "or select a concrete artifact name."
+        )
+
+    if any(selection.endswith(suffix) for suffix in suffixes if suffix):
+        return resolve_artifact_name(selection, repo_root=repo_root)
+
+    for suffix in suffixes:
+        name = f"{selection}{suffix}"
+        try:
+            resolved = resolve_artifact_name(name, repo_root=repo_root)
+        except FileNotFoundError:
+            continue
+        if model_artifact_exists(resolved, repo_root=repo_root):
+            return resolved
+
+    raise FileNotFoundError(
+        f"No artifact found for {selection!r}. Tried DPO, SFT, and base variants."
+    )
 
 
 class _ArtifactTokenizer:

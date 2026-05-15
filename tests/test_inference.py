@@ -63,10 +63,12 @@ from g2c.inference import (
     benchmark,
     load_default_backend,
     load_prodlm_backend,
+    load_selected_backend,
     prodlm_manifest_exists,
     write_prodlm_manifest,
 )
-from g2c.artifacts import LoadedModelArtifact
+from g2c.artifacts import LoadedModelArtifact, model_artifact_dir
+from g2c.inference.artifact import resolve_preferred_artifact_name
 
 # -----------------------------------------------------------------------
 # Test fixtures
@@ -458,6 +460,67 @@ class TestProdLMHelpers:
     def test_load_prodlm_backend_required_without_manifest(self, tmp_path) -> None:
         with pytest.raises(FileNotFoundError):
             load_prodlm_backend(repo_root=tmp_path, required=True)
+
+    def test_load_selected_backend_prodlm_optional_without_manifest(self, tmp_path) -> None:
+        assert load_selected_backend("ProdLM", repo_root=tmp_path, required=False) is None
+
+    def test_load_selected_backend_prodlm_model_id_override(self, tmp_path) -> None:
+        backend = load_selected_backend(
+            "ProdLM",
+            repo_root=tmp_path,
+            prodlm_model_id="llama3.2:1b",
+            required=False,
+        )
+        assert isinstance(backend, OllamaBackend)
+        assert backend.info.model_id == "llama3.2:1b"
+
+
+def _write_artifact_marker(tmp_path, name: str) -> None:
+    root = model_artifact_dir(name, tmp_path)
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "model.pt").write_bytes(b"placeholder")
+    (root / "config.json").write_text("{}", encoding="utf-8")
+    (root / "manifest.json").write_text("{}", encoding="utf-8")
+
+
+class TestArtifactSelection:
+    def test_resolve_preferred_artifact_name_prefers_dpo_then_sft_then_base(self, tmp_path) -> None:
+        _write_artifact_marker(tmp_path, "StoryLM-5M")
+        _write_artifact_marker(tmp_path, "StoryLM-5M-SFT")
+        _write_artifact_marker(tmp_path, "StoryLM-5M-DPO")
+
+        assert resolve_preferred_artifact_name("StoryLM-5M", repo_root=tmp_path) == "StoryLM-5M-DPO"
+
+    def test_resolve_preferred_artifact_name_falls_back_to_sft(self, tmp_path) -> None:
+        _write_artifact_marker(tmp_path, "StoryLM-5M")
+        _write_artifact_marker(tmp_path, "StoryLM-5M-SFT")
+
+        assert resolve_preferred_artifact_name("StoryLM-5M", repo_root=tmp_path) == "StoryLM-5M-SFT"
+
+    def test_resolve_preferred_artifact_name_course_means_strongest_course_dpo(self, tmp_path) -> None:
+        _write_artifact_marker(tmp_path, "StoryLM-5M-DPO")
+        _write_artifact_marker(tmp_path, "TinyLLM-30M-DPO")
+        _write_artifact_marker(tmp_path, "BaseLM-DPO")
+
+        assert resolve_preferred_artifact_name("course", repo_root=tmp_path) == "TinyLLM-30M-DPO"
+
+    def test_resolve_preferred_artifact_name_course_falls_back_to_sft(self, tmp_path) -> None:
+        _write_artifact_marker(tmp_path, "StoryLM-5M-SFT")
+        _write_artifact_marker(tmp_path, "TinyLLM-30M-SFT")
+
+        assert resolve_preferred_artifact_name("course", repo_root=tmp_path) == "TinyLLM-30M-SFT"
+
+    def test_resolve_preferred_artifact_name_course_falls_back_to_base(self, tmp_path) -> None:
+        _write_artifact_marker(tmp_path, "StoryLM-5M")
+        _write_artifact_marker(tmp_path, "TinyLLM-30M")
+
+        assert resolve_preferred_artifact_name("course", repo_root=tmp_path) == "TinyLLM-30M"
+
+    def test_resolve_preferred_artifact_name_course_ignores_baselm(self, tmp_path) -> None:
+        _write_artifact_marker(tmp_path, "BaseLM-DPO")
+
+        with pytest.raises(FileNotFoundError):
+            resolve_preferred_artifact_name("course", repo_root=tmp_path)
 
 
 # -----------------------------------------------------------------------
@@ -1258,6 +1321,8 @@ class TestModuleExports:
             load_artifact_backend,
             load_default_backend,
             load_prodlm_backend,
+            load_selected_backend,
+            resolve_preferred_artifact_name,
             write_prodlm_manifest,
         )
 
@@ -1269,6 +1334,8 @@ class TestModuleExports:
         assert callable(load_artifact_backend)
         assert callable(load_default_backend)
         assert callable(load_prodlm_backend)
+        assert callable(load_selected_backend)
+        assert callable(resolve_preferred_artifact_name)
         assert callable(write_prodlm_manifest)
         assert isinstance(DEFAULT_OLLAMA_URL, str)
         assert isinstance(DEFAULT_PRODLM_MODEL_ID, str)

@@ -15,7 +15,7 @@ from typing import Literal
 from g2c.artifacts import model_artifact_dir
 from g2c.artifacts.models import atomic_json_save
 
-from .artifact import load_artifact_backend
+from .artifact import load_artifact_backend, resolve_preferred_artifact_name
 from .backend import Backend
 from .ollama import DEFAULT_OLLAMA_URL, OllamaBackend
 
@@ -142,6 +142,57 @@ def load_default_backend(
     )
     assert backend is not None
     return backend
+
+
+def load_selected_backend(
+    selection: str = PRODLM_NAME,
+    *,
+    repo_root: str | Path | None = None,
+    prodlm_model_id: str | None = None,
+    device: str | None = "auto",
+    torch_dtype: str | None = None,
+    required: bool = False,
+) -> Backend | None:
+    """Load a notebook-selected backend for Modules 17-20.
+
+    Selection values:
+
+    * ``"ProdLM"``: load the configured ProdLM backend, or the explicit
+      ``prodlm_model_id`` override if provided.
+    * ``"course"``: load the strongest course-trained artifact, preferring
+      ``*-DPO``, then ``*-SFT``, then the base model.
+    * any other string: treat it as an artifact base/name and prefer
+      ``-DPO`` over ``-SFT`` over the base artifact.
+    """
+    selection = selection.strip()
+    if not selection:
+        raise ValueError("selection must be non-empty")
+
+    if selection == PRODLM_NAME:
+        if prodlm_manifest_exists(repo_root=repo_root) or prodlm_model_id is not None:
+            return load_prodlm_backend(
+                repo_root=repo_root,
+                model_id=prodlm_model_id,
+                required=required,
+            )
+        if required:
+            raise FileNotFoundError(
+                "ProdLM is not configured. Run ./prodlm.sh, pass "
+                "prodlm_model_id, or select a saved artifact."
+            )
+        return None
+
+    artifact_name = resolve_preferred_artifact_name(
+        selection,
+        repo_root=str(repo_root) if repo_root is not None else None,
+    )
+    return load_artifact_backend(
+        artifact_name,
+        repo_root=str(repo_root) if repo_root is not None else None,
+        device=device,
+        torch_dtype=torch_dtype,
+        required=required,
+    )
 
 
 def _read_prodlm_config(

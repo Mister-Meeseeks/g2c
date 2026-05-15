@@ -1,4 +1,4 @@
-from .artifact import ArtifactBackend, load_artifact_backend
+from .artifact import ArtifactBackend, load_artifact_backend, resolve_preferred_artifact_name
 from .backend import Backend, BackendInfo, InferenceResult
 from .benchmark import BenchmarkResult, benchmark
 from .local import LocalTransformerBackend
@@ -9,6 +9,7 @@ from .prodlm import (
     PRODLM_NAME,
     load_default_backend,
     load_prodlm_backend,
+    load_selected_backend,
     prodlm_manifest_exists,
     write_prodlm_manifest,
 )
@@ -30,6 +31,8 @@ __all__ = [
     "load_artifact_backend",
     "load_default_backend",
     "load_prodlm_backend",
+    "load_selected_backend",
     "prodlm_manifest_exists",
+    "resolve_preferred_artifact_name",
     "write_prodlm_manifest",
 ]

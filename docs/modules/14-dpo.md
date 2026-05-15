@@ -397,9 +397,9 @@ Open the working notebook with `./notebook.sh 14` (or `./notebook.sh 14 --fresh`
 
 DPO is more compute-hungry than SFT but still tractable on M-series:
 
-* **Memory** is the primary limitation here. With course standard BaseLM, expect to use 6-10GB. Potentially workable with 8GB. Comfortable at 16GB. 
-* **Running time**. With BaseLM, the training runs from the exercise notebook should finish in well under under an hour.
-* **Smaller models**. We recommend using BaseLM. The smaller models from Module 10 are too weak generalize well. But this module's notebook will run fine with TinyLLM, StoryLM or even ShakespeareLM. Any model your system pretrained, it can easily post-train.
+* **Memory** is the primary limitation here. With course standard BaseLM, expect to use 6-10GB. Potentially workable with 8GB. Comfortable at 16GB.
+* **Running time**. With BaseLM, the training runs from the exercise notebook should finish in well under an hour.
+* **Smaller models**. The notebook defaults to `BaseLM-SFT`. Smaller models from Module 10 are too weak to generalize well, but the same DPO loop runs on `TinyLLM`, `StoryLM`, or `ShakespeareLM` if you set the model-selection cell to `MODEL_SELECTION = "course"` or a specific artifact name.
 
 ---
 ## Reading

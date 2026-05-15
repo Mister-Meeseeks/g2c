@@ -399,7 +399,7 @@ pytest tests/test_inference.py -v                       # verbose
 
 ## Exercises
 
-Open the working notebook with `./notebook.sh 16` (or `./notebook.sh 16 --fresh` to reset from the clean scaffold). These exercises compare your saved artifacts with ProdLM and focus on inference behavior.
+Open the working notebook with `./notebook.sh 16` (or `./notebook.sh 16 --fresh` to reset from the clean scaffold). The notebook defaults to BaseLM for the artifact backend, automatically preferring `-DPO`, then `-SFT`, then base when those stages exist. You can switch to a course-trained artifact in the model-selection cell and compare that local artifact path with ProdLM.
 
 1. **Backend smoke test.** Compare artifact and ProdLM completions on a few prompts.
 2. **Benchmark ProdLM.** Measure latency, throughput, and wall-clock behavior.

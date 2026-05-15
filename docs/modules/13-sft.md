@@ -10,15 +10,15 @@ This week is about how to shape model **behavior**. The mechanics are minimal bu
 ## Before you start
 
 * *Review*
-	* [[10-tinyllm]] for the training-loop contract 
+	* [[10-tinyllm]] for the training-loop contract
 	* [[PyTorch Primer]] if any PyTorch code is unfamiliar or confusing
 * *Finish*
 	* `g2c/nn` from [[03-nn]]
 	* `g2c/training` from [[03b-training]]
 	* `g2c/tokenizer` from [[04-tokenizer]]
-	* At least one trained model from [[10-tinyllm]] notebook (`ShakespeareLM`, `StoryLM`, or `TinyLLM`)
+	* Either `./baselm.sh` for the default BaseLM path, or at least one trained model from [[10-tinyllm]] (`ShakespeareLM`, `StoryLM`, or `TinyLLM`) if you want the course-artifact path
 	* Trained tokenizer from [[04-tokenizer]] (alternatively run `./datasets.sh`)
-* *Run* 
+* *Run*
 	* `./baselm.sh` to setup the model we'll use for post-training
 
 ---
@@ -38,6 +38,8 @@ Once upon a time there was a girl nemed Lily who loved to pick flowers...
 ```
 
 It doesn't matter how big you make it — at any size, a base model trained on prose continues prose. This is *correct behavior under the training objective*. The model isn't broken. It's just not an assistant.
+
+The exercise notebook defaults to BaseLM because it has enough broad pretraining for the behavioral shift to be obvious. You can switch the model-selection cell to `MODEL_SELECTION = "course"` to run the same SFT loop on your own `StoryLM` or `TinyLLM` artifact.
 
 ## The big idea
 

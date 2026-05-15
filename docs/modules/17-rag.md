@@ -424,7 +424,7 @@ pytest tests/test_rag.py -v                       # verbose
 
 ## Exercises
 
-Open the working notebook with `./notebook.sh 17` (or `./notebook.sh 17 --fresh` to reset from the clean scaffold). The notebook carries the exact indexing, retrieval, and RAG pipeline prompts. Run `./prodlm.sh` first if you have not already pulled the local chat and embedding models.
+Open the working notebook with `./notebook.sh 17` (or `./notebook.sh 17 --fresh` to reset from the clean scaffold). The notebook carries the exact indexing, retrieval, and RAG pipeline prompts. It defaults to ProdLM for live answers; set `MODEL_SELECTION = "course"` to try your strongest course artifact, preferring `-DPO`, then `-SFT`, then base. Concrete artifact base names follow the same fallback.
 
 1. **Index your own notes.** Build a vector index over a corpus you care about.
 2. **Compare embedders.** Measure HashEmbedder vs OllamaEmbedder on the same questions.

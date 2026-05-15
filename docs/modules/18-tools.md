@@ -321,7 +321,7 @@ pytest tests/test_tools.py -v                       # verbose
 
 ## Exercises
 
-Open the working notebook with `./notebook.sh 18` (or `./notebook.sh 18 --fresh` to reset from the clean scaffold). These exercises require ProdLM running with a local instruction model that can follow tool-call formatting; run `./prodlm.sh` first if needed.
+Open the working notebook with `./notebook.sh 18` (or `./notebook.sh 18 --fresh` to reset from the clean scaffold). The live section defaults to ProdLM because tool calling needs instruction-following behavior. You can switch the model-selection cell to `MODEL_SELECTION = "course"` for your strongest course artifact, preferring `-DPO`, then `-SFT`, then base. Concrete artifact base names follow the same fallback.
 
 1. **Calculator reliability.** Measure when the model calls the calculator and whether it is correct.
 2. **Read + compute.** Chain file reading with calculation.

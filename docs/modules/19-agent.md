@@ -11,7 +11,7 @@
 
 * *Finish* `g2c/tools` from [[18-tools]] — the agent dispatches through `dispatch_tool_call`, reusing the registry, schema validation, and error wrapping
 * *Finish* `g2c/inference` from [[16-inference]] — the agent calls `backend.complete(...)` for every reasoning step
-* *Configure* ProdLM with `./prodlm.sh --model-id llama3.2:3b` or another local instruction model — the exercises need a model that can follow ReAct-style formatting
+* *Configure* ProdLM with `./prodlm.sh --model-id llama3.2:3b` or another local instruction model — the default live path needs a model that can follow ReAct-style formatting
 * *Refresh* JSON request/response patterns — tool inputs and tool results are structured data even when the model emits them as text
 * *Refresh* basic regular expressions — the parser extracts line-oriented markers from free-form model completions
 
@@ -437,7 +437,7 @@ pytest tests/test_agent.py -v                       # verbose
 
 ## Exercises
 
-Open the working notebook with `./notebook.sh 19` (or `./notebook.sh 19 --fresh` to reset from the clean scaffold). These exercises require ProdLM running through Ollama with a local instruction model that can follow ReAct-style formatting; run `./prodlm.sh` first if needed.
+Open the working notebook with `./notebook.sh 19` (or `./notebook.sh 19 --fresh` to reset from the clean scaffold). The live section defaults to ProdLM. To compare your own model, set `MODEL_SELECTION = "course"` for your strongest course artifact, preferring `-DPO`, then `-SFT`, then base. Concrete artifact base names follow the same fallback.
 
 1. **One-shot calculator.** Compare simple tool use with and without planning.
 2. **Multi-step file task.** Read data, compute with a tool, and answer.
