@@ -369,7 +369,7 @@ Some failure modes are not hallucinations — they're capability gaps. A 20M-par
 - **HELM multi-metric harnesses.** HELM tracks ~7 metrics per task across 30+ tasks for hundreds of models. Our harness tracks accuracy + ECE on two task types over a hand-built dataset of 50–200 examples. HELM is the architecture you'd want to scale a "scenario / metric / model" three-way matrix. The lesson is the loop, not the matrix.
 - **Model-graded ("LLM-as-judge") evaluation.** For many open-ended tasks, asking a strong model to *judge* outputs is more useful than any string matcher. Our toy model isn't strong enough to be a judge.
 - **Adversarial robustness benchmarks.** AdvGLUE, RealToxicityPrompts, etc. expose models to adversarial inputs designed to elicit failures. At our scale these are mostly noise. Read the papers; don't build the benchmarks.
-- **Full MMLU.** MMLU is 57 subjects × ~100 questions = ~14k multiple-choice questions. Running it takes hours even on a 7B model. We use a hand-built MC subset of 20–50 questions for the exercise.
+- **Full MMLU.** MMLU is 57 subjects × ~100 questions = ~14k multiple-choice questions. Running it takes hours even on a 7B model. We use a hand-built MC subset of about 60 questions for the exercise.
 - **Calibration via temperature scaling.** Post-hoc calibration: train a one-parameter "temperature" on a held-out set so the model's confidences align better with empirical accuracy. Useful, well-known, and a clean follow-up to ECE — but it's recalibration, not measurement.
 
 ---
@@ -468,18 +468,18 @@ pytest tests/test_eval.py -v                       # verbose
 
 Open the working notebook with `./notebook.sh 15` (or `./notebook.sh 15 --fresh` to reset from the clean scaffold). The notebook contains the concrete eval examples, harness calls, plots, and answer cells.
 
-1. **Multiple-choice eval set.** Hand-author a small balanced MC dataset.
+1. **Multiple-choice eval set.** Hand-author a balanced 60-question MC dataset.
 2. **Run the MC harness.** Measure accuracy, confidence, calibration, and category breakdowns.
 3. **Hallucination prompts.** Probe factual, contextual, refusal, and format failures.
 4. **Arithmetic eval.** Use numeric matching across easy and harder arithmetic buckets.
-5. **Beta-sweep comparison.** Evaluate DPO checkpoints across accuracy and calibration.
+5. **SFT-vs-DPO comparison.** Evaluate the selected DPO checkpoint against its SFT parent across accuracy and calibration.
 6. **Optional generation calibration.** Add confidence estimates to generation evals.
 7. **Optional MMLU subset.** Adapt a small subject set into the course eval format.
 8. **Evaluation post-mortem.** Characterize what the model can do, cannot do, and how it fails.
 
 ## Pitfalls to expect
 
-- **Tiny eval sets are noisy.** A few dozen examples can show failure modes, but not small quality deltas. Use more examples for comparisons you care about.
+- **Tiny eval sets are noisy.** A few dozen examples can show failure modes, but not small quality deltas. The notebook uses 60 MC examples so ECE bins have more signal, and you should use still more examples for comparisons you care about.
 - **Surface form affects MC scores.** Keep answer choices similarly formatted and length-normalized when needed.
 - **Matcher choice matters.** `normalized_match`, `contains_match`, and `numeric_match` encode different success criteria. Pick the one that matches the task.
 - **Substring matches can lie.** Searching for `"no"` also matches `"snow"`. Use specific references or stricter regexes.
@@ -522,7 +522,7 @@ Optional:
 ## Deliverable checklist
 
 - [ ] All tests in `tests/test_eval.py` pass
-- [ ] Hand-authored multiple-choice eval set of 30+ questions in `data/eval/multiple_choice.json`. 
+- [ ] Hand-authored multiple-choice eval set of 60+ questions in `data/eval/multiple_choice.json`.
 - [ ] Hand-authored generation eval set of 20+ questions in `data/eval/generation.json`, with categorized expected-failure modes.
 - [ ] Hand-authored arithmetic eval set of 50 questions in `data/eval/arithmetic.json`, spanning 1+1-digit through 3+3-digit.
 - [ ] Notebook: `notebooks/15-evaluation.ipynb`. Runs the multiple-choice and generation harnesses on your DPO'd model. 

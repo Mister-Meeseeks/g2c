@@ -67,6 +67,18 @@ if [[ "$PULL" -eq 1 ]]; then
     echo "Ollama is not installed or not on PATH. Install it from https://ollama.com/download or rerun with --no-pull." >&2
     exit 1
   fi
+  if ! ollama list >/dev/null 2>&1; then
+    cat >&2 <<'EOF'
+Ollama is installed, but the Ollama server is not reachable.
+
+Start Ollama, then rerun this command:
+  - macOS app: open Ollama from Applications
+  - CLI:       ollama serve
+
+Modules 16-20 need the Ollama server running before the notebook opens.
+EOF
+    exit 1
+  fi
   echo "==> Pulling ProdLM model with Ollama: ${MODEL_ID}"
   ollama pull "$MODEL_ID"
   echo "==> Pulling RAG embedding model with Ollama: ${EMBED_MODEL_ID}"

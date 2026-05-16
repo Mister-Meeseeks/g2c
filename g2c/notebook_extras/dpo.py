@@ -17,6 +17,7 @@ from IPython.display import Markdown, display
 from g2c.dpo import DPOTrainer, PreferenceExample
 
 __all__ = [
+    "plot_dpo_beta_sweep",
     "plot_dpo_history",
     "train_dpo_with_progress",
 ]
@@ -204,3 +205,100 @@ def plot_dpo_history(history: dict[str, list]) -> None:
         print(f"final val loss:        {history['val_loss'][-1]:.4f}")
         print(f"final val margin:      {history['val_reward_margin'][-1]:.4f}")
         print(f"final val accuracy:    {history['val_accuracy'][-1]:.3f}")
+
+
+def _history_from_sweep_result(result: Any) -> dict[str, list]:
+    if isinstance(result, dict) and isinstance(result.get("history"), dict):
+        return result["history"]
+    if isinstance(result, dict):
+        return result
+    raise TypeError("Each beta sweep result must be a history dict or contain 'history'.")
+
+
+def _last_metric(history: dict[str, list], key: str) -> float | None:
+    values = history.get(key)
+    if not values:
+        return None
+    return float(values[-1])
+
+
+def _metric_cell(value: float | None, digits: int = 4) -> str:
+    if value is None:
+        return "n/a"
+    return f"{value:.{digits}f}"
+
+
+def plot_dpo_beta_sweep(beta_results: dict[float, Any]) -> None:
+    """Plot beta-sweep loss/margin curves and display final train/val metrics."""
+    if not beta_results:
+        raise ValueError("plot_dpo_beta_sweep() requires at least one beta result.")
+
+    items = sorted(beta_results.items(), key=lambda item: float(item[0]))
+    fig, (ax_loss, ax_margin) = plt.subplots(1, 2, figsize=(13, 4.5))
+
+    for beta, result in items:
+        history = _history_from_sweep_result(result)
+        label = f"beta={float(beta):g}"
+        (loss_line,) = ax_loss.plot(
+            history["step"],
+            history["train_loss"],
+            label=label,
+        )
+        color = loss_line.get_color()
+        if history.get("val_loss"):
+            ax_loss.plot(
+                history["val_step"],
+                history["val_loss"],
+                marker="o",
+                linestyle="--",
+                color=color,
+            )
+
+        (margin_line,) = ax_margin.plot(
+            history["step"],
+            history["reward_margin"],
+            label=label,
+        )
+        color = margin_line.get_color()
+        if history.get("val_reward_margin"):
+            ax_margin.plot(
+                history["val_step"],
+                history["val_reward_margin"],
+                marker="o",
+                linestyle="--",
+                color=color,
+            )
+
+    ax_loss.axhline(0.6931471805599453, color="gray", linestyle="--", label="log(2)")
+    ax_loss.set_title("DPO loss by beta")
+    ax_loss.set_xlabel("step")
+    ax_loss.set_ylabel("loss")
+    ax_loss.legend()
+
+    ax_margin.axhline(0.0, color="gray", linestyle="--")
+    ax_margin.set_title("Reward margin by beta")
+    ax_margin.set_xlabel("step")
+    ax_margin.set_ylabel("chosen - rejected")
+    ax_margin.legend()
+
+    fig.suptitle("Solid lines are train; dashed markers are validation")
+    fig.tight_layout()
+    plt.show()
+
+    rows = [
+        "| beta | train loss | val loss | train margin | val margin | train acc | val acc |",
+        "| ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+    ]
+    for beta, result in items:
+        history = _history_from_sweep_result(result)
+        rows.append(
+            "| "
+            f"{float(beta):g} | "
+            f"{_metric_cell(_last_metric(history, 'train_loss'))} | "
+            f"{_metric_cell(_last_metric(history, 'val_loss'))} | "
+            f"{_metric_cell(_last_metric(history, 'reward_margin'))} | "
+            f"{_metric_cell(_last_metric(history, 'val_reward_margin'))} | "
+            f"{_metric_cell(_last_metric(history, 'accuracy'), digits=3)} | "
+            f"{_metric_cell(_last_metric(history, 'val_accuracy'), digits=3)} |"
+        )
+    display(Markdown("\n".join(rows)))

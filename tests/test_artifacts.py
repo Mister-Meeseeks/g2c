@@ -988,7 +988,7 @@ def test_baselm_manifest_registers_external_model_artifact(tmp_path):
 
 
 def test_default_baselm_model_id_is_smol_lm():
-    assert DEFAULT_BASELM_MODEL_ID == "HuggingFaceTB/SmolLM-135M"
+    assert DEFAULT_BASELM_MODEL_ID == "HuggingFaceTB/SmolLM-360M"
 
 
 def test_load_model_artifact_forwards_hf_dtype_override(tmp_path, monkeypatch):
