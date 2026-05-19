@@ -1,0 +1,101 @@
+site_name: From Gradients to ChatGPT
+site_description: A 20-week self-study course building a tiny LLM stack from scalar autograd up through a working chat assistant.
+site_url: https://your-org.github.io/g2c/
+repo_url: https://github.com/your-org/g2c
+repo_name: g2c
+edit_uri: edit/main/docs/
+
+docs_dir: docs
+
+theme:
+  name: material
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - toc.follow
+    - content.code.copy
+    - content.action.edit
+    - search.suggest
+    - search.highlight
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search
+  - roamlinks
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - footnotes
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - pymdownx.snippets
+  - pymdownx.smartsymbols
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+nav:
+  - Home: index.md
+  - Syllabus: syllabus.md
+  - Tracks: tracks.md
+  - Primers:
+      - PyTorch: primers/pytorch.md
+  - Modules:
+      - "00 — Prerequisite review": modules/00-prerequisite-review.md
+      - "01 — Scalar autodiff": modules/01-autodiff.md
+      - "02 — Tensors and matmul": modules/02-tensors.md
+      - "03 — A first neural network": modules/03-nn.md
+      - "03B — Training": modules/03b-training.md
+      - "04 — Tokenization": modules/04-tokenizer.md
+      - "05 — Embeddings and positions": modules/05-embeddings.md
+      - "06 — Next-token prediction": modules/06-language-models.md
+      - "07 — Self-attention": modules/07-attention.md
+      - "08 — Multi-head attention": modules/08-multi-head-attention.md
+      - "09 — The transformer block": modules/09-transformer-block.md
+      - "09B — Pretraining": modules/09b-pretraining.md
+      - "10 — Milestone: TinyLLM": modules/10-tinyllm.md
+      - "11 — Sampling and decoding": modules/11-sampling.md
+      - "12 — Scaling experiments": modules/12-scaling.md
+      - "13 — Instruction tuning (SFT)": modules/13-sft.md
+      - "14 — Preference tuning (DPO)": modules/14-dpo.md
+      - "15 — Hallucination and evaluation": modules/15-evaluation.md
+      - "16 — Local pretrained models and inference": modules/16-inference.md
+      - "17 — Retrieval-augmented generation": modules/17-rag.md
+      - "18 — Tool use": modules/18-tools.md
+      - "19 — Agent loops": modules/19-agent.md
+      - "20 — Capstone: a tiny ChatGPT": modules/20-capstone.md
+  - Rubrics:
+      - "Module 00": rubrics/module-00.md
+      - "Module 03B": rubrics/module-03b.md
+      - "Module 09B": rubrics/module-09b.md
+      - "Module 10": rubrics/module-10.md
+  - Design:
+      - Model artifacts and tracks: design/model-artifacts-and-tracks.md

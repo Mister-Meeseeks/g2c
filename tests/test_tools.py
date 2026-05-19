@@ -996,6 +996,16 @@ class TestMakeRunPython:
         with pytest.raises(ValueError):
             make_run_python(timeout=-1)
 
+    def test_cwd_sets_subprocess_working_directory(self, tmp_path):
+        (tmp_path / "hello.txt").write_text("hi\n", encoding="utf-8")
+        t = make_run_python(cwd=tmp_path)
+        out = t.func(code="print(open('hello.txt').read().strip())")
+        assert "hi" in out
+
+    def test_missing_cwd_rejected(self, tmp_path):
+        with pytest.raises(ValueError):
+            make_run_python(cwd=tmp_path / "does-not-exist")
+
 
 # ---------------------------------------------------------------------------
 # dispatch_tool_call (implemented, not scaffolded).

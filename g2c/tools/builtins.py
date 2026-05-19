@@ -378,22 +378,29 @@ def make_web_search(
     )
 
 
-def make_run_python(*, timeout: float = 10.0) -> Tool:
+def make_run_python(
+    *,
+    timeout: float = 10.0,
+    cwd: str | os.PathLike[str] | None = None,
+) -> Tool:
     """Build a run_python tool that executes code in a subprocess.
 
     Args:
         timeout: wall-clock timeout in seconds. The subprocess is
             killed if it runs longer.
+        cwd: working directory for the subprocess. If `None`, the
+            child inherits the parent's cwd. Pair with `make_read_file(root=...)`
+            using the same directory so the model sees one consistent
+            file namespace across both tools.
 
     Fully implemented. Caveats:
 
       * **Not a sandbox.** The subprocess can do anything the user can
         do — read files, open sockets, start more processes. This is
         adequate for a local single-user pedagogy tool. It is NOT
-        adequate for a hosted / multi-tenant system.
-      * **Cwd is the parent's cwd.** The child runs from wherever the
-        parent invoked it; if you need a sandbox dir, use
-        `subprocess.run(..., cwd=safe_dir)` and adapt this factory.
+        adequate for a hosted / multi-tenant system. `cwd` is a
+        convenience for path consistency, not a containment boundary;
+        the child can still `os.chdir` or open absolute paths.
       * **No env scrubbing.** Environment variables (including secrets)
         are inherited. Sanitize if needed.
 
@@ -403,6 +410,12 @@ def make_run_python(*, timeout: float = 10.0) -> Tool:
     """
     if timeout <= 0:
         raise ValueError(f"timeout must be > 0, got {timeout}")
+    cwd_path: str | None = None
+    if cwd is not None:
+        resolved = Path(cwd).resolve()
+        if not resolved.is_dir():
+            raise ValueError(f"cwd must be an existing directory, got {cwd!r}")
+        cwd_path = str(resolved)
 
     def _func(code: str) -> str:
         if not isinstance(code, str):
@@ -414,6 +427,7 @@ def make_run_python(*, timeout: float = 10.0) -> Tool:
                 text=True,
                 timeout=timeout,
                 check=False,
+                cwd=cwd_path,
             )
         except subprocess.TimeoutExpired:
             return f"[run_python: timed out after {timeout}s]"
