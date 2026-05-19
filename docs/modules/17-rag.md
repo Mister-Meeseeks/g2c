@@ -295,7 +295,7 @@ Note what's *not* in the template: chat-template markers like `<|user|>...<|assi
 
 - **Implementing HNSW or any other ANN index.** Approximate search, sub-linear. Production scale wants this; course scale does not. Building HNSW from scratch is a 200-line project and a different lesson.
 - **Implementing a sentence-transformer-style dense embedder.** Training a contrastive bi-encoder is its own multi-week curriculum. We use `OllamaEmbedder` to plug into a pretrained one. Treat the embedder as a black box that turns text into a 768-vector.
-- **Hybrid retrieval**. All RAG
+- **Hybrid retrieval.** Production RAG often runs BM25 (lexical) alongside dense embeddings and fuses the two ranked lists (e.g., reciprocal rank fusion). It catches exact-match queries that dense embeddings smear over. We use dense-only — the lesson here is the embedding geometry, not the fusion strategy.
 - **Re-ranking with a cross-encoder.** Production RAG pipelines often retrieve top-k=50 with a cheap dense embedder and then re-rank top-k=5 with an expensive cross-encoder.
 - **Async embedding.** Embedding 10k chunks against a remote service one-at-a-time takes minutes. Real pipelines batch via async. We don't — the lesson is the math.
 - **Quantized indexing.** 1M chunks at 1024-dim in `float32` is 4 GB — already worth thinking about quantizing the index. We don't optimize for this; for course-scale corpora the naive numpy array is fast enough.
