@@ -151,6 +151,61 @@ class InferenceResult:
         return float(self.completion_tokens) / (self.latency_ms / 1000.0)
 
 
+@dataclass
+class ChatResult:
+    """One backend `chat_with_tools` call's result.
+
+    The chat/tool-call analogue of `InferenceResult`. Where the
+    text-completion path treats the conversation as one growing prompt
+    string and parses tool calls out of free-form text, the chat path
+    keeps a structured message list and receives structured tool calls
+    back from the backend (e.g. Ollama's `/api/chat`).
+
+    Attributes:
+        messages: the input messages list the backend was called with.
+            Each entry is a dict with `role` and either `content` or
+            `tool_calls`; the exact shape mirrors OpenAI / Ollama chat
+            conventions. Echoed back so the result is self-describing.
+        content: the assistant's text content. May be the empty string
+            when the model returned only tool calls and no prose.
+        tool_calls: the structured tool invocations the backend parsed
+            out of the model's response. Each entry is a dict with
+            keys `name`, `arguments`, and `call_id`. The tool harness
+            converts these to `ToolCall` instances.
+        prompt_tokens, completion_tokens, latency_ms, backend,
+            metadata: same semantics as `InferenceResult`.
+
+    `tool_calls` is a list of dicts rather than `ToolCall` instances
+    so the inference layer has no dependency on `g2c.tools`. The loop
+    layer translates between the two.
+    """
+
+    messages: list[dict[str, Any]]
+    content: str
+    tool_calls: list[dict[str, Any]]
+    prompt_tokens: int | None
+    completion_tokens: int | None
+    latency_ms: float
+    backend: BackendInfo
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if self.latency_ms < 0.0:
+            raise ValueError(
+                f"ChatResult.latency_ms must be >= 0, got {self.latency_ms}"
+            )
+        if self.prompt_tokens is not None and self.prompt_tokens < 0:
+            raise ValueError(
+                f"ChatResult.prompt_tokens must be >= 0 or None, "
+                f"got {self.prompt_tokens}"
+            )
+        if self.completion_tokens is not None and self.completion_tokens < 0:
+            raise ValueError(
+                f"ChatResult.completion_tokens must be >= 0 or None, "
+                f"got {self.completion_tokens}"
+            )
+
+
 class Backend(ABC):
     """The uniform inference interface.
 

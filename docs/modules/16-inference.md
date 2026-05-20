@@ -331,6 +331,13 @@ class OllamaBackend(Backend):
                  temperature=1.0, top_k=None, top_p=None,
                  ) -> InferenceResult:                         # SCAFFOLDED
         ...
+    def chat_with_tools(self, messages, tools=None, *,         # implemented
+                        max_new_tokens=512, temperature=0.2,
+                        top_k=None, top_p=None) -> ChatResult: ...
+        # Native tool-calling path used by Module 18. Hits Ollama's
+        # /api/chat endpoint with a structured tools= array. Not part
+        # of this module's lesson; built on top of the same HTTP
+        # plumbing as `complete`.
 
 
 # artifact.py

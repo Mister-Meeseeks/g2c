@@ -873,8 +873,8 @@ class TestMakeReadFile:
     def test_truncates_to_max_chars(self, tmp_path: Path):
         f = tmp_path / "big.txt"
         f.write_text("x" * 10000)
-        t = make_read_file(root=tmp_path)
-        out = t.func(path="big.txt", max_chars=100)
+        t = make_read_file(root=tmp_path, max_chars=100)
+        out = t.func(path="big.txt")
         assert len(out) < 10000
         assert "truncated" in out.lower()
 
@@ -883,6 +883,15 @@ class TestMakeReadFile:
         f.write_text("small content")
         t = make_read_file(root=tmp_path)
         assert t.func(path="small.txt") == "small content"
+
+    def test_max_chars_not_in_model_facing_schema(self, tmp_path: Path):
+        t = make_read_file(root=tmp_path)
+        assert "max_chars" not in t.parameters["properties"]
+        assert "max_chars" not in t.parameters.get("required", [])
+
+    def test_nonpositive_max_chars_rejected(self, tmp_path: Path):
+        with pytest.raises(ValueError, match="max_chars"):
+            make_read_file(root=tmp_path, max_chars=0)
 
 
 class TestMakeReadFileSandbox:
@@ -1335,6 +1344,224 @@ class TestIntegrationSmoke:
 
 
 # ---------------------------------------------------------------------------
+# Native tool calling: tool_to_ollama_spec helper.
+# ---------------------------------------------------------------------------
+
+
+class TestToolToOllamaSpec:
+    def test_translates_to_function_spec(self):
+        from g2c.tools import tool_to_ollama_spec
+
+        tool = _make_tool(name="calc", description="adds numbers")
+        spec = tool_to_ollama_spec(tool)
+        assert spec["type"] == "function"
+        assert spec["function"]["name"] == "calc"
+        assert spec["function"]["description"] == "adds numbers"
+        assert spec["function"]["parameters"] == tool.parameters
+
+    def test_parameters_dict_is_copied_not_shared(self):
+        from g2c.tools import tool_to_ollama_spec
+
+        tool = _make_tool()
+        spec = tool_to_ollama_spec(tool)
+        spec["function"]["parameters"]["properties"]["new"] = {"type": "string"}
+        assert "new" not in tool.parameters["properties"]
+
+    def test_render_tools_for_ollama_returns_list(self):
+        from g2c.tools import render_tools_for_ollama
+
+        tools = [_make_tool(name="a"), _make_tool(name="b")]
+        specs = render_tools_for_ollama(tools)
+        assert len(specs) == 2
+        assert [s["function"]["name"] for s in specs] == ["a", "b"]
+
+    def test_render_tools_for_ollama_empty(self):
+        from g2c.tools import render_tools_for_ollama
+
+        assert render_tools_for_ollama([]) == []
+
+
+# ---------------------------------------------------------------------------
+# Native tool calling: run_with_tools native branch.
+# ---------------------------------------------------------------------------
+
+
+class _FakeChatBackend(Backend):
+    """Backend with `chat_with_tools` returning canned ChatResults.
+
+    Mirrors `_FakeBackend` for the chat path. Each call pops the next
+    canned response. `chat_responses` items are
+    `(content: str, tool_calls: list[dict])` tuples; the fake builds a
+    `ChatResult` from them.
+    """
+
+    def __init__(
+        self,
+        chat_responses: Iterable[tuple[str, list[dict[str, Any]]]],
+        *,
+        info: BackendInfo | None = None,
+    ) -> None:
+        self._responses = list(chat_responses)
+        self._info = info or BackendInfo(name="fake-chat", model_id="fake-chat-model")
+        self.calls: list[dict[str, Any]] = []
+
+    @property
+    def info(self) -> BackendInfo:
+        return self._info
+
+    def complete(
+        self,
+        prompt: str,
+        *,
+        max_new_tokens: int = 128,
+        temperature: float = 1.0,
+        top_k: int | None = None,
+        top_p: float | None = None,
+    ) -> InferenceResult:  # pragma: no cover — native path doesn't call complete
+        raise AssertionError("native path should call chat_with_tools, not complete")
+
+    def chat_with_tools(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+        *,
+        max_new_tokens: int = 512,
+        temperature: float = 0.2,
+        top_k: int | None = None,
+        top_p: float | None = None,
+    ):
+        from g2c.inference import ChatResult
+
+        if not self._responses:
+            raise AssertionError(
+                f"FakeChatBackend exhausted: last messages={messages!r}"
+            )
+        content, raw_calls = self._responses.pop(0)
+        self.calls.append(
+            {
+                "messages": list(messages),
+                "tools": tools,
+                "max_new_tokens": max_new_tokens,
+                "temperature": temperature,
+            }
+        )
+        # Augment each call with a call_id if absent (mimic real backend).
+        parsed: list[dict[str, Any]] = []
+        for i, raw in enumerate(raw_calls):
+            parsed.append(
+                {
+                    "name": raw["name"],
+                    "arguments": raw.get("arguments", {}),
+                    "call_id": raw.get("call_id", f"call_{i}_xx"),
+                }
+            )
+        return ChatResult(
+            messages=messages,
+            content=content,
+            tool_calls=parsed,
+            prompt_tokens=len(str(messages)),
+            completion_tokens=len(content.split()),
+            latency_ms=1.0,
+            backend=self._info,
+        )
+
+
+class TestRunWithToolsNative:
+    def test_auto_detects_native_capability(self):
+        backend = _FakeChatBackend([("just an answer", [])])
+        registry = ToolRegistry([make_calculator()])
+        result = run_with_tools(backend, registry, "say hi")
+        assert result.metadata["channel"] == "native"
+        assert result.final_answer == "just an answer"
+
+    def test_text_path_used_when_native_explicitly_disabled(self):
+        backend = _FakeChatBackend([("ignored", [])])
+        registry = ToolRegistry([make_calculator()])
+        # `use_native_tools=False` should force text-format, but our
+        # fake's `complete` asserts — proving the loop tried the wrong
+        # path. We expect that AssertionError to bubble.
+        with pytest.raises(AssertionError, match="native path"):
+            run_with_tools(backend, registry, "x", use_native_tools=False)
+
+    def test_native_requested_but_backend_unsupported(self):
+        backend = _FakeBackend(["irrelevant"])
+        registry = ToolRegistry([make_calculator()])
+        with pytest.raises(ValueError, match="chat_with_tools"):
+            run_with_tools(backend, registry, "x", use_native_tools=True)
+
+    def test_text_path_for_complete_only_backend(self):
+        # A backend without chat_with_tools must take the text-format
+        # path by default — no surprise upgrade.
+        backend = _FakeBackend(["the answer is 42"])
+        registry = ToolRegistry([make_calculator()])
+        result = run_with_tools(backend, registry, "x")
+        assert result.metadata["channel"] == "text-format"
+
+    def test_dispatches_a_tool_call(self):
+        backend = _FakeChatBackend([
+            (
+                "",
+                [{"name": "calculator", "arguments": {"expression": "12 * 9"}}],
+            ),
+            ("12 * 9 is 108.", []),
+        ])
+        registry = ToolRegistry([make_calculator()])
+        result = run_with_tools(backend, registry, "what is 12*9?")
+        assert result.stopped_reason == "no_more_calls"
+        assert result.final_answer == "12 * 9 is 108."
+        assert len(result.steps) == 2
+        assert result.steps[0].tool_calls[0].name == "calculator"
+        assert result.steps[0].tool_results[0].output == "108"
+        assert result.steps[0].tool_results[0].is_error is False
+
+    def test_messages_grow_across_turns(self):
+        backend = _FakeChatBackend([
+            ("", [{"name": "calculator", "arguments": {"expression": "1 + 1"}}]),
+            ("done", []),
+        ])
+        registry = ToolRegistry([make_calculator()])
+        run_with_tools(backend, registry, "x")
+        # Turn 1: system + user. Turn 2: + assistant tool_call + tool result.
+        assert len(backend.calls[0]["messages"]) == 2
+        assert len(backend.calls[1]["messages"]) == 4
+        roles = [m["role"] for m in backend.calls[1]["messages"]]
+        assert roles == ["system", "user", "assistant", "tool"]
+
+    def test_tools_passed_as_ollama_specs(self):
+        backend = _FakeChatBackend([("answer", [])])
+        registry = ToolRegistry([make_calculator()])
+        run_with_tools(backend, registry, "x")
+        specs = backend.calls[0]["tools"]
+        assert isinstance(specs, list) and len(specs) == 1
+        assert specs[0]["type"] == "function"
+        assert specs[0]["function"]["name"] == "calculator"
+
+    def test_validation_error_surfaces_as_tool_error(self):
+        backend = _FakeChatBackend([
+            # Wrong arg name → validator rejects.
+            ("", [{"name": "calculator", "arguments": {"wrong_arg": "x"}}]),
+            ("got an error; giving up", []),
+        ])
+        registry = ToolRegistry([make_calculator()])
+        result = run_with_tools(backend, registry, "x")
+        assert result.steps[0].tool_results[0].is_error is True
+
+    def test_max_steps_hit(self):
+        # Three turns of "always emit a tool_call" with max_steps=2 →
+        # stopped_reason="max_steps".
+        backend = _FakeChatBackend([
+            ("", [{"name": "calculator", "arguments": {"expression": "1"}}]),
+            ("", [{"name": "calculator", "arguments": {"expression": "1"}}]),
+            ("", [{"name": "calculator", "arguments": {"expression": "1"}}]),
+        ])
+        registry = ToolRegistry([make_calculator()])
+        result = run_with_tools(backend, registry, "x", max_steps=2)
+        assert result.stopped_reason == "max_steps"
+        assert result.final_answer is None
+        assert len(result.steps) == 2
+
+
+# ---------------------------------------------------------------------------
 # Module exports.
 # ---------------------------------------------------------------------------
 
@@ -1359,8 +1586,10 @@ class TestModuleExports:
             "make_run_python",
             "make_web_search",
             "parse_tool_calls",
+            "render_tools_for_ollama",
             "render_tools_for_prompt",
             "run_with_tools",
+            "tool_to_ollama_spec",
             "validate_arguments",
         ]:
             assert hasattr(mod, name), f"missing export: {name}"

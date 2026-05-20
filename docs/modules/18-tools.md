@@ -217,6 +217,42 @@ The correct philsophy for tool safety is **permisstive parser, strict validator*
 - **Fine-tuned tool calling is a free lunch.** Modern instruction-tuned open models emit `<tool_call>` blocks reliably given a tool-describing prompt. Pick a model with a known tool-calling format and use it.
 - **The parser is permissive; the validator is strict.** The parser tolerates malformed blocks (silent skip) so the model isn't punished for occasional weirdness. The validator rejects malformed arguments (loud error) so the tool gets clean inputs. Different layers, different policies.
 
+### Two channels for model→tool-call communication
+
+Up to this point, the loop has spoken to the model through one channel: the system prompt describes the call format, the model writes `<tool_call>{json}</tool_call>` into its completion, and the harness's regex parser extracts them. Call this the **text-format channel**. It is the lesson — building the parser, validator, and dispatch loop is what teaches the concept.
+
+Production assistants usually use a different channel — the **native channel** — where the inference server (Ollama's `/api/chat`, OpenAI's `tools=`, Anthropic's tool blocks) accepts a structured tool list and returns a structured `tool_calls` array. The server is responsible for translating between the spec and whatever format the specific model was post-trained on (Llama's `<|python_tag|>`, Qwen's `<tool_call>`, Mistral's `[TOOL_CALLS]`, etc.). The model is no longer instructed about the format in the prompt; it speaks its own format and the server unifies them.
+
+```
+   ┌──────────────────────────────────────────────────────────────────────┐
+   │  THE TWO CHANNELS                                                    │
+   ├──────────────────────────────────────────────────────────────────────┤
+   │                                                                      │
+   │   text-format  : harness builds a system prompt describing the       │
+   │                  format → model emits <tool_call>{json}</tool_call>  │
+   │                  → harness regex-extracts them                       │
+   │                                                                      │
+   │                  PROs: backend-agnostic, transparent, the lesson     │
+   │                  CONs: model's post-training format leaks through;   │
+   │                        easy to hit format mismatch with smaller      │
+   │                        or non-tool-tuned models                      │
+   │                                                                      │
+   │   native       : harness passes a structured tools=[...] array →     │
+   │                  server routes it through the model's own format →   │
+   │                  server returns a structured tool_calls=[...] array  │
+   │                                                                      │
+   │                  PROs: format problem disappears; works for any      │
+   │                        model the server supports                     │
+   │                  CONs: requires a server that exposes the API;       │
+   │                        the harness becomes a thin client over it     │
+   │                                                                      │
+   └──────────────────────────────────────────────────────────────────────┘
+```
+
+The harness in `g2c/tools/loop.py` supports both. `run_with_tools` auto-detects whether the backend exposes a `chat_with_tools` method and picks the native path when available; pass `use_native_tools=False` to force the text-format path for the same backend. The parser/validator/dispatcher pipeline runs in both — the only thing that changes is the channel by which `ToolCall`s reach it.
+
+The pedagogically interesting point: **the rest of the harness is unchanged.** The validator still rejects bad arguments. The dispatcher still surfaces errors as `is_error=True` `ToolResult`s. The stop condition is still "no tool calls in this turn." The native channel just removes one specific failure mode — the model's post-training format not matching the harness's parser regex.
+
 ### What we don't cover
 
 - **Function-calling fine-tuning.** Models like Llama 3.2 have been fine-tuned in post-training with tool-calling data — you get reliable JSON output from a properly-formatted prompt. Training your own tool-calling fine-tune would be a separate project. We rely on the model already having tool-calling instinct.
@@ -291,7 +327,7 @@ def format_tool_results(results) -> str: ...                      # implemented
 # builtins.py
 def calculator_evaluate(expression: str) -> float: ...
 def make_calculator() -> Tool: ...                                # implemented
-def make_read_file(*, root) -> Tool: ...                          # implemented
+def make_read_file(*, root, max_chars=10000) -> Tool: ...         # implemented
 def make_web_search(*, search=None) -> Tool: ...                  # implemented
 def make_run_python(*, timeout=10) -> Tool: ...                   # implemented
 
@@ -377,7 +413,7 @@ Optional:
 
 ## Deliverable checklist
 
-- [ ] All tests in `tests/test_tools.py` pass: 155 tests, all green.
+- [ ] All tests in `tests/test_tools.py` pass: 172 tests, all green.
 - [ ] Ollama running with a tool-calling-capable chat model. `ollama list` shows your chosen model.
 - [ ] Notebook: `notebooks/18-tools.ipynb`. 
 - [ ] **Tool-use post-mortem** (Exercise 9) in 3-4 paragraphs. The main deliverable.

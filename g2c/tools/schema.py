@@ -293,3 +293,50 @@ def render_tools_for_prompt(tools: Iterable[Tool]) -> str:
         'Call format: <tool_call>{"name": "<tool>", "arguments": {...}}</tool_call>'
     )
     return "\n".join(lines)
+
+
+def _deepcopy_schema(d: dict[str, Any]) -> dict[str, Any]:
+    """Recursive copy of a JSON-schema-lite dict, sufficient for our shapes."""
+    import copy
+
+    return copy.deepcopy(d)
+
+
+def tool_to_ollama_spec(tool: Tool) -> dict[str, Any]:
+    """Translate a `Tool` into the OpenAI/Ollama function-spec dict.
+
+    Used by the native-tool-calling path: instead of rendering tools
+    into the system prompt as text (and parsing `<tool_call>` blocks
+    back out), the chat endpoint accepts a structured `tools=` array
+    and returns structured `tool_calls`. The translation is mechanical
+    — `Tool.parameters` is already a JSON-schema-lite dict, which is
+    exactly what the spec expects under `function.parameters`.
+
+    Output shape:
+
+        {
+          "type": "function",
+          "function": {
+            "name": <tool name>,
+            "description": <tool description>,
+            "parameters": <tool parameters schema, copied>
+          }
+        }
+
+    No validation is done here — `Tool.__post_init__` already enforces
+    name/description/parameters. The dict is built fresh so the caller
+    cannot mutate the tool's stored schema.
+    """
+    return {
+        "type": "function",
+        "function": {
+            "name": tool.name,
+            "description": tool.description,
+            "parameters": _deepcopy_schema(tool.parameters),
+        },
+    }
+
+
+def render_tools_for_ollama(tools: Iterable[Tool]) -> list[dict[str, Any]]:
+    """Translate an iterable of `Tool`s into the Ollama `tools=` array."""
+    return [tool_to_ollama_spec(t) for t in tools]

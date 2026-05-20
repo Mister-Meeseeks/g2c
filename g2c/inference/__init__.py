@@ -1,5 +1,5 @@
 from .artifact import ArtifactBackend, load_artifact_backend, resolve_preferred_artifact_name
-from .backend import Backend, BackendInfo, InferenceResult
+from .backend import Backend, BackendInfo, ChatResult, InferenceResult
 from .benchmark import BenchmarkResult, benchmark
 from .local import LocalTransformerBackend
 from .ollama import DEFAULT_OLLAMA_URL, OllamaBackend, OllamaError
@@ -23,6 +23,7 @@ __all__ = [
     "Backend",
     "BackendInfo",
     "BenchmarkResult",
+    "ChatResult",
     "InferenceResult",
     "LocalTransformerBackend",
     "OllamaBackend",

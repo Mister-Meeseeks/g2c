@@ -56,6 +56,7 @@ from g2c.inference import (
     Backend,
     BackendInfo,
     BenchmarkResult,
+    ChatResult,
     InferenceResult,
     LocalTransformerBackend,
     OllamaBackend,
@@ -1299,6 +1300,283 @@ class TestLocalTransformerBackendRealSmoke:
 
 
 # -----------------------------------------------------------------------
+# ChatResult dataclass
+# -----------------------------------------------------------------------
+
+
+class TestChatResultBoilerplate:
+    def _info(self) -> BackendInfo:
+        return BackendInfo(name="ollama", model_id="x:1")
+
+    def test_construction(self) -> None:
+        r = ChatResult(
+            messages=[{"role": "user", "content": "hi"}],
+            content="hello back",
+            tool_calls=[],
+            prompt_tokens=4,
+            completion_tokens=2,
+            latency_ms=123.0,
+            backend=self._info(),
+        )
+        assert r.content == "hello back"
+        assert r.tool_calls == []
+
+    def test_negative_latency_rejected(self) -> None:
+        with pytest.raises(ValueError, match="latency_ms"):
+            ChatResult(
+                messages=[{"role": "user", "content": "hi"}],
+                content="",
+                tool_calls=[],
+                prompt_tokens=0,
+                completion_tokens=0,
+                latency_ms=-1.0,
+                backend=self._info(),
+            )
+
+    def test_negative_prompt_tokens_rejected(self) -> None:
+        with pytest.raises(ValueError, match="prompt_tokens"):
+            ChatResult(
+                messages=[{"role": "user", "content": "hi"}],
+                content="",
+                tool_calls=[],
+                prompt_tokens=-1,
+                completion_tokens=0,
+                latency_ms=0.0,
+                backend=self._info(),
+            )
+
+
+# -----------------------------------------------------------------------
+# OllamaBackend.chat_with_tools
+# -----------------------------------------------------------------------
+
+
+def _ok_chat_response(
+    *,
+    content: str = "hi back",
+    tool_calls: list[dict] | None = None,
+    prompt_eval_count: int = 6,
+    eval_count: int = 9,
+    total_duration: int = 1_200_000_000,
+    eval_duration: int = 1_000_000_000,
+) -> dict:
+    msg: dict = {"role": "assistant", "content": content}
+    if tool_calls is not None:
+        msg["tool_calls"] = tool_calls
+    return {
+        "model": "x:1",
+        "message": msg,
+        "done": True,
+        "prompt_eval_count": prompt_eval_count,
+        "eval_count": eval_count,
+        "total_duration": total_duration,
+        "eval_duration": eval_duration,
+    }
+
+
+class TestOllamaBackendChatWithTools:
+    def _make(self, fake_urlopen) -> OllamaBackend:
+        return OllamaBackend("x:1", urlopen=fake_urlopen)
+
+    def _msgs(self) -> list[dict]:
+        return [{"role": "user", "content": "What is 12 * 9?"}]
+
+    def _calc_tool_spec(self) -> dict:
+        return {
+            "type": "function",
+            "function": {
+                "name": "calculator",
+                "description": "Evaluate an arithmetic expression.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "expression": {"type": "string"},
+                    },
+                    "required": ["expression"],
+                },
+            },
+        }
+
+    def test_returns_chat_result(self) -> None:
+        fake = _make_fake_urlopen(response=_ok_chat_response())
+        r = self._make(fake).chat_with_tools(self._msgs(), [self._calc_tool_spec()])
+        assert isinstance(r, ChatResult)
+        assert r.content == "hi back"
+        assert r.tool_calls == []
+
+    def test_request_url_is_api_chat(self) -> None:
+        captured: list[dict] = []
+        fake = _make_fake_urlopen(
+            response=_ok_chat_response(), captured=captured
+        )
+        backend = OllamaBackend("x:1", base_url="http://test:99", urlopen=fake)
+        backend.chat_with_tools(self._msgs(), [self._calc_tool_spec()])
+        assert captured[0]["url"] == "http://test:99/api/chat"
+        assert captured[0]["method"] == "POST"
+
+    def test_request_body_includes_messages_and_tools(self) -> None:
+        captured: list[dict] = []
+        fake = _make_fake_urlopen(
+            response=_ok_chat_response(), captured=captured
+        )
+        backend = self._make(fake)
+        backend.chat_with_tools(
+            self._msgs(), [self._calc_tool_spec()], max_new_tokens=20, temperature=0.1
+        )
+        body = json.loads(captured[0]["body"])
+        assert body["model"] == "x:1"
+        assert body["messages"] == self._msgs()
+        assert body["stream"] is False
+        assert body["options"]["num_predict"] == 20
+        assert body["options"]["temperature"] == 0.1
+        assert body["tools"] == [self._calc_tool_spec()]
+
+    def test_omits_tools_key_when_none_or_empty(self) -> None:
+        captured: list[dict] = []
+        fake = _make_fake_urlopen(
+            response=_ok_chat_response(), captured=captured
+        )
+        backend = self._make(fake)
+        backend.chat_with_tools(self._msgs(), None)
+        body = json.loads(captured[0]["body"])
+        assert "tools" not in body
+        captured.clear()
+        backend.chat_with_tools(self._msgs(), [])
+        body = json.loads(captured[0]["body"])
+        assert "tools" not in body
+
+    def test_parses_structured_tool_calls(self) -> None:
+        raw_calls = [
+            {
+                "function": {
+                    "name": "calculator",
+                    "arguments": {"expression": "12 * 9"},
+                }
+            }
+        ]
+        fake = _make_fake_urlopen(
+            response=_ok_chat_response(content="", tool_calls=raw_calls)
+        )
+        r = self._make(fake).chat_with_tools(
+            self._msgs(), [self._calc_tool_spec()]
+        )
+        assert r.content == ""
+        assert len(r.tool_calls) == 1
+        call = r.tool_calls[0]
+        assert call["name"] == "calculator"
+        assert call["arguments"] == {"expression": "12 * 9"}
+        assert isinstance(call["call_id"], str) and call["call_id"]
+
+    def test_accepts_json_encoded_arguments_string(self) -> None:
+        # Some Ollama versions / proxies forward arguments as a JSON string.
+        raw_calls = [
+            {
+                "function": {
+                    "name": "calculator",
+                    "arguments": '{"expression": "1 + 1"}',
+                }
+            }
+        ]
+        fake = _make_fake_urlopen(
+            response=_ok_chat_response(content="", tool_calls=raw_calls)
+        )
+        r = self._make(fake).chat_with_tools(
+            self._msgs(), [self._calc_tool_spec()]
+        )
+        assert r.tool_calls[0]["arguments"] == {"expression": "1 + 1"}
+
+    def test_uses_id_field_when_present(self) -> None:
+        raw_calls = [
+            {
+                "id": "call_abc123",
+                "function": {"name": "calculator", "arguments": {"expression": "1"}},
+            }
+        ]
+        fake = _make_fake_urlopen(
+            response=_ok_chat_response(content="", tool_calls=raw_calls)
+        )
+        r = self._make(fake).chat_with_tools(
+            self._msgs(), [self._calc_tool_spec()]
+        )
+        assert r.tool_calls[0]["call_id"] == "call_abc123"
+
+    def test_skips_malformed_tool_calls(self) -> None:
+        raw_calls = [
+            {"function": {"arguments": {}}},  # missing name
+            {"function": {"name": "", "arguments": {}}},  # empty name
+            {
+                "function": {
+                    "name": "calculator",
+                    "arguments": {"expression": "1"},
+                }
+            },
+        ]
+        fake = _make_fake_urlopen(
+            response=_ok_chat_response(content="", tool_calls=raw_calls)
+        )
+        r = self._make(fake).chat_with_tools(
+            self._msgs(), [self._calc_tool_spec()]
+        )
+        assert len(r.tool_calls) == 1
+        assert r.tool_calls[0]["name"] == "calculator"
+
+    def test_token_counts_and_latency(self) -> None:
+        fake = _make_fake_urlopen(
+            response=_ok_chat_response(prompt_eval_count=11, eval_count=22)
+        )
+        r = self._make(fake).chat_with_tools(self._msgs(), None)
+        assert r.prompt_tokens == 11
+        assert r.completion_tokens == 22
+        assert r.latency_ms >= 0.0
+
+    def test_metadata_includes_server_durations_and_n_tools(self) -> None:
+        fake = _make_fake_urlopen(
+            response=_ok_chat_response(
+                total_duration=2_000_000_000, eval_duration=1_500_000_000
+            )
+        )
+        r = self._make(fake).chat_with_tools(
+            self._msgs(), [self._calc_tool_spec()]
+        )
+        assert r.metadata["server_total_duration_ms"] == pytest.approx(2000.0)
+        assert r.metadata["server_eval_duration_ms"] == pytest.approx(1500.0)
+        assert r.metadata["n_tools_offered"] == 1
+
+    def test_empty_messages_rejected(self) -> None:
+        backend = self._make(_make_fake_urlopen(response=_ok_chat_response()))
+        with pytest.raises(ValueError, match="messages"):
+            backend.chat_with_tools([], None)
+
+    def test_non_list_messages_rejected(self) -> None:
+        backend = self._make(_make_fake_urlopen(response=_ok_chat_response()))
+        with pytest.raises(ValueError, match="messages"):
+            backend.chat_with_tools("hi", None)  # type: ignore[arg-type]
+
+    def test_nonpositive_max_new_tokens_rejected(self) -> None:
+        backend = self._make(_make_fake_urlopen(response=_ok_chat_response()))
+        with pytest.raises(ValueError, match="max_new_tokens"):
+            backend.chat_with_tools(self._msgs(), None, max_new_tokens=0)
+
+    def test_missing_message_field_raises(self) -> None:
+        # `response` shape (the /api/generate field) is wrong for /api/chat;
+        # backend must surface the absence of "message" as OllamaError.
+        fake = _make_fake_urlopen(response={"done": True, "response": "hi"})
+        backend = self._make(fake)
+        with pytest.raises(OllamaError, match="message"):
+            backend.chat_with_tools(self._msgs(), None)
+
+    def test_http_error_wrapped(self) -> None:
+        fake = _make_fake_urlopen(
+            raise_exc=urllib.error.HTTPError(
+                "http://x", 500, "Server", {}, None  # type: ignore[arg-type]
+            )
+        )
+        backend = self._make(fake)
+        with pytest.raises(OllamaError, match="500"):
+            backend.chat_with_tools(self._msgs(), None)
+
+
+# -----------------------------------------------------------------------
 # Cross-cutting: module exports
 # -----------------------------------------------------------------------
 
@@ -1313,6 +1591,7 @@ class TestModuleExports:
             Backend,
             BackendInfo,
             BenchmarkResult,
+            ChatResult,
             InferenceResult,
             LocalTransformerBackend,
             OllamaBackend,
@@ -1346,4 +1625,6 @@ class TestModuleExports:
         assert "name" in BackendInfo.__dataclass_fields__
         assert "n" in BenchmarkResult.__dataclass_fields__
         assert hasattr(InferenceResult, "tokens_per_second")  # property
+        assert "content" in ChatResult.__dataclass_fields__
+        assert "tool_calls" in ChatResult.__dataclass_fields__
         assert Backend.__abstractmethods__ == {"complete", "info"}

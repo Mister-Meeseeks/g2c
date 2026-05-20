@@ -27,6 +27,8 @@ is implemented (not scaffolded) — it's a small composition.
 """
 from __future__ import annotations
 
+from typing import Any
+
 from g2c.inference import Backend
 
 from .base import (
@@ -44,6 +46,7 @@ from .parser import (  # noqa: F401 (used by run_with_tools scaffold)
 from .registry import ToolRegistry
 from .schema import (  # noqa: F401 (used by run_with_tools scaffold)
     DEFAULT_SYSTEM,
+    render_tools_for_ollama,
     render_tools_for_prompt,
 )
 
@@ -112,6 +115,23 @@ def dispatch_tool_call(registry: ToolRegistry, call: ToolCall) -> ToolResult:
     )
 
 
+def backend_supports_native_tools(backend: Backend) -> bool:
+    """Return True if the backend exposes a `chat_with_tools` method.
+
+    The native-tool-calling path routes tool specs through the
+    backend's chat endpoint (e.g. Ollama's `/api/chat` + `tools=`)
+    rather than rendering them as text in the prompt. The backend is
+    responsible for translating between the spec dict and the model's
+    own post-training format.
+
+    `hasattr(backend, "chat_with_tools")` is the duck-type check. We
+    avoid an `isinstance(backend, OllamaBackend)` test so other
+    backends (a future MLX chat backend, a thin OpenAI wrapper) can
+    opt in without code changes here.
+    """
+    return callable(getattr(backend, "chat_with_tools", None))
+
+
 def run_with_tools(
     backend: Backend,
     registry: ToolRegistry,
@@ -123,6 +143,7 @@ def run_with_tools(
     temperature: float = 0.2,
     top_k: int | None = None,
     top_p: float | None = None,
+    use_native_tools: bool | None = None,
 ) -> ToolRunResult:
     """Run the call → parse → dispatch → feedback loop until the model
     stops calling tools (or `max_steps` is hit).
@@ -278,6 +299,29 @@ def run_with_tools(
     if max_steps <= 0:
         raise ValueError(f"max_steps must be > 0, got {max_steps}")
 
+    # Native path is opt-in by default-detection: if the user didn't say,
+    # use it whenever the backend exposes chat_with_tools.
+    if use_native_tools is None:
+        use_native_tools = backend_supports_native_tools(backend)
+    if use_native_tools and not backend_supports_native_tools(backend):
+        raise ValueError(
+            f"use_native_tools=True but backend {type(backend).__name__} "
+            "has no chat_with_tools method"
+        )
+
+    if use_native_tools:
+        return _run_with_native_tools(
+            backend=backend,
+            registry=registry,
+            user_message=user_message,
+            system=system,
+            max_steps=max_steps,
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+            top_k=top_k,
+            top_p=top_p,
+        )
+
     tools_block = render_tools_for_prompt(registry.tools)
     transcript = "\n\n".join(
         [
@@ -345,5 +389,161 @@ def run_with_tools(
             "tools_available": registry.names(),
             "backend_name": backend.info.name,
             "backend_model_id": backend.info.model_id,
+            "channel": "text-format",
         },
+    )
+
+
+def _run_with_native_tools(
+    *,
+    backend: Backend,
+    registry: ToolRegistry,
+    user_message: str,
+    system: str,
+    max_steps: int,
+    max_new_tokens: int,
+    temperature: float,
+    top_k: int | None,
+    top_p: float | None,
+) -> ToolRunResult:
+    """Native-tool-calling loop using the backend's chat_with_tools.
+
+    Parallel to the text-format loop but with three structural changes:
+
+      1. **Conversation as messages, not a prompt string.** Each turn
+         appends to a list of `{role, content, ...}` dicts. Tool results
+         become `role="tool"` messages, not text appended after
+         `<tool_result>` tags.
+      2. **No `<tool_call>` parsing.** The backend returns a structured
+         `tool_calls` list directly. We build `ToolCall` instances from
+         the dicts the backend already parsed.
+      3. **Stop condition is the same.** The model returning no
+         tool_calls is still the success signal.
+
+    Errors at parse/validate/dispatch are still surfaced as
+    `is_error=True` `ToolResult`s — the harness behavior is identical;
+    only the channel is different.
+    """
+    tool_specs = render_tools_for_ollama(registry.tools)
+    messages: list[dict[str, Any]] = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": user_message},
+    ]
+
+    steps: list[ToolStep] = []
+    final_answer: str | None = None
+    stopped_reason = "max_steps"
+
+    for _ in range(max_steps):
+        chat = backend.chat_with_tools(  # type: ignore[attr-defined]
+            messages,
+            tool_specs,
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+            top_k=top_k,
+            top_p=top_p,
+        )
+        inference = _chat_to_inference_result(chat, messages)
+        tool_calls = [
+            ToolCall(name=c["name"], arguments=c["arguments"], call_id=c["call_id"])
+            for c in chat.tool_calls
+        ]
+
+        if not tool_calls:
+            final_answer = chat.content
+            steps.append(
+                ToolStep(
+                    completion=chat.content,
+                    tool_calls=[],
+                    tool_results=[],
+                    inference=inference,
+                )
+            )
+            stopped_reason = "no_more_calls"
+            break
+
+        tool_results = [dispatch_tool_call(registry, call) for call in tool_calls]
+        steps.append(
+            ToolStep(
+                completion=chat.content,
+                tool_calls=tool_calls,
+                tool_results=tool_results,
+                inference=inference,
+            )
+        )
+
+        # Append the assistant's tool-calling turn and each tool result
+        # to the message list for the next iteration.
+        assistant_msg: dict[str, Any] = {
+            "role": "assistant",
+            "content": chat.content,
+            "tool_calls": [
+                {
+                    "id": call.call_id,
+                    "type": "function",
+                    "function": {"name": call.name, "arguments": call.arguments},
+                }
+                for call in tool_calls
+            ],
+        }
+        messages = messages + [assistant_msg]
+        for result in tool_results:
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": result.call_id,
+                    "name": result.name,
+                    "content": result.output,
+                }
+            )
+
+    return ToolRunResult(
+        user_message=user_message,
+        final_answer=final_answer,
+        steps=steps,
+        stopped_reason=stopped_reason,
+        metadata={
+            "n_steps": len(steps),
+            "n_tool_calls": sum(len(step.tool_calls) for step in steps),
+            "tools_available": registry.names(),
+            "backend_name": backend.info.name,
+            "backend_model_id": backend.info.model_id,
+            "channel": "native",
+        },
+    )
+
+
+def _chat_to_inference_result(chat, messages):
+    """Build an `InferenceResult` from a `ChatResult` for ToolStep parity.
+
+    `ToolStep.inference` is typed as `InferenceResult`. The native path
+    produces `ChatResult`s; this adapter packs the relevant fields so
+    downstream consumers (notebooks, post-mortems) can treat the two
+    channels uniformly. The chat metadata is preserved under
+    `metadata["chat"]` for callers that need the structured tool_calls
+    list.
+    """
+    from g2c.inference import InferenceResult
+
+    # Pseudo-prompt: the user's last message content, for parity with
+    # the text-format loop where `prompt` is the literal HTTP request
+    # input. The full message history lives in metadata.
+    last_user = ""
+    for msg in reversed(messages):
+        if msg.get("role") == "user":
+            last_user = msg.get("content", "")
+            break
+    meta = dict(chat.metadata)
+    meta["chat"] = {
+        "messages": chat.messages,
+        "tool_calls": chat.tool_calls,
+    }
+    return InferenceResult(
+        prompt=last_user,
+        completion=chat.content,
+        prompt_tokens=chat.prompt_tokens,
+        completion_tokens=chat.completion_tokens,
+        latency_ms=chat.latency_ms,
+        backend=chat.backend,
+        metadata=meta,
     )

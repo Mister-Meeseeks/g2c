@@ -255,7 +255,9 @@ def make_calculator() -> Tool:
     )
 
 
-def make_read_file(*, root: str | os.PathLike[str]) -> Tool:
+def make_read_file(
+    *, root: str | os.PathLike[str], max_chars: int = 10000
+) -> Tool:
     """Build a sandboxed read_file tool.
 
     Args:
@@ -263,19 +265,32 @@ def make_read_file(*, root: str | os.PathLike[str]) -> Tool:
             that resolve outside `root` (via `..` or absolute paths)
             are rejected. Resolved once at construction time; if the
             directory moves later, behavior is undefined.
+        max_chars: server-side truncation cap, applied to every read.
+            Captured in the closure at construction time; the model
+            cannot set it via the tool's JSON schema. This is the
+            "harness owns the cap" pattern — the model's responsibility
+            is to choose the right file; the harness's responsibility
+            is to keep results bounded.
 
-    The returned tool is `read_file(path, max_chars=10000)`:
+    The returned tool is `read_file(path)`:
       * `path` is interpreted relative to `root`.
       * The result is the file's UTF-8 contents, truncated to
         `max_chars` characters with an ellipsis marker.
 
-    Fully implemented.
+    Fully implemented. Why no `max_chars` in the model-facing schema?
+    Two reasons. (1) Some small / quantized models serialize integer
+    arguments as JSON strings (`"10000"` instead of `10000`); the
+    validator then rejects what looks to a human like a correct call.
+    (2) Truncation policy is a property of the harness, not a tool
+    parameter the model should be reasoning about. Server-side
+    defaults are more robust than model-emitted limits.
     """
+    if max_chars <= 0:
+        raise ValueError(f"max_chars must be > 0, got {max_chars}")
     root_path = Path(root).resolve()
+    cap = int(max_chars)
 
-    def _func(path: str, max_chars: int = 10000) -> str:
-        if max_chars <= 0:
-            raise ToolError("max_chars must be > 0")
+    def _func(path: str) -> str:
         # Reject absolute or empty paths up front so we don't even
         # try to resolve them.
         if not path or os.path.isabs(path):
@@ -295,8 +310,8 @@ def make_read_file(*, root: str | os.PathLike[str]) -> Tool:
             text = target.read_text(encoding="utf-8")
         except UnicodeDecodeError as e:
             raise ToolError(f"file is not valid UTF-8: {path!r}") from e
-        if len(text) > max_chars:
-            text = text[:max_chars] + "\n... (truncated)"
+        if len(text) > cap:
+            text = text[:cap] + "\n... (truncated)"
         return text
 
     return Tool(
@@ -304,7 +319,8 @@ def make_read_file(*, root: str | os.PathLike[str]) -> Tool:
         description=(
             "Read a UTF-8 text file from the project root and return its "
             "contents. The path is interpreted relative to a sandboxed "
-            "root directory."
+            "root directory. Output is truncated server-side; the model "
+            "does not control the length."
         ),
         parameters={
             "type": "object",
@@ -312,10 +328,6 @@ def make_read_file(*, root: str | os.PathLike[str]) -> Tool:
                 "path": {
                     "type": "string",
                     "description": "Relative path under the project root.",
-                },
-                "max_chars": {
-                    "type": "integer",
-                    "description": "Optional truncation length (default 10000).",
                 },
             },
             "required": ["path"],
