@@ -88,6 +88,27 @@ When you are ready to answer, emit:
 Thought: I now know the final answer.
 Final Answer: <your answer to the user's question>
 
+Knowing when to stop:
+
+Once an Observation already contains what the user asked for, you are
+done. The very next step MUST be a Final Answer — do NOT call another
+tool to verify, double-check, convert, reformat, or "extract" the
+result. Tools are not free; calling one again on a value you already
+have is a loop, not progress.
+
+Example. For the question "What is (1847 * 29) - 138?", a correct
+trajectory is:
+
+  Thought: I should use the calculator.
+  Action: calculator
+  Action Input: {{"expression": "(1847 * 29) - 138"}}
+  Observation: 53425
+  Thought: I now know the final answer.
+  Final Answer: 53425
+
+After Observation: 53425, you do NOT call the calculator again with
+{{"expression": "53425"}}. The observation is the answer.
+
 Rules:
 - Use exactly one Action per step. Do not chain multiple Actions.
 - Action Input must be a single JSON object on one line.
