@@ -245,6 +245,21 @@ DEFAULT_SYSTEM = (
 )
 
 
+NATIVE_DEFAULT_SYSTEM = (
+    "You are a helpful assistant with access to tools. Call the provided "
+    "tools using your normal tool-calling output when the user's question "
+    "requires computation, file access, or live data. Call one tool per "
+    "turn, then wait for the result before deciding what to do next. When "
+    "you have enough information to answer, reply in plain text."
+)
+# Why two constants? The text-format channel needs the model to emit
+# <tool_call>{...}</tool_call> blocks in its completion — the harness's
+# parser is what makes them tool calls. The native channel routes tool
+# selection through the model's post-training format (Ollama returns a
+# structured `tool_calls` field), so a system prompt that describes the
+# text format actively misleads the model. Two prompts; one channel each.
+
+
 def render_tools_for_prompt(tools: Iterable[Tool]) -> str:
     """Format a tool list as a text block for the system prompt.
 

@@ -416,6 +416,18 @@ def make_run_python(
       * **No env scrubbing.** Environment variables (including secrets)
         are inherited. Sanitize if needed.
 
+    The tool exposes two arguments to the model:
+
+      * `code` (required): the Python source to run.
+      * `file` (optional): a relative path. When provided, the harness
+        resolves it under `cwd` (if set) and binds the absolute path
+        to a string variable named `data` inside the subprocess BEFORE
+        the model's code runs. The model can then write
+        `pd.read_csv(data)` instead of `pd.read_csv("sales.csv")`,
+        which avoids the most common JSON-escape failure mode for small
+        models — embedded string literals colliding with the JSON
+        delimiters around the `code` value.
+
     Output: the child's stdout (truncated to 10000 chars). On non-zero
     exit, the stderr is returned with a `[run_python: exit N]` header.
     On timeout, a `[run_python: timed out after Ns]` message.
@@ -423,18 +435,40 @@ def make_run_python(
     if timeout <= 0:
         raise ValueError(f"timeout must be > 0, got {timeout}")
     cwd_path: str | None = None
+    cwd_resolved: Path | None = None
     if cwd is not None:
-        resolved = Path(cwd).resolve()
-        if not resolved.is_dir():
+        cwd_resolved = Path(cwd).resolve()
+        if not cwd_resolved.is_dir():
             raise ValueError(f"cwd must be an existing directory, got {cwd!r}")
-        cwd_path = str(resolved)
+        cwd_path = str(cwd_resolved)
 
-    def _func(code: str) -> str:
+    def _func(code: str, file: str | None = None) -> str:
         if not isinstance(code, str):
             raise ToolError(f"code must be a str, got {type(code).__name__}")
+
+        full_code = code
+        if file is not None:
+            if not isinstance(file, str) or not file:
+                raise ToolError("file must be a non-empty string")
+            base = cwd_resolved if cwd_resolved is not None else Path.cwd()
+            target = (base / file).resolve()
+            if cwd_resolved is not None:
+                try:
+                    target.relative_to(cwd_resolved)
+                except ValueError as e:
+                    raise ToolError(
+                        f"file escapes the allowed root: {file!r}"
+                    ) from e
+            if not target.exists():
+                raise ToolError(f"file not found: {file!r}")
+            # Prepend the binding. repr() handles any path containing
+            # quotes, backslashes, or other characters that would break
+            # a naive f-string interpolation.
+            full_code = f"data = {str(target)!r}\n{code}"
+
         try:
             result = subprocess.run(  # noqa: S603 — local pedagogy tool
-                [sys.executable, "-c", code],
+                [sys.executable, "-c", full_code],
                 capture_output=True,
                 text=True,
                 timeout=timeout,
@@ -457,7 +491,16 @@ def make_run_python(
         name="run_python",
         description=(
             "Execute a Python snippet in a subprocess and return stdout. "
-            "Use print() to emit results. Has a wall-clock timeout."
+            "Use print() to emit results. Has a wall-clock timeout. "
+            "Each call runs in a fresh subprocess: variables, imports, "
+            "and state from previous calls do not persist. Do all setup "
+            "in every call, or do everything in one call. "
+            "To operate on a file, pass its name via the `file` argument: "
+            "the resolved path is bound to a string variable named `data` "
+            "inside your code. Reference `data` rather than writing the "
+            "filename as a literal string. Example: "
+            "{\"file\": \"sales.csv\", \"code\": \"import pandas as pd; "
+            "print(pd.read_csv(data).head())\"}."
         ),
         parameters={
             "type": "object",
@@ -465,6 +508,16 @@ def make_run_python(
                 "code": {
                     "type": "string",
                     "description": "Python source to run.",
+                },
+                "file": {
+                    "type": "string",
+                    "description": (
+                        "Optional. Relative path to a file. The resolved "
+                        "absolute path is bound to a string variable named "
+                        "`data` inside your code, so you can write "
+                        "`pd.read_csv(data)` instead of "
+                        "`pd.read_csv('sales.csv')`."
+                    ),
                 },
             },
             "required": ["code"],

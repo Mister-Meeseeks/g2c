@@ -1445,6 +1445,37 @@ class TestOllamaBackendChatWithTools:
         body = json.loads(captured[0]["body"])
         assert "tools" not in body
 
+    def test_think_false_in_body_when_set(self) -> None:
+        captured: list[dict] = []
+        fake = _make_fake_urlopen(
+            response=_ok_chat_response(), captured=captured
+        )
+        backend = self._make(fake)
+        backend.chat_with_tools(self._msgs(), None, think=False)
+        body = json.loads(captured[0]["body"])
+        assert body["think"] is False
+
+    def test_think_true_in_body_when_set(self) -> None:
+        captured: list[dict] = []
+        fake = _make_fake_urlopen(
+            response=_ok_chat_response(), captured=captured
+        )
+        backend = self._make(fake)
+        backend.chat_with_tools(self._msgs(), None, think=True)
+        body = json.loads(captured[0]["body"])
+        assert body["think"] is True
+
+    def test_think_omitted_from_body_when_none(self) -> None:
+        captured: list[dict] = []
+        fake = _make_fake_urlopen(
+            response=_ok_chat_response(), captured=captured
+        )
+        backend = self._make(fake)
+        backend.chat_with_tools(self._msgs(), None)
+        body = json.loads(captured[0]["body"])
+        # Default: no `think` key, let the server pick.
+        assert "think" not in body
+
     def test_parses_structured_tool_calls(self) -> None:
         raw_calls = [
             {
@@ -1574,6 +1605,46 @@ class TestOllamaBackendChatWithTools:
         backend = self._make(fake)
         with pytest.raises(OllamaError, match="500"):
             backend.chat_with_tools(self._msgs(), None)
+
+
+# -----------------------------------------------------------------------
+# is_thinking_model
+# -----------------------------------------------------------------------
+
+
+class TestIsThinkingModel:
+    def test_qwen3_variants_are_thinking_models(self) -> None:
+        from g2c.inference import is_thinking_model
+
+        assert is_thinking_model("qwen3:4b") is True
+        assert is_thinking_model("qwen3:1.7b") is True
+        assert is_thinking_model("qwen3:8b-instruct-q4_K_M") is True
+
+    def test_deepseek_r1_is_thinking_model(self) -> None:
+        from g2c.inference import is_thinking_model
+
+        assert is_thinking_model("deepseek-r1:7b") is True
+        assert is_thinking_model("deepseek-r1:14b-q4_K_M") is True
+
+    def test_non_thinking_models(self) -> None:
+        from g2c.inference import is_thinking_model
+
+        assert is_thinking_model("llama3.2:3b") is False
+        assert is_thinking_model("qwen2.5:7b-instruct") is False
+        assert is_thinking_model("mistral:7b") is False
+        assert is_thinking_model("") is False
+
+    def test_case_insensitive(self) -> None:
+        from g2c.inference import is_thinking_model
+
+        assert is_thinking_model("QWEN3:4B") is True
+        assert is_thinking_model("DeepSeek-R1:7b") is True
+
+    def test_non_string_input(self) -> None:
+        from g2c.inference import is_thinking_model
+
+        assert is_thinking_model(None) is False  # type: ignore[arg-type]
+        assert is_thinking_model(123) is False  # type: ignore[arg-type]
 
 
 # -----------------------------------------------------------------------

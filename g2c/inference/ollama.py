@@ -64,6 +64,46 @@ from .backend import Backend, BackendInfo, ChatResult, InferenceResult
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
 
 
+# Model-tag prefixes that ship with "thinking mode" enabled by default.
+# These models emit `<think>...</think>` reasoning blocks before any
+# user-facing content. Useful for hard problems, fatal for tool-calling
+# loops with modest `max_new_tokens` budgets: the model can spend its
+# entire budget inside the thinking block and never reach an actual
+# tool call or final text. `is_thinking_model` checks against this list
+# so callers can default `think=False` for these models without having
+# to maintain the list themselves.
+#
+# Membership is conservative — only listed when the model's default
+# behavior is "thinking on" AND Ollama honors a `think: false` toggle
+# to disable it. Adding a prefix that doesn't honor the toggle has
+# no harm (the param is silently ignored).
+THINKING_MODEL_PREFIXES: tuple[str, ...] = (
+    "qwen3",
+    "deepseek-r1",
+    "deepseek-r2",
+)
+
+
+def is_thinking_model(model_id: str) -> bool:
+    """Return True if `model_id` matches a known thinking-mode prefix.
+
+    Matches by leading tag — e.g. `"qwen3:4b"`, `"qwen3:8b-instruct"`,
+    `"deepseek-r1:7b"` all return True. Case-insensitive.
+
+    Use this to decide whether to pass `think=False` to the backend.
+    On non-thinking models the parameter is harmless; on thinking
+    models it disables the `<think>` block so the model's response
+    fits in modest token budgets.
+    """
+    if not isinstance(model_id, str) or not model_id:
+        return False
+    lower = model_id.lower()
+    for prefix in THINKING_MODEL_PREFIXES:
+        if lower.startswith(prefix):
+            return True
+    return False
+
+
 class OllamaError(RuntimeError):
     """Raised on any HTTP / JSON / Ollama-specific failure.
 
@@ -156,6 +196,7 @@ class OllamaBackend(Backend):
         temperature: float = 1.0,
         top_k: int | None = None,
         top_p: float | None = None,
+        think: bool | None = None,
     ) -> InferenceResult:
         """POST to `{base_url}/api/generate` and parse the response.
 
@@ -339,12 +380,14 @@ class OllamaBackend(Backend):
         if top_p is not None:
             options["top_p"] = float(top_p)
 
-        body = {
+        body: dict[str, Any] = {
             "model": self._model_id,
             "prompt": prompt,
             "stream": False,
             "options": options,
         }
+        if think is not None:
+            body["think"] = bool(think)
         url = f"{self._base_url}/api/generate"
         request = urllib.request.Request(
             url,
@@ -406,10 +449,11 @@ class OllamaBackend(Backend):
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
         *,
-        max_new_tokens: int = 512,
+        max_new_tokens: int = 1024,
         temperature: float = 0.2,
         top_k: int | None = None,
         top_p: float | None = None,
+        think: bool | None = None,
     ) -> ChatResult:
         """POST to `{base_url}/api/chat` and return a `ChatResult`.
 
@@ -503,6 +547,8 @@ class OllamaBackend(Backend):
         }
         if tools:
             body["tools"] = tools
+        if think is not None:
+            body["think"] = bool(think)
 
         url = f"{self._base_url}/api/chat"
         request = urllib.request.Request(
@@ -575,6 +621,7 @@ class OllamaBackend(Backend):
                     "temperature": temperature,
                     "top_k": top_k,
                     "top_p": top_p,
+                    "think": think,
                 },
                 "server_total_duration_ms": (
                     float(total_duration) / 1e6 if total_duration is not None else None

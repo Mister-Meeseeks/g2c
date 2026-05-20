@@ -18,6 +18,7 @@ from .parser import format_tool_results, parse_tool_calls
 from .registry import ToolRegistry
 from .schema import (
     DEFAULT_SYSTEM,
+    NATIVE_DEFAULT_SYSTEM,
     render_tools_for_ollama,
     render_tools_for_prompt,
     tool_to_ollama_spec,
@@ -26,6 +27,7 @@ from .schema import (
 
 __all__ = [
     "DEFAULT_SYSTEM",
+    "NATIVE_DEFAULT_SYSTEM",
     "Tool",
     "ToolCall",
     "ToolError",

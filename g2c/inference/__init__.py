@@ -2,7 +2,12 @@ from .artifact import ArtifactBackend, load_artifact_backend, resolve_preferred_
 from .backend import Backend, BackendInfo, ChatResult, InferenceResult
 from .benchmark import BenchmarkResult, benchmark
 from .local import LocalTransformerBackend
-from .ollama import DEFAULT_OLLAMA_URL, OllamaBackend, OllamaError
+from .ollama import (
+    DEFAULT_OLLAMA_URL,
+    OllamaBackend,
+    OllamaError,
+    is_thinking_model,
+)
 from .prodlm import (
     DEFAULT_PRODLM_MODEL_ID,
     PRODLM_KIND,
@@ -29,6 +34,7 @@ __all__ = [
     "OllamaBackend",
     "OllamaError",
     "benchmark",
+    "is_thinking_model",
     "load_artifact_backend",
     "load_default_backend",
     "load_prodlm_backend",

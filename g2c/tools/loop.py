@@ -27,7 +27,9 @@ is implemented (not scaffolded) — it's a small composition.
 """
 from __future__ import annotations
 
+import json
 from typing import Any
+from uuid import uuid4
 
 from g2c.inference import Backend
 
@@ -46,6 +48,7 @@ from .parser import (  # noqa: F401 (used by run_with_tools scaffold)
 from .registry import ToolRegistry
 from .schema import (  # noqa: F401 (used by run_with_tools scaffold)
     DEFAULT_SYSTEM,
+    NATIVE_DEFAULT_SYSTEM,
     render_tools_for_ollama,
     render_tools_for_prompt,
 )
@@ -132,18 +135,97 @@ def backend_supports_native_tools(backend: Backend) -> bool:
     return callable(getattr(backend, "chat_with_tools", None))
 
 
+def _extract_first_json_object(text: str) -> dict | None:
+    """Find and JSON-decode the first balanced object in `text`.
+
+    Skips leading prose and a single pair of surrounding markdown
+    triple-backtick fences (with or without a language tag). Uses
+    `json.JSONDecoder.raw_decode`, which correctly handles strings
+    and escapes — a hand-rolled brace counter would mis-count braces
+    that appear inside string values.
+
+    Returns None if no parseable JSON object is found.
+    """
+    if not isinstance(text, str):
+        return None
+    s = text.strip()
+    if s.startswith("```"):
+        nl = s.find("\n")
+        if nl != -1:
+            s = s[nl + 1 :]
+        if s.endswith("```"):
+            s = s[:-3]
+        s = s.strip()
+
+    decoder = json.JSONDecoder()
+    pos = 0
+    while pos < len(s):
+        start = s.find("{", pos)
+        if start == -1:
+            return None
+        try:
+            obj, _end = decoder.raw_decode(s[start:])
+        except json.JSONDecodeError:
+            pos = start + 1
+            continue
+        if isinstance(obj, dict):
+            return obj
+        pos = start + 1
+    return None
+
+
+def _try_parse_tool_call_from_content(content: str) -> ToolCall | None:
+    """Rescue a tool call from plain content on the native channel.
+
+    Small instruction-tuned models (notably Llama 3.2 3B) sometimes
+    emit a syntactically valid tool-call JSON in their plain text
+    output instead of using their post-training tool-call wire format
+    (e.g. Llama's `<|python_tag|>` delimiter). Ollama then returns
+    nothing in the structured `tool_calls` field, and the loop would
+    otherwise stop with that JSON as the "final answer."
+
+    This rescue scans `content` for an object shaped like
+    `{"name": "<tool>", "parameters"|"arguments": {...}}` and
+    synthesizes a `ToolCall` from it. We accept both `parameters`
+    (Llama convention) and `arguments` (Qwen / Hermes / our own
+    text-format), because on a rescue path we'd rather be permissive
+    than miss the call.
+
+    Returns None when no plausibly-shaped object is found.
+    """
+    if not isinstance(content, str) or not content.strip():
+        return None
+    candidate = _extract_first_json_object(content)
+    if candidate is None:
+        return None
+    name = candidate.get("name")
+    if not isinstance(name, str) or not name:
+        return None
+    args = candidate.get("arguments")
+    if args is None:
+        args = candidate.get("parameters")
+    if not isinstance(args, dict):
+        return None
+    return ToolCall(
+        name=name,
+        arguments=args,
+        call_id=f"rescued_{uuid4().hex[:8]}",
+    )
+
+
 def run_with_tools(
     backend: Backend,
     registry: ToolRegistry,
     user_message: str,
     *,
-    system: str = DEFAULT_SYSTEM,
+    system: str | None = None,
     max_steps: int = 5,
-    max_new_tokens: int = 512,
+    max_new_tokens: int = 1024,
     temperature: float = 0.2,
     top_k: int | None = None,
     top_p: float | None = None,
     use_native_tools: bool | None = None,
+    think: bool | None = None,
 ) -> ToolRunResult:
     """Run the call → parse → dispatch → feedback loop until the model
     stops calling tools (or `max_steps` is hit).
@@ -309,6 +391,13 @@ def run_with_tools(
             "has no chat_with_tools method"
         )
 
+    # Default the system prompt to the channel-appropriate one. The
+    # text-format channel needs the model to be told about <tool_call>
+    # blocks; the native channel actively does not — the chat template
+    # handles the format and the model has been post-trained for it.
+    if system is None:
+        system = NATIVE_DEFAULT_SYSTEM if use_native_tools else DEFAULT_SYSTEM
+
     if use_native_tools:
         return _run_with_native_tools(
             backend=backend,
@@ -320,6 +409,7 @@ def run_with_tools(
             temperature=temperature,
             top_k=top_k,
             top_p=top_p,
+            think=think,
         )
 
     tools_block = render_tools_for_prompt(registry.tools)
@@ -405,6 +495,7 @@ def _run_with_native_tools(
     temperature: float,
     top_k: int | None,
     top_p: float | None,
+    think: bool | None = None,
 ) -> ToolRunResult:
     """Native-tool-calling loop using the backend's chat_with_tools.
 
@@ -433,6 +524,11 @@ def _run_with_native_tools(
     steps: list[ToolStep] = []
     final_answer: str | None = None
     stopped_reason = "max_steps"
+    n_rescued_calls = 0
+
+    extra_chat_kwargs: dict[str, Any] = {}
+    if think is not None:
+        extra_chat_kwargs["think"] = think
 
     for _ in range(max_steps):
         chat = backend.chat_with_tools(  # type: ignore[attr-defined]
@@ -442,12 +538,23 @@ def _run_with_native_tools(
             temperature=temperature,
             top_k=top_k,
             top_p=top_p,
+            **extra_chat_kwargs,
         )
         inference = _chat_to_inference_result(chat, messages)
         tool_calls = [
             ToolCall(name=c["name"], arguments=c["arguments"], call_id=c["call_id"])
             for c in chat.tool_calls
         ]
+
+        # Rescue: small models occasionally emit a tool call as plain
+        # JSON in `content` instead of via the structured wire format.
+        # If we have no structured calls but the content looks like a
+        # tool-call object, synthesize one and continue the loop.
+        if not tool_calls:
+            rescued = _try_parse_tool_call_from_content(chat.content)
+            if rescued is not None:
+                tool_calls = [rescued]
+                n_rescued_calls += 1
 
         if not tool_calls:
             final_answer = chat.content
@@ -509,6 +616,7 @@ def _run_with_native_tools(
             "backend_name": backend.info.name,
             "backend_model_id": backend.info.model_id,
             "channel": "native",
+            "n_rescued_calls": n_rescued_calls,
         },
     )
 

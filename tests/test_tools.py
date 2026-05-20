@@ -1015,6 +1015,57 @@ class TestMakeRunPython:
         with pytest.raises(ValueError):
             make_run_python(cwd=tmp_path / "does-not-exist")
 
+    def test_file_arg_binds_data_variable(self, tmp_path):
+        (tmp_path / "sales.csv").write_text(
+            "item,units,price\npen,3,2.0\nnotebook,2,5.0\n",
+            encoding="utf-8",
+        )
+        t = make_run_python(cwd=tmp_path)
+        # The model writes code that references `data` instead of the literal
+        # filename — no nested string literals in the JSON code value.
+        out = t.func(code="print(open(data).read().splitlines()[0])", file="sales.csv")
+        assert "item,units,price" in out
+
+    def test_file_arg_resolves_under_cwd(self, tmp_path):
+        nested = tmp_path / "sub"
+        nested.mkdir()
+        (nested / "x.txt").write_text("inside\n", encoding="utf-8")
+        t = make_run_python(cwd=tmp_path)
+        out = t.func(code="print(open(data).read().strip())", file="sub/x.txt")
+        assert "inside" in out
+
+    def test_file_arg_rejects_escape_attempts(self, tmp_path):
+        t = make_run_python(cwd=tmp_path)
+        with pytest.raises(ToolError, match="escapes the allowed root"):
+            t.func(code="print('x')", file="../outside.txt")
+
+    def test_file_arg_missing_file_raises(self, tmp_path):
+        t = make_run_python(cwd=tmp_path)
+        with pytest.raises(ToolError, match="file not found"):
+            t.func(code="print(data)", file="nope.txt")
+
+    def test_file_arg_must_be_nonempty(self, tmp_path):
+        t = make_run_python(cwd=tmp_path)
+        with pytest.raises(ToolError, match="non-empty"):
+            t.func(code="print('x')", file="")
+
+    def test_file_arg_appears_in_schema(self):
+        t = make_run_python()
+        props = t.parameters["properties"]
+        assert "file" in props
+        # `code` stays required; `file` is optional.
+        assert t.parameters["required"] == ["code"]
+        assert props["file"]["type"] == "string"
+
+    def test_file_arg_path_with_quotes_handled(self, tmp_path):
+        # repr() should escape any unusual characters in the resolved path,
+        # so the prepended `data = ...` line is always valid Python.
+        weird = tmp_path / "has'quote.txt"
+        weird.write_text("ok\n", encoding="utf-8")
+        t = make_run_python(cwd=tmp_path)
+        out = t.func(code="print(open(data).read().strip())", file="has'quote.txt")
+        assert "ok" in out
+
 
 # ---------------------------------------------------------------------------
 # dispatch_tool_call (implemented, not scaffolded).
@@ -1429,6 +1480,7 @@ class _FakeChatBackend(Backend):
         temperature: float = 0.2,
         top_k: int | None = None,
         top_p: float | None = None,
+        think: bool | None = None,
     ):
         from g2c.inference import ChatResult
 
@@ -1443,6 +1495,7 @@ class _FakeChatBackend(Backend):
                 "tools": tools,
                 "max_new_tokens": max_new_tokens,
                 "temperature": temperature,
+                "think": think,
             }
         )
         # Augment each call with a call_id if absent (mimic real backend).
@@ -1559,6 +1612,133 @@ class TestRunWithToolsNative:
         assert result.stopped_reason == "max_steps"
         assert result.final_answer is None
         assert len(result.steps) == 2
+
+    def test_rescues_tool_call_from_content_with_parameters_key(self):
+        # Model emits a tool-call JSON in plain content (Llama 3.2 style:
+        # uses "parameters" instead of "arguments"), no structured
+        # tool_calls. The rescue parser should pick it up.
+        backend = _FakeChatBackend([
+            (
+                '{"name": "calculator", "parameters": {"expression": "2 + 2"}}',
+                [],
+            ),
+            ("the answer is 4", []),
+        ])
+        registry = ToolRegistry([make_calculator()])
+        result = run_with_tools(backend, registry, "what is 2+2?")
+        assert result.stopped_reason == "no_more_calls"
+        assert result.final_answer == "the answer is 4"
+        assert len(result.steps) == 2
+        assert result.steps[0].tool_calls[0].name == "calculator"
+        assert result.steps[0].tool_results[0].output == "4"
+        assert result.metadata["n_rescued_calls"] == 1
+
+    def test_rescues_tool_call_with_arguments_key(self):
+        # Same rescue but using "arguments" key — Qwen / Hermes / our
+        # own text-format convention. Both keys must work.
+        backend = _FakeChatBackend([
+            (
+                '{"name": "calculator", "arguments": {"expression": "3 * 3"}}',
+                [],
+            ),
+            ("9", []),
+        ])
+        registry = ToolRegistry([make_calculator()])
+        result = run_with_tools(backend, registry, "what is 3*3?")
+        assert result.steps[0].tool_calls[0].name == "calculator"
+        assert result.steps[0].tool_results[0].output == "9"
+
+    def test_rescues_tool_call_from_markdown_fenced_content(self):
+        content = (
+            "Here is the tool call:\n"
+            "```json\n"
+            '{"name": "calculator", "parameters": {"expression": "5 + 6"}}\n'
+            "```"
+        )
+        backend = _FakeChatBackend([
+            (content, []),
+            ("11", []),
+        ])
+        registry = ToolRegistry([make_calculator()])
+        result = run_with_tools(backend, registry, "what is 5+6?")
+        assert result.steps[0].tool_calls[0].name == "calculator"
+        assert result.steps[0].tool_results[0].output == "11"
+
+    def test_rescues_tool_call_with_leading_prose(self):
+        # Model writes a sentence, then a tool-call JSON. The rescue
+        # should skip the prose and find the JSON.
+        content = (
+            "I will call the calculator. "
+            '{"name": "calculator", "parameters": {"expression": "7"}}'
+        )
+        backend = _FakeChatBackend([
+            (content, []),
+            ("7", []),
+        ])
+        registry = ToolRegistry([make_calculator()])
+        result = run_with_tools(backend, registry, "x")
+        assert result.steps[0].tool_calls[0].name == "calculator"
+
+    def test_no_rescue_when_content_is_plain_text(self):
+        # Plain content with no tool-call-shaped JSON → final answer.
+        backend = _FakeChatBackend([
+            ("Plain text answer with no JSON in it.", []),
+        ])
+        registry = ToolRegistry([make_calculator()])
+        result = run_with_tools(backend, registry, "x")
+        assert result.stopped_reason == "no_more_calls"
+        assert result.final_answer == "Plain text answer with no JSON in it."
+        assert result.metadata["n_rescued_calls"] == 0
+
+    def test_no_rescue_when_json_lacks_name(self):
+        # A JSON object that isn't shaped like a tool call → no rescue.
+        backend = _FakeChatBackend([
+            ('Here is data: {"x": 1, "y": 2}', []),
+        ])
+        registry = ToolRegistry([make_calculator()])
+        result = run_with_tools(backend, registry, "x")
+        assert result.stopped_reason == "no_more_calls"
+        assert result.metadata["n_rescued_calls"] == 0
+
+    def test_structured_tool_calls_preferred_over_rescue(self):
+        # If the backend already gave us tool_calls AND content has a
+        # JSON-shaped object, we use the structured one (no rescue).
+        backend = _FakeChatBackend([
+            (
+                '{"name": "calculator", "parameters": {"expression": "999"}}',
+                [{"name": "calculator", "arguments": {"expression": "1 + 1"}}],
+            ),
+            ("done", []),
+        ])
+        registry = ToolRegistry([make_calculator()])
+        result = run_with_tools(backend, registry, "x")
+        # The structured 1+1 ran, not the rescue 999.
+        assert result.steps[0].tool_calls[0].arguments == {"expression": "1 + 1"}
+        assert result.metadata["n_rescued_calls"] == 0
+
+    def test_native_metadata_includes_rescue_count(self):
+        backend = _FakeChatBackend([("answer", [])])
+        registry = ToolRegistry([make_calculator()])
+        result = run_with_tools(backend, registry, "x")
+        # No rescue happened, but the field should still exist.
+        assert result.metadata["n_rescued_calls"] == 0
+
+    def test_think_param_forwarded_to_backend(self):
+        backend = _FakeChatBackend([("done", [])])
+        registry = ToolRegistry([make_calculator()])
+        run_with_tools(backend, registry, "x", think=False)
+        assert backend.calls[0]["think"] is False
+
+    def test_think_param_default_is_none(self):
+        # When the caller doesn't pass think, we shouldn't push a value
+        # onto the backend — let the backend (or the server) pick its
+        # default. The fake records the kwarg's value here for that
+        # observability; the real Ollama path omits it from the body
+        # entirely when None (see `chat_with_tools`).
+        backend = _FakeChatBackend([("done", [])])
+        registry = ToolRegistry([make_calculator()])
+        run_with_tools(backend, registry, "x")
+        assert backend.calls[0]["think"] is None
 
 
 # ---------------------------------------------------------------------------
