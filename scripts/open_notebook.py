@@ -130,11 +130,22 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="prepare the solution notebook but do not launch Jupyter",
     )
+    parser.add_argument(
+        "--solutions",
+        action="store_true",
+        help=(
+            "launch the notebook with worked implementations from g2c/solutions/ "
+            "applied at import time (sets G2C_APPLY_SOLUTIONS=1)"
+        ),
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
+
+    if args.solutions:
+        os.environ["G2C_APPLY_SOLUTIONS"] = "1"
 
     try:
         clean_path = find_clean_notebook(args.module)

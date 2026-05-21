@@ -17,9 +17,10 @@ How we identify "this function should be a scaffold":
     any docstring, contains the `# TODO` comment and a top-level
     `raise NotImplementedError`.
 
-This is the same definition `strip_solutions.py` and the rest of the
-backport tooling use. Keeping it as a pytest invariant means the
-guarantee survives `pytest -q` without a separate CI step.
+Keeping this guarantee as a pytest invariant means it survives
+`pytest -q` without a separate CI step — if a worked implementation
+ever leaks into `g2c/`, one of the parametrized targets fails by
+qualified function name.
 """
 from __future__ import annotations
 

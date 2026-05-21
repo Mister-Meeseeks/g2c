@@ -62,6 +62,12 @@ One-stop wrapper for opening a module notebook:
   5) Opens the working solutions copy via scripts/open_notebook.py, passing
      through any extra args (e.g. --fresh, --no-launch).
 
+Flags:
+  --solutions   Launch with worked implementations from g2c/solutions/
+                applied at import time (sets G2C_APPLY_SOLUTIONS=1). The
+                pre-launch test run inherits the same setting, so tests
+                pass instead of warning. Default: scaffolds only.
+
 Module → extras mapping:
   04            ./datasets.sh --tiny
   05            ./datasets.sh glove
@@ -76,6 +82,7 @@ Examples:
   ./notebook.sh 03b --fresh
   ./notebook.sh --fresh 13
   ./notebook.sh 10 --no-launch
+  ./notebook.sh 01 --solutions
 EOF
 }
 
@@ -93,19 +100,28 @@ esac
 ORIGINAL_ARGS=("$@")
 MODULE=""
 SHOULD_LAUNCH=1
+USE_SOLUTIONS=0
 for arg in "${ORIGINAL_ARGS[@]}"; do
     if [[ "$arg" == "--no-launch" ]]; then
         SHOULD_LAUNCH=0
+    fi
+    if [[ "$arg" == "--solutions" ]]; then
+        USE_SOLUTIONS=1
     fi
     case "$arg" in
         -*)
             ;;
         *)
-            MODULE="$arg"
-            break
+            if [[ -z "$MODULE" ]]; then
+                MODULE="$arg"
+            fi
             ;;
     esac
 done
+
+if [[ $USE_SOLUTIONS -eq 1 ]]; then
+    export G2C_APPLY_SOLUTIONS=1
+fi
 
 if [[ -z "$MODULE" ]]; then
     usage >&2
@@ -161,6 +177,9 @@ esac
 
 printf "\n"
 info "Setting up environment for notebook $MODULE"
+if [[ $USE_SOLUTIONS -eq 1 ]]; then
+    info "Solutions mode: g2c.solutions.apply() will run at import time"
+fi
 printf "\n"
 
 ./setup.sh

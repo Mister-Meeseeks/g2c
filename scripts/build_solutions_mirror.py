@@ -50,7 +50,7 @@ SOURCE_BRANCH = "solutions"
 
 
 # ---------------------------------------------------------------------------
-# Scaffold detection (copied from strip_solutions.py for consistency).
+# Scaffold detection — matches `tests/test_scaffold_invariant.py`.
 # ---------------------------------------------------------------------------
 
 

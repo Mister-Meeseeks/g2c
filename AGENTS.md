@@ -184,18 +184,37 @@ Place diagrams according to the role they play in the reader's understanding, no
 
 The top of each test file should have a docstring with a numbered "Suggested order to implement & turn green" — mapping each implementation step to the tests it unblocks. The student should be able to read this once and know exactly where to start. Construction / repr / boilerplate tests pass from the start (since the boilerplate is implemented), serving as a sanity check on the test file itself; the rest fail with `NotImplementedError` until the student implements.
 
-## Backporting from `solutions` to `main`
+## Pedagogical scaffolds and worked implementations
 
-The `solutions` branch intentionally has filled-in pedagogical implementations in root `g2c/` so worked notebooks can import the same package students edit. The `main` branch must keep those same functions scaffolded.
+`g2c/<topic>/` is the student's working surface — every pedagogical function is left as `# TODO` + `raise NotImplementedError`. Canonical worked implementations live in a parallel mirror under `g2c/solutions/`:
 
-When course edits made on `solutions` need to flow back to `main`:
+- Each pedagogical class `Foo` in `g2c/<topic>/<file>.py` gets a `_FooImpl` holder class in `g2c/solutions/<topic>/<file>.py`. The holder's methods are bound onto the real class by `g2c.solutions.apply()`.
+- Module-level pedagogical functions are mirrored at the module level and bound the same way.
 
-- Do not merge `notebooks/solutions/`.
-- Preserve structural/API/helper changes in `g2c/`, but strip worked exercise bodies before committing.
-- Run `python scripts/strip_solutions.py --reference HEAD g2c` after the merge while `HEAD` is still the pre-merge scaffold reference.
-- Run `python scripts/check_scaffold.py --reference HEAD g2c`; it must report that all reference scaffold functions are still scaffolded.
-- Run `python scripts/test_clean.py`; clean scaffold tests must pass.
-- For new solution-only implementations that do not yet exist as scaffolded functions in `main`, put `# SOLUTION` inside the function body on `solutions` so `strip_solutions.py` can identify it during backport.
+Notebooks do not need a per-notebook `apply()` cell. `g2c/__init__.py` checks `G2C_APPLY_SOLUTIONS` at import time and, if set, calls `g2c.solutions.apply()` before any other code touches the package. To launch a worked notebook with implementations live:
+
+```bash
+./notebook.sh 01 --solutions
+```
+
+`--solutions` exports `G2C_APPLY_SOLUTIONS=1` so the pre-launch test run and the Jupyter kernel both see the patched package. Without the flag (the default), notebooks launch against scaffolds — that's the student experience. Same lever for pytest:
+
+```bash
+G2C_APPLY_SOLUTIONS=1 pytest        # full suite with solutions
+pytest                              # scaffolds; many tests intentionally fail
+```
+
+`apply()` is idempotent — re-running it just re-binds the same impls.
+
+`tests/test_scaffold_invariant.py` is a parametrized pytest that asserts every function targeted by the mirror is still a direct `# TODO` + `raise NotImplementedError` scaffold. If a worked implementation ever leaks back into `g2c/`, that test fails by qualified function name (e.g. `g2c.autodiff.value.Value.__add__`).
+
+When adding a new worked implementation:
+
+1. Implement it under `g2c/solutions/<topic>/<file>.py` following the holder convention above. Use absolute imports inside the mirror file (`from g2c.<topic>.<file> import Foo`), not relative ones.
+2. Run `pytest tests/test_scaffold_invariant.py` — the target function in `g2c/<topic>/` must still be scaffolded.
+3. Verify the impl works end-to-end with `G2C_APPLY_SOLUTIONS=1 pytest tests/test_<topic>.py`.
+
+To regenerate the entire mirror from an implemented tree (e.g. after a structural refactor or to bootstrap from another branch), run `python scripts/build_solutions_mirror.py`.
 
 ### Visual aids in lesson pages
 

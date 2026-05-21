@@ -169,7 +169,6 @@ After setup:
 
 ```bash
 source .venv/bin/activate
-python scripts/test_clean.py    # tests that should pass on the pristine scaffold
 python -m pytest                # full suite; many tests intentionally fail until implemented
 python scripts/smoke_test.py    # re-run env health check
 python scripts/artifact_status.py # inspect local datasets, tokenizers, and model artifacts
@@ -197,23 +196,21 @@ Each module's notebook holds both the runnable cells and the written exercises. 
 
 Begin with `docs/syllabus.md`, then `docs/modules/00-prerequisite-review.md`, then `docs/modules/01-autodiff.md`.
 
-## Branching model
+## Pristine scaffolds and worked implementations
 
-The repo is structured for two audiences at once: anyone working through the course, and the author maintaining a worked-out reference. Two long-running branches:
+The repo is structured for two audiences at once: anyone working through the course, and the author maintaining a worked reference. There is one canonical branch, `main`. Pedagogical functions under `g2c/<topic>/` are left as `# TODO` + `raise NotImplementedError` scaffolds — that's the experience a course-taker sees on clone.
 
-- **`main`** — pristine course material. Lesson pages, scaffolded `g2c` methods with `# TODO` markers, tests that fail until the student fills things in. Clone this branch to take the course.
-- **`solutions`** — the author's working branch with everything filled in. Doubles as a reference answer key.
+Canonical worked implementations live alongside the scaffolds in `g2c/solutions/`. Each file there mirrors the path of the file it implements: methods of class `Foo` in `g2c/<topic>/<file>.py` are held by `_FooImpl` inside `g2c/solutions/<topic>/<file>.py`, and module-level functions are mirrored at the module level.
 
-Most updates still flow `main → solutions`: course improvements land on `main`, then `git merge main` into `solutions` brings them forward.
-
-Some authoring happens on `solutions`, especially notebook-heavy work that needs implemented `g2c` code. When backporting those changes to `main`, do not merge `notebooks/solutions/`, and strip worked pedagogical code before committing:
+By default, notebooks launch against scaffolds — the student experience. To launch with implementations live, pass `--solutions` to the launcher (or, if you're invoking pytest directly, set the env var):
 
 ```bash
-python scripts/strip_solutions.py --reference HEAD g2c
-python scripts/check_scaffold.py --reference HEAD g2c
-python scripts/test_clean.py
+./notebook.sh 01 --solutions        # launch module 01 with solutions applied
+G2C_APPLY_SOLUTIONS=1 pytest        # full pytest suite with solutions applied
 ```
 
-`strip_solutions.py` rewrites filled-in exercise bodies back to `# TODO` / `raise NotImplementedError` while preserving API, docstring, helper, artifact, and infrastructure changes. `check_scaffold.py` is the non-mutating invariant check: it fails if anything that was scaffolded in the reference ref is no longer scaffolded in the working tree. For new solution implementations that do not yet exist as scaffolded functions on `main`, put a `# SOLUTION` marker somewhere inside the function body on `solutions`; the strip script will remove the whole body when backporting, and the scaffold check will fail if the marker remains.
+Under the hood, `g2c/__init__.py` checks `G2C_APPLY_SOLUTIONS` at import time and, if set, calls `g2c.solutions.apply()` once. That rebinds every mirror impl onto its scaffold target, so `g2c.autodiff.value.Value.__add__` and friends become live without changing any file a student reads.
+
+The invariant is enforced as a parametrized pytest at `tests/test_scaffold_invariant.py`: if a worked implementation ever leaks into `g2c/<topic>/`, that test fails by qualified function name (e.g. `g2c.autodiff.value.Value.__add__`), so the regression is immediately visible.
 
 If you fork the course to do your own work, branch off `main` and use whatever name you like (`student/<name>` is a reasonable convention).
