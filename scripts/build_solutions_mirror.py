@@ -155,21 +155,56 @@ def extract_function(
     return None
 
 
-def extract_imports(source: str) -> list[str]:
-    """Return source lines that look like top-level imports.
+def _rewrite_relative_import(stmt: ast.ImportFrom, target_package: str) -> str:
+    """Render a relative `from .x import Y` as absolute against target_package.
 
-    Approximation: walk the AST top level for Import/ImportFrom and
-    return the source segment for each. Conservative; over-importing
-    is acceptable for a mirror module that is only loaded under apply().
+    `target_package` is the dotted package the SOLUTIONS module lived in
+    on the solutions branch (e.g. `g2c.agent` for `g2c/agent/agent.py`).
+    """
+    base_parts = target_package.split(".")
+    # `level == 1` -> same package; `level == 2` -> parent; etc.
+    if stmt.level > len(base_parts):
+        raise ValueError(f"relative import beyond top: level={stmt.level}")
+    parent_parts = base_parts[: len(base_parts) - (stmt.level - 1)]
+    if stmt.module:
+        full = ".".join(parent_parts + [stmt.module])
+    else:
+        full = ".".join(parent_parts)
+    names = ", ".join(
+        alias.name + (f" as {alias.asname}" if alias.asname else "")
+        for alias in stmt.names
+    )
+    return f"from {full} import {names}\n"
+
+
+def extract_imports_and_constants(
+    source: str, target_package: str
+) -> list[str]:
+    """Return top-level lines worth copying into the mirror file.
+
+    Includes:
+      * imports (relative imports rewritten to absolute)
+      * module-level Name/AnnAssign assignments (e.g. `Number = Union[int, float]`)
+
+    Excludes:
+      * `from __future__` imports (mirror emits its own)
+      * class and function definitions (handled separately)
     """
     tree = ast.parse(source)
     lines = source.splitlines(keepends=True)
     out: list[str] = []
     for stmt in tree.body:
-        if isinstance(stmt, (ast.Import, ast.ImportFrom)):
-            # Skip `from __future__` — the mirror file emits its own.
-            if isinstance(stmt, ast.ImportFrom) and stmt.module == "__future__":
+        if isinstance(stmt, ast.ImportFrom):
+            if stmt.module == "__future__":
                 continue
+            if stmt.level > 0:
+                out.append(_rewrite_relative_import(stmt, target_package))
+            else:
+                out.extend(lines[stmt.lineno - 1 : stmt.end_lineno])
+        elif isinstance(stmt, ast.Import):
+            out.extend(lines[stmt.lineno - 1 : stmt.end_lineno])
+        elif isinstance(stmt, (ast.Assign, ast.AnnAssign)):
+            # Module-level constants / type aliases (e.g. Number = Union[int, float]).
             out.extend(lines[stmt.lineno - 1 : stmt.end_lineno])
     return out
 
@@ -256,8 +291,9 @@ def build_mirror_file(
             continue
         free_blocks.append(block)
 
-    # Imports.
-    sol_imports = extract_imports(sol_source)
+    # Imports + module-level constants from the solutions branch source.
+    sol_package = ".".join(rel_path.with_suffix("").parts[:-1])  # e.g. "g2c.agent"
+    sol_imports = extract_imports_and_constants(sol_source, sol_package)
     target_imports: list[str] = []
     if class_blocks:
         names = ", ".join(sorted(class_blocks.keys()))

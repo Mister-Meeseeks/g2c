@@ -8,7 +8,7 @@ Patched onto the scaffold targets by g2c.solutions.apply().
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from .data import SFTExample
+from g2c.sft.data import SFTExample
 
 from g2c.sft.chat_template import ChatTemplate
 

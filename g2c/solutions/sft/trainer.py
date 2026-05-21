@@ -10,8 +10,8 @@ from __future__ import annotations
 import torch
 from g2c.nn import Module, resolve_device
 from g2c.training import AdamW, clip_grad_norm_, cosine_with_warmup
-from .data import SFTExample, pad_and_collate
-from .loss import masked_cross_entropy
+from g2c.sft.data import SFTExample, pad_and_collate
+from g2c.sft.loss import masked_cross_entropy
 
 from g2c.sft.trainer import SFTTrainer
 

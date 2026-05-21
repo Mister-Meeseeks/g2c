@@ -9,7 +9,13 @@ from __future__ import annotations
 
 import random
 from collections.abc import Sequence
-from .value import Value
+from g2c.autodiff.value import Value
+XOR_DATA: tuple[tuple[tuple[float, float], float], ...] = (
+    ((0.0, 0.0), -1.0),
+    ((0.0, 1.0), 1.0),
+    ((1.0, 0.0), 1.0),
+    ((1.0, 1.0), -1.0),
+)
 
 from g2c.autodiff.nn import ScalarMLP, ScalarNeuron
 

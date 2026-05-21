@@ -8,7 +8,7 @@ Patched onto the scaffold targets by g2c.solutions.apply().
 from __future__ import annotations
 
 from collections.abc import Callable
-from .value import Value
+from g2c.autodiff.value import Value
 
 
 def numerical_grad(f: Callable[[Value], Value], x: Value, h: float = 1e-5) -> float:

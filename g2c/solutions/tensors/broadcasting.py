@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from typing import Union
+Number = Union[int, float]
 
 from g2c.tensors.broadcasting import TinyArray
 

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import importlib
 import inspect
+import types
 from pathlib import Path
 
 
@@ -37,13 +38,129 @@ def _iter_mirror_modules() -> list[str]:
     return out
 
 
-def _patch_one(mirror_name: str) -> list[str]:
+def _rebind_globals(func: types.FunctionType, target_module) -> types.FunctionType:
+    """Return a copy of `func` whose `__globals__` is the target module's namespace.
+
+    Why: the mirror file imports only a narrow shim (e.g. the target class).
+    Impl bodies often reference *other* names from the target module
+    (sibling functions, module-level constants like XOR_DATA, the
+    `random` module imported by the target file). If we leave the
+    function bound to the mirror's globals, those references fail —
+    AND in a subtler way, names captured at mirror-import time are
+    snapshots of the OLD scaffold, so calls would still hit
+    `raise NotImplementedError`.
+
+    Rebinding to the target's `__dict__` ensures every free name inside
+    the impl resolves against the same namespace it would have had on
+    the solutions branch — the real `g2c.<topic>.<file>` module.
+
+    Decorators are handled by recursion: if `func` is a wrapper (like
+    the one `@torch.no_grad()` produces) closing over the un-decorated
+    function, that inner function also gets its globals rebound.
+    Without this, `@torch.no_grad()` calls would resolve sibling names
+    against the mirror's narrow namespace — where they captured stale
+    scaffold references.
+    """
+    new_closure = None
+    if func.__closure__:
+        rebound_cells = []
+        for cell in func.__closure__:
+            try:
+                contents = cell.cell_contents
+            except ValueError:
+                rebound_cells.append(cell)
+                continue
+            if isinstance(contents, types.FunctionType):
+                rebound_cells.append(
+                    types.CellType(_rebind_globals(contents, target_module))
+                )
+            else:
+                rebound_cells.append(cell)
+        new_closure = tuple(rebound_cells)
+
+    new_func = types.FunctionType(
+        func.__code__,
+        target_module.__dict__,
+        func.__name__,
+        func.__defaults__,
+        new_closure,
+    )
+    new_func.__kwdefaults__ = func.__kwdefaults__
+    new_func.__qualname__ = func.__qualname__
+    new_func.__module__ = target_module.__name__
+    new_func.__wrapped__ = getattr(func, "__wrapped__", None)
+    return new_func
+
+
+def _rebind_super(func: types.FunctionType, target_class: type) -> types.FunctionType:
+    """Rebind the `__class__` closure cell so bare `super()` finds target_class.
+
+    Bare `super()` (with no args) compiles into a load of the implicit
+    `__class__` cell that Python attaches to a method via its enclosing
+    class. If we move the method to a *different* class, the cell still
+    points at the holder class — and `super()` fails because `self` is
+    not an instance of the holder.
+
+    Fix: swap the cell to one referencing the real target class.
+    """
+    code = func.__code__
+    if "__class__" not in code.co_freevars:
+        return func
+    idx = code.co_freevars.index("__class__")
+    closure = list(func.__closure__) if func.__closure__ else [None] * len(code.co_freevars)
+    closure[idx] = types.CellType(target_class)
+    new_func = types.FunctionType(
+        code,
+        func.__globals__,
+        func.__name__,
+        func.__defaults__,
+        tuple(closure),
+    )
+    new_func.__kwdefaults__ = func.__kwdefaults__
+    new_func.__qualname__ = func.__qualname__
+    new_func.__module__ = func.__module__
+    return new_func
+
+
+def _maybe_rebind(value, target_module, target_class=None):
+    """Wrap classmethods/staticmethods so the wrapped function gets target globals.
+
+    If `target_class` is given (method-on-class case), also rebind any
+    bare `super()` reference to the target class.
+    """
+    def _wrap(func):
+        rebound = _rebind_globals(func, target_module)
+        if target_class is not None:
+            rebound = _rebind_super(rebound, target_class)
+        return rebound
+
+    if isinstance(value, staticmethod):
+        return staticmethod(_wrap(value.__func__))
+    if isinstance(value, classmethod):
+        return classmethod(_wrap(value.__func__))
+    if isinstance(value, types.FunctionType):
+        return _wrap(value)
+    return value  # property, descriptor, slot, etc. — leave alone
+
+
+def _patch_one(mirror_name: str) -> tuple[list[str], dict[int, object]]:
+    """Patch a single mirror module's impls onto its scaffold target.
+
+    Returns (swapped_qualnames, rebindings) where `rebindings` maps the
+    id() of each replaced free-function object to the new impl, so that
+    `apply()` can rebind re-exports in parent packages.
+    """
     mirror = importlib.import_module(mirror_name)
     target_name = mirror_name.replace("g2c.solutions.", "g2c.", 1)
     target_module = importlib.import_module(target_name)
     swapped: list[str] = []
+    rebindings: dict[int, object] = {}
 
     # Holder classes -> class methods.
+    #
+    # Class re-exports are NOT a problem: `from .x import C` re-exports
+    # the same class object whose `__dict__` we mutate, so method swaps
+    # are visible everywhere automatically.
     for attr_name in dir(mirror):
         if not (attr_name.startswith("_") and attr_name.endswith(_HOLDER_SUFFIX)):
             continue
@@ -57,10 +174,12 @@ def _patch_one(mirror_name: str) -> list[str]:
         for member_name, member in vars(holder).items():
             if member_name in _HOLDER_SKIP:
                 continue
-            setattr(target_class, member_name, member)
+            bound = _maybe_rebind(member, target_module, target_class)
+            setattr(target_class, member_name, bound)
             swapped.append(f"{target_name}.{target_class_name}.{member_name}")
 
-    # Free functions -> module attributes.
+    # Free functions -> module attributes. Snapshot the old function so we
+    # can find and rebind any `from .submodule import func` re-exports.
     for attr_name, attr in vars(mirror).items():
         if attr_name.startswith("_"):
             continue
@@ -68,15 +187,47 @@ def _patch_one(mirror_name: str) -> list[str]:
             continue
         if attr.__module__ != mirror_name:
             continue
-        setattr(target_module, attr_name, attr)
+        old = getattr(target_module, attr_name, None)
+        bound = _rebind_globals(attr, target_module)
+        setattr(target_module, attr_name, bound)
         swapped.append(f"{target_name}.{attr_name}")
+        if old is not None and old is not bound:
+            rebindings[id(old)] = bound
 
-    return swapped
+    return swapped, rebindings
+
+
+def _rebind_reexports(rebindings: dict[int, object]) -> list[str]:
+    """Update every `from .x import func` re-export in already-loaded g2c modules."""
+    import sys
+
+    rebound: list[str] = []
+    for mod_name, mod in list(sys.modules.items()):
+        if mod is None or not mod_name.startswith("g2c"):
+            continue
+        if mod_name.startswith("g2c.solutions"):
+            continue
+        try:
+            members = list(vars(mod).items())
+        except TypeError:
+            continue
+        for attr_name, value in members:
+            new = rebindings.get(id(value))
+            if new is None:
+                continue
+            setattr(mod, attr_name, new)
+            rebound.append(f"{mod_name}.{attr_name}")
+    return rebound
 
 
 def apply() -> list[str]:
     """Bind every mirror impl onto its scaffold target. Returns swapped qualnames."""
     swapped: list[str] = []
+    rebindings: dict[int, object] = {}
     for mirror_name in _iter_mirror_modules():
-        swapped.extend(_patch_one(mirror_name))
+        s, r = _patch_one(mirror_name)
+        swapped.extend(s)
+        rebindings.update(r)
+    if rebindings:
+        swapped.extend(_rebind_reexports(rebindings))
     return swapped

@@ -9,7 +9,10 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from .config import AssistantError
+from g2c.assistant.config import AssistantError
+USER_ROLE = "user"
+ASSISTANT_ROLE = "assistant"
+_VALID_ROLES = frozenset({USER_ROLE, ASSISTANT_ROLE})
 
 from g2c.assistant.conversation import Conversation
 

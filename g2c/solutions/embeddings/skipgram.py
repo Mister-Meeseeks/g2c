@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import torch
 from g2c.nn import CrossEntropyLoss, Linear, SGD
-from .token import TokenEmbedding
+from g2c.embeddings.token import TokenEmbedding
 
 
 def make_skipgram_pairs(

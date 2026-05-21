@@ -13,8 +13,8 @@ from typing import Any, Protocol
 from g2c.agent import Agent, AgentRunResult, NativeAgent
 from g2c.inference import Backend, is_thinking_model
 from g2c.tools import ToolRegistry
-from .config import AssistantConfig, AssistantError
-from .conversation import Conversation, Message  # noqa: F401 (used in chat scaffold)
+from g2c.assistant.config import AssistantConfig, AssistantError
+from g2c.assistant.conversation import Conversation, Message
 
 from g2c.assistant.assistant import Assistant
 

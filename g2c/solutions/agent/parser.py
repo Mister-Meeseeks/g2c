@@ -10,7 +10,23 @@ from __future__ import annotations
 import json  # noqa: F401 (used by parse_react_step scaffold)
 import re
 from dataclasses import dataclass
-from .base import Action  # noqa: F401 (used by parse_react_step scaffold)
+from g2c.agent.base import Action
+_THOUGHT_RE = re.compile(
+    r"Thought\s*:\s*(.*?)(?=\n\s*(?:Action|Action Input|Final Answer|Observation)\s*:|\Z)",
+    re.DOTALL | re.IGNORECASE,
+)
+_ACTION_RE = re.compile(
+    r"Action\s*:[ \t]*([^\n]+)",
+    re.IGNORECASE,
+)
+_ACTION_INPUT_RE = re.compile(
+    r"Action Input\s*:\s*(.*?)(?=\n\s*(?:Observation|Thought|Action|Final Answer)\s*:|\Z)",
+    re.DOTALL | re.IGNORECASE,
+)
+_FINAL_ANSWER_RE = re.compile(
+    r"Final Answer\s*:\s*(.*?)\Z",
+    re.DOTALL | re.IGNORECASE,
+)
 
 
 def parse_react_step(text: str) -> ParsedStep:

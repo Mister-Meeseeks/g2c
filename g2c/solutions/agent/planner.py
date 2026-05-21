@@ -10,8 +10,13 @@ from __future__ import annotations
 import re
 from g2c.inference import Backend
 from g2c.tools import ToolRegistry
-from .base import Plan
-from .prompts import render_planning_prompt
+from g2c.agent.base import Plan
+from g2c.agent.prompts import render_planning_prompt
+_GOAL_RE = re.compile(r"Goal\s*:\s*([^\n]+)", re.IGNORECASE)
+_STEP_RE = re.compile(
+    r"^[ \t]*(\d+)[ \t]*[\.\)\-][ \t]*(.+?)[ \t]*$",
+    re.MULTILINE,
+)
 
 
 def extract_plan(text: str, user_message: str) -> Plan | None:

@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from typing import Union
 import math
+Number = Union[int, float]
 
 from g2c.autodiff.value import Value
 

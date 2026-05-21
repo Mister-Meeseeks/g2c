@@ -9,8 +9,18 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from .chunk import Chunk
-from .retrieve import RetrievedChunk
+from g2c.rag.chunk import Chunk
+from g2c.rag.retrieve import RetrievedChunk
+DEFAULT_SYSTEM = (
+    "You are a helpful assistant. Answer the user's question using "
+    "ONLY the context below. Refer to context items by their bracket "
+    "numbers, e.g. [1], [2]."
+)
+DEFAULT_INSTRUCTION = (
+    "If the context does not contain the information needed to answer "
+    "the question, reply with: \"I don't know based on the provided "
+    "context.\" Do not invent facts that are not in the context."
+)
 
 
 def assemble_rag_prompt(

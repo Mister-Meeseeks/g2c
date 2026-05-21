@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import torch
 from g2c.nn import CrossEntropyLoss
+_loss_fn = CrossEntropyLoss()
 
 
 def lm_cross_entropy(logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:

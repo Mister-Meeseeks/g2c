@@ -11,8 +11,8 @@ from collections.abc import Iterable
 import torch
 from g2c.attention import MultiHeadAttention
 from g2c.nn import Module
-from .ffn import FeedForward
-from .layer_norm import LayerNorm
+from g2c.transformer.ffn import FeedForward
+from g2c.transformer.layer_norm import LayerNorm
 
 from g2c.transformer.block import Block
 

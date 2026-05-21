@@ -11,25 +11,10 @@ import json
 from typing import Any
 from uuid import uuid4
 from g2c.inference import Backend
-from .base import (
-    Tool,
-    ToolCall,
-    ToolError,
-    ToolResult,
-    ToolRunResult,
-    ToolStep,  # noqa: F401 (used by run_with_tools scaffold)
-)
-from .parser import (  # noqa: F401 (used by run_with_tools scaffold)
-    format_tool_results,
-    parse_tool_calls,
-)
-from .registry import ToolRegistry
-from .schema import (  # noqa: F401 (used by run_with_tools scaffold)
-    DEFAULT_SYSTEM,
-    NATIVE_DEFAULT_SYSTEM,
-    render_tools_for_ollama,
-    render_tools_for_prompt,
-)
+from g2c.tools.base import Tool, ToolCall, ToolError, ToolResult, ToolRunResult, ToolStep
+from g2c.tools.parser import format_tool_results, parse_tool_calls
+from g2c.tools.registry import ToolRegistry
+from g2c.tools.schema import DEFAULT_SYSTEM, NATIVE_DEFAULT_SYSTEM, render_tools_for_ollama, render_tools_for_prompt
 
 
 def run_with_tools(

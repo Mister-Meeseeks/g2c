@@ -8,10 +8,10 @@ Patched onto the scaffold targets by g2c.solutions.apply().
 from __future__ import annotations
 
 import torch
-from .repetition_penalty import apply_repetition_penalty
-from .temperature import apply_temperature
-from .top_k import top_k_filter
-from .top_p import top_p_filter
+from g2c.sampling.repetition_penalty import apply_repetition_penalty
+from g2c.sampling.temperature import apply_temperature
+from g2c.sampling.top_k import top_k_filter
+from g2c.sampling.top_p import top_p_filter
 
 
 @torch.no_grad()

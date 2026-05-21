@@ -13,7 +13,13 @@ import urllib.error
 import urllib.request
 from typing import Any
 from uuid import uuid4
-from .backend import Backend, BackendInfo, ChatResult, InferenceResult
+from g2c.inference.backend import Backend, BackendInfo, ChatResult, InferenceResult
+DEFAULT_OLLAMA_URL = "http://localhost:11434"
+THINKING_MODEL_PREFIXES: tuple[str, ...] = (
+    "qwen3",
+    "deepseek-r1",
+    "deepseek-r2",
+)
 
 from g2c.inference.ollama import OllamaBackend
 

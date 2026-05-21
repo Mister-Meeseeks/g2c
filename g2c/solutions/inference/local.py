@@ -11,7 +11,7 @@ import time
 from typing import Any
 import torch
 from g2c.sampling import generate
-from .backend import Backend, BackendInfo, InferenceResult
+from g2c.inference.backend import Backend, BackendInfo, InferenceResult
 
 from g2c.inference.local import LocalTransformerBackend
 

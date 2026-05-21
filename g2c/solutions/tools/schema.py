@@ -10,7 +10,29 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable
 from typing import Any
-from .base import Tool, ToolError  # noqa: F401 (ToolError used by validate_arguments scaffold)
+from g2c.tools.base import Tool, ToolError
+_TYPE_TAGS: dict[str, tuple[type, ...]] = {
+    "string": (str,),
+    "number": (int, float),
+    "integer": (int,),
+    "boolean": (bool,),
+}
+DEFAULT_SYSTEM = (
+    "You are a helpful assistant with access to tools. To call a tool, "
+    "emit a <tool_call> block whose body is JSON of the form "
+    '{"name": "<tool>", "arguments": {...}}. The arguments must match '
+    "the tool's parameters schema exactly. After you emit the block, "
+    "stop and wait for the result. When you have enough information "
+    "to answer the user, give your final answer in plain text without "
+    "any <tool_call> blocks."
+)
+NATIVE_DEFAULT_SYSTEM = (
+    "You are a helpful assistant with access to tools. Call the provided "
+    "tools using your normal tool-calling output when the user's question "
+    "requires computation, file access, or live data. Call one tool per "
+    "turn, then wait for the result before deciding what to do next. When "
+    "you have enough information to answer, reply in plain text."
+)
 
 
 def validate_arguments(tool: Tool, arguments: Any) -> dict[str, Any]:

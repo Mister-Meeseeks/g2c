@@ -14,20 +14,11 @@ from g2c.tools import (
     ToolRegistry,
     dispatch_tool_call,  # noqa: F401 (used by run scaffold)
 )
-from .base import (
-    AgentError,
-    AgentRunResult,
-    AgentStep,  # noqa: F401 (used by run scaffold)
-    Observation,  # noqa: F401 (used by run scaffold)
-    Plan,
-)
-from .memory import Scratchpad  # noqa: F401 (used by run scaffold)
-from .parser import parse_react_step  # noqa: F401 (used by run scaffold)
-from .planner import make_plan  # noqa: F401 (used by run scaffold)
-from .prompts import (  # noqa: F401 (used by run scaffold)
-    render_plan_block,
-    render_system_prompt,
-)
+from g2c.agent.base import AgentError, AgentRunResult, AgentStep, Observation, Plan
+from g2c.agent.memory import Scratchpad
+from g2c.agent.parser import parse_react_step
+from g2c.agent.planner import make_plan
+from g2c.agent.prompts import render_plan_block, render_system_prompt
 
 from g2c.agent.agent import Agent
 

@@ -10,8 +10,8 @@ from __future__ import annotations
 import torch
 from g2c.nn import Module, resolve_device
 from g2c.training import AdamW, clip_grad_norm_, cosine_with_warmup
-from .data import PreferenceExample, pad_and_collate_pref
-from .loss import dpo_loss, sequence_logprob
+from g2c.dpo.data import PreferenceExample, pad_and_collate_pref
+from g2c.dpo.loss import dpo_loss, sequence_logprob
 
 from g2c.dpo.trainer import DPOTrainer
 

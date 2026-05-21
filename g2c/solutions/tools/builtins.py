@@ -15,7 +15,20 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
-from .base import Tool, ToolError
+from g2c.tools.base import Tool, ToolError
+_BINOPS: dict[type, Callable[[Any, Any], Any]] = {
+    ast.Add: operator.add,
+    ast.Sub: operator.sub,
+    ast.Mult: operator.mul,
+    ast.Div: operator.truediv,
+    ast.Mod: operator.mod,
+    ast.Pow: operator.pow,
+    ast.FloorDiv: operator.floordiv,
+}
+_UNARYOPS: dict[type, Callable[[Any], Any]] = {
+    ast.USub: operator.neg,
+    ast.UAdd: operator.pos,
+}
 
 
 def calculator_evaluate(expression: str) -> float:

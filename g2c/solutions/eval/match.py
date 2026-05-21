@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 import string
+_NUMBER_RE = re.compile(r"-?\d+(?:\.\d+)?")
 
 
 def exact_match(prediction: str, references: list[str]) -> bool:

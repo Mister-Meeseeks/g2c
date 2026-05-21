@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 from collections.abc import Iterable
 import torch
-from .device import resolve_device
+from g2c.nn.device import resolve_device
 
 from g2c.nn.modules import Linear, ReLU, Sequential, Sigmoid, Tanh
 
