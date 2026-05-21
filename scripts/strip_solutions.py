@@ -3,12 +3,12 @@
 
 This repo has two long-running branches:
 
-* ``master`` keeps the course pristine, with pedagogical functions left as
+* ``main`` keeps the course pristine, with pedagogical functions left as
   ``# TODO`` + ``raise NotImplementedError``.
 * ``solutions`` keeps those same files implemented so the author can run worked
   notebooks and model-training experiments.
 
-When course edits happen on ``solutions`` and need to flow back to ``master``,
+When course edits happen on ``solutions`` and need to flow back to ``main``,
 plain Git merges are not enough: they also bring filled-in student exercise
 code. This tool makes that cleanup deterministic.
 
@@ -17,13 +17,13 @@ It strips functions by either signal:
 1. A ``# SOLUTION`` marker anywhere inside the function body.
 2. ``--reference REF``: if the same qualified function in ``REF`` was a
    scaffolded TODO, strip the target function too. This is useful immediately
-   after merging ``solutions`` into ``master``: ``HEAD`` is the pre-merge
+   after merging ``solutions`` into ``main``: ``HEAD`` is the pre-merge
    scaffold reference.
 
 Examples:
 
     python scripts/strip_solutions.py --reference HEAD g2c
-    python scripts/strip_solutions.py --reference master g2c --check
+    python scripts/strip_solutions.py --reference main g2c --check
     python scripts/strip_solutions.py g2c
 """
 from __future__ import annotations

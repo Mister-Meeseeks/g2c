@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run the tests expected to pass on the pristine scaffold branch.
 
-The full test suite intentionally contains many failing tests on `master`:
+The full test suite intentionally contains many failing tests on `main`:
 those are the student implementation targets. This runner reads the
 checked-in manifest at `tests/clean_tests.txt` and invokes pytest only on
 the boilerplate / already-implemented tests that should pass cleanly.

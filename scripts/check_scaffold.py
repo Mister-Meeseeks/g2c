@@ -2,11 +2,11 @@
 """Check that scaffolded pedagogical functions stayed scaffolded.
 
 This is the invariant check for clean backports from ``solutions`` to
-``master``. It compares the working tree against a reference ref and fails if
+``main``. It compares the working tree against a reference ref and fails if
 any function that was scaffolded in the reference is no longer a direct
 ``# TODO`` + ``raise NotImplementedError`` stub.
 
-Typical use after merging course edits from ``solutions`` into ``master``:
+Typical use after merging course edits from ``solutions`` into ``main``:
 
     python scripts/strip_solutions.py --reference HEAD g2c
     python scripts/check_scaffold.py --reference HEAD g2c
