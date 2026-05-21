@@ -85,7 +85,17 @@ class AssistantConfig:
             messages instead of dropping them.
 
         scratchpad_max_chars: forwarded to the agent's `Scratchpad`.
-            `None` means unlimited. Default `None`.
+            `None` means unlimited. Default `None`. Mostly a no-op on
+            the native channel — message-list memory is the relevant
+            pressure there, not scratchpad text length.
+
+        use_native: which agent channel to use under the hood.
+            `True` (default) uses `NativeAgent` — structured tool
+            calling via `backend.chat_with_tools`. `False` uses
+            `Agent` — ReAct text format. The default tracks Module
+            19's recommendation: native is what models are actually
+            post-trained for. Set `False` to compare or to run on a
+            backend that only implements `complete`.
     """
 
     name: str = "g2c-assistant"
@@ -101,6 +111,7 @@ class AssistantConfig:
     rag_k: int = 5
     max_history_messages: int | None = 20
     scratchpad_max_chars: int | None = None
+    use_native: bool = True
 
     def __post_init__(self) -> None:
         if not isinstance(self.name, str) or not self.name:

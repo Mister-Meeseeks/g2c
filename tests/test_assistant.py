@@ -39,7 +39,7 @@ from typing import Any
 
 import pytest
 
-from g2c.agent import Agent, AgentRunResult
+from g2c.agent import Agent, AgentRunResult, NativeAgent
 from g2c.assistant import (
     CLI_HELP,
     Assistant,
@@ -123,6 +123,120 @@ def _final_answer_completion(answer: str) -> str:
     return f"Thought: I have the answer.\nFinal Answer: {answer}"
 
 
+class _FakeChatBackend(Backend):
+    """Backend that satisfies `chat_with_tools` with canned responses.
+
+    Each entry in `responses` is `(content: str, tool_calls: list[dict])`.
+    `tool_calls` items are `{"name": str, "arguments": dict}` —
+    call_ids are filled in automatically. Used for native-channel
+    assistant tests.
+    """
+
+    def __init__(
+        self,
+        responses: Iterable[tuple[str, list[dict[str, Any]]]],
+        *,
+        info: BackendInfo | None = None,
+    ) -> None:
+        self._responses = list(responses)
+        self._info = info or BackendInfo(name="fake-chat", model_id="fake-chat-model")
+        self.calls: list[dict[str, Any]] = []
+
+    @property
+    def info(self) -> BackendInfo:
+        return self._info
+
+    def complete(
+        self,
+        prompt: str,
+        *,
+        max_new_tokens: int = 128,
+        temperature: float = 1.0,
+        top_k: int | None = None,
+        top_p: float | None = None,
+    ) -> InferenceResult:
+        # Used by the planning phase (one-shot text generation).
+        # Return a trivial-but-valid plan so the planner doesn't fail.
+        completion = "Goal: do the thing.\n1. step one"
+        return InferenceResult(
+            prompt=prompt,
+            completion=completion,
+            prompt_tokens=len(prompt.split()),
+            completion_tokens=len(completion.split()),
+            latency_ms=1.0,
+            backend=self._info,
+        )
+
+    def chat_with_tools(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+        *,
+        max_new_tokens: int = 512,
+        temperature: float = 0.2,
+        top_k: int | None = None,
+        top_p: float | None = None,
+        think: bool | None = None,
+    ):
+        from g2c.inference import ChatResult
+
+        if not self._responses:
+            raise AssertionError(
+                f"FakeChatBackend exhausted: last messages={messages!r}"
+            )
+        content, raw_calls = self._responses.pop(0)
+        self.calls.append(
+            {
+                "messages": list(messages),
+                "tools": tools,
+                "max_new_tokens": max_new_tokens,
+                "temperature": temperature,
+                "think": think,
+            }
+        )
+        parsed = [
+            {
+                "name": raw["name"],
+                "arguments": raw.get("arguments", {}),
+                "call_id": raw.get("call_id", f"call_{i}_fake"),
+            }
+            for i, raw in enumerate(raw_calls)
+        ]
+        return ChatResult(
+            messages=messages,
+            content=content,
+            tool_calls=parsed,
+            prompt_tokens=len(str(messages)),
+            completion_tokens=len(content.split()) if content else 0,
+            latency_ms=1.0,
+            backend=self._info,
+        )
+
+
+def _make_native_assistant(
+    responses: Iterable[tuple[str, list[dict[str, Any]]]],
+    *,
+    config: AssistantConfig | None = None,
+    registry: ToolRegistry | None = None,
+    retriever: Any = None,
+    conversation: Conversation | None = None,
+) -> tuple[Assistant, _FakeChatBackend]:
+    """Build a native-channel Assistant with `_FakeChatBackend`."""
+    backend = _FakeChatBackend(responses)
+    if registry is None:
+        registry = ToolRegistry()
+    if config is None:
+        config = AssistantConfig(plan=False)
+    assistant = Assistant(
+        backend,
+        registry,
+        config=config,
+        retriever=retriever,
+        conversation=conversation,
+    )
+    return assistant, backend
+
+
 def _action_completion(tool: str, args_json: str, thought: str = "go") -> str:
     """A canned ReAct completion that emits an Action."""
     return (
@@ -191,11 +305,22 @@ def _make_assistant(
     retriever: Any = None,
     conversation: Conversation | None = None,
 ) -> tuple[Assistant, _FakeBackend]:
-    """Build an Assistant with a fake backend and trivial registry.
+    """Build an Assistant with a ReAct fake backend and trivial registry.
 
     Returns the (assistant, backend) pair so tests can assert on
-    backend.calls.
+    backend.calls. The canned `completions` are ReAct-format text
+    strings, so this helper pins the assistant to `use_native=False`
+    (the ReAct channel). Tests of the native channel should use
+    `_make_native_assistant` and `_FakeChatBackend` instead.
     """
+    if config is None:
+        config = AssistantConfig(use_native=False)
+    elif config.use_native:
+        # Caller passed a config but didn't disable native — flip it
+        # so canned ReAct completions land on the right channel.
+        # (dataclasses are mutable; this is cheap.)
+        from dataclasses import replace
+        config = replace(config, use_native=False)
     backend = _FakeBackend(completions)
     if registry is None:
         registry = ToolRegistry()
@@ -559,10 +684,13 @@ class TestAssistantTurnBoilerplate:
 
 
 class TestAssistantConstruction:
-    def test_minimal(self) -> None:
+    def test_minimal_with_react_backend(self) -> None:
+        # _FakeBackend only supports `complete`, so the assistant must
+        # be told to use the ReAct channel.
         backend = _FakeBackend([])
         registry = ToolRegistry()
-        a = Assistant(backend, registry)
+        cfg = AssistantConfig(use_native=False)
+        a = Assistant(backend, registry, config=cfg)
         assert a.backend is backend
         assert a.registry is registry
         assert a.retriever is None
@@ -573,7 +701,7 @@ class TestAssistantConstruction:
     def test_with_config(self) -> None:
         backend = _FakeBackend([])
         registry = ToolRegistry()
-        cfg = AssistantConfig(name="custom", max_steps=4)
+        cfg = AssistantConfig(name="custom", max_steps=4, use_native=False)
         a = Assistant(backend, registry, config=cfg)
         assert a.config.name == "custom"
         assert a.agent.max_steps == 4
@@ -582,7 +710,8 @@ class TestAssistantConstruction:
         backend = _FakeBackend([])
         registry = ToolRegistry()
         retr = _FakeRetriever()
-        a = Assistant(backend, registry, retriever=retr)
+        cfg = AssistantConfig(use_native=False)
+        a = Assistant(backend, registry, retriever=retr, config=cfg)
         assert a.retriever is retr
 
     def test_with_existing_conversation(self) -> None:
@@ -590,7 +719,8 @@ class TestAssistantConstruction:
         registry = ToolRegistry()
         conv = Conversation()
         conv.add_user("seeded")
-        a = Assistant(backend, registry, conversation=conv)
+        cfg = AssistantConfig(use_native=False)
+        a = Assistant(backend, registry, conversation=conv, config=cfg)
         assert a.conversation is conv
         assert len(a.conversation) == 1
 
@@ -1355,7 +1485,7 @@ class TestCLI:
         # We can't cleanly generate a chat error with valid input, but
         # we CAN start the assistant with a depleted backend so the
         # *agent* raises, and verify the CLI catches it.
-        cfg2 = AssistantConfig(plan=False)
+        cfg2 = AssistantConfig(plan=False, use_native=False)
         backend = _FakeBackend([])  # empty
         registry = ToolRegistry()
         a2 = Assistant(backend, registry, config=cfg2)
@@ -1417,6 +1547,78 @@ class TestIntegrationSmoke:
         # Turn 2's contextualized message includes turn 1's exchange.
         assert "2+2?" in t2.contextualized_message
         assert "User: 2+2?" in t2.contextualized_message
+
+
+# ---------------------------------------------------------------------------
+# Native-channel Assistant — uses NativeAgent under the hood.
+# ---------------------------------------------------------------------------
+
+
+class TestAssistantNativeChannel:
+    def test_default_agent_is_native(self) -> None:
+        # The new default. Backend must satisfy chat_with_tools.
+        backend = _FakeChatBackend([])
+        a = Assistant(backend, ToolRegistry())
+        assert isinstance(a.agent, NativeAgent)
+
+    def test_use_native_false_gives_react(self) -> None:
+        backend = _FakeBackend([])
+        cfg = AssistantConfig(use_native=False)
+        a = Assistant(backend, ToolRegistry(), config=cfg)
+        assert isinstance(a.agent, Agent)
+
+    def test_chat_dispatches_through_native_agent(self) -> None:
+        # The model emits a final answer with no tool calls — simplest
+        # native-channel success path.
+        a, backend = _make_native_assistant([("the answer is hi", [])])
+        turn = a.chat("hello")
+        assert turn.final_answer == "the answer is hi"
+        # The chat backend was hit, not the (no-op) complete.
+        assert len(backend.calls) >= 1
+
+    def test_chat_with_tool_call_through_native(self) -> None:
+        # Tool-call → result → final answer, all via the native channel.
+        from g2c.tools import make_calculator
+        a, backend = _make_native_assistant(
+            [
+                ("", [{"name": "calculator", "arguments": {"expression": "2+2"}}]),
+                ("the answer is 4", []),
+            ],
+            registry=ToolRegistry([make_calculator()]),
+        )
+        turn = a.chat("what is 2+2?")
+        assert turn.final_answer == "the answer is 4"
+        assert turn.agent_run.steps[0].action is not None
+        assert turn.agent_run.steps[0].action.tool == "calculator"
+        assert turn.agent_run.steps[0].observation.output == "4"
+
+    def test_native_path_metadata_indicates_channel(self) -> None:
+        a, _ = _make_native_assistant([("done", [])])
+        turn = a.chat("hi")
+        assert turn.agent_run.metadata["channel"] == "native"
+
+    def test_react_path_metadata_still_works(self) -> None:
+        cfg = AssistantConfig(use_native=False, plan=False)
+        a, _ = _make_assistant([_final_answer_completion("done")], config=cfg)
+        turn = a.chat("hi")
+        # Module 19's Agent doesn't set a `channel` key (it's the
+        # original path). Existence of the result is the assertion.
+        assert turn.final_answer == "done"
+
+    def test_native_requires_chat_capable_backend(self) -> None:
+        # Default config is use_native=True; passing a backend without
+        # chat_with_tools raises at construction.
+        backend = _FakeBackend([])  # ReAct-only
+        with pytest.raises(Exception, match="chat_with_tools"):
+            Assistant(backend, ToolRegistry())
+
+    def test_explicit_native_agent_accepted(self) -> None:
+        # Caller-injected NativeAgent — the type-check accepts both
+        # Agent and NativeAgent now.
+        backend = _FakeChatBackend([])
+        ag = NativeAgent(backend, ToolRegistry(), plan=False)
+        a = Assistant(backend, ToolRegistry(), agent=ag)
+        assert a.agent is ag
 
 
 # ---------------------------------------------------------------------------

@@ -41,8 +41,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from g2c.agent import Agent, AgentRunResult
-from g2c.inference import Backend
+from g2c.agent import Agent, AgentRunResult, NativeAgent
+from g2c.inference import Backend, is_thinking_model
 from g2c.tools import ToolRegistry
 
 from .config import AssistantConfig, AssistantError
@@ -150,10 +150,13 @@ class Assistant:
             `config.max_history_messages` as the cap. Tests pass an
             existing conversation; the CLI lets the user bring their
             own.
-        agent: an existing `Agent` to use. If None (the usual case),
-            one is constructed from `backend`, `registry`, and the
-            relevant `config` fields. Tests can inject a custom
-            agent; the production path uses the auto-built one.
+        agent: an existing agent to use — either an `Agent` (ReAct)
+            or a `NativeAgent` (structured tool calling). If None
+            (the usual case), one is constructed from `backend`,
+            `registry`, and the relevant `config` fields. Channel
+            choice for the auto-built case is controlled by
+            `config.use_native` (default True → `NativeAgent`).
+            Tests can inject a custom agent of either type.
 
     Raises:
         AssistantError: on misconfigured args (bad backend type, bad
@@ -173,7 +176,7 @@ class Assistant:
         config: AssistantConfig | None = None,
         retriever: _Retriever | None = None,
         conversation: Conversation | None = None,
-        agent: Agent | None = None,
+        agent: Agent | NativeAgent | None = None,
     ) -> None:
         if not isinstance(backend, Backend):
             raise AssistantError(
@@ -206,22 +209,45 @@ class Assistant:
                 f"got {type(conversation).__name__}"
             )
         if agent is None:
-            agent = Agent(
-                backend,
-                registry,
-                max_steps=config.max_steps,
-                plan=config.plan,
-                loop_detection=config.loop_detection,
-                halt_on_stuck=config.halt_on_stuck,
-                scratchpad_max_chars=config.scratchpad_max_chars,
-                max_new_tokens=config.max_new_tokens,
-                temperature=config.temperature,
-                top_k=config.top_k,
-                top_p=config.top_p,
-            )
-        elif not isinstance(agent, Agent):
+            if config.use_native:
+                # Auto-disable thinking mode on Qwen3 / DeepSeek-R1 / etc.
+                # NativeAgent.__init__ will raise AgentError if the
+                # backend lacks chat_with_tools; we let that bubble up
+                # as-is — the message is clear and the failure surface
+                # is the same shape as our own AssistantError.
+                think = False if is_thinking_model(backend.info.model_id) else None
+                agent = NativeAgent(
+                    backend,
+                    registry,
+                    max_steps=config.max_steps,
+                    plan=config.plan,
+                    loop_detection=config.loop_detection,
+                    halt_on_stuck=config.halt_on_stuck,
+                    scratchpad_max_chars=config.scratchpad_max_chars,
+                    max_new_tokens=config.max_new_tokens,
+                    temperature=config.temperature,
+                    top_k=config.top_k,
+                    top_p=config.top_p,
+                    think=think,
+                )
+            else:
+                agent = Agent(
+                    backend,
+                    registry,
+                    max_steps=config.max_steps,
+                    plan=config.plan,
+                    loop_detection=config.loop_detection,
+                    halt_on_stuck=config.halt_on_stuck,
+                    scratchpad_max_chars=config.scratchpad_max_chars,
+                    max_new_tokens=config.max_new_tokens,
+                    temperature=config.temperature,
+                    top_k=config.top_k,
+                    top_p=config.top_p,
+                )
+        elif not isinstance(agent, (Agent, NativeAgent)):
             raise AssistantError(
-                f"agent must be an Agent, got {type(agent).__name__}"
+                f"agent must be an Agent or NativeAgent, "
+                f"got {type(agent).__name__}"
             )
 
         self._backend = backend
@@ -257,7 +283,7 @@ class Assistant:
         return self._conversation
 
     @property
-    def agent(self) -> Agent:
+    def agent(self) -> Agent | NativeAgent:
         return self._agent
 
     @property

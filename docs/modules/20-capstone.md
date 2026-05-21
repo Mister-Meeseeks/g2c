@@ -262,6 +262,12 @@ These are real assistant-system topics, but not part of this capstone implementa
 
 The CLI and `/save` command are enough for this course: they let you use the assistant, preserve transcripts, and write a grounded post-mortem.
 
+### Two channels under the hood
+
+`AssistantConfig.use_native` toggles which agent the assistant wires up internally. The default (`True`) constructs a `NativeAgent` — structured tool calling via the backend's `chat_with_tools` method, which is what Module 19's Exercise 12b showed to be the cleaner channel for real models. Setting `False` falls back to the ReAct `Agent` from Module 19, which uses text-format Thought/Action markers and a regex parser.
+
+The `Assistant.chat(...)` surface is identical between the two — same input, same `AssistantTurn`, same conversation semantics. The choice only affects what bytes flow between the assistant and the model. Default to native; flip to ReAct when comparing or when the backend only implements `complete`. Exercise 9b in the notebook runs the same task on both for a side-by-side look.
+
 ---
 ## What you'll build
 
@@ -286,6 +292,7 @@ class AssistantConfig:                                            # implemented
     rag_k: int = 5
     max_history_messages: int | None = 20
     scratchpad_max_chars: int | None = None
+    use_native: bool = True   # NativeAgent by default; False → ReAct Agent
 
 
 # conversation.py
