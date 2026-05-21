@@ -69,9 +69,8 @@ class LearnedPositionalEmbedding(Module):
 
         Hint: a one-liner — slice the weight table.
         """
-        if seq_len > self.max_seq_len:
-            raise ValueError(f"seq_len {seq_len} exceeds max_seq_len {self.max_seq_len}")
-        return self.weight[:seq_len]
+        # TODO
+        raise NotImplementedError
 
 
 class SinusoidalPositionalEmbedding(Module):
@@ -109,28 +108,8 @@ class SinusoidalPositionalEmbedding(Module):
         self.max_seq_len = max_seq_len
         self.embedding_dim = embedding_dim
 
-        # TODO: build the (max_seq_len, embedding_dim) sinusoidal table and
-        # assign it to self.weight. The table should NOT require grad.
-        #
-        # Recipe:
-        #   1. positions = arange(max_seq_len)                shape (max_seq_len,)
-        #   2. i = arange(0, embedding_dim, 2)                shape (embedding_dim/2,)
-        #      div_term = 1.0 / (10000 ** (i / embedding_dim))
-        #   3. angles = positions[:, None] * div_term[None, :]   shape (max_seq_len, embedding_dim/2)
-        #   4. weight = empty(max_seq_len, embedding_dim)
-        #      weight[:, 0::2] = sin(angles)
-        #      weight[:, 1::2] = cos(angles)
-        #   5. self.weight = weight   (no requires_grad — fixed table)
-        
-        positions = torch.arange(max_seq_len)
-        i = torch.arange(0, embedding_dim, 2)
-        div_term = 1.0 / (10000 ** (i / embedding_dim))
-        angles = positions[:, None] * div_term[None, :]
-        weight = torch.empty(max_seq_len, embedding_dim)
-        weight[:, 0::2] = angles.sin()
-        weight[:, 1::2] = angles.cos()
-        weight.requires_grad_(False)
-        self.weight = weight
+        # TODO
+        raise NotImplementedError
 
     def parameters(self) -> Iterable[torch.Tensor]:
         return []
@@ -146,6 +125,5 @@ class SinusoidalPositionalEmbedding(Module):
 
         Hint: a one-liner — slice `self.weight`.
         """
-        if seq_len > self.max_seq_len:
-            raise ValueError(f"seq_len {seq_len} exceeds max_seq_len {self.max_seq_len}")
-        return self.weight[:seq_len]
+        # TODO
+        raise NotImplementedError

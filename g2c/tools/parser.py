@@ -161,37 +161,8 @@ def parse_tool_calls(text: str) -> list[ToolCall]:
         empty arguments dict (the default).
       * `<tool_call>{"arguments": {}}</tool_call>` → `[]` (no name).
     """
-    if not isinstance(text, str):
-        raise TypeError(
-            f"parse_tool_calls expected str, got {type(text).__name__}"
-        )
-
-    calls: list[ToolCall] = []
-    for index, match in enumerate(_TOOL_CALL_RE.finditer(text)):
-        body = match.group(1).strip()
-        try:
-            obj = json.loads(body)
-        except json.JSONDecodeError:
-            continue
-
-        if not isinstance(obj, dict):
-            continue
-        name = obj.get("name")
-        arguments = obj.get("arguments", {})
-        if not isinstance(name, str) or not name:
-            continue
-        if not isinstance(arguments, dict):
-            continue
-
-        calls.append(
-            ToolCall(
-                name=name,
-                arguments=arguments,
-                call_id=f"call_{index}_{uuid4().hex[:8]}",
-            )
-        )
-
-    return calls
+    # TODO
+    raise NotImplementedError
 
 
 def format_tool_results(results: Iterable[ToolResult]) -> str:

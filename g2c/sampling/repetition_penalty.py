@@ -106,22 +106,5 @@ def apply_repetition_penalty(
         CTRL's "penalize each id once" convention as a side effect of
         scatter's last-write-wins semantics.
     """
-    if penalty <= 0:
-        raise ValueError(f'Penalty must be > 0, got {penalty}')
-    if penalty == 1.0:
-        return logits
-    
-    if token_ids.dim() == 1:
-        token_ids = token_ids.unsqueeze(0).expand(logits.shape[0], -1)
-    
-    prev_logits = logits.gather(-1, token_ids)
-    
-    penalized = torch.where(
-        prev_logits > 0,
-        prev_logits / penalty,
-        prev_logits * penalty,
-    )
-    
-    out = logits.clone()
-    out.scatter_(-1, token_ids, penalized)
-    return out
+    # TODO
+    raise NotImplementedError

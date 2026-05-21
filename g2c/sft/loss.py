@@ -111,20 +111,5 @@ def masked_cross_entropy(
           padding positions, where the random-init model accidentally
           places high probability on the pad id).
     """
-    B, T, V = logits.shape
-    flat_logits  = logits.reshape(B * T, V)             # (B*T, V)
-    flat_targets = targets.reshape(B * T)               # (B*T,)
-    flat_mask    = mask.reshape(B * T).to(logits.dtype) # (B*T,)
-
-    m = flat_logits.max(dim=-1, keepdim=True).values
-    lse = m.squeeze(-1) + (flat_logits - m).exp().sum(-1).log()
-    correct = flat_logits.gather(1, flat_targets.unsqueeze(1)).squeeze(1)
-    per_pos_loss = -correct + lse              # (B*T,)
-
-    masked_total = (per_pos_loss * flat_mask).sum()
-    masked_count = flat_mask.sum()
-
-    if masked_count.item() == 0:
-        return torch.zeros((), dtype=logits.dtype, device=logits.device)
-    else:
-        return masked_total / masked_count
+    # TODO
+    raise NotImplementedError

@@ -213,44 +213,5 @@ def chunk_text(
         → [Chunk(text="abcde", start=0, end=5)]   # one chunk, ends
                                                    # exactly at len(text)
     """
-    if len(text) == 0:
-        raise ValueError("text must be non-empty")
-    if chunk_size <= 0:
-        raise ValueError(f"chunk_size must be > 0, got {chunk_size}")
-    if chunk_overlap < 0:
-        raise ValueError(f"chunk_overlap must be >= 0, got {chunk_overlap}")
-    if chunk_overlap >= chunk_size:
-        raise ValueError(
-            f"chunk_overlap must be < chunk_size; got {chunk_overlap} >= {chunk_size}"
-        )
-
-    metadata_base = dict(metadata) if metadata is not None else {}
-    if len(text) <= chunk_size:
-        return [
-            Chunk(
-                text=text,
-                source=source,
-                start=0,
-                end=len(text),
-                metadata=dict(metadata_base),
-            )
-        ]
-
-    chunks: list[Chunk] = []
-    stride = chunk_size - chunk_overlap
-    start = 0
-    while start < len(text):
-        end = min(start + chunk_size, len(text))
-        chunks.append(
-            Chunk(
-                text=text[start:end],
-                source=source,
-                start=start,
-                end=end,
-                metadata=dict(metadata_base),
-            )
-        )
-        if end == len(text):
-            break
-        start += stride
-    return chunks
+    # TODO
+    raise NotImplementedError

@@ -541,43 +541,5 @@ class Assistant:
               self.conversation last assistant message is
               "(no answer — stopped: max_steps)".
         """
-        if not isinstance(user_message, str) or not user_message:
-            raise AssistantError("user_message must be a non-empty str")
-
-        history_block = self._conversation.format_for_prompt()
-        context_block = self._maybe_retrieve(user_message, use_rag=use_rag)
-        contextualized = self._build_contextualized_message(
-            user_message=user_message,
-            history_block=history_block,
-            context_block=context_block,
-        )
-
-        agent_run = self._agent.run(contextualized)
-
-        final_answer = agent_run.final_answer
-        displayed_answer = final_answer
-        if displayed_answer is None:
-            displayed_answer = (
-                f"(no answer — stopped: {agent_run.stopped_reason})"
-            )
-
-        self._conversation.add_user(user_message)
-        self._conversation.add_assistant(displayed_answer)
-
-        turn = AssistantTurn(
-            user_message=user_message,
-            final_answer=final_answer,
-            agent_run=agent_run,
-            retrieved_context=context_block,
-            contextualized_message=contextualized,
-            metadata={
-                "turn_index": len(self._turns),
-                "rag_fired": bool(context_block),
-                "had_plan": agent_run.plan is not None,
-                "n_agent_steps": len(agent_run.steps),
-                "stopped_reason": agent_run.stopped_reason,
-                "n_tool_calls": agent_run.metadata.get("n_tool_calls", 0),
-            },
-        )
-        self._turns.append(turn)
-        return turn
+        # TODO
+        raise NotImplementedError

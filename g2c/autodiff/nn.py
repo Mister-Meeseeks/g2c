@@ -29,8 +29,8 @@ def single_neuron_forward(
     b: Value,
 ) -> Value:
     """Return ``tanh(w1*x1 + w2*x2 + b)`` using only ``Value`` operations."""
-    # SOLUTION
-    return (w1 * x1 + w2 * x2 + b).tanh()
+    # TODO
+    raise NotImplementedError
 
 
 class ScalarNeuron:
@@ -44,13 +44,8 @@ class ScalarNeuron:
 
     def __call__(self, x: Sequence[float | Value]) -> Value:
         """Return ``tanh(w dot x + b)``."""
-        if len(x) != len(self.w):
-            raise ValueError(f"expected {len(self.w)} inputs, got {len(x)}")
-        # SOLUTION
-        out = self.b
-        for weight, value in zip(self.w, x, strict=True):
-            out = out + weight * value
-        return out.tanh()
+        # TODO
+        raise NotImplementedError
 
     def parameters(self) -> list[Value]:
         return self.w + [self.b]
@@ -65,9 +60,8 @@ class ScalarMLP:
 
     def __call__(self, x: tuple[float, float]) -> Value:
         """Run the 2-2-1 MLP on one XOR input."""
-        # SOLUTION
-        hidden_values = [neuron(x) for neuron in self.hidden]
-        return self.out(hidden_values)
+        # TODO
+        raise NotImplementedError
 
     def parameters(self) -> list[Value]:
         params: list[Value] = []
@@ -88,24 +82,11 @@ def xor_loss(
     data: Sequence[tuple[tuple[float, float], float]] = XOR_DATA,
 ) -> Value:
     """Return average squared error across the XOR truth table."""
-    if not data:
-        raise ValueError("data must not be empty")
-    # SOLUTION
-    total = Value(0.0)
-    for x, target in data:
-        pred = model(x)
-        total = total + (pred - target) ** 2
-    return total / len(data)
+    # TODO
+    raise NotImplementedError
 
 
 def train_xor_step(model: ScalarMLP, lr: float) -> float:
     """Run one full-batch gradient-descent step and return pre-update loss."""
-    params = model.parameters()
-    zero_grad(params)
-    loss = xor_loss(model)
-    loss.backward()
-
-    # SOLUTION
-    for param in params:
-        param.data -= lr * param.grad
-    return loss.data
+    # TODO
+    raise NotImplementedError

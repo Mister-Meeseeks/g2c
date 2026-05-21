@@ -107,24 +107,5 @@ class AdamW:
           - Wrap the whole update in `torch.no_grad()` so the optimizer state
             and parameter update are not tracked by autograd.
         """
-        self.step_count += 1
-
-        with torch.no_grad():
-            for i, p in enumerate(self.params):
-                if p.grad is None:
-                    continue
-
-                grad = p.grad
-                self.m[i].mul_(self.beta1).add_(grad, alpha=1.0 - self.beta1)
-                self.v[i].mul_(self.beta2).addcmul_(
-                    grad,
-                    grad,
-                    value=1.0 - self.beta2,
-                )
-
-                m_hat = self.m[i] / (1.0 - self.beta1 ** self.step_count)
-                v_hat = self.v[i] / (1.0 - self.beta2 ** self.step_count)
-
-                if self.weight_decay != 0.0:
-                    p.mul_(1.0 - self.lr * self.weight_decay)
-                p.addcdiv_(m_hat, v_hat.sqrt().add(self.eps), value=-self.lr)
+        # TODO
+        raise NotImplementedError

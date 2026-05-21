@@ -107,6 +107,5 @@ class FeedForward(Module):
         The difference is a few percent in convergence speed at the
         scales we'll train at.
         """
-        h = self.fc1(x)
-        h = F.gelu(h)
-        return self.fc2(h)
+        # TODO
+        raise NotImplementedError

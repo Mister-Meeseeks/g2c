@@ -67,8 +67,5 @@ class CrossEntropyLoss(Module):
 
         Hint: follow the implementation outline in the docstring, step by step.
         """
-        m = logits.max(dim=-1, keepdim=True).values
-        logsumexp = m.squeeze(-1) + torch.log(torch.exp(logits - m).sum(dim=-1))
-        correct_class_logits = logits.gather(1, targets.unsqueeze(1)).squeeze(1)
-        per_sample_loss = -correct_class_logits + logsumexp
-        return per_sample_loss.mean()
+        # TODO
+        raise NotImplementedError

@@ -52,25 +52,8 @@ def broadcast_shapes(
     Raises:
         ValueError: if the shapes are not broadcast-compatible.
     """
-
-    reverse_output_shape: list[int] = []
-    reverse_shape_a = shape_a[::-1]
-    reverse_shape_b = shape_b[::-1]
-
-    for i in range(max(len(shape_a), len(shape_b))):
-        dim_a = reverse_shape_a[i] if i < len(shape_a) else 1
-        dim_b = reverse_shape_b[i] if i < len(shape_b) else 1
-
-        if dim_a == dim_b:
-            reverse_output_shape.append(dim_a)
-        elif dim_a == 1:
-            reverse_output_shape.append(dim_b)
-        elif dim_b == 1:
-            reverse_output_shape.append(dim_a)
-        else:
-            raise ValueError(f"Shapes {shape_a} and {shape_b} are not broadcast-compatible")
-    
-    return tuple(reverse_output_shape[::-1])
+    # TODO
+    raise NotImplementedError
 
 class TinyArray:
     """A minimal teaching array with NumPy-style broadcasting in element-wise ops.
@@ -134,14 +117,14 @@ class TinyArray:
                  c. Sum the two scalar values into the output position.
             4. Return TinyArray(out_data, out_shape).
         """
-        
-        return self.__cross__(other, lambda a, b: a + b)
+        # TODO
+        raise NotImplementedError
 
     def __mul__(self, other: "TinyArray") -> "TinyArray":
         """Element-wise multiply with broadcasting. Same logic as __add__,
         with multiplication instead of addition."""
-
-        return self.__cross__(other, lambda a, b: a * b)
+        # TODO
+        raise NotImplementedError
 
 
     def __cross__(self, other: "TinyArray", op: callable) -> "TinyArray":

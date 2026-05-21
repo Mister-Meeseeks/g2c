@@ -107,7 +107,5 @@ class LayerNorm(Module):
                against `(..., D)` so each channel gets its own scale and
                shift.
         """
-        mean = x.mean(dim=-1, keepdim=True)
-        var = x.var(dim=-1, unbiased=False, keepdim=True)
-        x_hat = (x - mean) / torch.sqrt(var + self.eps)
-        return self.gamma * x_hat + self.beta
+        # TODO
+        raise NotImplementedError

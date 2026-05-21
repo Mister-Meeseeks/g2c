@@ -231,35 +231,8 @@ class NumpyVectorStore:
 
           * k=1: returns the single best match.
         """
-        if len(self) == 0:
-            raise ValueError("cannot search an empty store")
-        if k <= 0:
-            raise ValueError(f"k must be > 0, got {k}")
-
-        if query.ndim == 2 and query.shape[0] == 1:
-            query = query[0]
-        if query.ndim != 1:
-            raise ValueError(
-                "query must be 1-D (dim,) or 2-D (1, dim); "
-                f"got shape {query.shape}"
-            )
-        if query.shape[0] != self._dim:
-            raise ValueError(
-                f"query dim {query.shape[0]} != store dim {self._dim}"
-            )
-
-        sims = self._vectors @ query.astype(self._vectors.dtype, copy=False)
-        k_eff = min(k, len(self))
-        if k_eff == len(self):
-            top_idx = np.argsort(sims)[::-1]
-        else:
-            partitioned = np.argpartition(sims, -k_eff)[-k_eff:]
-            top_idx = partitioned[np.argsort(sims[partitioned])[::-1]]
-
-        return [
-            (self._chunks[int(index)], float(sims[int(index)]))
-            for index in top_idx
-        ]
+        # TODO
+        raise NotImplementedError
 
     def __repr__(self) -> str:
         return f"NumpyVectorStore(dim={self._dim}, n={len(self)})"

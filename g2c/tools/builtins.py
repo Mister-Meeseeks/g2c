@@ -182,46 +182,8 @@ def calculator_evaluate(expression: str) -> float:
       * `calculator_evaluate("__import__('os')")` → ToolError (Name)
       * `calculator_evaluate("True + 1")` → ToolError (bool)
     """
-    if not isinstance(expression, str):
-        raise ToolError(
-            f"expression must be a str, got {type(expression).__name__}"
-        )
-
-    try:
-        tree = ast.parse(expression, mode="eval")
-    except SyntaxError as exc:
-        raise ToolError(f"could not parse: {exc.msg}") from exc
-
-    def _eval_node(node: ast.AST):
-        if isinstance(node, ast.Constant):
-            if isinstance(node.value, bool):
-                raise ToolError("booleans are not allowed in expressions")
-            if isinstance(node.value, (int, float)):
-                return node.value
-            raise ToolError(
-                "constant must be a number, "
-                f"got {type(node.value).__name__}"
-            )
-
-        if isinstance(node, ast.BinOp):
-            op = _BINOPS.get(type(node.op))
-            if op is None:
-                raise ToolError(
-                    f"binary operator not allowed: {type(node.op).__name__}"
-                )
-            return op(_eval_node(node.left), _eval_node(node.right))
-
-        if isinstance(node, ast.UnaryOp):
-            op = _UNARYOPS.get(type(node.op))
-            if op is None:
-                raise ToolError(
-                    f"unary operator not allowed: {type(node.op).__name__}"
-                )
-            return op(_eval_node(node.operand))
-
-        raise ToolError(f"AST node not allowed: {type(node).__name__}")
-
-    return _eval_node(tree.body)
+    # TODO
+    raise NotImplementedError
 
 
 def make_calculator() -> Tool:

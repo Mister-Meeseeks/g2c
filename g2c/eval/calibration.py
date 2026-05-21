@@ -112,20 +112,8 @@ def expected_calibration_error(
     For small N (< 100), consider fewer bins (5) to reduce
     per-bin noise.
     """
-    _validate_inputs(confidences, correct, n_bins)
-    n = len(confidences)
-    ece = 0.0
-    for bin_index in range(n_bins):
-        indices = [
-            i for i, confidence in enumerate(confidences)
-            if _bin_index(confidence, n_bins) == bin_index
-        ]
-        if not indices:
-            continue
-        bin_accuracy = sum(1 for i in indices if correct[i]) / len(indices)
-        bin_confidence = sum(confidences[i] for i in indices) / len(indices)
-        ece += (len(indices) / n) * abs(bin_accuracy - bin_confidence)
-    return float(ece)
+    # TODO
+    raise NotImplementedError
 
 
 def reliability_curve(
@@ -178,26 +166,8 @@ def reliability_curve(
       * If you plot bin_confidences against bin_accuracies and the
         model is perfectly calibrated, the line is the diagonal.
     """
-    _validate_inputs(confidences, correct, n_bins)
-    bin_confidences: list[float] = []
-    bin_accuracies: list[float] = []
-    bin_counts: list[int] = []
-
-    for bin_index in range(n_bins):
-        indices = [
-            i for i, confidence in enumerate(confidences)
-            if _bin_index(confidence, n_bins) == bin_index
-        ]
-        count = len(indices)
-        bin_counts.append(count)
-        if count == 0:
-            bin_confidences.append(math.nan)
-            bin_accuracies.append(math.nan)
-            continue
-        bin_confidences.append(sum(confidences[i] for i in indices) / count)
-        bin_accuracies.append(sum(1 for i in indices if correct[i]) / count)
-
-    return bin_confidences, bin_accuracies, bin_counts
+    # TODO
+    raise NotImplementedError
 
 
 def _validate_inputs(

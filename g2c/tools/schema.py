@@ -187,51 +187,8 @@ def validate_arguments(tool: Tool, arguments: Any) -> dict[str, Any]:
         `arguments` (a copy, not the original — so callers can mutate
         without affecting the validator's input).
     """
-    if not isinstance(arguments, dict):
-        raise ToolError(
-            f"arguments must be a dict, got {type(arguments).__name__}"
-        )
-
-    schema = tool.parameters
-    if schema.get("type") != "object":
-        raise ToolError("tool parameters schema must be type: object")
-
-    properties = schema.get("properties", {})
-    if not isinstance(properties, dict):
-        raise ToolError("tool parameters schema must have object properties")
-
-    required_raw = schema.get("required", [])
-    if not isinstance(required_raw, list):
-        raise ToolError("tool parameters schema required field must be a list")
-    required = list(required_raw)
-
-    missing = [key for key in required if key not in arguments]
-    if missing:
-        raise ToolError(f"missing required arguments: {missing}")
-
-    extra = [key for key in arguments if key not in properties]
-    if extra:
-        raise ToolError(f"unknown arguments: {extra}")
-
-    for key, value in arguments.items():
-        prop = properties[key]
-        if not isinstance(prop, dict):
-            raise ToolError(f"schema for argument {key!r} must be an object")
-
-        type_tag = prop.get("type", "string")
-        expected = _TYPE_TAGS.get(type_tag)
-        if expected is None:
-            raise ToolError(f"unknown type tag {type_tag!r} for argument {key!r}")
-
-        if type_tag in ("number", "integer") and isinstance(value, bool):
-            raise ToolError(f"argument {key!r}: expected {type_tag}, got bool")
-        if not isinstance(value, expected):
-            raise ToolError(
-                f"argument {key!r}: expected {type_tag}, "
-                f"got {type(value).__name__}"
-            )
-
-    return dict(arguments)
+    # TODO
+    raise NotImplementedError
 
 
 DEFAULT_SYSTEM = (

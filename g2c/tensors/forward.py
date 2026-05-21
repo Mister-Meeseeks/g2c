@@ -31,7 +31,8 @@ def linear(x: torch.Tensor, W: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     stores W as (out, in) and computes `x @ W.T + b`. Our convention here is
     (in, out) which makes the matmul shape-rule more obvious.)
     """
-    return torch.matmul(x, W) + b
+    # TODO
+    raise NotImplementedError
 
 
 def softmax(x: torch.Tensor, dim: int = -1) -> torch.Tensor:
@@ -57,9 +58,8 @@ def softmax(x: torch.Tensor, dim: int = -1) -> torch.Tensor:
     Returns:
         Same shape as x. Values along `dim` sum to 1.
     """
-    max = x.max(dim=dim, keepdim=True).values
-    e = torch.exp(x - max)
-    return e / e.sum(dim=dim, keepdim=True)
+    # TODO
+    raise NotImplementedError
 
 
 def classifier_forward(

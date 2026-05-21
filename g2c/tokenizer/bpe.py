@@ -189,13 +189,8 @@ class BPETokenizer:
 
         Hint: a single pass with a sliding window of size 2.
         """
-        pair_counts = {}
-        for i in range(len(ids) - 1):
-            pair = (ids[i], ids[i + 1])
-            if barrier_ids and (pair[0] in barrier_ids or pair[1] in barrier_ids):
-                continue
-            pair_counts[pair] = pair_counts.get(pair, 0) + 1
-        return pair_counts
+        # TODO
+        raise NotImplementedError
 
     @staticmethod
     def _merge(ids: list[int], pair: tuple[int, int], new_id: int) -> list[int]:
@@ -211,21 +206,8 @@ class BPETokenizer:
         Hint: scan with an explicit index `i`, advancing by 2 on a match
         and by 1 otherwise.
         """
-        left, right = pair
-        merged: list[int] = []
-        append = merged.append
-
-        i = 0
-        n = len(ids)
-        while i < n:
-            if i + 1 < n and ids[i] == left and ids[i + 1] == right:
-                append(new_id)
-                i += 2
-            else:
-                append(ids[i])
-                i += 1
-
-        return merged
+        # TODO
+        raise NotImplementedError
 
     # ------------------------------------------------------------------
     # Main training step — STUDENT IMPLEMENTS
@@ -255,17 +237,8 @@ class BPETokenizer:
             `(updated_ids, merged_pair, merge_count)`, or None if there are no
             adjacent pairs left to merge.
         """
-        pair_counts = self._get_pair_counts(ids, barrier_ids=self.special_token_ids)
-        if not pair_counts:
-            return None
-
-        best_pair = max(pair_counts, key=pair_counts.get)
-        best_pair_count = pair_counts[best_pair]
-
-        self.merges[best_pair] = new_id
-        self.vocab[new_id] = self.vocab[best_pair[0]] + self.vocab[best_pair[1]]
-
-        return self._merge(ids, best_pair, new_id), best_pair, best_pair_count
+        # TODO
+        raise NotImplementedError
 
     # ------------------------------------------------------------------
     # The main training API — implemented scaffold
@@ -402,21 +375,8 @@ class BPETokenizer:
           - `text` containing characters never seen in training → still works,
             because every UTF-8 byte is in the base vocab.
         """
-        ids = self._encode_initial_ids(text)
-
-        while True:
-            pairs = []
-            for i in range(len(ids) - 1):
-                pairs.append((ids[i], ids[i + 1]))
-            merge_candidates = [pair for pair in pairs if pair in self.merges]
-
-            if not merge_candidates:
-                break
-
-            best_pair = min(merge_candidates, key=lambda pair: self.merges[pair])
-            ids = self._merge(ids, best_pair, self.merges[best_pair])
-
-        return ids
+        # TODO
+        raise NotImplementedError
 
     def encode_base(self, text: str) -> list[int]:
         """Encode `text` using only the byte base and reserved special tokens.
@@ -612,8 +572,8 @@ class BPETokenizer:
 
         Hint: a one-liner with `b"".join(...)` and `.decode("utf-8", errors="replace")`.
         """
-        byte_text = b"".join(self.vocab[id] for id in ids)
-        return byte_text.decode("utf-8", errors="replace")
+        # TODO
+        raise NotImplementedError
 
     # ------------------------------------------------------------------
     # Special-token segmentation — implemented boilerplate

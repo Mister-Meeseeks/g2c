@@ -81,8 +81,5 @@ class SGD:
             - Skip parameters whose `.grad` is None (they didn't participate).
             - When weight_decay is 0, the term drops out — no need to special-case.
         """
-        with torch.no_grad():
-            for p in self.params:
-                if p.grad is not None:
-                    delta = p.grad + self.weight_decay * p
-                    p -= self.lr * delta
+        # TODO
+        raise NotImplementedError

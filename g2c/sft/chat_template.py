@@ -145,22 +145,8 @@ class ChatTemplate:
               tokenization of the next role marker stays consistent
               with the training-time tokenization.
         """
-        if not messages:
-            raise ValueError("messages must be non-empty")
-
-        parts: list[str] = []
-        for turn in messages:
-            role = turn["role"]
-            content = turn["content"]
-
-            if role == "user":
-                parts.append(f"{self.USER}\n{content}\n")
-            elif role == "assistant":
-                parts.append(f"{self.ASSISTANT}\n{content}{self.END}")
-            else:
-                raise ValueError(f"unknown role: {role!r}")
-
-        return "".join(parts)
+        # TODO
+        raise NotImplementedError
 
     def render_with_mask(
         self,
@@ -246,43 +232,5 @@ class ChatTemplate:
             Without this, the model never learns to stop and inference
             loops to `max_new_tokens` every time.
         """
-        ids: list[int] = []
-        mask: list[int] = []
-
-        for turn in messages:
-            role = turn["role"]
-            content = turn["content"]
-
-            if role == "user":
-                chunk = f"{self.USER}\n{content}\n"
-                chunk_ids = _encode_template_chunk(
-                    tokenizer,
-                    chunk,
-                    vocab_size=vocab_size,
-                )
-                ids.extend(chunk_ids)
-                mask.extend([0] * len(chunk_ids))
-
-            elif role == "assistant":
-                prefix = f"{self.ASSISTANT}\n"
-                prefix_ids = _encode_template_chunk(
-                    tokenizer,
-                    prefix,
-                    vocab_size=vocab_size,
-                )
-                ids.extend(prefix_ids)
-                mask.extend([0] * len(prefix_ids))
-
-                target = f"{content}{self.END}"
-                target_ids = _encode_template_chunk(
-                    tokenizer,
-                    target,
-                    vocab_size=vocab_size,
-                )
-                ids.extend(target_ids)
-                mask.extend([1] * len(target_ids))
-
-            else:
-                raise ValueError(f"unknown role: {role!r}")
-
-        return SFTExample(ids=ids, mask=mask)
+        # TODO
+        raise NotImplementedError

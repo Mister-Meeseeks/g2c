@@ -190,16 +190,8 @@ class TransformerLM(Module):
                The student-facing softmax / cross-entropy happens
                OUTSIDE this method, in the training loop.
         """
-        B, T = token_ids.shape
-        if T > self.max_seq_len:
-            raise ValueError(
-                f"Sequence length {T} exceeds model's max_seq_len {self.max_seq_len}"
-            )
-        x = self.token_embed(token_ids) + self.pos_embed(T)
-        for block in self.blocks:
-            x = block(x)
-        x = self.ln_final(x)
-        return x @ self.token_embed.weight.T + self.head_bias
+        # TODO
+        raise NotImplementedError
 
     def empty_kv_cache(self) -> KVCache:
         """Return an empty KV cache with one layer slot per block."""

@@ -131,7 +131,8 @@ class Linear(Module):
 
         Hint: this is a one-liner. The real lesson is that this is one line.
         """
-        return torch.matmul(x, self.W) + self.b
+        # TODO
+        raise NotImplementedError
 
 
 # ----------------------------------------------------------------------
@@ -154,7 +155,8 @@ class ReLU(Module):
         Hint: `x.clamp(min=0)` or `torch.relu(x)` (the functional form, not
         `torch.nn.ReLU` — that's the high-level abstraction we're avoiding).
         """
-        return torch.relu(x)
+        # TODO
+        raise NotImplementedError
 
 
 class Tanh(Module):
@@ -166,7 +168,8 @@ class Tanh(Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Return tanh(x), element-wise. Use `torch.tanh(x)`."""
-        return torch.tanh(x)
+        # TODO
+        raise NotImplementedError
 
 
 class Sigmoid(Module):
@@ -178,7 +181,8 @@ class Sigmoid(Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Return sigmoid(x), element-wise. Use `torch.sigmoid(x)`."""
-        return torch.sigmoid(x)
+        # TODO
+        raise NotImplementedError
 
 
 # ----------------------------------------------------------------------
@@ -215,6 +219,5 @@ class Sequential(Module):
 
         Hint: a 3-line implementation with a for-loop.
         """
-        for layer in self.layers:
-            x = layer(x)
-        return x
+        # TODO
+        raise NotImplementedError

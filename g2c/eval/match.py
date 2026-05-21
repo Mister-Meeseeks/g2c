@@ -56,12 +56,8 @@ def exact_match(prediction: str, references: list[str]) -> bool:
         when small models produce trailing whitespace, period, or
         capitalization variations.
     """
-    if len(references) == 0:
-        raise ValueError("references must be non-empty")
-    for ref in references:
-        if prediction == ref:
-            return True
-    return False
+    # TODO
+    raise NotImplementedError
 
 
 def normalized_match(prediction: str, references: list[str]) -> bool:
@@ -110,20 +106,8 @@ def normalized_match(prediction: str, references: list[str]) -> bool:
         normalize("  MADRID,  ")    == "madrid"
         normalize("Mad rid")        == "mad rid"   (NOT a match)
     """
-    if len(references) == 0:
-        raise ValueError("references must be non-empty")
-    translator = str.maketrans("", "", string.punctuation)
-
-    def normalize(text: str) -> str:
-        text = text.lower().strip()
-        text = text.translate(translator)
-        return " ".join(text.split())
-
-    normalized_prediction = normalize(prediction)
-    for ref in references:
-        if normalized_prediction == normalize(ref):
-            return True
-    return False
+    # TODO
+    raise NotImplementedError
 
 
 def contains_match(prediction: str, references: list[str]) -> bool:
@@ -153,12 +137,8 @@ def contains_match(prediction: str, references: list[str]) -> bool:
         need word-level matching, build a small regex matcher around
         `r"\\b" + re.escape(ref) + r"\\b"` instead.
     """
-    if len(references) == 0:
-        raise ValueError("references must be non-empty")
-    for ref in references:
-        if ref.lower() in prediction.lower():
-            return True
-    return False
+    # TODO
+    raise NotImplementedError
 
 
 _NUMBER_RE = re.compile(r"-?\d+(?:\.\d+)?")
@@ -225,17 +205,5 @@ def numeric_match(
         numeric_match("Half of 100 is 50", ["50"])   == False  # first num is 100
         numeric_match("no number here",   ["50"])    == False
     """
-    if len(references) == 0:
-        raise ValueError("references must be non-empty")
-    pred_match = _NUMBER_RE.search(prediction)
-    if not pred_match:
-        return False
-    pred_num = float(pred_match.group())
-    for ref in references:
-        ref_match = _NUMBER_RE.search(ref)
-        if not ref_match:
-            continue
-        ref_num = float(ref_match.group())
-        if abs(pred_num - ref_num) <= tolerance:
-            return True
-    return False
+    # TODO
+    raise NotImplementedError

@@ -118,13 +118,8 @@ def sequence_logprob(
       * The return is `(B,)` — one scalar per example. NOT a single
         scalar across the batch.
     """
-    log_probs = F.log_softmax(logits, dim=-1)  # (B, T, V)
-    target_log_probs = log_probs.gather(
-        dim=-1, index=targets.unsqueeze(-1)
-    ).squeeze(-1)  # (B, T)
-
-    mask = mask.to(target_log_probs.dtype)  # cast to float
-    return (target_log_probs * mask).sum(dim=-1)  # (B,)
+    # TODO
+    raise NotImplementedError
 
 
 def dpo_loss(
@@ -219,20 +214,5 @@ def dpo_loss(
         happens — typical end-of-training reward margins are 1–3
         nats, not infinity.
     """
-    pi_logratio = policy_chosen_logp - policy_rejected_logp
-    ref_logratio = ref_chosen_logp - ref_rejected_logp
-
-    logits = beta * (pi_logratio - ref_logratio)
-    loss = -F.logsigmoid(logits).mean()
-
-    chosen_reward = beta * (policy_chosen_logp - ref_chosen_logp)
-    rejected_reward = beta * (policy_rejected_logp - ref_rejected_logp)
-
-    metrics = {
-        "chosen_reward": chosen_reward.mean().detach(),
-        "rejected_reward": rejected_reward.mean().detach(),
-        "reward_margin": (chosen_reward - rejected_reward).mean().detach(),
-        "accuracy": (chosen_reward > rejected_reward).float().mean().detach(),
-    }
-
-    return loss, metrics
+    # TODO
+    raise NotImplementedError

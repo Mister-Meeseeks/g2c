@@ -195,28 +195,8 @@ class MultiHeadAttention(Module):
             8. Output projection:
                    return self.out_proj(mixed)        # (B, T, D)
         """
-        q = self.q_proj(x)  # (B, T, D)
-        k = self.k_proj(x)  # (B, T, D)
-        v = self.v_proj(x)  # (B, T, D)
-
-        B, T, _ = x.shape
-        H, d_h = self.num_heads, self.head_dim
-
-        q = q.view(B, T, H, d_h).transpose(1, 2)  # (B, H, T, d_h)
-        k = k.view(B, T, H, d_h).transpose(1, 2)
-        v = v.view(B, T, H, d_h).transpose(1, 2)
-
-        scores = q @ k.transpose(-2, -1) / math.sqrt(d_h)  # (B, H, T, T)
-
-        if self.causal:
-            mask = self.causal_mask(T, device=scores.device)
-            scores = scores.masked_fill(mask, float("-inf"))
-
-        weights = scores.softmax(dim=-1)  # (B, H, T, T)
-        mixed = weights @ v  # (B, H, T, d_h)
-        mixed = mixed.transpose(1, 2).contiguous().view(B, T, self.embedding_dim)  # (B, T, D)
-
-        return self.out_proj(mixed)  # (B, T, D)
+        # TODO
+        raise NotImplementedError
                                            
     def forward_cached(self, x: torch.Tensor, cache):
         """Apply attention to a single new token using cached K/V state.
@@ -297,19 +277,5 @@ class MultiHeadAttention(Module):
             5. apply causal mask if self.causal
             6. return scores.softmax(dim=-1)
         """
-        q = self.q_proj(x)
-        k = self.k_proj(x)
-
-        B, T, _ = x.shape
-        H, d_h = self.num_heads, self.head_dim
-
-        q = q.view(B, T, H, d_h).transpose(1, 2)  # (B, H, T, d_h)
-        k = k.view(B, T, H, d_h).transpose(1, 2)
-
-        scores = q @ k.transpose(-2, -1) / math.sqrt(d_h)  # (B, H, T, T)
-
-        if self.causal:
-            mask = self.causal_mask(T, device=scores.device)
-            scores = scores.masked_fill(mask, float("-inf"))
-
-        return scores.softmax(dim=-1)  # (B, H, T, T)
+        # TODO
+        raise NotImplementedError

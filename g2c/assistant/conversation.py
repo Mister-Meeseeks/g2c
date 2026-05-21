@@ -269,18 +269,5 @@ class Conversation:
           * Multi-line content (`"line1\nline2"`):
             `"User: line1\nline2"` — the prefix appears once.
         """
-        if not self._messages:
-            return ""
-
-        messages = list(self._messages)
-        if (
-            self._max_messages is not None
-            and len(messages) > self._max_messages
-        ):
-            messages = messages[-self._max_messages :]
-
-        lines: list[str] = []
-        for message in messages:
-            prefix = "User" if message.role == USER_ROLE else "Assistant"
-            lines.append(f"{prefix}: {message.content}")
-        return "\n".join(lines)
+        # TODO
+        raise NotImplementedError

@@ -76,7 +76,5 @@ def lm_cross_entropy(logits: torch.Tensor, targets: torch.Tensor) -> torch.Tenso
     `torch.nn.functional.cross_entropy` — same level of abstraction we
     use everywhere else in this course.
     """
-    B, T, V = logits.shape
-    flat_logits = logits.reshape(B * T, V)
-    flat_targets = targets.reshape(B * T)
-    return _loss_fn(flat_logits, flat_targets)
+    # TODO
+    raise NotImplementedError

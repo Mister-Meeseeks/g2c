@@ -218,32 +218,5 @@ class Scratchpad:
             block(s) appear, totaling ≤50 chars (or the very last
             block alone if it's already over the cap).
         """
-        if not self._steps:
-            return ""
-
-        blocks: list[str] = []
-        for step in self._steps:
-            lines: list[str] = []
-            if step.thought:
-                lines.append(f"Thought: {step.thought}")
-
-            if step.final_answer is not None:
-                lines.append(f"Final Answer: {step.final_answer}")
-            elif step.action is not None and step.observation is not None:
-                args_json = json.dumps(step.action.arguments)
-                lines.append(f"Action: {step.action.tool}")
-                lines.append(f"Action Input: {args_json}")
-                prefix = "[error] " if step.observation.is_error else ""
-                lines.append(f"Observation: {prefix}{step.observation.output}")
-            elif step.parse_error is not None:
-                lines.append(f"Observation: [parse error] {step.parse_error}")
-
-            blocks.append("\n".join(lines))
-
-        full = "\n\n".join(blocks)
-        if self._max_chars is None or len(full) <= self._max_chars:
-            return full
-
-        while len(blocks) > 1 and len("\n\n".join(blocks)) > self._max_chars:
-            blocks.pop(0)
-        return "\n\n".join(blocks)
+        # TODO
+        raise NotImplementedError

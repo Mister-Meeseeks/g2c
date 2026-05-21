@@ -147,43 +147,8 @@ def score_multiple_choice(
         every option scores `-log(V)` regardless of length — the model
         is indifferent, and confidence collapses toward `1 / N`.
     """
-    option_logps: list[float] = []
-    option_lengths: list[int] = []
-    for choice in example.choices:
-        sum_logp, n_tokens = continuation_logprob(
-            model,
-            tokenizer,
-            example.prompt,
-            choice,
-        )
-        option_logps.append(sum_logp)
-        option_lengths.append(n_tokens)
-
-    if length_normalize:
-        option_scores = [
-            logp / max(n_tokens, 1)
-            for logp, n_tokens in zip(option_logps, option_lengths, strict=True)
-        ]
-    else:
-        option_scores = list(option_logps)
-
-    prediction = max(range(len(option_scores)), key=lambda i: option_scores[i])
-    max_score = max(option_scores)
-    exp_scores = [math.exp(score - max_score) for score in option_scores]
-    total_exp = sum(exp_scores)
-    probabilities = [value / total_exp for value in exp_scores]
-
-    return EvalResult(
-        correct=(prediction == example.answer_idx),
-        prediction=prediction,
-        confidence=probabilities[prediction],
-        metadata={
-            "option_logps": option_logps,
-            "option_lengths": option_lengths,
-            "option_scores": option_scores,
-            "gold_idx": example.answer_idx,
-        },
-    )
+    # TODO
+    raise NotImplementedError
 
 
 def run_multiple_choice_eval(

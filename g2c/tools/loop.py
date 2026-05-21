@@ -218,14 +218,12 @@ def run_with_tools(
     registry: ToolRegistry,
     user_message: str,
     *,
-    system: str | None = None,
+    system: str = DEFAULT_SYSTEM,
     max_steps: int = 5,
-    max_new_tokens: int = 1024,
+    max_new_tokens: int = 512,
     temperature: float = 0.2,
     top_k: int | None = None,
     top_p: float | None = None,
-    use_native_tools: bool | None = None,
-    think: bool | None = None,
 ) -> ToolRunResult:
     """Run the call → parse → dispatch → feedback loop until the model
     stops calling tools (or `max_steps` is hit).
@@ -376,112 +374,8 @@ def run_with_tools(
       * Backend that always emits a tool call and `max_steps=2` →
         two steps, `final_answer=None`, `stopped_reason="max_steps"`.
     """
-    if not isinstance(user_message, str) or not user_message:
-        raise ValueError("user_message must be a non-empty str")
-    if max_steps <= 0:
-        raise ValueError(f"max_steps must be > 0, got {max_steps}")
-
-    # Native path is opt-in by default-detection: if the user didn't say,
-    # use it whenever the backend exposes chat_with_tools.
-    if use_native_tools is None:
-        use_native_tools = backend_supports_native_tools(backend)
-    if use_native_tools and not backend_supports_native_tools(backend):
-        raise ValueError(
-            f"use_native_tools=True but backend {type(backend).__name__} "
-            "has no chat_with_tools method"
-        )
-
-    # Default the system prompt to the channel-appropriate one. The
-    # text-format channel needs the model to be told about <tool_call>
-    # blocks; the native channel actively does not — the chat template
-    # handles the format and the model has been post-trained for it.
-    if system is None:
-        system = NATIVE_DEFAULT_SYSTEM if use_native_tools else DEFAULT_SYSTEM
-
-    if use_native_tools:
-        return _run_with_native_tools(
-            backend=backend,
-            registry=registry,
-            user_message=user_message,
-            system=system,
-            max_steps=max_steps,
-            max_new_tokens=max_new_tokens,
-            temperature=temperature,
-            top_k=top_k,
-            top_p=top_p,
-            think=think,
-        )
-
-    tools_block = render_tools_for_prompt(registry.tools)
-    transcript = "\n\n".join(
-        [
-            system,
-            tools_block,
-            f"User: {user_message}",
-            "Assistant:",
-        ]
-    )
-
-    steps: list[ToolStep] = []
-    final_answer: str | None = None
-    stopped_reason = "max_steps"
-
-    for _ in range(max_steps):
-        inference = backend.complete(
-            transcript,
-            max_new_tokens=max_new_tokens,
-            temperature=temperature,
-            top_k=top_k,
-            top_p=top_p,
-        )
-        completion = inference.completion
-        tool_calls = parse_tool_calls(completion)
-
-        if not tool_calls:
-            final_answer = completion
-            steps.append(
-                ToolStep(
-                    completion=completion,
-                    tool_calls=[],
-                    tool_results=[],
-                    inference=inference,
-                )
-            )
-            stopped_reason = "no_more_calls"
-            break
-
-        tool_results = [dispatch_tool_call(registry, call) for call in tool_calls]
-        steps.append(
-            ToolStep(
-                completion=completion,
-                tool_calls=tool_calls,
-                tool_results=tool_results,
-                inference=inference,
-            )
-        )
-        transcript = (
-            transcript
-            + " "
-            + completion
-            + "\n\n"
-            + format_tool_results(tool_results)
-            + "\n\nAssistant:"
-        )
-
-    return ToolRunResult(
-        user_message=user_message,
-        final_answer=final_answer,
-        steps=steps,
-        stopped_reason=stopped_reason,
-        metadata={
-            "n_steps": len(steps),
-            "n_tool_calls": sum(len(step.tool_calls) for step in steps),
-            "tools_available": registry.names(),
-            "backend_name": backend.info.name,
-            "backend_model_id": backend.info.model_id,
-            "channel": "text-format",
-        },
-    )
+    # TODO
+    raise NotImplementedError
 
 
 def _run_with_native_tools(

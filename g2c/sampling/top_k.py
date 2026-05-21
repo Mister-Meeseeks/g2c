@@ -80,9 +80,5 @@ def top_k_filter(logits: torch.Tensor, k: int) -> torch.Tensor:
     op on the GPU/MPS and a Python loop is hundreds of host-device
     round-trips.
     """
-    if k < 1:
-        raise ValueError(f'k must be >= 1, got {k}')
-    k = min(k, logits.shape[-1])
-    kth_values = torch.topk(logits, k, dim=-1).values[..., -1, None]
-    mask = logits < kth_values
-    return logits.masked_fill(mask, float('-inf'))
+    # TODO
+    raise NotImplementedError

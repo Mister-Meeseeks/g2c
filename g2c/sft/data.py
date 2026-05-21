@@ -125,27 +125,6 @@ def pad_and_collate(
                        0 because the target at this position is the
                        padding token — we never want loss on padding.
     """
-    fitted = []
-
-    for ex in examples:
-        if len(ex.ids) != len(ex.mask):
-            raise ValueError("example ids and mask have different lengths")
-        
-        ids = ex.ids[:max_seq_len]
-        mask = ex.mask[:max_seq_len]
-
-        for _ in range(max_seq_len - len(ids)):
-            ids.append(pad_id)
-            mask.append(0)
-
-        fitted.append(SFTExample(ids=ids, mask=mask))
-        
-    ids_b = torch.tensor([ex.ids for ex in fitted], dtype=torch.long)
-    mask_b = torch.tensor([ex.mask for ex in fitted], dtype=torch.long)
-    
-    x = ids_b[:, :-1]
-    y = ids_b[:, 1:]
-    loss_mask = mask_b[:, 1:]
-
-    return x, y, loss_mask
+    # TODO
+    raise NotImplementedError
     

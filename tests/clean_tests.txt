@@ -87,7 +87,7 @@ tests/test_assistant.py::TestAssistantConstruction::test_bad_registry_type_raise
 tests/test_assistant.py::TestAssistantConstruction::test_bad_retriever_type_raises
 tests/test_assistant.py::TestAssistantConstruction::test_default_max_history_propagated
 tests/test_assistant.py::TestAssistantConstruction::test_explicit_conversation_overrides_max_history
-tests/test_assistant.py::TestAssistantConstruction::test_minimal
+tests/test_assistant.py::TestAssistantConstruction::test_minimal_with_react_backend
 tests/test_assistant.py::TestAssistantConstruction::test_repr
 tests/test_assistant.py::TestAssistantConstruction::test_with_config
 tests/test_assistant.py::TestAssistantConstruction::test_with_existing_agent

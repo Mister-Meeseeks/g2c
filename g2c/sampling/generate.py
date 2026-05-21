@@ -201,51 +201,5 @@ def generate(
         in this module — the lesson here is the loop, not the
         optimization.
     """
-    if prompt_ids.dim() != 1 or prompt_ids.numel() == 0:
-        raise ValueError(f'prompt_ids must be a non-empty 1-D tensor, got {prompt_ids}')
-    if temperature < 0:
-        raise ValueError(f'Temperature must be non-negative, got {temperature}')
-    vocab_size = getattr(model, "vocab_size", None)
-    if vocab_size is not None:
-        min_id = int(prompt_ids.min().item())
-        max_id = int(prompt_ids.max().item())
-        if min_id < 0 or max_id >= vocab_size:
-            raise ValueError(
-                "prompt_ids contain token IDs outside the model vocab: "
-                f"min={min_id}, max={max_id}, model.vocab_size={vocab_size}. "
-                "Encode prompts with tokenizer.encode_with_vocab_size(..., "
-                "model.vocab_size)."
-            )
-    
-    greedy = (temperature == 0.0)
-    full_ids = prompt_ids.detach().cpu().clone()
-    device = getattr(model, "device", torch.device("cpu"))
-    for _ in range(max_new_tokens):
-        ctx = full_ids[-model.max_seq_len:].to(device).unsqueeze(0)
-        logits = model(ctx)
-        last_logits = logits[:, -1, :].cpu()
-
-        if greedy:
-            next_id = last_logits.argmax(dim=-1)
-        else:
-            if repetition_penalty != 1.0:
-                last_logits = apply_repetition_penalty(
-                    last_logits, full_ids, repetition_penalty
-                )
-            last_logits = apply_temperature(last_logits, temperature)
-            if top_k is not None:
-                last_logits = top_k_filter(last_logits, top_k)
-            if top_p is not None:
-                last_logits = top_p_filter(last_logits, top_p)
-
-            probs = torch.softmax(last_logits, dim=-1)
-            next_id = torch.multinomial(
-                probs, num_samples=1, generator=generator
-            ).squeeze(-1)
-
-        full_ids = torch.cat([full_ids, next_id], dim=0)
-
-        if eos_id is not None and next_id.item() == eos_id:
-            break
-
-    return full_ids
+    # TODO
+    raise NotImplementedError

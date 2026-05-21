@@ -335,54 +335,8 @@ class DPOTrainer:
           * Clipping after `optimizer.step()`. The gradients have
             already been consumed; clipping after is a no-op.
         """
-        (cx, cy, cm, rx, ry, rm) = self._sample_batch(self.examples)
-        cx = cx.to(self.device)
-        cy = cy.to(self.device)
-        cm = cm.to(self.device)
-        rx = rx.to(self.device)
-        ry = ry.to(self.device)
-        rm = rm.to(self.device)
-
-        lr = self.lr()
-        self.optimizer.lr = lr
-        self.optimizer.zero_grad()
-
-        policy_chosen_logp = self._logp_under(self.model, cx, cy, cm)
-        policy_rejected_logp = self._logp_under(self.model, rx, ry, rm)
-
-        with torch.no_grad():
-            ref_chosen_logp = self._logp_under(self.ref_model, cx, cy, cm)
-            ref_rejected_logp = self._logp_under(self.ref_model, rx, ry, rm)
-
-        loss, metrics = dpo_loss(
-            policy_chosen_logp,
-            policy_rejected_logp,
-            ref_chosen_logp,
-            ref_rejected_logp,
-            beta=self.beta,
-        )
-
-        loss.backward()
-
-        if self.grad_clip is not None:
-            grad_norm = clip_grad_norm_(
-                self.model.parameters(), self.grad_clip
-            )
-        else:
-            grad_norm = 0.0
-
-        self.optimizer.step()
-        self.step += 1
-
-        return {
-            "loss": loss.item(),
-            "lr": lr,
-            "grad_norm": grad_norm,
-            "chosen_reward": metrics["chosen_reward"].item(),
-            "rejected_reward": metrics["rejected_reward"].item(),
-            "reward_margin": metrics["reward_margin"].item(),
-            "accuracy": metrics["accuracy"].item(),
-        }
+        # TODO
+        raise NotImplementedError
 
     def evaluate(
         self, eval_examples: list[PreferenceExample]

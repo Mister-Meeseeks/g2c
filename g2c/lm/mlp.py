@@ -116,10 +116,8 @@ class MLPLanguageModel(Module):
         injecting position; concatenation is the brute-force-but-correct
         version that fits in one MLP.
         """
-        e = self.embed(ctx_ids)  # (B, N, D)
-        flat = e.view(e.shape[0], -1)  # (B, N*D)
-        h = torch.tanh(self.hidden(flat))  # (B, H)
-        return self.output(h)  # (B, V)
+        # TODO
+        raise NotImplementedError
 
     def logits(self, ctx_ids: torch.Tensor) -> torch.Tensor:
         """Alias for `forward` — matches the `CountsBigramLM` interface."""

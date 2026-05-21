@@ -51,25 +51,8 @@ class RotaryEmbedding(Module):
         self.max_seq_len = max_seq_len
         self.embedding_dim = embedding_dim
 
-        # TODO: precompute self.cos and self.sin, each of shape
-        # (max_seq_len, embedding_dim). Neither requires grad.
-        #
-        # Recipe (split-halves):
-        #   1. inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2) / dim))
-        #                                                 shape (dim/2,)
-        #   2. positions = torch.arange(max_seq_len)      shape (max_seq_len,)
-        #   3. freqs = torch.outer(positions, inv_freq)   shape (max_seq_len, dim/2)
-        #   4. emb = torch.cat([freqs, freqs], dim=-1)    shape (max_seq_len, dim)
-        #   5. self.cos = emb.cos()
-        #      self.sin = emb.sin()
-        inv_freq = 1.0 / (base ** (torch.arange(0, embedding_dim, 2) / embedding_dim))
-        positions = torch.arange(max_seq_len)
-        freqs = torch.outer(positions, inv_freq)
-        emb = torch.cat([freqs, freqs], dim=-1)
-        self.cos = emb.cos()
-        self.sin = emb.sin()
-        self.cos.requires_grad_(False)
-        self.sin.requires_grad_(False)
+        # TODO
+        raise NotImplementedError
 
     def parameters(self) -> Iterable[torch.Tensor]:
         return []
@@ -113,7 +96,5 @@ class RotaryEmbedding(Module):
         At position 0, cos is all 1s and sin is all 0s, so the rotation is
         the identity — the test suite verifies this.
         """
-        seq_lqen = x.shape[-2]
-        cos = self.cos[:seq_lqen]
-        sin = self.sin[:seq_lqen]
-        return x * cos + self._rotate_half(x) * sin
+        # TODO
+        raise NotImplementedError
