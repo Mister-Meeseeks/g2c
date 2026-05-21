@@ -8,6 +8,7 @@ from .base import (
     Plan,
 )
 from .memory import Scratchpad
+from .native import NATIVE_DEFAULT_AGENT_SYSTEM, NativeAgent
 from .parser import ParsedStep, parse_react_step
 from .planner import extract_plan, make_plan
 from .prompts import (
@@ -21,11 +22,13 @@ from .prompts import (
 __all__ = [
     "DEFAULT_AGENT_SYSTEM",
     "DEFAULT_PLANNING_PROMPT",
+    "NATIVE_DEFAULT_AGENT_SYSTEM",
     "Action",
     "Agent",
     "AgentError",
     "AgentRunResult",
     "AgentStep",
+    "NativeAgent",
     "Observation",
     "ParsedStep",
     "Plan",

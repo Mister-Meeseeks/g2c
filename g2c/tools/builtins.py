@@ -419,14 +419,19 @@ def make_run_python(
     The tool exposes two arguments to the model:
 
       * `code` (required): the Python source to run.
-      * `file` (optional): a relative path. When provided, the harness
-        resolves it under `cwd` (if set) and binds the absolute path
-        to a string variable named `data` inside the subprocess BEFORE
-        the model's code runs. The model can then write
-        `pd.read_csv(data)` instead of `pd.read_csv("sales.csv")`,
+      * `path` (optional): a relative path to a file. When provided,
+        the harness resolves it under `cwd` (if set) and binds the
+        absolute path to a string variable named `data` inside the
+        subprocess BEFORE the model's code runs. The model can then
+        write `pd.read_csv(data)` instead of `pd.read_csv("sales.csv")`,
         which avoids the most common JSON-escape failure mode for small
         models — embedded string literals colliding with the JSON
         delimiters around the `code` value.
+
+    Argument naming: `path` is intentionally the same key `read_file`
+    uses. Small models tend to generalize argument names across tools
+    in a registry; matching `read_file`'s convention reduces
+    schema-confusion failures.
 
     Output: the child's stdout (truncated to 10000 chars). On non-zero
     exit, the stderr is returned with a `[run_python: exit N]` header.
@@ -442,25 +447,25 @@ def make_run_python(
             raise ValueError(f"cwd must be an existing directory, got {cwd!r}")
         cwd_path = str(cwd_resolved)
 
-    def _func(code: str, file: str | None = None) -> str:
+    def _func(code: str, path: str | None = None) -> str:
         if not isinstance(code, str):
             raise ToolError(f"code must be a str, got {type(code).__name__}")
 
         full_code = code
-        if file is not None:
-            if not isinstance(file, str) or not file:
-                raise ToolError("file must be a non-empty string")
+        if path is not None:
+            if not isinstance(path, str) or not path:
+                raise ToolError("path must be a non-empty string")
             base = cwd_resolved if cwd_resolved is not None else Path.cwd()
-            target = (base / file).resolve()
+            target = (base / path).resolve()
             if cwd_resolved is not None:
                 try:
                     target.relative_to(cwd_resolved)
                 except ValueError as e:
                     raise ToolError(
-                        f"file escapes the allowed root: {file!r}"
+                        f"path escapes the allowed root: {path!r}"
                     ) from e
             if not target.exists():
-                raise ToolError(f"file not found: {file!r}")
+                raise ToolError(f"file not found: {path!r}")
             # Prepend the binding. repr() handles any path containing
             # quotes, backslashes, or other characters that would break
             # a naive f-string interpolation.
@@ -495,11 +500,12 @@ def make_run_python(
             "Each call runs in a fresh subprocess: variables, imports, "
             "and state from previous calls do not persist. Do all setup "
             "in every call, or do everything in one call. "
-            "To operate on a file, pass its name via the `file` argument: "
-            "the resolved path is bound to a string variable named `data` "
-            "inside your code. Reference `data` rather than writing the "
-            "filename as a literal string. Example: "
-            "{\"file\": \"sales.csv\", \"code\": \"import pandas as pd; "
+            "To operate on a file, pass its relative path via the `path` "
+            "argument (same key as read_file uses): the resolved path is "
+            "bound to a string variable named `data` inside your code. "
+            "Reference `data` rather than writing the filename as a "
+            "literal string. Example: "
+            "{\"path\": \"sales.csv\", \"code\": \"import pandas as pd; "
             "print(pd.read_csv(data).head())\"}."
         ),
         parameters={
@@ -509,7 +515,7 @@ def make_run_python(
                     "type": "string",
                     "description": "Python source to run.",
                 },
-                "file": {
+                "path": {
                     "type": "string",
                     "description": (
                         "Optional. Relative path to a file. The resolved "

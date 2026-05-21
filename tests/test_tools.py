@@ -1015,7 +1015,7 @@ class TestMakeRunPython:
         with pytest.raises(ValueError):
             make_run_python(cwd=tmp_path / "does-not-exist")
 
-    def test_file_arg_binds_data_variable(self, tmp_path):
+    def test_path_arg_binds_data_variable(self, tmp_path):
         (tmp_path / "sales.csv").write_text(
             "item,units,price\npen,3,2.0\nnotebook,2,5.0\n",
             encoding="utf-8",
@@ -1023,47 +1023,50 @@ class TestMakeRunPython:
         t = make_run_python(cwd=tmp_path)
         # The model writes code that references `data` instead of the literal
         # filename — no nested string literals in the JSON code value.
-        out = t.func(code="print(open(data).read().splitlines()[0])", file="sales.csv")
+        out = t.func(code="print(open(data).read().splitlines()[0])", path="sales.csv")
         assert "item,units,price" in out
 
-    def test_file_arg_resolves_under_cwd(self, tmp_path):
+    def test_path_arg_resolves_under_cwd(self, tmp_path):
         nested = tmp_path / "sub"
         nested.mkdir()
         (nested / "x.txt").write_text("inside\n", encoding="utf-8")
         t = make_run_python(cwd=tmp_path)
-        out = t.func(code="print(open(data).read().strip())", file="sub/x.txt")
+        out = t.func(code="print(open(data).read().strip())", path="sub/x.txt")
         assert "inside" in out
 
-    def test_file_arg_rejects_escape_attempts(self, tmp_path):
+    def test_path_arg_rejects_escape_attempts(self, tmp_path):
         t = make_run_python(cwd=tmp_path)
         with pytest.raises(ToolError, match="escapes the allowed root"):
-            t.func(code="print('x')", file="../outside.txt")
+            t.func(code="print('x')", path="../outside.txt")
 
-    def test_file_arg_missing_file_raises(self, tmp_path):
+    def test_path_arg_missing_file_raises(self, tmp_path):
         t = make_run_python(cwd=tmp_path)
         with pytest.raises(ToolError, match="file not found"):
-            t.func(code="print(data)", file="nope.txt")
+            t.func(code="print(data)", path="nope.txt")
 
-    def test_file_arg_must_be_nonempty(self, tmp_path):
+    def test_path_arg_must_be_nonempty(self, tmp_path):
         t = make_run_python(cwd=tmp_path)
         with pytest.raises(ToolError, match="non-empty"):
-            t.func(code="print('x')", file="")
+            t.func(code="print('x')", path="")
 
-    def test_file_arg_appears_in_schema(self):
+    def test_path_arg_appears_in_schema(self):
         t = make_run_python()
         props = t.parameters["properties"]
-        assert "file" in props
-        # `code` stays required; `file` is optional.
+        # Match read_file's argument name so models don't get confused
+        # generalizing across tools.
+        assert "path" in props
+        assert "file" not in props
+        # `code` stays required; `path` is optional.
         assert t.parameters["required"] == ["code"]
-        assert props["file"]["type"] == "string"
+        assert props["path"]["type"] == "string"
 
-    def test_file_arg_path_with_quotes_handled(self, tmp_path):
+    def test_path_arg_with_special_chars_handled(self, tmp_path):
         # repr() should escape any unusual characters in the resolved path,
         # so the prepended `data = ...` line is always valid Python.
         weird = tmp_path / "has'quote.txt"
         weird.write_text("ok\n", encoding="utf-8")
         t = make_run_python(cwd=tmp_path)
-        out = t.func(code="print(open(data).read().strip())", file="has'quote.txt")
+        out = t.func(code="print(open(data).read().strip())", path="has'quote.txt")
         assert "ok" in out
 
 

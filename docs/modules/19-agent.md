@@ -318,6 +318,27 @@ Tuning these per-task is a real consideration — `loop_detection=False` for leg
 
 - **`max_steps` exists because models can lose the thread.** The combination of "nothing in the prompt actually requires the model to stop" and "context length is finite" means you need a hard cap. Module 18 had `max_steps=5`; Module 19 defaults to `8` because a planned task often needs the planning step + 3-5 tool calls + the final answer. Tune per-task.
 
+### Two channels for agent communication
+
+This module's main lesson is the **ReAct text channel**: the model emits `Thought: / Action: / Action Input: / Final Answer:` as plain text, a regex parser extracts the structure, and the loop feeds observations back into the next prompt. This is the historical agent format (Yao et al. 2022) and what every early LangChain example used.
+
+The same loop also exists in the **structured tool-calling channel** — the modern alternative that OpenAI shipped in mid-2023 and every major provider has adopted. Same observe → act → observe loop; same `Action` / `Observation` / `AgentStep` data shapes; same loop control and planner. What changes is *I/O at the model boundary*:
+
+| | ReAct (text) | Structured (native) |
+|---|---|---|
+| Wire format | `Thought: / Action: / Action Input:` markers | `{"role": "assistant", "tool_calls": [...]}` JSON |
+| Parser | regex (`parse_react_step`) | trivial JSON read |
+| Reasoning slot | required `Thought:` line per turn | optional content alongside tool_calls |
+| Multi-tool/turn | one Action per Thought | `tool_calls: [...]` array; parallel calls supported |
+| Where the model learned it | mostly pretraining (LangChain docs, ReAct papers) | post-training (function-calling fine-tunes) |
+| Failure mode on small models | parse fragility, format wobble | mostly avoids both |
+
+`g2c/agent/native.py` provides `NativeAgent` — the same loop wrapped around `chat_with_tools` instead of `complete`. Two small functions (`_history_to_messages`, `_chat_to_step`) are the entire mechanical difference: one wraps the agent's step history into an OpenAI/Ollama-style messages list, the other unwraps the model's structured response back into an `AgentStep`. Everything else — planner, scratchpad, loop_detection, max_steps, `AgentResult` shape — is shared.
+
+Why teach ReAct if structured won? Because the parser, the scratchpad rendering, and the loop are what's *buildable* and *generalizable*. JSON-structured tool calling is one `json.loads()` and the lesson is shallow. ReAct exposes the regex parsing, format-tolerance, recovery-from-parse-failure mechanics that every agent framework had to figure out before OpenAI standardized the protocol. The native channel is then a one-page demonstration of how the same loop works once the format is structured for you.
+
+The practical takeaway from running the same task on both channels (Exercise 12b in the notebook) is that **format choices propagate into model capabilities**: a small model trained on the structured format will outperform itself on ReAct, not because ReAct is harder in principle but because the model has seen fewer examples of it during post-training. Format is where model training meets the wire.
+
 ### What we don't cover
 
 - Tree-of-thoughts, reflection loops, async/parallel agents, streaming parsers, and supervisor-worker systems.
@@ -414,9 +435,19 @@ class Agent:
 
     def run(self, user_message) -> AgentRunResult:                # SCAFFOLDED
         ...
+
+
+# native.py — fully implemented, NOT scaffolded.
+NATIVE_DEFAULT_AGENT_SYSTEM: str                                  # implemented
+class NativeAgent:                                                # implemented
+    # Same loop as Agent, but uses backend.chat_with_tools and the
+    # structured tool_calls protocol instead of ReAct text parsing.
+    # The wrap/unwrap helpers (_history_to_messages, _chat_to_step)
+    # are the only format-specific code; everything else is shared.
+    def run(self, user_message) -> AgentRunResult: ...
 ```
 
-Total scaffolded code: roughly 100 lines across four function bodies. The lesson is the contracts (parsing, scratchpad rendering, plan extraction, loop control). The orchestration is layout.
+Total scaffolded code: roughly 100 lines across four function bodies. The lesson is the contracts (parsing, scratchpad rendering, plan extraction, loop control). The orchestration is layout. `native.py` is fully implemented and offered as the modern alternative — the parallel structure makes the format difference visible at a glance.
 
 ## How to run the tests
 
@@ -505,7 +536,7 @@ Optional:
 
 ## Deliverable checklist
 
-- [ ] All tests in `tests/test_agent.py` pass: 121 tests, all green.
+- [ ] All tests in `tests/test_agent.py` pass: 144 tests, all green.
 - [ ] ProdLM configured and Ollama running. `ollama list` shows `llama3.2:3b` (or your chosen model).
 - [ ] Notebook: `notebooks/19-agent.ipynb`. Wires `Agent` + a multi-tool registry, runs Exercises 1, 2, 3, 4 with output cells visible.
 - [ ] **Failure-mode catalog** (Exercise 9) in `docs/agent-failure-modes.md`. Three failure modes, each with a transcript, hypothesis, and proposed mitigation. The actual deliverable.

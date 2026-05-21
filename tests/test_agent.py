@@ -1290,6 +1290,428 @@ class TestIntegrationSmoke:
 
 
 # ---------------------------------------------------------------------------
+# NativeAgent — structured-tool-calling channel.
+# ---------------------------------------------------------------------------
+
+
+class _FakeChatBackend(Backend):
+    """Backend that satisfies `chat_with_tools` with canned responses.
+
+    Each entry in `responses` is `(content: str, tool_calls: list[dict])`.
+    `tool_calls` items are `{"name": str, "arguments": dict}`; the fake
+    will add a `call_id` if absent (mirroring real Ollama behavior).
+    """
+
+    def __init__(
+        self,
+        responses: Iterable[tuple[str, list[dict[str, Any]]]],
+        *,
+        info: BackendInfo | None = None,
+    ) -> None:
+        self._responses = list(responses)
+        self._info = info or BackendInfo(name="fake-chat", model_id="fake-chat-model")
+        self.calls: list[dict[str, Any]] = []
+
+    @property
+    def info(self) -> BackendInfo:
+        return self._info
+
+    def complete(
+        self,
+        prompt: str,
+        *,
+        max_new_tokens: int = 128,
+        temperature: float = 1.0,
+        top_k: int | None = None,
+        top_p: float | None = None,
+    ) -> InferenceResult:
+        # Planning phase (Agent.run-style) uses complete; emit a
+        # syntactically-valid empty plan so callers can also test the
+        # planning path without needing both fakes.
+        completion = "Goal: do the thing.\n1. step one"
+        return InferenceResult(
+            prompt=prompt,
+            completion=completion,
+            prompt_tokens=len(prompt.split()),
+            completion_tokens=len(completion.split()),
+            latency_ms=1.0,
+            backend=self._info,
+        )
+
+    def chat_with_tools(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+        *,
+        max_new_tokens: int = 512,
+        temperature: float = 0.2,
+        top_k: int | None = None,
+        top_p: float | None = None,
+        think: bool | None = None,
+    ):
+        from g2c.inference import ChatResult
+
+        if not self._responses:
+            raise AssertionError(
+                f"FakeChatBackend exhausted: last messages={messages!r}"
+            )
+        content, raw_calls = self._responses.pop(0)
+        self.calls.append(
+            {
+                "messages": list(messages),
+                "tools": tools,
+                "max_new_tokens": max_new_tokens,
+                "temperature": temperature,
+                "think": think,
+            }
+        )
+        parsed: list[dict[str, Any]] = []
+        for i, raw in enumerate(raw_calls):
+            parsed.append(
+                {
+                    "name": raw["name"],
+                    "arguments": raw.get("arguments", {}),
+                    "call_id": raw.get("call_id", f"call_{i}_fake"),
+                }
+            )
+        return ChatResult(
+            messages=messages,
+            content=content,
+            tool_calls=parsed,
+            prompt_tokens=len(str(messages)),
+            completion_tokens=len(content.split()) if content else 0,
+            latency_ms=1.0,
+            backend=self._info,
+        )
+
+
+class TestNativeAgentConstruction:
+    def test_rejects_backend_without_chat_with_tools(self) -> None:
+        from g2c.agent import NativeAgent
+        backend = _FakeBackend(["irrelevant"])
+        with pytest.raises(AgentError, match="chat_with_tools"):
+            NativeAgent(backend, ToolRegistry([make_calculator()]))
+
+    def test_accepts_chat_capable_backend(self) -> None:
+        from g2c.agent import NativeAgent
+        backend = _FakeChatBackend([])
+        agent = NativeAgent(backend, ToolRegistry([make_calculator()]), plan=False)
+        assert isinstance(agent, NativeAgent)
+
+    def test_rejects_bad_max_steps(self) -> None:
+        from g2c.agent import NativeAgent
+        backend = _FakeChatBackend([])
+        with pytest.raises(AgentError):
+            NativeAgent(backend, ToolRegistry([]), max_steps=0, plan=False)
+
+
+class TestNativeAgentRun:
+    def test_dispatches_a_tool_call(self) -> None:
+        from g2c.agent import NativeAgent
+        backend = _FakeChatBackend([
+            ("", [{"name": "calculator", "arguments": {"expression": "12 * 9"}}]),
+            ("12 * 9 is 108.", []),
+        ])
+        agent = NativeAgent(
+            backend, ToolRegistry([make_calculator()]),
+            plan=False, max_steps=5, temperature=0.0,
+        )
+        result = agent.run("what is 12*9?")
+        assert result.stopped_reason == "final_answer"
+        assert result.final_answer == "12 * 9 is 108."
+        assert len(result.steps) == 2
+        assert result.steps[0].action is not None
+        assert result.steps[0].action.tool == "calculator"
+        assert result.steps[0].observation is not None
+        assert result.steps[0].observation.output == "108"
+        assert result.steps[0].observation.is_error is False
+
+    def test_final_answer_from_content_when_no_tool_calls(self) -> None:
+        from g2c.agent import NativeAgent
+        backend = _FakeChatBackend([("the answer is 42", [])])
+        agent = NativeAgent(
+            backend, ToolRegistry([make_calculator()]),
+            plan=False, max_steps=4, temperature=0.0,
+        )
+        result = agent.run("x")
+        assert result.final_answer == "the answer is 42"
+        assert result.stopped_reason == "final_answer"
+        assert len(result.steps) == 1
+        assert result.steps[0].action is None
+
+    def test_thought_carried_from_chat_content(self) -> None:
+        from g2c.agent import NativeAgent
+        backend = _FakeChatBackend([
+            (
+                "I should compute this.",
+                [{"name": "calculator", "arguments": {"expression": "1+1"}}],
+            ),
+            ("done", []),
+        ])
+        agent = NativeAgent(
+            backend, ToolRegistry([make_calculator()]),
+            plan=False, max_steps=4, temperature=0.0,
+        )
+        result = agent.run("compute 1+1")
+        assert result.steps[0].thought == "I should compute this."
+
+    def test_loop_detection_stops_on_duplicate_action(self) -> None:
+        from g2c.agent import NativeAgent
+        backend = _FakeChatBackend([
+            ("", [{"name": "calculator", "arguments": {"expression": "2+2"}}]),
+            ("", [{"name": "calculator", "arguments": {"expression": "2+2"}}]),
+        ])
+        agent = NativeAgent(
+            backend, ToolRegistry([make_calculator()]),
+            plan=False, max_steps=5, loop_detection=True,
+        )
+        result = agent.run("x")
+        assert result.stopped_reason == "duplicate_action"
+        assert len(result.steps) == 2
+
+    def test_max_steps_hit(self) -> None:
+        from g2c.agent import NativeAgent
+        # Always emit a tool call, never a final answer.
+        backend = _FakeChatBackend([
+            ("", [{"name": "calculator", "arguments": {"expression": str(i)}}])
+            for i in range(10)
+        ])
+        agent = NativeAgent(
+            backend, ToolRegistry([make_calculator()]),
+            plan=False, max_steps=3, loop_detection=False,
+        )
+        result = agent.run("x")
+        assert result.stopped_reason == "max_steps"
+        assert result.final_answer is None
+        assert len(result.steps) == 3
+
+    def test_empty_response_stuck_step(self) -> None:
+        from g2c.agent import NativeAgent
+        backend = _FakeChatBackend([
+            ("", []),                  # empty everything = stuck
+            ("recovered", []),         # next turn produces an answer
+        ])
+        agent = NativeAgent(
+            backend, ToolRegistry([make_calculator()]),
+            plan=False, max_steps=4, halt_on_stuck=False,
+        )
+        result = agent.run("x")
+        assert result.stopped_reason == "final_answer"
+        assert result.final_answer == "recovered"
+        assert len(result.steps) == 2
+        assert result.steps[0].parse_error is not None
+        assert result.steps[0].action is None
+        assert result.steps[0].final_answer is None
+
+    def test_halt_on_stuck(self) -> None:
+        from g2c.agent import NativeAgent
+        backend = _FakeChatBackend([("", [])])
+        agent = NativeAgent(
+            backend, ToolRegistry([make_calculator()]),
+            plan=False, max_steps=4, halt_on_stuck=True,
+        )
+        result = agent.run("x")
+        assert result.stopped_reason == "no_progress"
+        assert len(result.steps) == 1
+
+    def test_messages_grow_with_history(self) -> None:
+        from g2c.agent import NativeAgent
+        backend = _FakeChatBackend([
+            ("", [{"name": "calculator", "arguments": {"expression": "1+1"}}]),
+            ("ok done", []),
+        ])
+        agent = NativeAgent(
+            backend, ToolRegistry([make_calculator()]),
+            plan=False, max_steps=4,
+        )
+        agent.run("hi")
+        # Turn 1: system + user.
+        assert len(backend.calls[0]["messages"]) == 2
+        assert backend.calls[0]["messages"][0]["role"] == "system"
+        assert backend.calls[0]["messages"][1]["role"] == "user"
+        # Turn 2: + assistant tool_call + tool result.
+        turn2 = backend.calls[1]["messages"]
+        roles = [m["role"] for m in turn2]
+        assert roles == ["system", "user", "assistant", "tool"]
+        assert turn2[2]["tool_calls"][0]["function"]["name"] == "calculator"
+        assert turn2[3]["name"] == "calculator"
+        assert turn2[3]["content"] == "2"
+
+    def test_tools_passed_as_ollama_specs(self) -> None:
+        from g2c.agent import NativeAgent
+        backend = _FakeChatBackend([("hi", [])])
+        agent = NativeAgent(
+            backend, ToolRegistry([make_calculator()]), plan=False,
+        )
+        agent.run("x")
+        specs = backend.calls[0]["tools"]
+        assert isinstance(specs, list) and len(specs) == 1
+        assert specs[0]["type"] == "function"
+        assert specs[0]["function"]["name"] == "calculator"
+
+    def test_think_param_forwarded(self) -> None:
+        from g2c.agent import NativeAgent
+        backend = _FakeChatBackend([("hi", [])])
+        agent = NativeAgent(
+            backend, ToolRegistry([make_calculator()]),
+            plan=False, think=False,
+        )
+        agent.run("x")
+        assert backend.calls[0]["think"] is False
+
+    def test_think_default_none(self) -> None:
+        from g2c.agent import NativeAgent
+        backend = _FakeChatBackend([("hi", [])])
+        agent = NativeAgent(
+            backend, ToolRegistry([make_calculator()]),
+            plan=False,
+        )
+        agent.run("x")
+        assert backend.calls[0]["think"] is None
+
+    def test_metadata_includes_channel_native(self) -> None:
+        from g2c.agent import NativeAgent
+        backend = _FakeChatBackend([("done", [])])
+        agent = NativeAgent(
+            backend, ToolRegistry([make_calculator()]), plan=False,
+        )
+        result = agent.run("x")
+        assert result.metadata["channel"] == "native"
+        assert "n_tool_calls" in result.metadata
+        assert "backend_name" in result.metadata
+
+    def test_recovers_from_validation_error(self) -> None:
+        from g2c.agent import NativeAgent
+        backend = _FakeChatBackend([
+            # Step 1: wrong arg name → validation error
+            ("", [{"name": "calculator", "arguments": {"expr": "1+1"}}]),
+            # Step 2: model corrects → success
+            ("", [{"name": "calculator", "arguments": {"expression": "1+1"}}]),
+            ("the answer is 2", []),
+        ])
+        agent = NativeAgent(
+            backend, ToolRegistry([make_calculator()]),
+            plan=False, max_steps=5,
+        )
+        result = agent.run("compute 1+1")
+        assert result.final_answer == "the answer is 2"
+        assert result.steps[0].observation.is_error is True
+        assert result.steps[1].observation.is_error is False
+        assert result.steps[1].observation.output == "2"
+
+    def test_default_system_used_when_not_overridden(self) -> None:
+        from g2c.agent import NATIVE_DEFAULT_AGENT_SYSTEM, NativeAgent
+        backend = _FakeChatBackend([("hi", [])])
+        agent = NativeAgent(
+            backend, ToolRegistry([make_calculator()]), plan=False,
+        )
+        agent.run("x")
+        system_content = backend.calls[0]["messages"][0]["content"]
+        # Default system prompt should be substring of what got sent
+        # (a plan may be appended after, but the default text is there).
+        assert NATIVE_DEFAULT_AGENT_SYSTEM in system_content
+        # And explicitly NOT the ReAct system prompt — that would
+        # confuse the model about what format to emit.
+        assert "Thought:" not in system_content
+        assert "Action Input:" not in system_content
+
+    def test_custom_system_override(self) -> None:
+        from g2c.agent import NativeAgent
+        backend = _FakeChatBackend([("ok", [])])
+        agent = NativeAgent(
+            backend, ToolRegistry([]),
+            plan=False, system="CUSTOM SYSTEM",
+        )
+        agent.run("x")
+        assert backend.calls[0]["messages"][0]["content"].startswith("CUSTOM SYSTEM")
+
+    def test_rescues_tool_call_emitted_as_content(self) -> None:
+        # Small models sometimes emit a tool call as JSON in content
+        # rather than via the structured `tool_calls` field. The rescue
+        # parser pulls the call out so the loop can dispatch it.
+        from g2c.agent import NativeAgent
+        backend = _FakeChatBackend([
+            (
+                '{"name": "calculator", "parameters": {"expression": "2 + 2"}}',
+                [],
+            ),
+            ("the answer is 4", []),
+        ])
+        agent = NativeAgent(
+            backend, ToolRegistry([make_calculator()]),
+            plan=False, max_steps=4,
+        )
+        result = agent.run("what is 2+2?")
+        assert result.stopped_reason == "final_answer"
+        assert result.final_answer == "the answer is 4"
+        assert result.steps[0].action is not None
+        assert result.steps[0].action.tool == "calculator"
+        assert result.steps[0].observation is not None
+        assert result.steps[0].observation.output == "4"
+        assert result.metadata["n_rescued_calls"] == 1
+
+    def test_rescue_uses_arguments_or_parameters_key(self) -> None:
+        # Both Llama-style ("parameters") and Qwen/Hermes-style
+        # ("arguments") JSON shapes should be rescued.
+        from g2c.agent import NativeAgent
+        backend = _FakeChatBackend([
+            (
+                '{"name": "calculator", "arguments": {"expression": "5 + 5"}}',
+                [],
+            ),
+            ("10", []),
+        ])
+        agent = NativeAgent(
+            backend, ToolRegistry([make_calculator()]),
+            plan=False, max_steps=4,
+        )
+        result = agent.run("what is 5+5?")
+        assert result.steps[0].action is not None
+        assert result.steps[0].observation.output == "10"
+
+    def test_no_rescue_when_content_is_plain_text(self) -> None:
+        from g2c.agent import NativeAgent
+        backend = _FakeChatBackend([("the answer is 42", [])])
+        agent = NativeAgent(
+            backend, ToolRegistry([make_calculator()]),
+            plan=False, max_steps=4,
+        )
+        result = agent.run("x")
+        assert result.stopped_reason == "final_answer"
+        assert result.final_answer == "the answer is 42"
+        assert result.metadata["n_rescued_calls"] == 0
+
+    def test_structured_calls_preferred_over_rescue(self) -> None:
+        # If the backend already returned structured tool_calls, the
+        # rescue should not also trigger on the content.
+        from g2c.agent import NativeAgent
+        backend = _FakeChatBackend([
+            (
+                '{"name": "calculator", "parameters": {"expression": "999"}}',
+                [{"name": "calculator", "arguments": {"expression": "1 + 1"}}],
+            ),
+            ("done", []),
+        ])
+        agent = NativeAgent(
+            backend, ToolRegistry([make_calculator()]),
+            plan=False, max_steps=4,
+        )
+        result = agent.run("x")
+        # The structured 1+1 ran, not the rescue 999.
+        assert result.steps[0].action.arguments == {"expression": "1 + 1"}
+        assert result.metadata["n_rescued_calls"] == 0
+
+    def test_metadata_includes_rescue_count(self) -> None:
+        from g2c.agent import NativeAgent
+        backend = _FakeChatBackend([("hi", [])])
+        agent = NativeAgent(
+            backend, ToolRegistry([make_calculator()]), plan=False,
+        )
+        result = agent.run("x")
+        assert result.metadata["n_rescued_calls"] == 0
+
+
+# ---------------------------------------------------------------------------
 # Module exports
 # ---------------------------------------------------------------------------
 
@@ -1300,11 +1722,13 @@ class TestModuleExports:
         from g2c.agent import (
             DEFAULT_AGENT_SYSTEM,
             DEFAULT_PLANNING_PROMPT,
+            NATIVE_DEFAULT_AGENT_SYSTEM,
             Action,
             Agent,
             AgentError,
             AgentRunResult,
             AgentStep,
+            NativeAgent,
             Observation,
             ParsedStep,
             Plan,
@@ -1319,8 +1743,9 @@ class TestModuleExports:
         # All present by virtue of import succeeding.
         assert all(x is not None for x in [
             DEFAULT_AGENT_SYSTEM, DEFAULT_PLANNING_PROMPT,
+            NATIVE_DEFAULT_AGENT_SYSTEM,
             Action, Agent, AgentError, AgentRunResult, AgentStep,
-            Observation, ParsedStep, Plan, Scratchpad,
+            NativeAgent, Observation, ParsedStep, Plan, Scratchpad,
             extract_plan, make_plan, parse_react_step,
             render_plan_block, render_planning_prompt, render_system_prompt,
         ])
