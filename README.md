@@ -4,6 +4,8 @@
 
 A self-study course on the core building blocks of LLMs, modeled after *From NAND to Tetris*.
 
+Course site: <https://mister-meeseeks.github.io/g2c/>
+
 This repo contains both the instructional material and the student work product. The codebase grows layer-by-layer from scalar autodiff up through a working chat assistant — each module's deliverable becomes a building block for the next.
 
 The hard constraint: **all tasks must be runnable on an M-series MacBook**, without access to expensive cloud environments or GPUs.
