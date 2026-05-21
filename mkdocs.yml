@@ -1,7 +1,7 @@
 site_name: From Gradients to ChatGPT
 site_description: A 20-week self-study course building a tiny LLM stack from scalar autograd up through a working chat assistant.
-site_url: https://your-org.github.io/g2c/
-repo_url: https://github.com/your-org/g2c
+site_url: https://mister-meeseeks.github.io/g2c/
+repo_url: https://github.com/Mister-Meeseeks/g2c
 repo_name: g2c
 edit_uri: edit/main/docs/
 
@@ -66,8 +66,6 @@ nav:
   - Home: index.md
   - Syllabus: syllabus.md
   - Tracks: tracks.md
-  - Primers:
-      - PyTorch: primers/pytorch.md
   - Modules:
       - "00 — Prerequisite review": modules/00-prerequisite-review.md
       - "01 — Scalar autodiff": modules/01-autodiff.md
@@ -92,10 +90,5 @@ nav:
       - "18 — Tool use": modules/18-tools.md
       - "19 — Agent loops": modules/19-agent.md
       - "20 — Capstone: a tiny ChatGPT": modules/20-capstone.md
-  - Rubrics:
-      - "Module 00": rubrics/module-00.md
-      - "Module 03B": rubrics/module-03b.md
-      - "Module 09B": rubrics/module-09b.md
-      - "Module 10": rubrics/module-10.md
-  - Design:
-      - Model artifacts and tracks: design/model-artifacts-and-tracks.md
+  - Primers:
+      - PyTorch: primers/pytorch.md
