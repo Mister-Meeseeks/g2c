@@ -1,120 +1,103 @@
 # Course Tracks and Artifacts
 
-The course has one conceptual path, but several local-compute tracks. A track is
-not a permanent identity. It is just how much data and how many reusable
-artifacts you choose to prepare on this machine.
+This course is designed to be flexible across a wide range of system capabilities. The one hard constraint is that most of the exercises and libraries will only work on an M-Series Mac laptop or desktop. 
 
-The repo should mostly manage this for you:
+Everything runs on one conceptual path, but there are several local-compute tracks, depending on your specific machine and its CPU/GPU, memory and storage. Students are encouraged to experiment with different sized models, training runs, and datasets. However the course loaders will choose sensible defaults, designed to produce good results for relatively small resource requirements.
+
+The repo includes a helpful system probe script that will assess which size models best fit your local machine:
 
 ```bash
-.venv/bin/python scripts/artifact_status.py
-.venv/bin/python scripts/artifact_status.py --module 10
+./sysprobe.sh
 ```
 
-Notebooks and later modules should load the strongest compatible local artifact
-they can find, print what they selected, and fall back gracefully when a larger
-artifact is missing.
+You can use the output from that to help you decide on sizing models and datasets. If that clears your system for the *standard track*, then you can most likely use the  defaults without issue.
 
+## System Requirements
+
+The course is designed to be flexible across a wide range of system capabilities. Students are encouraged to experiment with different sized models, training runs, and datasets, because o
+
+The repo includes a helpful system probe script that will assess which size models best fit your local machine:
+
+```bash
+./sysprobe.sh
+```
+
+Each module's notebook is set up with a lazy loader that automatically loads any dataset or model as needed. The notebooks are setup to to let the user specify, but by default use the strongest compatible local dataset or model that's available, and fall back gracefully when a larger artifact is missing.
+
+Assuming you meet the following specs:
+* M2 Chip or better
+* 24GB of memory or higher
+* 30GB of storage
+
+Then you're probably 
 ## What You Decide
+
+Before getting started, it's helpful to run the course included system probe script, which will assess the compute and memory capabilities of your Macbook.
+
+```
+./sysprobe.sh
+```
+
+If you're clear for standard track, then the simplest approach is to l One is to just let the `./notebook.sh` launcher script lazily load any models or datasets as needed. The notebook launcher will default to the standard 
 
 The conceptual path is identical across tracks. Four independent choices set up
 your local experience:
 
-| Decision | Command | Tiny | Standard | Stretch |
-|---|---|---|---|---|
-| Dataset footprint | `./datasets.sh` | `--tiny` | `--small` | (no flag) |
-| Module 10 model | Module 10 notebook | `ShakespeareLM-1M`, `StoryLM-5M` | `StoryLM-30M`, `TinyLLM-30M` | `TinyLLM-100M` |
-| BaseLM (Modules 13-16) | `./baselm.sh --model-id` | small HF base | small HF base | small HF base |
-| ProdLM (Modules 16-20) | `./prodlm.sh --model-id` | 1.5B-3B instruct | 7B-8B instruct | 14B-class instruct |
-
-BaseLM is a per-need fallback rather than a hardware tier — pick any small
-open-weight base model that runs comfortably on your machine.
+| Decision                   | Command            | Tiny                             | Standard                     | Stretch            |
+| -------------------------- | ------------------ | -------------------------------- | ---------------------------- | ------------------ |
+| Dataset footprint          | `./datasets.sh`    | `--tiny`                         | `--small`                    | (no flag)          |
+| TinyLLM<br>(Modules 10-12) | Module 10 notebook | `ShakespeareLM-1M`, `StoryLM-5M` | `StoryLM-30M`, `TinyLLM-30M` | `TinyLLM-100M`     |
+| BaseLM (Modules 13-16)     | `./baselm.sh`      | 125M base                        | 350M base                    | 600M base          |
+| ProdLM (Modules 16-20)     | `./prodlm.sh`      | 1.5B-3B instruct                 | 7B-8B instruct               | 14B-class instruct |
 
 ## Tracks
 
-| Track | Command | Intended use | Downloads | Free disk target | Heavy one-time work |
-|---|---|---|---:|---:|---|
-| Tiny | `./datasets.sh --tiny` | Fastest path, weaker hardware, quick Module 10 artifact | about 100MB plus artifacts | 5-10GB | TinyStories sample, StoryTokenizer, tokenized sample |
-| Standard | `./datasets.sh --small` | Recommended local course experience | several GB | 20-40GB | GloVe, full TinyStories, small G2C corpus, tokenizers, tokenized corpora |
-| Full | `./datasets.sh` | Stretch path for stronger machines and longer runs | 10GB+ | 40-80GB | full G2C corpus, larger tokenized corpus artifact |
+| Track    | Command                 | Intended use                                            |                  Downloads | Free disk target | Heavy one-time work                                                      |
+| -------- | ----------------------- | ------------------------------------------------------- | -------------------------: | ---------------: | ------------------------------------------------------------------------ |
+| Tiny     | `./datasets.sh --tiny`  | Fastest path, weaker hardware, quick Module 10 artifact | about 100MB plus artifacts |           5-10GB | TinyStories sample, StoryTokenizer, tokenized sample                     |
+| Standard | `./datasets.sh --small` | Recommended local course experience                     |                 several GB |          20-40GB | GloVe, full TinyStories, small G2C corpus, tokenizers, tokenized corpora |
+| Full     | `./datasets.sh`         | Stretch path for stronger machines and longer runs      |                      10GB+ |          40-80GB | full G2C corpus, larger tokenized corpus artifact                        |
 
-`./datasets.sh all` is the same as `./datasets.sh`.
-
-Individual targets are still available:
+Datasets are loaded with
 
 ```bash
-./datasets.sh glove
-./datasets.sh tinystories
-./datasets.sh g2c-corpus-small
-./datasets.sh g2c-corpus-full
+./datasets.sh --tiny    # Tiny dataset track, a few hundred MBs
+./datasets.sh --small   # Small dataset track, several GBs
+./datasets.sh.          # Standard dataset track, around 10GB
 ```
 
 BaseLM and ProdLM are prepared separately because they are model artifacts, not
 dataset tracks:
 
 ```bash
-./baselm.sh --model-id <hf-model-id>
-./prodlm.sh --model-id <ollama-tag>
+./baselm.sh <[OPTIONAL] hf-model-id>
+./prodlm.sh <[OPTIONAL] ollama-tag>
 ```
 
-Both scripts have sensible defaults if you omit `--model-id`. Pick any small
-HF causal LM for BaseLM and any local instruct model for ProdLM that fits your
-machine (see the design doc for hardware-tier guidance).
+Both scripts have sensible defaults if you omit the model tag. Pick any small LM for BaseLM and any local instruct model for ProdLM that fits your machine (see the design doc for hardware-tier guidance).
 
-All dataset commands are intended to be idempotent. Rerunning should skip
-completed downloads and completed artifacts.
+All `./datasets.sh` commands are intended to be idempotent. Rerunning should skip previously completed downloads and completed artifacts.
 
-## What Each Track Builds
-
-| Track | Raw data | Tokenizers | Tokenized corpora |
-|---|---|---|---|
-| Tiny | TinyStories 100MB sample | `StoryTokenizer` | `StoryLM-tinystories-100MB-v4096` |
-| Standard | GloVe, full TinyStories, small G2C Corpus v1 | `StoryTokenizer`, `G2CTokenizer` | `StoryLM-tinystories-full-v4096`, `TinyLLM-g2c-small-v8192` |
-| Full | GloVe, full TinyStories, full G2C Corpus v1 | `StoryTokenizer`, `G2CTokenizer` | `StoryLM-tinystories-full-v4096`, `TinyLLM-g2c-full-v8192` |
+| Track    | Raw data                                     | Tokenizers                       |
+| -------- | -------------------------------------------- | -------------------------------- |
+| Tiny     | TinyStories 100MB sample                     | `StoryTokenizer`                 |
+| Standard | GloVe, full TinyStories, small G2C Corpus v1 | `StoryTokenizer`, `G2CTokenizer` |
+| Full     | GloVe, full TinyStories, full G2C Corpus v1  | `StoryTokenizer`, `G2CTokenizer` |
 
 The normal `./setup.sh` path stays small. It prepares the Python environment,
-TinyShakespeare, and the `ShakespeareTokenizer` artifact used by the first
-Module 10 smoke run.
-
-A note on the `vNNNN` suffix: a tokenizer artifact stores its trained vocab as
-the *maximum* usable size. Downstream artifacts (tokenized corpora, models)
-record the slice they actually use through the `vNNNN` suffix and the manifest
-field `vocab_size` / `effective_vocab_size`. A BPE tokenizer truncated to its
-first N merges is still a valid tokenizer, so one trained `StoryTokenizer` can
-back multiple smaller-vocab corpora and models. If `StoryTokenizer` reports a
-trained vocab of 8192 but `StoryLM-tinystories-full-v4096` and `StoryLM` both
-pin `vocab_size: 4096`, that is the system working as intended.
+TinyShakespeare, and the `ShakespeareTokenizer` artifact.
 
 ## Artifact Roles
 
-| Role | Meaning |
-|---|---|
-| `ShakespeareLM` | Tiny baseline model from Module 10. Useful for proving the loop works, not for quality. |
-| `StoryLM` | TinyStories-trained model. More coherent stories, still not a general assistant. |
-| `TinyLLM` | Broader G2C-corpus model trained from scratch. Best self-trained candidate for assistant-shaped experiments. |
-| `BaseLM` | Small external pretrained base model for Modules 13-16 when self-trained models are too weak. The role is model-agnostic -- run `./baselm.sh --model-id <hf-model-id>` to bind it to any small HF causal LM that fits your machine. |
-| `ProdLM` | Local pretrained instruct model for Modules 16-20. Usually served through Ollama, llama.cpp, or another local runtime. |
-| `<base>-SFT` / `<base>-DPO` | Derived artifacts produced by Modules 13 and 14. The base is whichever of `StoryLM-<N>`, `TinyLLM-<N>`, or `BaseLM` was fine-tuned; the suffix records the last training pass. DPO artifacts are typically layered on top of the corresponding `-SFT` artifact, which is recorded in the manifest's `base_artifact` field. |
-
-### Naming and aliasing
-
-Self-trained artifacts always include an explicit parameter count in their
-on-disk name: `ShakespeareLM-1M`, `StoryLM-5M`, `StoryLM-30M`, `TinyLLM-30M`,
-`TinyLLM-30M-SFT`. The number is approximate parameter count rounded to ~2
-significant figures, following industry convention (Qwen-9B, Llama-3-8B).
-`BaseLM` and `ProdLM` carry no size suffix because we don't train them.
-`ProdLM` also takes no stage suffix because we don't post-train it.
-
-A name with the size omitted (`StoryLM`, `StoryLM-SFT`, `TinyLLM-DPO`) is an
-**alias** that resolves at load time to the largest available artifact in that
-family at that stage. Aliases are never written to disk -- only canonical full
-names are saved.
-
-Modules 10-15 should support both self-trained artifacts and the BaseLM
-fallback. Modules 16-18 should assume ProdLM for the main assistant-system
-experience, while keeping TinyLLM or StoryLM useful for comparison when present.
-Modules 19-20 are ProdLM-only; tiny self-trained models cannot reliably drive
-ReAct or multi-turn assistant loops, so they are not currently exposed there.
+| Role            | Meaning                                                                                                                                                               |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ShakespeareLM` | Tiny baseline model. Useful for proving the loop works, not for quality.                                                                                              |
+| `StoryLM`       | TinyStories-trained model. More coherent stories, still not a general assistant.                                                                                      |
+| `TinyLLM`       | Broader G2C-corpus model trained from scratch. Best self-trained candidate for assistant-shaped experiments.                                                          |
+| `BaseLM`        | Small external pretrained base model for Modules 13-16                                                                                                                |
+| `ProdLM`        | Local pretrained instruct model for Modules 16-20. Served on Ollama.                                                                                                  |
+| `<base>-SFT`    | Derived artifacts produced by Module 13. The base is whichever model was fine-tuned.                                                                                  |
+| `<base>-DPO`    | Derived DPO model produced in Module 14. The base is whichever model was fine-tuned. DPO artifacts are typically layered on top of the corresponding `-SFT` artifact. |
 
 ## Time Costs
 
@@ -138,9 +121,7 @@ Use these as planning ranges, not promises.
 | BaseLM fetch | Modules 13-16 | model-size and network dependent | `./baselm.sh`, HF cache under `data/cache/baselm/` |
 | ProdLM fetch | Modules 16-20 | model-size and network dependent | `./prodlm.sh`, external Ollama model cache |
 
-Downloads and tokenized corpora are one-time setup costs. Training runs are the
-recurring cost. Long training sections should checkpoint so you can interrupt,
-inspect, sample, and continue.
+Downloads and tokenized corpora are one-time setup costs. Training runs are the recurring cost. Long training runs are setup to checkpoint so you can interrupt, inspect, sample, and continue.
 
 ## Module Expectations
 
@@ -159,17 +140,15 @@ inspect, sample, and continue.
 
 ## Working Rule
 
-Do not worry about staying inside one track forever. Start small, then add more
-artifacts when you want better outputs:
+Do not worry about staying inside one track forever. Start small, then add more artifacts when you want better outputs. All of the setup scripts are designed to be idempotent and one button installs and re-installs.
 
 ```bash
-./datasets.sh --tiny
-.venv/bin/python scripts/artifact_status.py --module 10
+./datasets.sh --small
+./prodLM.sh llama3.2:1b
 
 # Later, if you want stronger artifacts:
-./datasets.sh --small
-.venv/bin/python scripts/artifact_status.py --module 10
+./datasets.sh
+./prodLM.sh qwen3:4b
 ```
 
-The course should follow the artifacts you have, not make you manually track
-which path you chose.
+The course will follow the artifacts you have, not make you manually track which path you chose.

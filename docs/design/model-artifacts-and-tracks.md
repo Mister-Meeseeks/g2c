@@ -76,7 +76,7 @@ when a student's StoryLM/TinyLLM artifact is too weak to show the behavior.
 
 BaseLM is a role, not a fixed model. Pick any small open-weight base model
 that runs comfortably on your machine and serves the pedagogy well. Bind it
-with `./baselm.sh --model-id <hf-model-id>`; the chosen backend is recorded
+with `./baselm.sh <hf-model-id>`; the chosen backend is recorded
 in `artifacts/models/BaseLM-base/manifest.json` and the model weights live in the
 local HF hub cache under `data/cache/baselm/huggingface/`. Notebooks reference the
 role `BaseLM`, not the exact artifact directory, so swapping the backend does not

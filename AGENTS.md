@@ -9,12 +9,12 @@ Guidance for AI coding agents working in this repo.
 1. **Course material** — syllabus and per-module lessons (`docs/`)
 2. **Work product** — the student's evolving implementation (`g2c/`)
 
-The student is the repo author. Both roles are live.
+Users of the repo may either be students working on the course, or project maintainers developing or updating the course.  Unit indicated otherwise, assume you're interacting with a course student.
 
 ## Hard constraints
 
 - **Runs on an M-series MacBook.** No cloud GPUs, no paid compute. Code, datasets, and model sizes must stay within what an M1/M2/M3/M4 with 16–64GB unified memory can execute.
-- **From-scratch through the architecture.** Weeks 1–11 must not import a high-level abstraction for the concept under study. Don't use `torch.nn.MultiheadAttention` inside the attention module — the point is to build it. Using PyTorch tensor primitives, autograd (after week 1), and standard optimizers is fine when the concept under study is something else. Weeks 12–15 keep working with the self-trained StoryLM/TinyLLM model tracks. Weeks 16–20 pivot to `ProdLLM`: a local pretrained instruct backend sized to the student's machine.
+- **From-scratch through the architecture.** Weeks 1–11 must not import a high-level abstraction for the concept under study. Don't use `torch.nn.MultiheadAttention` inside the attention module — the point is to build it. Using PyTorch tensor primitives, autograd (after week 1), and standard optimizers is fine when the concept under study is something else. Weeks 12–15 pivot to using the weights from a larger pretrained base model `BaseLM` . Weeks 16–20 pivot to `ProdLLM`: a local pretrained instruct Ollama backend sized to the student's machine.
 - **Pedagogy over performance.** Code should be legible. Optimize for "every internal piece is understandable" over "this runs fastest." Performance work is its own later concern.
 
 ## Stack
@@ -254,3 +254,4 @@ Student-facing notebooks should foreground the conceptual flow, not the plumbing
 - Don't add cloud-dependent code paths (paid APIs, hosted training).
 - Don't preemptively scale up. Tiny corpora, tiny models. The course's whole point is that the tiny version teaches the idea.
 - Don't write speculative scaffolding for modules that haven't been started yet.
+

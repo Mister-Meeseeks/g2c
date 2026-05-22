@@ -456,7 +456,7 @@ Optional:
 ## Deliverable checklist
 
 - [ ] All tests in `tests/test_assistant.py` pass.
-- [ ] ProdLM configured. `./prodlm.sh --model-id llama3.2:3b` is the recommended fast default.
+- [ ] ProdLM configured. `./prodlm.sh llama3.2:3b` is the recommended fast default.
 - [ ] Notebook: `notebooks/20-capstone.ipynb`. 
 - [ ] **Eval suite**: `notebooks/20-eval-cases.py` (or similar) with 5-15 `EvalCase`s. Pass rate ≥ 80% on your assistant configuration.
 - [ ] **Failure-mode catalog** (Exercise 8) in `docs/capstone-failure-modes.md`. Five failure modes, each with a transcript, localization, and proposed mitigation.

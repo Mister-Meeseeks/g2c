@@ -2,13 +2,13 @@
 
 ![Cover illustration: a circus-themed map of the course. Numbered booths under a big top represent each of the twenty modules — pretraining, tokenization, embeddings, gradient descent, self-attention, multi-head attention, the transformer (a central tower of "Add & Norm / Feed Forward / Multi-Head Attention" floors), sampling, SFT, DPO, RAG, tools, the agent, the eval inspector, and an "inference booth" robot at the bottom. Banners read "A tiny LLM stack from first principles," "Data. Compute. Curiosity. That's all you need," and "Built step by step under the big top."](CourseCover.png)
 
-A 20-week self-study course, preceded by a fast prerequisite review, building a tiny LLM stack from scalar autograd up through a working chat assistant. Each week builds on the previous one. The codebase grows in `g2c/` as a single Python package; later modules import earlier ones. Modules 03B and 09B are currently draft insertions being evaluated before the downstream modules are renumbered.
+A 20-week self-study course, preceded by a fast prerequisite review, building a tiny LLM stack from scalar autograd up through a working chat assistant. Each week builds on the previous one. The codebase grows in `g2c/` as a single Python package; later modules import earlier ones. 
 
 ## How to read this syllabus
 
 Each week has the same structure:
 
-- **Question it answers** — the one-sentence motivation, in the style of the brainstorm.
+- **Question** — the one-sentence motivation, in the style of the brainstorm.
 - **Goal** — what you'll have built by the end.
 - **Concepts** — the ideas to internalize.
 - **Build** — what code lands in `g2c/<topic>/`.
@@ -35,18 +35,17 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 
 - Python 3.11+
 - PyTorch with the MPS backend (primary)
-- MLX (selectively, for inference-heavy stages)
 - Jupyter for exploration (`notebooks/`)
-- Ollama / llama.cpp for serving pretrained open models in the capstone
+- Ollama for serving pretrained open models in the capstone
 
 ## Ground rules
 
-- **From-scratch through the architecture (weeks 1–11).** When the topic of the week is the thing — autograd, attention, the transformer block — build it. Don't import a high-level abstraction that does the work for you.
-- **Use your own model through behavior shaping when it is useful (weeks 12–15).** Scaling experiments, SFT, DPO, and eval should support your self-trained StoryLM/TinyLLM artifacts. If those artifacts are too weak for the post-training lesson, use the small pretrained BaseLM path.
+- **From-scratch through the architecture (weeks 1–12).** When the topic of the week is the thing — autograd, attention, the transformer block — build it. Don't import a high-level abstraction that does the work for you.
+- **Use a prertrained base model through behavior shaping (weeks 13–15).** Scaling experiments, SFT, DPO, and eval should support your self-trained TinyLLM. If those artifacts are too weak for the post-training lesson, use the default small pretrained BaseLM path.
 - **Pivot to a pretrained open model for the assistant phase (weeks 16–20).** RAG, tools, agents, and the capstone use a local pretrained instruct model, called ProdLM in the course, so the system is actually usable.
 - **Pedagogy beats performance.** Code should be legible. Optimization is a separate concern.
 - **Tiny everything.** Tiny corpora, tiny models. The whole course thesis is that the tiny version teaches the idea.
-- **Tracks are artifact choices, not separate courses.** Start with Tiny, Standard, or Full depending on your machine and time. See [Course Tracks and Artifacts](tracks.md).
+- **Tracks are artifact choices, not separate courses.** Use the default models and datasets. Or experiment with larger or smaller artifacts to see the difference. The conceptual path is the same regardless. See [Course Tracks and Artifacts](tracks.md).
 
 ## Phase overview
 
@@ -121,7 +120,7 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 - **Reading.** 3Blue1Brown "Neural Networks" series; Goodfellow ch. 6; Karpathy lecture 4.
 - **M-series notes.** MNIST trains in minutes on MPS.
 
-### Draft Week 3B — Training — [module ↗](modules/03b-training.md)
+### Week 3B — Training — [module ↗](modules/03b-training.md)
 
 - **Question.** Why does the same network sometimes learn, stall, or explode?
 - **Goal.** Make learning rate, optimizer choice, gradient clipping, schedules, and train/validation diagnostics feel like understandable tools rather than magic knobs.
@@ -229,7 +228,7 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 - **Reading.** Vaswani §3; Xiong et al., "On Layer Normalization in the Transformer Architecture"; Anthropic Transformer Circuits Thread (intro post).
 - **M-series notes.** Still tiny.
 
-### Draft Week 9B — Pretraining — [module ↗](modules/09b-pretraining.md)
+### Week 9B — Pretraining — [module ↗](modules/09b-pretraining.md)
 
 - **Question.** How do we turn a text corpus and a TransformerLM into supervised training data?
 - **Goal.** Make corpus splitting, `(B, T)` language-model batches, multi-position targets, LM cross-entropy, and the `log(V)` baseline explicit before the first full pretraining run.

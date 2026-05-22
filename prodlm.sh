@@ -6,12 +6,17 @@ EMBED_MODEL_ID="nomic-embed-text"
 BASE_URL="http://localhost:11434"
 TIMEOUT="120"
 PULL=1
+MODEL_ID_SET=0
 
 usage() {
   cat <<'EOF'
-Usage: ./prodlm.sh [options]
+Usage: ./prodlm.sh [MODEL_ID] [options]
 
 Configure the course ProdLM backend for Modules 16-20.
+
+Positional:
+  MODEL_ID                Ollama generation model tag (shortcut for --model-id;
+                          default: llama3.2:3b)
 
 Options:
   --model-id MODEL        Ollama generation model tag (default: llama3.2:3b)
@@ -27,7 +32,13 @@ EOF
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --model-id)
+      if [[ "$MODEL_ID_SET" -eq 1 ]]; then
+        echo "MODEL_ID specified more than once." >&2
+        usage >&2
+        exit 2
+      fi
       MODEL_ID="${2:?missing value for --model-id}"
+      MODEL_ID_SET=1
       shift 2
       ;;
     --embed-model-id)
@@ -54,10 +65,20 @@ while [[ $# -gt 0 ]]; do
       usage
       exit 0
       ;;
-    *)
+    -*)
       echo "Unknown option: $1" >&2
       usage >&2
       exit 2
+      ;;
+    *)
+      if [[ "$MODEL_ID_SET" -eq 1 ]]; then
+        echo "Unexpected extra argument: $1" >&2
+        usage >&2
+        exit 2
+      fi
+      MODEL_ID="$1"
+      MODEL_ID_SET=1
+      shift
       ;;
   esac
 done

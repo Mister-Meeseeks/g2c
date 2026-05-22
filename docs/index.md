@@ -54,10 +54,10 @@ If you've watched Karpathy's videos and wished for a structured curriculum with 
 
 ## How the course works
 
-Each module has a lesson page (here on the site) and a deliverable that lives in the [course repo](https://github.com/Mister-Meeseeks/g2c). To do the exercises you clone the repo, run `setup.sh`, and work through the notebook for each module. The lesson pages are the readable front door; the repo is where the code lives.
+Each module has a lesson page and a set of deliverables that live in the [course repo](https://github.com/Mister-Meeseeks/g2c). Each module inside the repo has its own python package. The packages are setup with boilerplate and plumbing, and students implement the core code. Each module also has a notebook with student exercises. The notebooks use the code the students implement. The lesson pages are the readable front door; the repo is where the code lives.
 
 ## Get started
 
 - Read the [syllabus](syllabus.md) for the full 20-week arc.
-- Pick a [track](tracks.md) (Tiny / Standard / Full) sized to your machine.
+- Use the repository [[README]] quickstart to install the course
 - Start with [Module 0: Prerequisite review](modules/00-prerequisite-review.md), or jump straight into [Module 1: Scalar autodiff](modules/01-autodiff.md).

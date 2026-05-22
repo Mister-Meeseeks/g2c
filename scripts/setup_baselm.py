@@ -23,9 +23,19 @@ from g2c.tokenizer import COURSE_SPECIAL_TOKENS
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
+        "model_id_pos",
+        nargs="?",
+        default=None,
+        metavar="MODEL_ID",
+        help=(
+            "Hugging Face model id (positional shortcut for --model-id). "
+            f"Defaults to {DEFAULT_BASELM_MODEL_ID} when omitted."
+        ),
+    )
+    parser.add_argument(
         "--model-id",
-        default=DEFAULT_BASELM_MODEL_ID,
-        help=f"Hugging Face model id. Default: {DEFAULT_BASELM_MODEL_ID}",
+        default=None,
+        help=f"Hugging Face model id (flag form). Default: {DEFAULT_BASELM_MODEL_ID}",
     )
     parser.add_argument(
         "--name",
@@ -61,6 +71,10 @@ def main(argv: list[str] | None = None) -> int:
         help="Repository root. Default: auto-detect.",
     )
     args = parser.parse_args(argv)
+    if args.model_id_pos is not None and args.model_id is not None:
+        parser.error("Provide MODEL_ID positionally or via --model-id, not both.")
+    if args.model_id is None:
+        args.model_id = args.model_id_pos or DEFAULT_BASELM_MODEL_ID
 
     repo_root = find_repo_root(args.repo_root)
     cache_dir = _resolve_cache_dir(args.cache_dir, repo_root)
