@@ -73,7 +73,7 @@ estimates and artifact names. The deeper maintainer design note lives at
 
 ```
 docs/
-  CourseCover.png       # cover illustration (used in README)
+  CourseCover.png       # cover illustration
   syllabus.md           # the detailed syllabus
   modules/
     00-prerequisite-review.md
@@ -82,23 +82,45 @@ docs/
     02-tensors.md
     02-tensors/
     ...
+  requirements.txt      # deps for the mkdocs site build
 g2c/                    # the work-product Python package — grows over the course
   autodiff/             # module 1
   tensors/              # module 2
   nn/                   # module 3
   tokenizer/            # module 4
   ...
+  solutions/            # mirror tree with worked implementations
+  notebook_extras/      # non-pedagogical notebook helpers (matplotlib glue, etc.)
 notebooks/
   clean/                # canonical pristine notebooks
   solutions/            # working notebook copies and solved notebooks
-data/                   # corpora and datasets (large files gitignored)
+data/                   # corpora, datasets, caches (large files gitignored)
+artifacts/              # saved model and tokenizer artifacts (durable outputs)
+scripts/                # utilities: open_notebook, build_solutions_mirror, smoke_test, ...
 prompts/                # course brainstorms, prompt drafts
 tests/                  # tests across modules
+.github/workflows/      # CI: mkdocs site deploy
+mkdocs.yml              # docs site config
+pyproject.toml          # Python package + dev deps
 README.md
 AGENTS.md
 ```
 
 The split is intentional: `docs/` is what a student reads, `g2c/` is what the student builds. They evolve together.
+
+## Docs site
+
+The lesson pages render to a public site at <https://mister-meeseeks.github.io/g2c/>, built with mkdocs-material. Every push to `main` runs `.github/workflows/docs.yml`, which installs from `docs/requirements.txt`, runs `mkdocs build`, and deploys — edits under `docs/` are public within a few minutes.
+
+For local preview while editing lesson pages:
+
+```bash
+source .venv/bin/activate
+pip install -r docs/requirements.txt
+mkdocs serve
+```
+
+This serves the site at <http://localhost:8000/> with live reload.
 
 ## Getting started
 
@@ -117,7 +139,7 @@ The script is idempotent. It creates a project-local venv at `./.venv`, installs
 
 To bootstrap everything in one shot — venv + all optional datasets, BaseLM, and ProdLM — run `./setup.sh --full`. It chains `./datasets.sh`, `./baselm.sh`, and `./prodlm.sh` after the normal setup. See `./setup.sh --help` for details.
 
-The first run may download `data/tinyshakespeare.txt` for language-model training. Larger optional datasets live behind `datasets.sh` so the normal setup stays fast. You can wait until a module asks for one, or preload all optional course data up front:
+The first run may download `data/datasets/tinyshakespeare.txt` for language-model training. Larger optional datasets live behind `datasets.sh` so the normal setup stays fast. You can wait until a module asks for one, or preload all optional course data up front:
 
 ```bash
 ./datasets.sh --tiny       # Tiny track: 100MB TinyStories + tokenizer/tokenized artifact

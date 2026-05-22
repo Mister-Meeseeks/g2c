@@ -25,6 +25,8 @@ The student is the repo author. Both roles are live.
 - **Jupyter notebooks** for exploration and visualization (in `notebooks/`)
 - **Ollama / llama.cpp** for running pretrained open models in the capstone
 
+Dependencies and build config live in `pyproject.toml`.
+
 ## Layout conventions
 
 - `docs/modules/NN-name.md` — lesson + motivation + exercises + deliverable spec for module NN
@@ -38,6 +40,7 @@ The student is the repo author. Both roles are live.
 - `notebooks/solutions/NN-*.ipynb` — working or solved notebook copies; use `./notebook.sh NN` to create or resume, and `./notebook.sh NN --fresh` to archive the existing copy before resetting from clean
 - `docs/rubrics/module-NN.md` — course-owned grading rubric for written answers; use for review, not as a replacement for the student's work
 - `docs/design/model-artifacts-and-tracks.md` — durable model artifact, hardware track, and Modules 10-20 backend plan
+- `mkdocs.yml` + `.github/workflows/docs.yml` — lesson pages build to <https://mister-meeseeks.github.io/g2c/> on every push to `main`. Edits under `docs/` are publicly visible within a few minutes; preview locally with `pip install -r docs/requirements.txt && mkdocs serve`.
 - `data/` — local, mostly-gitignored working tree:
   - `data/datasets/` — raw corpora and benchmark datasets (TinyShakespeare, TinyStories, G2C Corpus v1, MNIST).
   - `data/embeddings/` — pretrained embedding artifacts (GloVe).
