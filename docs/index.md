@@ -59,5 +59,5 @@ Each module has a lesson page and a set of deliverables that live in the [course
 ## Get started
 
 - Read the [syllabus](syllabus.md) for the full 20-week arc.
-- Use the repository [[README]] quickstart to install the course
+- Clone the [repository](https://github.com/Mister-Meeseeks/g2c) and follow the README quickstart to setup on your machine
 - Start with [Module 0: Prerequisite review](modules/00-prerequisite-review.md), or jump straight into [Module 1: Scalar autodiff](modules/01-autodiff.md).
