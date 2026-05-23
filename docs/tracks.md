@@ -64,7 +64,13 @@ dataset tracks:
 ./prodlm.sh <ollama-tag> [OPTIONAL]
 ```
 
-Both scripts have sensible defaults if you omit the optional model tag. Pick any small base LM for BaseLM and any local instruct model for ProdLM that fits your machine. You can use `sysprobe.sh` to get a list of suggestions, or use any valid Hugging Face or Ollama tags.
+Both scripts have sensible defaults if you omit the optional model tag. Pick any small base LM for BaseLM and any local instruct model for ProdLM that fits your machine. You can use `sysprobe.sh` to get a list of suggestions, or use any valid Hugging Face or Ollama tags:
+
+```bash
+./sysprobe.sh    # Run sysprobe checks against suggested candidate set
+./sysprobe.sh --baselm-model  Qwen/Qwen3-0.6B-Base  # Eval for BaseLM
+./sysprobe.sh --prodlm-model qwen3.5:9b             # Eval for ProdLM
+```
 
 You can use the scripts to download multiple models. The scripts are idempotent and cache the results, so you can run multiple times. The last tag the script is run with becomes the canonical BaseLM or ProdLM model:
 

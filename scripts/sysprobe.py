@@ -1132,17 +1132,25 @@ def prodlm_arch_from_gguf(metadata: dict[str, Any]) -> dict[str, int]:
 
 
 def prodlm_candidate_from_spec(spec: str) -> ProdLMCandidate:
-    """Build a ProdLMCandidate from `HF_REPO:GGUF_FILENAME`.
+    """Build a ProdLMCandidate from either a curated Ollama tag or an
+    `HF_REPO:GGUF_FILENAME` spec.
 
-    Arch fields and a nominal parameter count are read from the GGUF header;
-    the user supplies only the repo + filename.
+    Curated tags (e.g. `qwen2.5:7b`) are matched against the built-in list and
+    reused as-is. Anything containing a `/` is treated as an HF repo; arch
+    fields and a nominal parameter count are then read from the GGUF header.
     """
+    for cand in PRODLM_CANDIDATES:
+        if cand.ollama_tag == spec:
+            return cand
+
     repo, sep, filename = spec.rpartition(":")
-    if not sep or not repo or not filename:
+    if not sep or not repo or not filename or "/" not in repo:
+        curated = ", ".join(c.ollama_tag for c in PRODLM_CANDIDATES)
         raise ValueError(
-            "expected HF_REPO:GGUF_FILENAME, e.g. "
-            "bartowski/Llama-3.2-1B-Instruct-GGUF:"
-            "Llama-3.2-1B-Instruct-Q4_K_M.gguf"
+            f"{spec!r} is not a curated Ollama tag and does not look like "
+            f"HF_REPO:GGUF_FILENAME (the repo part must contain a `/`, e.g. "
+            f"bartowski/Llama-3.2-1B-Instruct-GGUF:"
+            f"Llama-3.2-1B-Instruct-Q4_K_M.gguf). Curated tags: {curated}"
         )
     try:
         metadata = fetch_gguf_metadata(repo, filename)
@@ -1539,6 +1547,10 @@ def fmt_tps(x: float | None) -> str:
     return f"{x:7.1f} tok/s" if x is not None else "       n/a"
 
 
+def fmt_params_b(x: float | None) -> str:
+    return f"{x:6.2f}B" if x is not None else "    n/a"
+
+
 def fmt_status(s: str) -> str:
     c = color_for_verdict(s)
     return f"{c}{s:^7}{RESET}"
@@ -1758,9 +1770,10 @@ def print_batch_sweep_footer(results: list[ProbeResult]) -> None:
 
 def print_prodlm_header() -> None:
     header("ProdLM probe (Ollama candidates, pre-download estimate)")
-    print(f"  {'tag':<28} {'status':^9} {'total':>9}  "
+    print(f"  {'tag':<28} {'params':>8} {'status':^9} {'total':>9}  "
           f"{'est tok/s':>11}  {'tier':<12}")
-    print(f"  {'-'*28} {'-'*7:^9} {'-'*9:>9}  {'-'*11:>11}  {'-'*12:<12}")
+    print(f"  {'-'*28} {'-'*8} {'-'*7:^9} {'-'*9:>9}  "
+          f"{'-'*11:>11}  {'-'*12:<12}")
 
 
 def print_prodlm_row(r: ProdLMResult) -> None:
@@ -1772,7 +1785,8 @@ def print_prodlm_row(r: ProdLMResult) -> None:
         "painful":     RED,
         "unknown":     DIM,
     }.get(r.throughput_tier, "")
-    print(f"  {r.ollama_tag:<28} {fmt_status(r.status)} "
+    print(f"  {r.ollama_tag:<28} {fmt_params_b(r.params_b):>8} "
+          f"{fmt_status(r.status)} "
           f"{fmt_gb(r.total_gb):>9}  {tps:>11}  "
           f"{tier_color}{r.throughput_tier:<12}{RESET}")
     if r.note:
@@ -1857,13 +1871,14 @@ def main() -> int:
                              "curated list (e.g. HuggingFaceTB/SmolLM-135M); "
                              "the model's config.json is fetched from "
                              "Hugging Face")
-    parser.add_argument("--prodlm-model", metavar="HF_REPO:GGUF_FILENAME",
+    parser.add_argument("--prodlm-model", metavar="TAG_OR_HF_SPEC",
                         help="probe only this ProdLM model instead of the "
-                             "curated list (e.g. "
-                             "bartowski/Llama-3.2-1B-Instruct-GGUF:"
-                             "Llama-3.2-1B-Instruct-Q4_K_M.gguf); "
-                             "arch fields and quantization are read from the "
-                             "GGUF header")
+                             "curated list. Accepts a curated Ollama tag "
+                             "(e.g. qwen2.5:7b) or an HF_REPO:GGUF_FILENAME "
+                             "spec (e.g. bartowski/Llama-3.2-1B-Instruct-GGUF:"
+                             "Llama-3.2-1B-Instruct-Q4_K_M.gguf); for the "
+                             "latter, arch fields and quantization are read "
+                             "from the GGUF header")
     parser.add_argument("--steps", type=int, default=25,
                         help="training steps per size for the training probe "
                              "(default 25; use 100 for a more stable memory "
@@ -1895,6 +1910,14 @@ def main() -> int:
         parser.error("--baselm-model and --skip-baselm are mutually exclusive")
     if args.prodlm_model and args.skip_prodlm:
         parser.error("--prodlm-model and --skip-prodlm are mutually exclusive")
+    # Targeting one model implicitly hides the unrelated sections so the
+    # output stays focused on the requested model.
+    if args.baselm_model and not args.prodlm_model:
+        args.skip_prodlm = True
+        args.skip_training = True
+    if args.prodlm_model and not args.baselm_model:
+        args.skip_baselm = True
+        args.skip_training = True
     try:
         sweep_batches = parse_batch_list(args.sweep_batches)
     except ValueError as exc:
