@@ -54,7 +54,9 @@ If you've watched Karpathy's videos and wished for a structured curriculum with 
 
 ## How the course works
 
-Each module has a lesson page and a set of deliverables that live in the [course repo](https://github.com/Mister-Meeseeks/g2c). Each module inside the repo has its own python package. The packages are setup with boilerplate and plumbing, and students implement the core code. Each module also has a notebook with student exercises. The notebooks use the code the students implement. The lesson pages are the readable front door; the repo is where the code lives.
+Each module in the course has a lesson page and a set of deliverables combining a coding project and problem sets. The lesson pages are hosted on this site, as well as available as markdown in the [course repo](https://github.com/Mister-Meeseeks/g2c). 
+
+Each week, students will read the module lesson page. They'll then implement a new package covering that weeks topic inside the `g2c/` python pacakge. Finally they'll complete a set of student exercises in a Jupyter notebook using the code they wrote that week. The lesson pages are the readable front door; the repo is where the code lives.
 
 ## Get started
 

@@ -26,6 +26,8 @@ Run with:
     .venv/bin/python scripts/sysprobe.py --skip-prodlm   # no network
     .venv/bin/python scripts/sysprobe.py --skip-baselm   # hide HF estimate
     .venv/bin/python scripts/sysprobe.py --skip-training # fast run
+    .venv/bin/python scripts/sysprobe.py --baselm-model HuggingFaceTB/SmolLM-360M
+    .venv/bin/python scripts/sysprobe.py --prodlm-model bartowski/Llama-3.2-1B-Instruct-GGUF:Llama-3.2-1B-Instruct-Q4_K_M.gguf
     .venv/bin/python scripts/sysprobe.py --skip-training --skip-prodlm --batch-sweep TinyLLM-30M --sweep-batches 8,16,32
     .venv/bin/python scripts/sysprobe.py --skip-training --skip-prodlm --batch-sweep TinyLLM-100M --sweep-batches 8,16,32
 """
@@ -382,6 +384,28 @@ class SystemInfo:
     mps_available: bool
     python_version: str
     torch_version: str | None
+    gpu_cores: int | None = None
+
+
+def _detect_apple_gpu_cores() -> int | None:
+    """Parse `Total Number of Cores:` from system_profiler's GPU section."""
+    try:
+        out = subprocess.check_output(
+            ["system_profiler", "SPDisplaysDataType"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+            timeout=10,
+        )
+    except (subprocess.SubprocessError, FileNotFoundError, OSError):
+        return None
+    for line in out.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("Total Number of Cores:"):
+            try:
+                return int(stripped.split(":", 1)[1].strip())
+            except ValueError:
+                return None
+    return None
 
 
 def detect_system() -> SystemInfo:
@@ -389,6 +413,7 @@ def detect_system() -> SystemInfo:
     chip = "unknown"
     mem_gb = 0.0
     bandwidth = None
+    gpu_cores = None
 
     if sys_platform == "Darwin":
         try:
@@ -409,6 +434,7 @@ def detect_system() -> SystemInfo:
         except Exception:
             pass
         bandwidth = CHIP_BANDWIDTH_GBPS.get(chip)
+        gpu_cores = _detect_apple_gpu_cores()
 
     try:
         import torch
@@ -426,6 +452,7 @@ def detect_system() -> SystemInfo:
         mps_available=mps,
         python_version=sys.version.split()[0],
         torch_version=torch_v,
+        gpu_cores=gpu_cores,
     )
 
 
@@ -1039,6 +1066,109 @@ def gguf_param_count(metadata: dict[str, Any]) -> int | None:
 
 
 # ---------------------------------------------------------------------------
+# User-supplied candidate builders — resolve a single HF model id or
+# GGUF spec at runtime so users can probe models outside the curated lists.
+# ---------------------------------------------------------------------------
+
+def fetch_hf_config(model_id: str, timeout: float = 8.0) -> dict[str, Any]:
+    """Fetch a Hugging Face repo's `config.json` as a parsed dict."""
+    url = f"https://huggingface.co/{model_id}/resolve/main/config.json"
+    req = urllib.request.Request(url, headers={
+        "User-Agent": "g2c-sysprobe/0.1",
+        "Accept": "application/json",
+    })
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def baselm_candidate_from_hf(model_id: str) -> BaseLMInferenceCandidate:
+    """Build a BaseLMInferenceCandidate from a HF model id."""
+    cfg = fetch_hf_config(model_id)
+    try:
+        vocab_size = int(cfg["vocab_size"])
+        hidden_size = int(cfg["hidden_size"])
+        num_hidden_layers = int(cfg["num_hidden_layers"])
+        num_attention_heads = int(cfg["num_attention_heads"])
+    except KeyError as exc:
+        raise ValueError(
+            f"{model_id} config.json missing required field {exc.args[0]!r}"
+        ) from exc
+
+    num_key_value_heads = int(cfg.get("num_key_value_heads", num_attention_heads))
+    intermediate_size = int(cfg.get("intermediate_size", 4 * hidden_size))
+    head_dim = int(cfg.get("head_dim", hidden_size // num_attention_heads))
+    max_context = int(cfg.get("max_position_embeddings", 2048))
+
+    return BaseLMInferenceCandidate(
+        display_name=model_id.rsplit("/", 1)[-1],
+        model_id=model_id,
+        vocab_size=vocab_size,
+        hidden_size=hidden_size,
+        intermediate_size=intermediate_size,
+        num_hidden_layers=num_hidden_layers,
+        num_attention_heads=num_attention_heads,
+        num_key_value_heads=num_key_value_heads,
+        head_dim=head_dim,
+        max_context=max_context,
+    )
+
+
+def prodlm_arch_from_gguf(metadata: dict[str, Any]) -> dict[str, int]:
+    """Pull `n_layers`, `n_kv_heads`, `head_dim` from a parsed GGUF header."""
+    arch = metadata.get("general.architecture")
+    if not isinstance(arch, str):
+        raise ValueError("GGUF header missing general.architecture")
+    try:
+        n_layers = int(metadata[f"{arch}.block_count"])
+        n_h = int(metadata[f"{arch}.attention.head_count"])
+        D = int(metadata[f"{arch}.embedding_length"])
+    except KeyError as exc:
+        raise ValueError(
+            f"GGUF header missing required key {exc.args[0]!r}"
+        ) from exc
+    n_kv = int(metadata.get(f"{arch}.attention.head_count_kv", n_h))
+    head_dim = int(metadata.get(f"{arch}.attention.key_length", D // n_h))
+    return {"n_layers": n_layers, "n_kv_heads": n_kv, "head_dim": head_dim}
+
+
+def prodlm_candidate_from_spec(spec: str) -> ProdLMCandidate:
+    """Build a ProdLMCandidate from `HF_REPO:GGUF_FILENAME`.
+
+    Arch fields and a nominal parameter count are read from the GGUF header;
+    the user supplies only the repo + filename.
+    """
+    repo, sep, filename = spec.rpartition(":")
+    if not sep or not repo or not filename:
+        raise ValueError(
+            "expected HF_REPO:GGUF_FILENAME, e.g. "
+            "bartowski/Llama-3.2-1B-Instruct-GGUF:"
+            "Llama-3.2-1B-Instruct-Q4_K_M.gguf"
+        )
+    try:
+        metadata = fetch_gguf_metadata(repo, filename)
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError,
+            OSError, ValueError) as exc:
+        raise ValueError(
+            f"could not fetch GGUF header for {repo}/{filename}: "
+            f"{type(exc).__name__}: {exc}"
+        ) from exc
+
+    arch = prodlm_arch_from_gguf(metadata)
+    params = gguf_param_count(metadata)
+    short_tag = filename.removesuffix(".gguf") if filename.endswith(".gguf") else filename
+    return ProdLMCandidate(
+        display_name=f"{filename} [user]",
+        ollama_tag=short_tag,
+        hf_repo=repo,
+        gguf_filename=filename,
+        n_layers=arch["n_layers"],
+        n_kv_heads=arch["n_kv_heads"],
+        head_dim=arch["head_dim"],
+        nominal_params_b=(params / 1e9) if params else 0.0,
+    )
+
+
+# ---------------------------------------------------------------------------
 # ProdLM fit + throughput estimate
 # ---------------------------------------------------------------------------
 
@@ -1426,6 +1556,8 @@ def print_system(sysinfo: SystemInfo) -> None:
     header("System")
     print(f"  platform        {sysinfo.platform}")
     print(f"  chip            {sysinfo.chip}")
+    if sysinfo.gpu_cores is not None:
+        print(f"  gpu cores       {sysinfo.gpu_cores}")
     print(f"  unified memory  {sysinfo.physical_memory_gb:.1f} GB")
     print(f"  training budget {max(0.0, sysinfo.physical_memory_gb - TRAINING_OS_OVERHEAD_GB):.1f} GB  "
           f"{DIM}(unified memory - {TRAINING_OS_OVERHEAD_GB:.0f} GB OS reserve){RESET}")
@@ -1496,16 +1628,16 @@ def print_inference(results: list[ProbeResult]) -> None:
 
 def print_baselm_inference_header() -> None:
     header("BaseLM inference estimate (Hugging Face/PyTorch, no download)")
-    print(f"  {'model':<18} {'params':>8} {'ctx':>7} {'status':^9} "
+    print(f"  {'tag':<28} {'params':>8} {'ctx':>7} {'status':^9} "
           f"{'model fp16':>10}  {'notebook fp16':>13}  "
           f"{'notebook fp32':>13}  {'budget':>9}  notes")
-    print(f"  {'-'*18} {'-'*8} {'-'*7:>7} {'-'*7:^9} "
+    print(f"  {'-'*28} {'-'*8} {'-'*7:>7} {'-'*7:^9} "
           f"{'-'*10:>10}  {'-'*13:>13}  {'-'*13:>13}  "
           f"{'-'*9:>9}  {'-'*40}")
 
 
 def print_baselm_inference_row(r: BaseLMInferenceResult) -> None:
-    print(f"  {r.display_name:<18} {r.params_b:>6.2f}B  "
+    print(f"  {r.model_id:<28} {r.params_b:>6.2f}B  "
           f"{r.context_length:>7,} {fmt_status(r.status)} "
           f"{fmt_gb(r.model_memory_fp16_gb):>10}  "
           f"{fmt_gb(r.notebook_memory_fp16_gb):>13}  "
@@ -1533,17 +1665,17 @@ def print_baselm_inference(results: list[BaseLMInferenceResult]) -> None:
 
 def print_baselm_posttraining_header() -> None:
     header("BaseLM post-training estimate (full SFT/DPO, no download)")
-    print(f"  {'model':<18} {'stage':<4} {'params':>8} {'shape':>9} "
+    print(f"  {'tag':<28} {'stage':<4} {'params':>8} {'shape':>9} "
           f"{'status':^9} {'fp32 est':>9}  {'fp16 est':>9}  "
           f"{'budget':>9}  notes")
-    print(f"  {'-'*18} {'-'*4:<4} {'-'*8} {'-'*9:>9} "
+    print(f"  {'-'*28} {'-'*4:<4} {'-'*8} {'-'*9:>9} "
           f"{'-'*7:^9} {'-'*9:>9}  {'-'*9:>9}  "
           f"{'-'*9:>9}  {'-'*40}")
 
 
 def print_baselm_posttraining_row(r: BaseLMPostTrainingResult) -> None:
     shape = f"B={r.batch_size},T={r.context_length}"
-    print(f"  {r.display_name:<18} {r.stage:<4} {r.params_b:>6.2f}B  "
+    print(f"  {r.model_id:<28} {r.stage:<4} {r.params_b:>6.2f}B  "
           f"{shape:>9} {fmt_status(r.status)} "
           f"{fmt_gb(r.notebook_memory_fp32_gb):>9}  "
           f"{fmt_gb(r.notebook_memory_fp16_gb):>9}  "
@@ -1626,9 +1758,9 @@ def print_batch_sweep_footer(results: list[ProbeResult]) -> None:
 
 def print_prodlm_header() -> None:
     header("ProdLM probe (Ollama candidates, pre-download estimate)")
-    print(f"  {'model':<48} {'status':^9} {'total':>9}  "
+    print(f"  {'tag':<28} {'status':^9} {'total':>9}  "
           f"{'est tok/s':>11}  {'tier':<12}")
-    print(f"  {'-'*48} {'-'*7:^9} {'-'*9:>9}  {'-'*11:>11}  {'-'*12:<12}")
+    print(f"  {'-'*28} {'-'*7:^9} {'-'*9:>9}  {'-'*11:>11}  {'-'*12:<12}")
 
 
 def print_prodlm_row(r: ProdLMResult) -> None:
@@ -1640,7 +1772,7 @@ def print_prodlm_row(r: ProdLMResult) -> None:
         "painful":     RED,
         "unknown":     DIM,
     }.get(r.throughput_tier, "")
-    print(f"  {r.display_name:<48} {fmt_status(r.status)} "
+    print(f"  {r.ollama_tag:<28} {fmt_status(r.status)} "
           f"{fmt_gb(r.total_gb):>9}  {tps:>11}  "
           f"{tier_color}{r.throughput_tier:<12}{RESET}")
     if r.note:
@@ -1720,6 +1852,18 @@ def main() -> int:
                         help="skip ProdLM probe (no network needed)")
     parser.add_argument("--skip-baselm", action="store_true",
                         help="skip BaseLM Hugging Face inference memory estimates")
+    parser.add_argument("--baselm-model", metavar="HF_MODEL_ID",
+                        help="probe only this BaseLM model instead of the "
+                             "curated list (e.g. HuggingFaceTB/SmolLM-135M); "
+                             "the model's config.json is fetched from "
+                             "Hugging Face")
+    parser.add_argument("--prodlm-model", metavar="HF_REPO:GGUF_FILENAME",
+                        help="probe only this ProdLM model instead of the "
+                             "curated list (e.g. "
+                             "bartowski/Llama-3.2-1B-Instruct-GGUF:"
+                             "Llama-3.2-1B-Instruct-Q4_K_M.gguf); "
+                             "arch fields and quantization are read from the "
+                             "GGUF header")
     parser.add_argument("--steps", type=int, default=25,
                         help="training steps per size for the training probe "
                              "(default 25; use 100 for a more stable memory "
@@ -1747,10 +1891,31 @@ def main() -> int:
         parser.error("--steps must be positive")
     if args.sweep_steps <= 0:
         parser.error("--sweep-steps must be positive")
+    if args.baselm_model and args.skip_baselm:
+        parser.error("--baselm-model and --skip-baselm are mutually exclusive")
+    if args.prodlm_model and args.skip_prodlm:
+        parser.error("--prodlm-model and --skip-prodlm are mutually exclusive")
     try:
         sweep_batches = parse_batch_list(args.sweep_batches)
     except ValueError as exc:
         parser.error(str(exc))
+
+    if args.baselm_model:
+        try:
+            baselm_candidates = [baselm_candidate_from_hf(args.baselm_model)]
+        except (ValueError, urllib.error.URLError, urllib.error.HTTPError,
+                TimeoutError, OSError) as exc:
+            parser.error(f"--baselm-model: {type(exc).__name__}: {exc}")
+    else:
+        baselm_candidates = list(BASELM_INFERENCE_CANDIDATES)
+
+    if args.prodlm_model:
+        try:
+            prodlm_candidates = [prodlm_candidate_from_spec(args.prodlm_model)]
+        except ValueError as exc:
+            parser.error(f"--prodlm-model: {exc}")
+    else:
+        prodlm_candidates = list(PRODLM_CANDIDATES)
 
     sysinfo = detect_system()
     print_system(sysinfo)
@@ -1825,9 +1990,9 @@ def main() -> int:
             f"requested context={args.context_length:,}"
         )
         print_status_line(baselm_status)
-        for idx, cand in enumerate(BASELM_INFERENCE_CANDIDATES, start=1):
+        for idx, cand in enumerate(baselm_candidates, start=1):
             print_status_line(
-                f"{baselm_status} | {idx}/{len(BASELM_INFERENCE_CANDIDATES)} "
+                f"{baselm_status} | {idx}/{len(baselm_candidates)} "
                 f"{cand.display_name}"
             )
             r = estimate_baselm_inference(
@@ -1844,9 +2009,9 @@ def main() -> int:
         print_baselm_posttraining_header()
         baselm_posttrain_status = "estimating BaseLM SFT/DPO full fine-tuning memory"
         print_status_line(baselm_posttrain_status)
-        total_rows = len(BASELM_INFERENCE_CANDIDATES) * 2
+        total_rows = len(baselm_candidates) * 2
         row_index = 0
-        for cand in BASELM_INFERENCE_CANDIDATES:
+        for cand in baselm_candidates:
             for stage in ("SFT", "DPO"):
                 row_index += 1
                 print_status_line(
@@ -1898,9 +2063,9 @@ def main() -> int:
         print_prodlm_header()
         prodlm_status = f"fetching GGUF headers only; context={args.context_length}"
         print_status_line(prodlm_status)
-        for idx, cand in enumerate(PRODLM_CANDIDATES, start=1):
+        for idx, cand in enumerate(prodlm_candidates, start=1):
             print_status_line(
-                f"{prodlm_status} | probing ProdLM {idx}/{len(PRODLM_CANDIDATES)}: "
+                f"{prodlm_status} | probing ProdLM {idx}/{len(prodlm_candidates)}: "
                 f"{cand.display_name}..."
             )
             r = probe_prodlm(cand, sysinfo, context_length=args.context_length)
