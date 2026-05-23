@@ -65,6 +65,7 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Syllabus: syllabus.md
+  - Repo: https://github.com/Mister-Meeseeks/g2c
   - Modules:
       - "00 — Prerequisite review": modules/00-prerequisite-review.md
       - "01 — Scalar autodiff": modules/01-autodiff.md
