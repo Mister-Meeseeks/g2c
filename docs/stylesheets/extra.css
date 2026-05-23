@@ -1,0 +1,13 @@
+/* Small "open-in-new-tab" glyph after external nav links (e.g. the Repo entry). */
+.md-nav__link--external::after {
+  content: "";
+  display: inline-block;
+  width: 0.75em;
+  height: 0.75em;
+  margin-left: 0.35em;
+  vertical-align: -0.05em;
+  background-color: currentColor;
+  -webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3z'/><path d='M19 19H5V5h7V3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7h-2z'/></svg>") no-repeat center / contain;
+          mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3z'/><path d='M19 19H5V5h7V3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7h-2z'/></svg>") no-repeat center / contain;
+  opacity: 0.7;
+}
