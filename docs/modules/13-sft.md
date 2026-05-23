@@ -311,7 +311,19 @@ pytest tests/test_sft.py -v                    # verbose
 
 ## Exercises
 
-Open the working notebook with `./notebook.sh 13` (or `./notebook.sh 13 --fresh` to reset from the clean scaffold). The notebook carries the exact dataset format, training cells, and comparison prompts.
+To launch the exercise notebook run:
+
+```bash
+./noteboosh.sh 13
+```
+
+If at any point you want to archive the work in your current notebook and restart fresh:
+
+```bash
+./noteboosh.sh --fresh 13
+```
+
+The notebook carries the exact dataset format, training cells, and comparison prompts.
 
 1. **Hand-author SFT data.** Create a tiny instruction-following dataset.
 2. **Run SFT.** Train and compare base vs SFT outputs.

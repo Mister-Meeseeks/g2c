@@ -257,7 +257,19 @@ pytest tests/test_training.py -v          # verbose
 
 ## Exercises
 
-Open or resume the working notebook with `./notebook.sh 03b` (or `./notebook.sh 03b --fresh` to reset from the clean scaffold). The notebook contains the runnable sweeps, plots, and answer cells.
+To launch the exercise notebook run:
+
+```bash
+./noteboosh.sh 03b
+```
+
+If at any point you want to archive the work in your current notebook and restart fresh:
+
+```bash
+./noteboosh.sh --fresh 03b
+```
+
+The notebook contains the runnable sweeps, plots, and answer cells.
 
 1. **Learning-rate sweep.** See crawling, learning, and divergence on the same model.
 2. **AdamW by hand.** Compute the first scalar AdamW update.

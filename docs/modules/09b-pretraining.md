@@ -192,7 +192,19 @@ pytest tests/test_pretraining_setup.py -v
 
 ## Exercises
 
-Open the working notebook with `./notebook.sh 09b` (or `./notebook.sh 09b --fresh` to reset from the clean scaffold). Each exercise has `Question:` / `Answer:` cells inside the notebook. If you'd like a hint instead of a grade, write the request in the answer string and ask a coding agent for help. Blank answers are skipped rather than counted wrong.
+To launch the exercise notebook run:
+
+```bash
+./noteboosh.sh 09b
+```
+
+If at any point you want to archive the work in your current notebook and restart fresh:
+
+```bash
+./noteboosh.sh --fresh 09b
+```
+
+Each exercise has `Question:` / `Answer:` cells inside the notebook. If you'd like a hint instead of a grade, write the request in the answer string and ask a coding agent for help. Blank answers are skipped rather than counted wrong.
 
 1. **Shift a toy stream.** Write `x` and `y` for a tiny next-token window.
 2. **Causal mask reasoning.** Explain why multi-position training needs masking.

@@ -334,7 +334,19 @@ pytest tests/test_sampling.py -v               # verbose
 
 ## Exercises
 
-Open the working notebook with `./notebook.sh 11` (or `./notebook.sh 11 --fresh` to reset from the clean scaffold). The notebook auto-loads the strongest available model artifact unless you override it.
+To launch the exercise notebook run:
+
+```bash
+./noteboosh.sh 11
+```
+
+If at any point you want to archive the work in your current notebook and restart fresh:
+
+```bash
+./noteboosh.sh --fresh 11
+```
+
+The notebook auto-loads the strongest available model artifact unless you override it.
 
 1. **Temperature sweep.** Sample the same prompt at several temperatures.
 2. **Top-k vs top-p.** Compare truncation strategies at fixed temperature.

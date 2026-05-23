@@ -199,7 +199,19 @@ pytest tests/test_embeddings.py -v          # verbose
 
 ## Exercises
 
-Open or resume the working notebook with `./notebook.sh 05` (or `./notebook.sh 05 --fresh` to reset from the clean scaffold). The notebook contains the exact prompts, plots, and answer cells; implementation work lives in `g2c/embeddings/`.
+To launch the exercise notebook run:
+
+```bash
+./noteboosh.sh 05
+```
+
+If at any point you want to archive the work in your current notebook and restart fresh:
+
+```bash
+./noteboosh.sh --fresh 05
+```
+
+The notebook contains the exact prompts, plots, and answer cells; implementation work lives in `g2c/embeddings/`.
 
 1. **Token and position lookups.** Trace embedding and positional table shapes.
 2. **Sinusoidal positions.** Inspect the fixed table and its multi-frequency pattern.

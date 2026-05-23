@@ -151,7 +151,19 @@ pytest tests/test_tensors.py -v          # verbose
 
 ## Exercises
 
-Open the working notebook with `./notebook.sh 02` (or `./notebook.sh 02 --fresh` to reset from the clean scaffold). The notebook has the exact shape tables, arrays, and answer cells.
+To launch the exercise notebook run:
+
+```bash
+./noteboosh.sh 02
+```
+
+If at any point you want to archive the work in your current notebook and restart fresh:
+
+```bash
+./noteboosh.sh --fresh 02
+```
+
+The notebook carries the exact tables, arrays and questions; this page lists the exercise arc.
 
 1. **Shape tracing.** Predict valid and invalid matmul / broadcast shapes.
 2. **Manual matmul.** Compute a small matrix product and verify it with your implementations.

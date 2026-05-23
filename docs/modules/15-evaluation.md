@@ -466,7 +466,19 @@ pytest tests/test_eval.py -v                       # verbose
 
 ## Exercises
 
-Open the working notebook with `./notebook.sh 15` (or `./notebook.sh 15 --fresh` to reset from the clean scaffold). The notebook contains the concrete eval examples, harness calls, plots, and answer cells.
+To launch the exercise notebook run:
+
+```bash
+./noteboosh.sh 15
+```
+
+If at any point you want to archive the work in your current notebook and restart fresh:
+
+```bash
+./noteboosh.sh --fresh 15
+```
+
+The notebook contains the concrete eval examples, harness calls, plots, and answer cells.
 
 1. **Multiple-choice eval set.** Hand-author a balanced 60-question MC dataset.
 2. **Run the MC harness.** Measure accuracy, confidence, calibration, and category breakdowns.

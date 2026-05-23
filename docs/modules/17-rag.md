@@ -423,8 +423,19 @@ pytest tests/test_rag.py -v                       # verbose
 ```
 
 ## Exercises
+ To launch the exercise notebook run:
 
-Open the working notebook with `./notebook.sh 17` (or `./notebook.sh 17 --fresh` to reset from the clean scaffold). The notebook carries the exact indexing, retrieval, and RAG pipeline prompts. It defaults to ProdLM for live answers; set `MODEL_SELECTION = "course"` to try your strongest course artifact, preferring `-DPO`, then `-SFT`, then base. Concrete artifact base names follow the same fallback.
+```bash
+./noteboosh.sh 17
+```
+
+If at any point you want to archive the work in your current notebook and restart fresh:
+
+```bash
+./noteboosh.sh --fresh 17
+```
+
+The notebook carries the exact indexing, retrieval, and RAG pipeline prompts. It defaults to ProdLM for live answers; set `MODEL_SELECTION = "course"` to try your strongest course artifact, preferring `-DPO`, then `-SFT`, then base. Concrete artifact base names follow the same fallback.
 
 1. **Index your own notes.** Build a vector index over a corpus you care about.
 2. **Compare embedders.** Measure HashEmbedder vs OllamaEmbedder on the same questions.

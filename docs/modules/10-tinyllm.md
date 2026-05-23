@@ -157,7 +157,19 @@ pytest tests/test_pretraining.py -k trainer -v
 
 ## Exercises
 
-Open the working notebook with `./notebook.sh 10` (or `./notebook.sh 10 --fresh` to reset from the clean scaffold). Each exercise has `Question:` / `Answer:` cells inside the notebook. If you'd like a hint instead of a grade, write the request in the answer string and ask a coding agent for help. Blank answers are skipped rather than counted wrong.
+To launch the exercise notebook run:
+
+```bash
+./noteboosh.sh 10
+```
+
+If at any point you want to archive the work in your current notebook and restart fresh:
+
+```bash
+./noteboosh.sh --fresh 10
+```
+
+Each exercise has `Question:` / `Answer:` cells inside the notebook. If you'd like a hint instead of a grade, write the request in the answer string and ask a coding agent for help. Blank answers are skipped rather than counted wrong.
 
 1. **Implement the trainer step.** Fill in `Trainer.train_step` and run the focused tests.
 2. **Prepare the first corpus.** Load tokenizer/data artifacts, split tokens, and inspect batch shapes.

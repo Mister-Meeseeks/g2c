@@ -172,7 +172,19 @@ pytest tests/test_autodiff.py -v         # verbose: list every test
 
 ## Exercises
 
-Open the working notebook with `./notebook.sh 01` (or `./notebook.sh 01 --fresh` to reset from the clean scaffold). The notebook carries the exact prompts; this page lists the exercise arc.
+To launch the exercise notebook run:
+
+```bash
+./noteboosh.sh 01
+```
+
+If at any point you want to archive the work in your current notebook and restart fresh:
+
+```bash
+./noteboosh.sh --fresh 01
+```
+
+The notebook carries the exact prompts; this page lists the exercise arc.
 
 1. **Forward and backward by hand.** Trace one scalar expression end to end.
 2. **Gradient checking.** Compare `.backward()` against finite differences.

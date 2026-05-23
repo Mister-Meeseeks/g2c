@@ -229,6 +229,18 @@ The `StoryLM-1M-base` run is deliberately small. On most M-series machines it sh
 
 ## Exercises
 
+To launch the exercise notebook run:
+
+```bash
+./noteboosh.sh 12
+```
+
+If at any point you want to archive the work in your current notebook and restart fresh:
+
+```bash
+./noteboosh.sh --fresh 12
+```
+
 These are scaling experiments built on the Module 10 training workflow. Keep the notebook/config details close to the run; this page lists the experiment menu.
 
 1. **Train the low-end anchor.** Create `StoryLM-1M` if it is missing.

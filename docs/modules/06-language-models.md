@@ -217,7 +217,19 @@ pytest tests/test_lm.py -v          # verbose
 
 ## Exercises
 
-Open the working notebook with `./notebook.sh 06` (or `./notebook.sh 06 --fresh` to reset from the clean scaffold). The notebook starts with a test gate, then walks through prediction, training, sampling, and comparison.
+To launch the exercise notebook run:
+
+```bash
+./noteboosh.sh 06
+```
+
+If at any point you want to archive the work in your current notebook and restart fresh:
+
+```bash
+./noteboosh.sh --fresh 06
+```
+
+The notebook starts with a test gate, then walks through prediction, training, sampling, and comparison.
 
 1. **Context windows and targets.** Turn a token stream into supervised next-token examples.
 2. **Counts bigram model.** Inspect counts, smoothing, and next-token probabilities.

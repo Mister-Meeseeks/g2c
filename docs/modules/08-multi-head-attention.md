@@ -182,7 +182,19 @@ pytest tests/test_multi_head_attention.py -v          # verbose
 
 ## Exercises
 
-Open the working notebook with `./notebook.sh 08` (or `./notebook.sh 08 --fresh` to reset from the clean scaffold). The notebook carries the detailed prompts, plots, and training cells.
+To launch the exercise notebook run:
+
+```bash
+./noteboosh.sh 08
+```
+
+If at any point you want to archive the work in your current notebook and restart fresh:
+
+```bash
+./noteboosh.sh --fresh 08
+```
+
+The notebook carries the detailed prompts, plots, and training cells.
 
 1. **Verify the reshape.** Check by hand that each head sees the intended slice.
 2. **Reshape order matters.** Break and restore the canonical head layout.
