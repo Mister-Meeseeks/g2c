@@ -8,7 +8,7 @@ The hard constraint: **everything runs on an M-series MacBook** — no cloud GPU
 
 ## Why this course
 
-Millions interact with LLMs on a daily basis. But few bother to understand how these systems actually work. How does an LLM understand language? What is a "model" and how does it learn? How does a chat assistant "know" how to answer a question? How do does matrix multipilcation get turned into intelligence? In this course we answer these questions from first principles.
+Millions interact with LLMs on a daily basis. But few bother to understand how these systems actually work. How does an LLM understand language? What is a "model" and how does it learn? How does a chat assistant "know" how to answer a question? How does matrix multipilcation produce intelligent behavior? In this course we answer these questions from first principles.
 
 Our goal is to go *below the API*. To understand every part of the LLM stack, end to end. You start with basic autodiff, and over twenty modules grow it: tensors, a neural net, a tokenizer, embeddings, attention, the transformer, pretraining, sampling, SFT, DPO, evaluation, RAG, tool use, an agent loop. Until the final module is a chat assistant running on a model you trained yourself, with tools and retrieval. All on your laptop. All built by you. 
 
