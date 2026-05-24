@@ -1,4 +1,4 @@
-# Module 01 — Scalar autodiff
+# Module 01 — Gradients
 
 > **Question this module answers:** *How does the model learn?*
 
