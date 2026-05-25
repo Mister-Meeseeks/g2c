@@ -14,7 +14,7 @@ The whole pipeline that turns `"The quick brown fox..."` into the integer list a
 		* `bytes` is a sequence of integers in `[0, 256)`; 
 		* UTF-8 is variable-width (ASCII 1 byte, common European 2, emoji 4)
 * *Run* 
-	* `./datasets.sh --tiny` to pre-prepare the datasets used in the notebook 
+	* `./datasets.sh --tiny` to prepare the datasets used in the notebook 
 	*  `./datasets.sh --small` if you want to do the optional exercise
 
 ---
@@ -175,13 +175,13 @@ pytest tests/test_tokenizer.py -v          # verbose
 To launch the exercise notebook run:
 
 ```bash
-./noteboosh.sh 04
+./notebook.sh 04
 ```
 
 If at any point you want to archive the work in your current notebook and restart fresh:
 
 ```bash
-./noteboosh.sh --fresh 04
+./notebook.sh 04 --fresh
 ```
 
 The notebook has the exact prompts, inspection tables, and artifact cells.
@@ -217,7 +217,7 @@ This module is pure CPU. No GPU, no MPS — every operation is pointer chasing t
 
 - Training on a small corpus takes seconds.
 - Training on TinyShakespeare (~1MB) at `vocab_size=8192` takes 1–5 minutes on a typical M-series machine. Most of the time is spent recounting all pairs after each merge — that's where the naive implementation pays its O(n²) cost.
-- Going above 10M max char is infeasible with the python native `g2c` tokenizer. The module includes a wrapper for a much faster Rust based tokenizer. This is what the notebook uses to train TinyStories and g2c. Even with that expect tens of minutes for those corpora.  
+- Going above 10M characters is infeasible with the Python-native `g2c` tokenizer. The module includes a wrapper for a much faster Rust-based tokenizer. This is what the notebook uses to train TinyStories and g2c. Even with that, expect tens of minutes for those corpora.  
 
 ---
 ## Reading
@@ -241,6 +241,6 @@ Optional:
 - [ ] All tests in `tests/test_tokenizer.py` pass.
 - [ ] `notebooks/solutions/04-tokenizer.ipynb`: trained on a real corpus at three vocab sizes; token count + compression ratio table; printed top-20 / bottom-20 of learned vocab at the largest size; demonstrated atomic course special tokens.
 - [ ] `artifacts/tokenizers/ShakespeareTokenizer/`: saved `tokenizer.json`, sample `ids.uint32`, and `manifest.json`.
-- [ ] Optional: after running `./datasets.sh --small` or `./datasets.sh tinystories`, enabled and saved `StoryTokenizer` and/or `G2CTokenizer`. The logical `g2c` source prefers the full corpus when present and falls back to the small corpus.
+- [ ] Optional: after running `./datasets.sh --small` or `./datasets.sh tinystories`, enable and save `StoryTokenizer` and/or `G2CTokenizer`. The logical `g2c` source prefers the full corpus when present and falls back to the small corpus.
 - [ ] You've inspected the learned vocabulary and can point to a few subword tokens that are obviously frequent patterns (`"the"`, `"ing"`, `" of"`, etc.) and a few that are more specific to your corpus.
 - [ ] You can explain — out loud, without notes — why `[1, 1, 1]` merging `(1, 1)` produces `[99, 1]`, not `[99, 99]`.

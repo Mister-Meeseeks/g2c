@@ -50,9 +50,9 @@ Introducing tools fixed the "model needs to call a function" problem. But many r
 
 The tool loop from Module 18 can keep calling tools, but it does not give the model an explicit place to reason between calls. The model has to choose the next action directly from the running transcript. 
 
-A key insight we gained last week is that while inference itself is inherently stateless, we can simulate "memory" between successive calls by supplying the previous interactions into the prompt of the next interaction. We used that paradigm to interact with external tools. But in this lesson we'll learn how that framework can be extended to supporting thinking, planning, and goal directed multi-step action. 
+A key insight we gained last week is that while inference itself is inherently stateless, we can simulate "memory" between successive calls by including the previous interactions in the prompt of the next interaction. We used that paradigm to interact with external tools. But in this lesson we'll learn how that framework extends to support thinking, planning, and goal-directed multi-step action. 
 
-In this lesson, we are now past the point where we focus on improving the model itself. Instead we are now in the realm of **prompt engineering** where we make the same models smart with intelligently structured prompts.
+In this lesson, we are now past the point where we focus on improving the model itself. Instead, we are now in the realm of **prompt engineering**, where we make the same models smarter with intelligently structured prompts.
 
 ## The big idea
 
@@ -471,13 +471,13 @@ pytest tests/test_agent.py -v                       # verbose
 To launch the exercise notebook run:
 
 ```bash
-./noteboosh.sh 18
+./notebook.sh 19
 ```
 
 If at any point you want to archive the work in your current notebook and restart fresh:
 
 ```bash
-./noteboosh.sh --fresh 18
+./notebook.sh 19 --fresh
 ```
 
 The live section defaults to ProdLM. To compare your own model, set `MODEL_SELECTION = "course"` for your strongest course artifact, preferring `-DPO`, then `-SFT`, then base. Concrete artifact base names follow the same fallback.

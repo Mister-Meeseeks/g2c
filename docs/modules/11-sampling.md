@@ -30,7 +30,7 @@ The simplest and most obvious approach is greedy decoding. Always pick the token
   greedy:  → " cat sat on the cat sat on the cat sat on the ..."
 ```
 
-Greedy decoding tends to *loop*. The model emits the most-likely token, that token shifts the context one step, but the new context is similar enough to the old that the model's prediction stays nearly the same, and the model keeps emitting the same token (or short cycle) forever. This is a structural property of small models in particular. Larger models tend to loop less, but never stops looping entirely.
+Greedy decoding tends to *loop*. The model emits the most-likely token, that token shifts the context one step, but the new context is similar enough to the old that the model's prediction stays nearly the same, and the model keeps emitting the same token (or short cycle) forever. This is a structural property of small models in particular. Larger models tend to loop less, but never stop looping entirely.
 
 Another simple and obvious approach is pure random sampling. Multinomial draw from the native softmax. This produces the other extreme:
 
@@ -39,10 +39,10 @@ Another simple and obvious approach is pure random sampling. Multinomial draw fr
   random: → " mat. Suddenly inflation electricity quartz... ..."
 ```
 
-Native softmax puts nonzero mass on every possible token, including thousands of long-tail tokens that are essentially unrelated to the prefix. Once in a while one of them gets sampled, and the output derails. Both naive approaches are brittle when it comes to generating text, especially at long-range.
+Native softmax puts nonzero mass on every possible token, including thousands of long-tail tokens that are essentially unrelated to the prefix. Once in a while one of them gets sampled, and the output derails. Both naive approaches are brittle for generating text, especially over long ranges.
 
 ![Three decoding strategies side-by-side as train tracks. (1) Greedy decoding (argmax) always picks the single most-likely token; the train runs the same closed loop forever — deterministic, often stuck. (2) Sampled decoding (with warpers) draws from a shaped distribution; the train branches to plausible alternatives and explores new regions of context space without derailing. (3) Pure random sampling from the full softmax sometimes lands on long-tail tokens like "quartz" or "xyz123"; the train hops the rails entirely. A probability-bar strip underneath shows what each strategy actually selects from the model's native distribution. Bottom panels summarize: greedy loops because the argmax doesn't shift the context enough to break the cycle; sampling helps because warpers (rep penalty, top-k/top-p, temperature) keep the candidate set plausible while admitting alternatives; the diversity-vs-quality dial slides between the two extremes.](11-sampling/Module11-Greedy.png)
-*Greedy and pure-random are the two failure modes. The warpers shape the model's native distribution into something that's neither argmax-locked nor long-tail-derailed*.
+*Greedy and pure-random are the two failure modes. The warpers shape the model's native distribution into something that's neither argmax-locked nor long-tail-derailed.*
 
 ## The big idea
 
@@ -74,7 +74,7 @@ Same shape in, same shape out. Dropped tokens are replaced with `-inf` (so `soft
 The order matters but the contract doesn't change: each box takes a logit tensor and returns a logit tensor.
 
 ![The four warpers laid out as a pipeline of (V,)-shape vectors. Initial logits from the model: a smooth distribution with one prominent peak. After repetition_penalty: a few prior-token positions have been pushed down (their bars shrink). After temperature: the WHOLE distribution sharpens or flattens uniformly (every bar scales). After top_k_filter: only the top-k bars remain; the rest are replaced by sentinel "-inf" markers (drawn as black bars at the bottom). After top_p_filter: bars beyond the cumulative-p mark are also "-inf"-marked. After softmax: the surviving bars are renormalized to sum to 1; the multinomial draws one. A bottom strip captures the headline: each warper is a pure function on (..., V), composes freely, and the actual probability normalization happens only at the final softmax.](11-sampling/Module11-Warpers.png)
-*The four warpers are pure functions of `(logits, args)` — none of them maintain state, none of them peek at each other, and the order in which they apply is the lesson.
+*The four warpers are pure functions of `(logits, args)` — none of them maintain state, none of them peek at each other, and the order in which they apply is the lesson.*
 
 ### Temperature: a single-knob sharpness control
 
@@ -94,7 +94,7 @@ After softmax:
 
 Temperature **never reorders tokens.** Whatever was most likely stays most likely; whatever was least likely stays least likely. Temperature is a monotone reweighting of probabilities. Therefore temperature can't rescue a model whose native argmax is consistently wrong. 
 
-![[Module11-Temp.png]]
+![Effect of temperature on the next-token distribution](11-sampling/Module11-Temp.png)
 *Higher temperature sampling produces sequences that tend to seem more spontaneous. Lower temperature tends to be more predictable.*
 
 ### Top-k: a hard cutoff on count
@@ -141,14 +141,14 @@ Concretely, with `p = 0.9`:
 
 When the model is confident, the prefix is small (one or two tokens). When the model is uncertain, the prefix expands to include more candidates. The size of the surviving set adapts automatically.
 
-One important note. Implementation should always *keep* the first token after the cumulative threshold `mass >= p`.  Otherwise a high confidence argmax could result in no token. 
+One important note: the implementation should always *keep* the first token after the cumulative threshold `mass >= p` is crossed. Otherwise a high-confidence argmax could result in no token. 
 
 ![Top-k vs top-p side-by-side on two model states. Top row — confident model: native probabilities have one dominant token. Top-k=5 keeps a fixed five tokens regardless, including four near-zero distractors; top-p=0.9 keeps just the one or two tokens that already cover 90% of the mass. Bottom row — uncertain model: native probabilities are spread across many comparable tokens. Top-k=5 cuts off many reasonable continuations and keeps the same fixed count; top-p=0.9 expands its surviving set to whatever number of tokens it takes to reach 0.9 cumulative mass. A summary panel at the bottom contrasts the two methods: top-k is a fixed count (simple, predictable, doesn't adapt); top-p is an adaptive mass cutoff (small set when confident, large set when uncertain). Both methods always preserve the argmax — the smallest possible surviving set is exactly one token.](11-sampling/Module11-TopK.png)
-*The reason top-p tends to read as "smarter" than top-k in practice: it spends its budget where the budget actually matters.
+*The reason top-p tends to read as "smarter" than top-k in practice: it spends its budget where the budget actually matters.*
 
 ### Repetition penalty: discouraging loops
 
-Small models loop. "the cat sat on the cat sat on the cat sat on the..." If X is the most likely next token, then it often remains the most likely on the second next token, the third next token, and so on. The repetition penalty (Keskar et al., "CTRL", 2019) is the standard defense:
+Small models loop. "the cat sat on the cat sat on the cat sat on the..." If X is the most likely next token, then it often remains the most likely choice at the second step, the third step, and so on. The repetition penalty (Keskar et al., "CTRL", 2019) is the standard defense:
 
 ```
   for every token id that appeared in the prior context:
@@ -156,7 +156,7 @@ Small models loop. "the cat sat on the cat sat on the cat sat on the..." If X is
       if that token's logit is negative: multiply by penalty
 ```
 
-Both branches push probability **down**. The asymmetric formula always the rescaling is always a penalty regardless of the sign of the logit. Penalty `1.0` is no-op; penalty `1.05` to `1.3` is the typical range; penalty `>= 2` often kills repeats entirely (usually not a good thing).
+Both branches push probability **down**. The asymmetric formula ensures the rescaling is always a penalty, regardless of the sign of the logit. Penalty `1.0` is no-op; penalty `1.05` to `1.3` is the typical range; penalty `>= 2` often kills repeats entirely (usually not a good thing).
 
 ```
   prior tokens:   [..., 5, 7, 5, 2, ...]      tokens 5, 7, 2 are seen
@@ -234,16 +234,16 @@ A reordering that *looks* equivalent but isn't:
       probs = apply_temperature(probs, T)   # ??? doesn't compose
       ...
 
-      All of the warper functons are written for logits, not probabilities. 
+      All of the warper functions are written for logits, not probabilities. 
       Stay in logit space until the very last softmax.
 ```
 
 ![The eight-step decode loop drawn in order: (1) crop full_ids to model.max_seq_len; (2) forward the cropped context to (1, T_ctx, V) logits; (3) slice the last position to (1, V); (4) apply the warpers in canonical order; (5) softmax to probabilities; (6) multinomial draw of one token; (7) append to the running sequence; (8) stop early on eos_id else loop. A side panel pins three reorderings that produce silently-wrong or silently-slow outputs: warping the full (T, V) tensor instead of the last row (T× slower), warping in probability space instead of logit space (composition breaks), and forgetting to crop (crash or silently-lost positional signal once T > max_seq_len).](11-sampling/Module11-DecodeLoop.png)
-*Most miswirings of this loop produce code that looks correct — output still appears, no exceptions raised. But the output will be mis-calculated and produce subtly incorrect results.
+*Most miswirings of this loop produce code that looks correct — output still appears, no exceptions raised. But the output will be miscalculated and produce subtly incorrect results.*
 
 ### The diversity-vs-quality tradeoff
 
-Sampling controls trade off two things you can't have both of:
+Sampling controls trade off two qualities you can't maximize together:
 
   * **Diversity:** how surprising / non-deterministic the output is.
   * **Quality:** how locally-coherent / on-prompt the output is.
@@ -257,7 +257,7 @@ Sampling controls trade off two things you can't have both of:
 
 Sliding to the right (raising temperature, removing top-k/top-p) gets more diverse and more chaotic output. Sliding to the left (lowering temperature, narrowing top-k/top-p) gets more confident but boring (and at the limit, looped) output.
 
-There is no globally-correct knob position. The canonical "balanced" setting in the open-LM community is roughly `temperature=0.7`, `top_p=0.9`, with no top-k and a small repetition penalty. Real applications tune these per-task: code generation usually wants low temperature and tight top-p. Creative writing wants higher temperature and looser top-p. Chat assistant wants something in the middle.
+There is no globally-correct knob position. The canonical "balanced" setting in the open-LM community is roughly `temperature=0.7`, `top_p=0.9`, with no top-k and a small repetition penalty. Real applications tune these per-task: code generation usually wants low temperature and tight top-p. Creative writing wants higher temperature and looser top-p. A chat assistant wants something in the middle.
 
 The exercise set will sweep these knobs against your trained models so you can develop intuition by reading the output.
 
@@ -337,13 +337,13 @@ pytest tests/test_sampling.py -v               # verbose
 To launch the exercise notebook run:
 
 ```bash
-./noteboosh.sh 11
+./notebook.sh 11
 ```
 
 If at any point you want to archive the work in your current notebook and restart fresh:
 
 ```bash
-./noteboosh.sh --fresh 11
+./notebook.sh 11 --fresh
 ```
 
 The notebook auto-loads the strongest available model artifact unless you override it.
@@ -359,9 +359,9 @@ The notebook auto-loads the strongest available model artifact unless you overri
 
 ## Pitfalls to expect
 
-- **Masking with `-1e9` instead of `-inf`.** Most of the time it works but when it doesn't, it's hard to fix.
+- **Masking with `-1e9` instead of `-inf`.** Most of the time it works, but when it doesn't, it's hard to fix.
 
-- **Top-p off-by-one.** A common bug writes the rule as "drop everything once cumulative > p", but break on a high confidence argmax.
+- **Top-p off-by-one.** A common bug writes the rule as "drop everything once cumulative > p", but breaks on a high-confidence argmax.
 
 - **Warping in probability space instead of logit space.** A rewrite that softmaxes early and then tries to apply warpers to probabilities will produce something *resembling* the right answer but with subtle scale differences and tricky renormalization. 
 
@@ -379,7 +379,7 @@ The notebook auto-loads the strongest available model artifact unless you overri
 
 ## M-series notes
 
-Inference requires relatively minimal compute next to training. Since the notebook uses the largest model you trained in Module 10, your machine will have no problem handling inference on it.  Expect to take anywhere between a few seconds to one minute per sequence, depending on length and model size. We still strongly recommend using MPS over CPU regardless.
+Inference requires relatively minimal compute next to training. Since the notebook uses the largest model you trained in Module 10, your machine will have no problem handling inference on it.  Expect anywhere from a few seconds to one minute per sequence, depending on length and model size. We still strongly recommend using MPS over CPU regardless.
 
 ---
 ## Reading

@@ -44,7 +44,7 @@ A token embedding is one of the simplest ideas in deep learning:
 
 That's it. The vector for each token is a learnable parameter — initialized random, updated by gradient descent like any other parameter. The forward pass is `weight[ids]`.
 
-What makes this work is what gets *learned*. After training on enough text, the rows of `weight` arrange themselves into a geometry that reflects how tokens are used. Tokens that occur in similar contexts end up with similar vectors. Famously: word2vec's `king − man + woman ≈ queen`. The model never told that king is to man as queen is to woman; the geometry just emerged from co-occurrence statistics.
+What makes this work is what gets *learned*. After training on enough text, the rows of `weight` arrange themselves into a geometry that reflects how tokens are used. Tokens that occur in similar contexts end up with similar vectors. Famously: word2vec's `king − man + woman ≈ queen`. The model was never told that king is to man as queen is to woman; the geometry just emerged from co-occurrence statistics.
 
 ![Embedding geometry: a 2D projection of the learned embedding table shows tokens clustered by meaning (animals, vehicles, countries, cities), nearest neighbors of "king" by cosine similarity, and vector arithmetic (king − man + woman ≈ queen, Paris − France + Italy ≈ Rome).](05-embeddings/Module05-Geometry.png)
 *Why we care about the embedding table beyond "it's a lookup." After training, semantically related tokens end up near each other (the clusters), and meaningful relationships line up as vector offsets (the analogies). Nothing in the training told the model to do this — it falls out of co-occurrence statistics.*
@@ -95,7 +95,7 @@ This scheme has zero learnable parameters (the table is determined by the formul
 
 ### Rotary positional embeddings (RoPE)
 
-The most important development in positional encoding since 2017. We'll cover attention in Module 7, but for now all you need to know is attention models care about token pair comparisons. For an ordered token pair (i, j), token i supplies the **query vector**, and token j supplies the **key vector**, and the dot product tells us how much token i pays attention to token j.
+The most important development in positional encoding since 2017. We'll cover attention in Module 7, but for now all you need to know is attention models care about token pair comparisons. For an ordered token pair (i, j), token i supplies the **query vector** and token j supplies the **key vector**; the dot product tells us how much token i pays attention to token j.
 
 Instead of adding a position vector to the embedding vector, RoPE *rotates* the query and key vectors by an angle proportional to their position before the attention dot product. The key property is mechanical:
 
@@ -128,7 +128,7 @@ This is implemented as a per-position-pair 2D rotation, applied across all dimen
 - **Three positional schemes, three tradeoffs.** Learned (max_seq_len cap, more parameters), sinusoidal (no params, extrapolates by formula), rotary (no params, encodes relative position by construction).
 - **Multi-frequency sinusoids.** The decaying-frequency table is what gives sinusoidal positional encodings their multi-scale resolution. Each pair of dimensions is one (sin, cos) frequency.
 - **`R(m)ᵀ R(n) = R(n − m)`.** Rotations form a group; their composition adds angles. This is the algebraic identity that makes RoPE work.
-- **`_rotate_half` is a notational trick.** The 2D rotation `(a, b) → (a cos θ − b sin θ, a sin θ + b cos θ)` can be written as `(a, b) ⊙ cos θ + (−b, a) ⊙ sin θ`. The `(−b, a)`.
+- **`_rotate_half` is a notational trick.** The 2D rotation `(a, b) → (a cos θ − b sin θ, a sin θ + b cos θ)` can be written as `(a, b) ⊙ cos θ + (−b, a) ⊙ sin θ`. The `(−b, a)` piece is exactly what `_rotate_half` computes.
 - **Position 0 is the identity rotation.** `cos(0) = 1, sin(0) = 0`, so `RoPE(x, position=0) = x`. 
 
 ---
@@ -202,13 +202,13 @@ pytest tests/test_embeddings.py -v          # verbose
 To launch the exercise notebook run:
 
 ```bash
-./noteboosh.sh 05
+./notebook.sh 05
 ```
 
 If at any point you want to archive the work in your current notebook and restart fresh:
 
 ```bash
-./noteboosh.sh --fresh 05
+./notebook.sh 05 --fresh
 ```
 
 The notebook contains the exact prompts, plots, and answer cells; implementation work lives in `g2c/embeddings/`.

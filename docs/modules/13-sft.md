@@ -43,9 +43,9 @@ The exercise notebook defaults to BaseLM because it has enough broad pretraining
 
 ## The big idea
 
-If we to "answer questions in a structured format" rathern than of "autocomplete text" we don't have to train a new model entirely from scratch. Rather we can leverage all the learning and data we applied by making small but directed *post-training* updates to the pretrained model.
+If we want to "answer questions in a structured format" rather than "autocomplete text", we don't have to train a new model entirely from scratch. Rather, we can leverage all the learning and data already in the pretrained model by making small but directed *post-training* updates.
 
-*Supervised fine-turning (SFT)* is the first layer of post training in a modern LLM stack. It is primarily used to make the raw model useful by teaching it to respond in assistant format and style. The recipe:
+*Supervised fine-tuning (SFT)* is the first layer of post training in a modern LLM stack. It is primarily used to make the raw model useful by teaching it to respond in assistant format and style. The recipe:
 
 1. Collect or hand-author a few hundred `(instruction, response)` pairs.
 2. Wrap each pair in a *chat template* — a literal-text format with role markers.
@@ -54,10 +54,10 @@ If we to "answer questions in a structured format" rathern than of "autocomplete
 
 That's the whole pipeline. There is no new architecture, no new optimizer, no new loss class — just the same `TransformerLM` and the same `Trainer` you've already built, with a different data source and a masked variant of cross-entropy. 
 
-A SFT'd model stops continuing text and starts producing assistant turns. Often short, often plausible-sounding, often wrong on facts (that's a Module 15 problem). The model has not learned new facts. It has learned a new *format*.
+An SFT'd model stops continuing text and starts producing assistant turns. Often short, often plausible-sounding, often wrong on facts (that's a Module 15 problem). The model has not learned new facts. It has learned a new *format*.
 
 ![SFT changes behavior, not knowledge: a one-page summary of the module. The base model produced by Module 12 trains on next-token prediction over TinyShakespeare prose and continues a question prompt as if it were more prose. After SFT on 50 hand-authored (instruction, response) pairs — rendered through a chat template, tokenized with a loss mask that zeroes out user tokens, fine-tuned for ~500 steps at 10× lower LR — the same model recognizes the assistant turn marker, produces a single short response, and stops on `<|end|>`. A "what improves, what doesn't" panel pins the central distinction: format compliance, turn boundaries, and concision are taught; factual knowledge is unchanged from the base model. A "key insight" callout closes with: pretraining gives the model a world model; SFT gives it a job description.](13-sft/Module13-Behavior.png)
-*SFT is about shaping assistant shaped text. Not teaching new abilities*
+*SFT is about shaping assistant-shaped text, not teaching new abilities.*
 
 The "knowledge stays the same" claim is empirically robust: SFT'd models, probed for factual recall, score within a few percent of their base versions on factual benchmarks. What changes dramatically is *response style* — short vs long, format-compliant vs free-form, refusal-aware vs refusal-naive. 
 
@@ -74,7 +74,7 @@ We'll use a **ChatML-lite** template — the spirit of ChatML, but with the cour
 {assistant_content}<|end|>
 ```
 
-Unlike a plain BPE string, each marker here is **atomic**: `<|user|>`, `<|assistant|>`, and `<|end|>` each encode to one reserved token ID. (The tokenizers used by this course have pre-reserved ChatML like special tokens.)
+Unlike a plain BPE string, each marker here is **atomic**: `<|user|>`, `<|assistant|>`, and `<|end|>` each encode to one reserved token ID. (The tokenizers used by this course have pre-reserved ChatML-like special tokens.)
 
 Every downstream system must use the same chat template: same role tokens, same `<|end|>` convention, and same newline layout. If inference uses even slightly different markers, the model sees an unfamiliar prompt shape and regresses.
 
@@ -97,7 +97,7 @@ Every downstream system must use the same chat template: same role tokens, same 
    └────────────────────────────────────────────────────────────────┘
 ```
 
-The termination asymmetry is intentional. At inference time the model emits assistant text, and we need a single distinctive stop token. But the user's turn text comes from outside the model, so it doesn't need a special end marker;.
+The termination asymmetry is intentional. At inference time the model emits assistant text, and we need a single distinctive stop token. But the user's turn text comes from outside the model, so it doesn't need a special end marker.
 
 Why does the model learn this? Because every SFT example trains it to associate the prefix `<|assistant|>\n` with "now produce concise content followed by `<|end|>`." The marker tokens are arbitrary. What matters is that they appear consistently in the same positions across every training example. After ~100 examples the model will essentially memorize this format.
 
@@ -119,11 +119,11 @@ SFT uses the same basic gradient descent loop we used for pretraining. The diffe
 
 Compared to pretraining, SFT requires orders of magnitude less data because we aren't trying to teach language from scratch. We are mostly teaching how to respond: the assistant format, the tone, the structure of answers, and the behavior we want after a user instruction.
 
-The hyperparameters below are not universal rules. They are a practical starting points for small models. As always, try sweeping at different settings and compare results.
+The hyperparameters below are not universal rules. They are practical starting points for small models. As always, try sweeping at different settings and compare results.
 
-- **50–500 examples.** Quality matters much more than quantity. Counterintuitively larger models need *less* examples (but higher quality) since they tend to have more abilities.
-- **100–1,000 optimizer steps.** The main danger is overfitting from the model memorizing a tiny dataset. Watch samples and validation loss closely for early stopping
-- **Learning rate at 5–20% of pretraining.** Larger models more sensitive to regression from aggressive SFT, and should start lower.
+- **50–500 examples.** Quality matters much more than quantity. Counterintuitively, larger models need *fewer* examples (but higher quality) since they tend to have more abilities.
+- **100–1,000 optimizer steps.** The main danger is overfitting from the model memorizing a tiny dataset. Watch samples and validation loss closely for early stopping.
+- **Learning rate at 5–20% of pretraining.** Larger models are more sensitive to regression from aggressive SFT, and should start lower.
 
 ```
    ┌─────────────────────────────────────────────────────────────────────┐
@@ -153,12 +153,12 @@ The hyperparameters below are not universal rules. They are a practical starting
 
 In pretraining, every token in the window is a training target. The model learns to predict tokens uniformly across the corpus. In SFT, the model should *not* learn to predict user tokens. Those tokens come from the user at inference time. Training to predict them would actively damage behavior.
 
-The fix is the **loss mask**: a `(T-1,)` boolean tensor that's `0` at every user token and `1` at every assistant token (including the `<|end|>` token) .
+The fix is the **loss mask**: a `(T-1,)` boolean tensor that's `0` at every user token and `1` at every assistant token (including the `<|end|>` token).
 
 ![Loss Mask](13-sft/Module13-LossMask.png)
 *The shift-by-one between `mask` and `y` is the bug-prone seam — get it right once and the rest of the SFT pipeline follows.*
 
-The masked-loss formula is the same familiar cross-validation formula, but only applied to `1` masked tokens:
+The masked-loss formula is the same familiar cross-entropy formula, but only applied to `1`-masked tokens:
 
 ```
    per_pos_loss   = CE(logits, y, reduction='none')   # (B, T-1)
@@ -235,11 +235,11 @@ The first three are *training* problems — fixable by adjusting data or hyperpa
 - **Loss masking is the critical implementation trick.** Without it, the model also learns to predict user text, instead of just assistant text.
 - **50–500 examples.** Not 5; not 5000. The dataset is small enough to read end-to-end and audit; large enough to teach a stable convention.
 - **Data quality dominates data quantity.** Inconsistent examples teach inconsistent format. Spend the curation effort.
-- **The model may answer perfectly and still be wrong.** Format compliance is not truth. A SFT'd toy model is the best demonstration of this distinction in the course — it answers questions confidently in well-formatted prose, and almost everything it says is invented.
+- **The model may answer perfectly and still be wrong.** Format compliance is not truth. An SFT'd toy model is the best demonstration of this distinction in the course — it answers questions confidently in well-formatted prose, and almost everything it says is invented.
 
 ### What we don't cover
 
-- **System prompts.** A leading `<|system|>You are a helpful assistant.<|end|>` turn is the third role real systems support. We omit it: at toy scale.
+- **System prompts.** A leading `<|system|>You are a helpful assistant.<|end|>` turn is the third role real systems support. We omit it at toy scale.
 - **PEFT prompt tuning, prefix tuning, P-tuning.** Pre-LoRA parameter-efficient methods that train a small set of "soft prompt" tokens. Largely superseded by LoRA. Skim once; don't implement.
 - **Continual / online SFT.** Updating the model as new examples arrive. Production concern with its own catastrophic-forgetting issues; out of scope.
 
@@ -314,13 +314,13 @@ pytest tests/test_sft.py -v                    # verbose
 To launch the exercise notebook run:
 
 ```bash
-./noteboosh.sh 13
+./notebook.sh 13
 ```
 
 If at any point you want to archive the work in your current notebook and restart fresh:
 
 ```bash
-./noteboosh.sh --fresh 13
+./notebook.sh 13 --fresh
 ```
 
 The notebook carries the exact dataset format, training cells, and comparison prompts.

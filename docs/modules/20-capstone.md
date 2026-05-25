@@ -264,7 +264,7 @@ The CLI and `/save` command are enough for this course: they let you use the ass
 
 ### Two channels under the hood
 
-`AssistantConfig.use_native` toggles which agent the assistant wires up internally. The default (`True`) constructs a `NativeAgent` — structured tool calling via the backend's `chat_with_tools` method, which is what Module 19's Exercise 12b showed to be the cleaner channel for real models. Setting `False` falls back to the ReAct `Agent` from Module 19, which uses text-format Thought/Action markers and a regex parser.
+`AssistantConfig.use_native` toggles which agent the assistant wires up internally. The default (`True`) constructs a `NativeAgent` — structured tool calling via the backend's `chat_with_tools` method, which is what Module 19's Exercise 12b showed this to be the cleaner channel for real models. Setting `False` falls back to the ReAct `Agent` from Module 19, which uses text-format Thought/Action markers and a regex parser.
 
 The `Assistant.chat(...)` surface is identical between the two — same input, same `AssistantTurn`, same conversation semantics. The choice only affects what bytes flow between the assistant and the model. Default to native; flip to ReAct when comparing or when the backend only implements `complete`. Exercise 9b in the notebook runs the same task on both for a side-by-side look.
 
@@ -386,13 +386,13 @@ pytest tests/test_assistant.py -v                       # verbose
 To launch the exercise notebook run:
 
 ```bash
-./noteboosh.sh 20
+./notebook.sh 20
 ```
 
 If at any point you want to archive the work in your current notebook and restart fresh:
 
 ```bash
-./noteboosh.sh --fresh 20
+./notebook.sh 20 --fresh
 ```
 
 These exercises assemble the full assistant and capture the final post-mortem. The live assistant defaults to ProdLM; set `MODEL_SELECTION = "course"` to try your strongest course artifact, preferring `-DPO`, then `-SFT`, then base. Concrete artifact base names follow the same fallback.
@@ -439,7 +439,7 @@ The capstone inherits Module 16-19's compute footprint. There is no new compute-
 ---
 ## Reading
 
-The capstone has fewer required readings— most of the conceptual ground was covered earlier. The reading list here is for situating the capstone work in the broader landscape and informing the post-mortem.
+The capstone has fewer required readings — most of the conceptual ground was covered earlier. The reading list here is for situating the capstone work in the broader landscape and informing the post-mortem.
 
 Primary:
 

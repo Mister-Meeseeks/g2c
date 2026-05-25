@@ -4,7 +4,7 @@
 
 ![Multi-head attention end-to-end: input X (B, T, D); three big linear projections produce Q, K, V each of shape (B, T, D); a reshape + transpose splits the channel dim into H heads, each of size d_h = D/H, so every tensor becomes (B, H, T, d_h); H independent attention computations run in parallel (each with its own scaling factor √d_h); concatenation merges the heads back to (B, T, D); a final output projection W_O lands the result. A side panel emphasizes the headline fact: same total parameter count as a single big attention, but H different "ways of looking" at the same sequence.](08-multi-head-attention/Module08-Hero.png)
 
-This week is short in terms of content. Almost everything is already in place from last lesson. Review the scaled dot-product and softmax machinery from the previous module. The conceptual move is "split D into H slots and run H copies of attention in parallel"; the engineering move is "do that with one matmul, not H of them."
+This week is short on content. Almost everything is already in place from the last lesson. Review the scaled dot-product and softmax machinery from the previous module. The conceptual move is "split D into H slots and run H copies of attention in parallel"; the engineering move is "do that with one matmul, not H of them."
 
 ---
 ## Before you start
@@ -185,13 +185,13 @@ pytest tests/test_multi_head_attention.py -v          # verbose
 To launch the exercise notebook run:
 
 ```bash
-./noteboosh.sh 08
+./notebook.sh 08
 ```
 
 If at any point you want to archive the work in your current notebook and restart fresh:
 
 ```bash
-./noteboosh.sh --fresh 08
+./notebook.sh 08 --fresh
 ```
 
 The notebook carries the detailed prompts, plots, and training cells.
@@ -204,7 +204,7 @@ The notebook carries the detailed prompts, plots, and training cells.
 
 ## Pitfalls to expect
 
-- **Scaling by √D instead of √head_dim.** The single most common multi-head bug. Training sluggish; attention weights are too flat; gradients propagate weakly. Crashes nothing, fails subtly. 
+- **Scaling by √D instead of √head_dim.** The single most common multi-head bug. Training is sluggish; attention weights are too flat; gradients propagate weakly. Nothing crashes; the failure is subtle. 
 
 - **Reshape order: `(B, T, head_dim, H)` instead of `(B, T, H, head_dim)`.** The shape is the same after view, but heads end up "seeing" interleaved slices of the embedding (positions 0, H, 2H, ... instead of 0..head_dim-1). Will silently produce a different model.
 
@@ -214,7 +214,7 @@ The notebook carries the detailed prompts, plots, and training cells.
 
 - **Mask polarity backwards (same as Module 07).** `causal_mask` returns True ABOVE the diagonal — the positions to BLOCK. The `(T, T)` mask broadcasts naturally over `(B, H, T, T)` scores.
 
-- **Implementing per-head with `H` independent linear layers.** Works mathematically, but is `H × `slower (H matmuls instead of 1) and strictly less expressive (block-diagonal projections instead of full ones). The standard idiom is one `(D, D)` projection plus reshape.
+- **Implementing per-head with `H` independent linear layers.** Works mathematically, but is H× slower (H matmuls instead of 1) and strictly less expressive (block-diagonal projections instead of full ones). The standard idiom is one `(D, D)` projection plus reshape.
 
 - **Returning `attention_weights` of shape `(B, T, T)` instead of `(B, H, T, T)`.** The "averaged over heads" version drops the per-head visualization that motivates exposing this method at all. Keep the H dim. 
 

@@ -23,7 +23,7 @@ The dominant operation in deep learning is **matrix multiplication**. Linear lay
 
 
 ![The vectorization ladder: Python loops → NumPy (BLAS) → PyTorch CPU → PyTorch MPS, with each rung roughly an order of magnitude faster than the last.](02-tensors/Module02-Ladder.png)
-*Each step up the ladder is roughly an order of magnitude faster than the one below it. Modern deep learning is feasible only because all four rungs exist. trying to train anything serious from rung 1 alone would take years per epoch.*
+*Each step up the ladder is roughly an order of magnitude faster than the one below it. Modern deep learning is feasible only because all four rungs exist. Trying to train anything serious from rung 1 alone would take years per epoch.*
 
 ## The big idea
 
@@ -154,13 +154,13 @@ pytest tests/test_tensors.py -v          # verbose
 To launch the exercise notebook run:
 
 ```bash
-./noteboosh.sh 02
+./notebook.sh 02
 ```
 
 If at any point you want to archive the work in your current notebook and restart fresh:
 
 ```bash
-./noteboosh.sh --fresh 02
+./notebook.sh 02 --fresh
 ```
 
 The notebook carries the exact tables, arrays and questions; this page lists the exercise arc.

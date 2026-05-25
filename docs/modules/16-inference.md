@@ -4,7 +4,7 @@
 
 ![Module 16 summary diagram showing a tiny course model, a configured production model, and a shared Backend interface used by evaluation, RAG, tools, and agents.](16-inference/Module16-Hero.png)
 
-Every module up to the point has been about making the model smarter. In this lesson we focus on making it faster, more reliable, and scalable. 
+Every module up to this point has been about making the model smarter. In this lesson we focus on making it faster, more reliable, and more scalable. 
 
 ---
 ## Before you start
@@ -17,20 +17,20 @@ Every module up to the point has been about making the model smarter. In this le
 ---
 ## Where this fits in
 
-In Modules 1-15 we went through the entire pipeline of building, training and shaping a model. We now have something that's starting to resemble the assistant systems that make up modern LLM products. The remainder of the course will be about building the "shell" around it to make a useful assistant. Retrieval, tool usage, agent harnesses. These are all critical and complex components to make a system like ChatGPT useful. However all of them live outside the model itself.
+In Modules 1-15 we went through the entire pipeline of building, training, and shaping a model. We now have something that's starting to resemble the assistant systems that make up modern LLM products. The remainder of the course will be about building the "shell" around it to make a useful assistant. Retrieval, tool usage, and agent harnesses — these are all critical, complex components of a system like ChatGPT. However, all of them live outside the model itself.
 
-At this point in the course journey, we've arrived at that the point where the model is "frozen". From here forward, we will no longer be updating weights. But we can't just declare mission accomplished, hand off the weights, and never think about it again. The best trained model in the world is useless if we can't serve and scale it to end users efficiently and reliably.
+At this point in the course journey, we've arrived at the point where the model is "frozen". From here forward, we will no longer be updating weights. But we can't just declare mission accomplished, hand off the weights, and never think about it again. The best trained model in the world is useless if we can't serve and scale it to end users efficiently and reliably.
 
-This week covers the topic of **inference**, which is the process of using fixed weights to produce outputs. Compared to the research heavy nature of training, inference is fundamentally an engineering discipline. Even on today's "small" production models, generating text is enormously resource intensive. Up until this point, the course has been about how to make models smarter. This week we learn how to make them faster, cheaper and reliable.
+This week covers the topic of **inference**, which is the process of using fixed weights to produce outputs. Compared to the research-heavy nature of training, inference is fundamentally an engineering discipline. Even on today's "small" production models, generating text is enormously resource intensive. Up until this point, the course has been about how to make models smarter. This week we learn how to make them faster, cheaper, and more reliable.
 
 ## The big idea
 
-Training gives you weights; inference turns those weights into a usable system. We are going to use the exact same sampling process that we learned in Module 11. But the difference is in prior modules we used sampling as a component of post-training and evalution. We never worried too much about efficiency or reliability, because those contexts are inherently controlled environments that easily fit into a notebook.
+Training gives you weights; inference turns those weights into a usable system. We are going to use the exact same sampling process that we learned in Module 11. But the difference is in prior modules we used sampling as a component of post-training and evaluation. We never worried too much about efficiency or reliability, because those contexts are inherently controlled environments that easily fit into a notebook.
 
 We now turn our attention towards turning sampling generation into a model backend that external systems can depend on. That requires three practical moves:
 
 1.  **Wrap the model behind a stable interface.**  Downstream modules should call `backend.complete(prompt, ...)`, not care whether the model is StudentLM, BaseLM, ProdLM, Ollama, or MLX.
-2. **Make the model fit and run.**  At this point in the course, we be shifting into production models. We had no problem generating completions with the toy-scale models that we pre-trained. But now memory and GPU efficiency become first class priorities.
+2. **Make the model fit and run.**  At this point in the course, we'll be shifting into production models. We had no problem generating completions with the toy-scale models that we pre-trained. But now memory and GPU efficiency become first class priorities.
 3. **Avoid wasting work during generation.** As models scale up, even small amounts of duplicated work become expensive. We'll explore intelligent caching solutions to drastically cut down on compute costs for production sized prompts.
 
 ### Quantization: how a 7B model fits in 4 GB
@@ -42,7 +42,7 @@ Quantization is a technique that allows us to tradeoff performance for accuracy 
 
 The easiest way to think about quantization is as a form of (lossy) compression. If you cut the number of bits in half, then you cut the memory footprint of the model (and its activations) in half. Of course this isn't a free lunch.
 
-The least significant are less important, but they're not zero importance. Downscaling the weights in some degradation to the underlying model. The accuracy hit from quantization is real but small for instruction-tuned models in the int8 → int4 range. Q4_K_M typically loses 1–3% on benchmarks compared to fp16.
+The least significant bits are less important, but their importance isn't zero. Downscaling the weights causes some degradation to the underlying model. The accuracy hit from quantization is real but small for instruction-tuned models in the int8 → int4 range. Q4_K_M typically loses 1–3% on benchmarks compared to fp16.
 
 ```
    ┌───────────────────────────────────────────────────────────────────────┐
@@ -72,14 +72,14 @@ The least significant are less important, but they're not zero importance. Downs
    └───────────────────────────────────────────────────────────────────────┘
 ```
 
-The reason quantization speeds inference up isn't the math — int4 multiplications aren't faster than fp16 multiplications on most hardware. It's that **inference is memory-bandwidth-bound**. The time to multiply a weight by an activation is dominated by the time to *fetch the weight from RAM*. Halving the weight size halves the fetch time, even if the math itself is the same speed.
+The reason quantization speeds up inference isn't the math — int4 multiplications aren't faster than fp16 multiplications on most hardware. It's that **inference is memory-bandwidth-bound**. The time to multiply a weight by an activation is dominated by the time to *fetch the weight from RAM*. Halving the weight size halves the fetch time, even if the math itself is the same speed.
 
 ### KV cache: from O(T²) per token to O(T) per token
 
 ![KV cache — remember once, reuse forever. Two side-by-side flow diagrams. WITHOUT KV CACHE: each generation step recomputes attention over the whole sequence. Step 1 computes K/V for tokens 0..2; step 2 recomputes K/V for tokens 0..3 (re-doing the work for 0..2); step 3 redoes 0..4; cost per step grows linearly with sequence length, total work is O(T²). WITH KV CACHE: step 1 computes K/V for tokens 0..2, stores them; step 2 only computes K/V for the new token (one row), appends to the cache, attends from the new query against the entire cached K/V; per-step cost is O(T), total work is O(T·T) but with a much smaller constant. A "what is stored" panel pins the layout: `K_cache` and `V_cache` per layer, shape `(max_seq_len, n_heads, head_dim)`, dtype fp16. A memory-budget example for a 7B model (Llama 3.1 8B): 32 layers × 32 heads × 128 head_dim × 2 (K and V) × 2 bytes (fp16) × 2048 context = ~1 GB; doubles linearly with context length. A "scaling with context length" panel shows weights stay fixed while the cache grows — long-context inference is memory-bound on the cache, not the weights. A "the takeaway" panel: KV cache is mandatory at scale; production servers like llama.cpp build one in; the optional course-model cache makes the mechanism inspectable.](16-inference/Module16-KVCache.png)
 *Why 30 tok/s on a 7B model is even possible. The KV cache turns autoregressive decoding from O(T²) to O(T) per step — a 5–20× speedup at production context lengths.*
 
-Unlike quantization, KV caching is pretty close to a free lunch. At least on larger models and context windows. It depends on the fact that in next token auto regression, we are constantly revisiting the same prompt tokens.
+Unlike quantization, KV caching is pretty close to a free lunch — at least on larger models and context windows. It depends on the fact that in next-token autoregression, we are constantly revisiting the same prompt tokens.
 
 Module 11's generation loop recomputes attention over the entire sequence every step:
 
@@ -143,7 +143,7 @@ In practice: 2–3× throughput improvement on long generations. We don't build 
 
 ### The inference server pattern
 
-To go from training to inference, the model has to become a general purpose service. Up until now it was fine to represent a model as a PyTorch tensor in a notebook. But once we move to building general purpose software *over* the model, we need functional form that's stable, standardized and modular.
+To go from training to inference, the model has to become a general-purpose service. Up until now it was fine to represent a model as a PyTorch tensor in a notebook. But once we move to building general-purpose software *over* the model, we need a functional form that's stable, standardized, and modular.
 
 ```
    ┌────────────────────────────────────────────────────────────────────────┐
@@ -174,13 +174,13 @@ To go from training to inference, the model has to become a general purpose serv
    └────────────────────────────────────────────────────────────────────────┘
 ```
 
-The common approach to serve inference is over over an **API Provider**. Even local models are typically served through an API on `localhost`. The overhead of the network stack is trivial compared to the latency of inference itself. And with it we get some major advantages.
+The common approach to serving inference is over an **API Provider**. Even local models are typically served through an API on `localhost`. The overhead of the network stack is trivial compared to the latency of inference itself. And with it we get some major advantages.
 
 For local models it creates process isolation, which allows us to manage and isolate the massive memory and GPU requirements of running the model. This allows software to treat inference as an abstracted backend. This makes switching models, providers or inference machines as easy as pointing at a different URL.
 
-Finally it allows for API *composability*. A provider itself can consume another API upstream in its own backend. A common example of this pattern is the *router*. Inference can be dynamically routed to models of varying capabilities depending on the shape of the workload. 
+Finally, it allows for API *composability*. A provider itself can consume another API upstream in its own backend. A common example of this pattern is the *router*. Inference can be dynamically routed to models of varying capabilities depending on the shape of the workload. 
 
-In this course we'll be taking advantage of composability to add a hook to a production grade local provider inside the `g2c` framework:
+In this course we'll be taking advantage of composability to add a hook to a production-grade local provider inside the `g2c` framework:
 
 ```
    ┌──────────────────────────────────────────────────────────────────────┐
@@ -409,13 +409,13 @@ pytest tests/test_inference.py -v                       # verbose
 To launch the exercise notebook run:
 
 ```bash
-./noteboosh.sh 16
+./notebook.sh 16
 ```
 
 If at any point you want to archive the work in your current notebook and restart fresh:
 
 ```bash
-./noteboosh.sh --fresh 16
+./notebook.sh 16 --fresh
 ```
 
 The notebook defaults to BaseLM for the artifact backend, automatically preferring `-DPO`, then `-SFT`, then base when those stages exist. You can switch to a course-trained artifact in the model-selection cell and compare that local artifact path with ProdLM.
@@ -468,7 +468,7 @@ This is the most memory-sensitive module of the course. Choose the model size + 
    └───────────────────────────────────────────────────────────────────────┘
 ```
 
-The  course default is `llama3.2:3b` and this is what will automatically be setup when students run `./prodlm.sh`
+The course default is `llama3.2:3b`, and this is what will be set up automatically when students run `./prodlm.sh`.
 
 - Fits in 4 GB on every reasonable Mac config.
 - Fast enough for interactive use (25–40 tok/s on M2 16GB).

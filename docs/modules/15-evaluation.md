@@ -4,15 +4,15 @@
 
 ![Hero](15-evaluation/Module15-Hero.png)
 
-The last two modules have been about tuning a base model's behavior. This week is about measuring how well we did. It's a three-pronged evaluation: closed-set scoring for capability ranking, open-set for behavior, and a calibration metric for "how well does the model know what it doesn't know". The minimum viable harness for any serious model work. A single loss number alone won't cut it for assistant grade models.
+The last two modules have been about tuning a base model's behavior. This week is about measuring how well we did. It's a three-pronged evaluation: closed-set scoring for capability ranking, open-set scoring for behavior, and a calibration metric for "how well does the model know what it doesn't know?". The minimum viable harness for any serious model work. A single loss number alone won't cut it for assistant grade models.
 
 ---
 ## Before you start
 
 * *Review*
-	* [[11-sampling]] For the difference from logits and text completion
-	* [[13-sft]] For formatting targeting
-	* [[14-dpo]] For the framework of how to score comparison
+	* [[11-sampling]] for the difference between logits and text completion
+	* [[13-sft]] for format targeting
+	* [[14-dpo]] for the framework of how to score comparisons
 	* [[PyTorch Primer]] if any PyTorch code is unfamiliar or confusing
 * *Finish*
 	* `g2c/sampling` from [[11-sampling]]
@@ -98,9 +98,9 @@ A confident fluent wrong answer is rewarded as much as a confident fluent right 
 
 ## The big idea
 
-The **eval harness** closes this loop. By scoring outputs against what we want to, not what the loss measures, we surface the gap. Most of the model's failures are expected given the training objective; eval makes them *visible*.
+The **eval harness** closes this loop. By scoring outputs against what we actually want, not what the loss measures, we surface the gap. Most of the model's failures are expected given the training objective; eval makes them *visible*.
 
-An eval harness is a repeatable procedure to evaluate and score model behavior against specific questions or challenges. The harness abstracts and standardizes the grading process for arbitrary questions. Standardized scoring means we can now compare models and checkpoints models and checkpoints in an objective way. Evaluation isn't just the end of the training pipeline, it's a step in a broader iterative pipeline of continuously refining the model.
+An eval harness is a repeatable procedure to evaluate and score model behavior against specific questions or challenges. The harness abstracts and standardizes the grading process for arbitrary questions. Standardized scoring means we can now compare models and checkpoints in an objective way. Evaluation isn't just the end of the training pipeline; it's a step in a broader iterative pipeline of continuously refining the model.
 
 The key steps in an evaluation harness are:
 
@@ -111,7 +111,7 @@ The key steps in an evaluation harness are:
 Evaluation harnesses come in two flavors:
 
 1. **Closed-set eval.** Asks a question, then evaluates against a pre-determined set of multiple-choice answers.
-2. **Open-set eval** Asks a question, then lets the model complete text normally. Grades the text response using a **matcher**. 
+2. **Open-set eval.** Asks a question, then lets the model complete text normally. Grades the text response using a **matcher**. 
 
 ![Closed-set (multiple choice) vs open-set (generation) eval. Two complementary harnesses, side by side. Closed-set: the model chooses from a finite list of candidate continuations; we score each candidate by sequence-log-probability, take argmax for the prediction, and softmax over scores for confidence. Open-set: the model generates freely, and a matcher decides whether the generated string matches any reference answer. A "key differences at a glance" panel pins the trade-off: closed-set is fast and calibration-friendly but bounded by the candidate list; open-set is realistic and uncalibrated by default. Use both — they expose different aspects of the same model.](15-evaluation/Module15-Closed.png)
 *The two halves of the harness. Closed-set scoring is what builds calibration; open-set generation is what surfaces hallucination.*
@@ -123,11 +123,11 @@ Multiple-choice scoring is the cleanest eval primitive. Given a prompt and N can
 ![MultiChoice](15-evaluation/Module15-MultiChoice.png)
 *Tokenize each option, score, argmax for prediction, softmax for confidence.*
 
-We still generate logits for next token prediction. However instead of randomly sampling the next token, we already "know" the next tokens based on the pre-written answer. Let's say the question is "Who was the first president of the United States?". We start by generating the next token logits from the prompt, apply softmax, and find the probability assigned to the "George " token.
+We still generate logits for next token prediction. However instead of randomly sampling the next token, we already "know" the next tokens based on the pre-written answer. Let's say the question is "Who was the first president of the United States?". We start by generating the next-token logits from the prompt, applying softmax, and finding the probability assigned to the "George " token.
 
-We then append "Goerge " to the prompt, then repeat looking for the "Washington" token in the outputs. And repeat until the we reach the end of the answer. That gives us a series of log probabilities, the sum of which is the model's implied probability for the answer candidate:
+We then append "George " to the prompt and repeat, looking for the "Washington" token in the outputs. We continue until we reach the end of the answer. That gives us a series of log probabilities, the sum of which is the model's implied probability for the answer candidate:
 
-We do the same for all the pre-written answer candidates ("Thomas Jefferson", "George Bush", etc.). At the end we have an implied probability for each answers in the candidate set. Finally we derive relative probabilities for each choice by normalizing against the sum of all the answers in the candidate set:
+We do the same for all the pre-written answer candidates ("Thomas Jefferson", "George Bush", etc.). At the end we have an implied probability for each answer in the candidate set. Finally we derive relative probabilities for each choice by normalizing against the sum of all the answers in the candidate set:
 
 ```
 score_i = sum_t(log softmax(logits_i_t))
@@ -145,7 +145,7 @@ This recovers a "predictions weighted by certainty" measure. Not only do we know
 
 A non-obvious framing: multiple-choice is a diagnostic on the model's internal probability landscape. When you ask the model `Madrid? Lisbon? Barcelona? Berlin?` and read its softmax over options, you're querying the *implicit world model* the network has learned. A confident-and-correct model has world knowledge; a confident-and-wrong model has confidently-wrong world knowledge (the textbook hallucination case); an uncertain model is honest about not knowing. 
 
-**Calibration** is the process by which we quantify the model's confidence in its answer. This is only possible because closed-set eval probes the internal logits generated by the model. A model that picked the wrong choice but with low confidence should look like it's "guessing". The wrong choice selected with only marginally higher probability than the right answer. A confident hallucination not only picks the wrong choice, but picks it by a large probability margin over the right answer.
+**Calibration** is the process by which we quantify the model's confidence in its answer. This is only possible because closed-set eval probes the internal logits generated by the model. A model that picked the wrong choice but with low confidence should look like it's "guessing" — the wrong choice was selected with only marginally higher probability than the right answer. A confident hallucination not only picks the wrong choice, but picks it by a large probability margin over the right answer.
 
 A model can be:
 
@@ -215,7 +215,7 @@ A **reliability diagram** visualizes model calibration by grouping predictions i
 
 ### Open-set eval
 
-If closed-set eval is a multiple choice, open-set eval is the essay section of the test. Open-set eval starts with a prompt, then generates a a normal completion in the same way we've been doing since Module 11. Because it doesn't have an internal accuracy metric like closed-set eval, we rely on external matchers to grade the answer. You can think of matchers as the "rubric" used to grade the test response.
+If closed-set eval is a multiple choice, open-set eval is the essay section of the test. Open-set eval starts with a prompt, then generates a normal completion in the same way we've been doing since Module 11. Because it doesn't have an internal accuracy metric like closed-set eval, we rely on external matchers to grade the answer. You can think of matchers as the "rubric" used to grade the test response.
 
 ```
    ┌───────────────────────────────────────────────────────────────────────┐
@@ -266,7 +266,7 @@ Selecting the right matcher is the load-bearing decision. Choose well:
    └─────────────────────────────────────────────────────────────────────┘
 ```
 
-By default open-set eval doesn't generate a confidence. However it is possible to back out a proxy for confidence. First let the freeform completion generate, then generating a log-probability for the response using the same approach we used for multiple choice answers. However unlike multiple choice there is no way to normalize this value against the set of all possible answers. While it can be useful to record, it is nowhere near as load bearing as ECE.
+By default open-set eval doesn't generate a confidence. However, it is possible to back out a proxy for confidence. First let the freeform completion generate, then generate a log-probability for the response using the same approach we used for multiple-choice answers. However, unlike multiple choice, there is no way to normalize this value against the set of all possible answers. While it can be useful to record, it is nowhere near as load-bearing as ECE.
 
 ### Hallucination categories
 
@@ -469,13 +469,13 @@ pytest tests/test_eval.py -v                       # verbose
 To launch the exercise notebook run:
 
 ```bash
-./noteboosh.sh 15
+./notebook.sh 15
 ```
 
 If at any point you want to archive the work in your current notebook and restart fresh:
 
 ```bash
-./noteboosh.sh --fresh 15
+./notebook.sh 15 --fresh
 ```
 
 The notebook contains the concrete eval examples, harness calls, plots, and answer cells.
@@ -491,7 +491,7 @@ The notebook contains the concrete eval examples, harness calls, plots, and answ
 
 ## Pitfalls to expect
 
-- **Tiny eval sets are noisy.** A few dozen examples can show failure modes, but not small quality deltas. The notebook uses 60 MC examples so ECE bins have more signal, and you should use still more examples for comparisons you care about.
+- **Tiny eval sets are noisy.** A few dozen examples can show failure modes, but not small quality deltas. The notebook uses 60 MC examples so ECE bins have more signal, and you should use even more examples for comparisons you care about.
 - **Surface form affects MC scores.** Keep answer choices similarly formatted and length-normalized when needed.
 - **Matcher choice matters.** `normalized_match`, `contains_match`, and `numeric_match` encode different success criteria. Pick the one that matches the task.
 - **Substring matches can lie.** Searching for `"no"` also matches `"snow"`. Use specific references or stricter regexes.
@@ -542,4 +542,4 @@ Optional:
 - [ ] You can explain — out loud, without notes — the difference between accuracy and calibration, and why a model can be highly accurate yet poorly calibrated.
 - [ ] You can explain — out loud, without notes — the multiple-choice scoring procedure.
 - [ ] You can explain — out loud, without notes — how ECE is computed and what its extremes mean.
-- [ ] You can explain — out loud, without notes — when to use each of the four matchers and what kinds of bug each introduces if used inappropriately.
+- [ ] You can explain — out loud, without notes — when to use each of the four matchers and what kinds of bugs each introduces if used inappropriately.

@@ -199,7 +199,7 @@ def sample(model, prompt_ids, num_tokens, *, temperature=1.0, device="auto") -> 
 def train_lm(model, train_ids, *, val_ids=None, device="auto", ...) -> dict: ...
 ```
 
-Roughly 50 lines of code split between each implementation. They all share the same interface and can be generally substituted for each other in the exercises.
+Roughly 50 lines of code split between each implementation. They all share the same interface and are generally interchangeable in the exercises.
 
 ## How to run the tests
 
@@ -220,13 +220,13 @@ pytest tests/test_lm.py -v          # verbose
 To launch the exercise notebook run:
 
 ```bash
-./noteboosh.sh 06
+./notebook.sh 06
 ```
 
 If at any point you want to archive the work in your current notebook and restart fresh:
 
 ```bash
-./noteboosh.sh --fresh 06
+./notebook.sh 06 --fresh
 ```
 
 The notebook starts with a test gate, then walks through prediction, training, sampling, and comparison.

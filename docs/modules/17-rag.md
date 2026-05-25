@@ -4,7 +4,7 @@
 
 ![Hero](17-rag/Module17-Hero.png)
 
-RAG is the smallest possible architecture for "give the model access to information it doesn't have memorized." Chunk the corpus, embed each chunk, store the vectors, embed the query, retrieve the top-k by cosine similarity, splice them into a citation-formatted prompt, send to the inference backend. None of the components are individually deep — but the wiring is the lesson, because RAG is the substrate Module 18's tools and Module 19's agent loop both build on.*
+RAG is the smallest possible architecture for "give the model access to information it doesn't have memorized." Chunk the corpus, embed each chunk, store the vectors, embed the query, retrieve the top-k by cosine similarity, splice them into a citation-formatted prompt, send to the inference backend. None of the components are individually deep — but the wiring is the lesson, because RAG is the substrate Module 18's tools and Module 19's agent loop both build on.
 
 ---
 ## Before you start
@@ -23,9 +23,9 @@ RAG is the smallest possible architecture for "give the model access to informat
 
 Modules 1–16 built a model and made it usable. The tiny model from Module 14 doesn't know facts — Module 16 fixed that by pivoting to a real pretrained model behind a unified `Backend`. But even a 7B-class model has gaps:
 
-At inference time, models can "know" facts in one of two ways. One is that they're already embedded into weights of the model's internal world model. In [[15-evaluation]] we tested models on their factual recall of questions like "What's the largest city in Spain?". Models learn facts like these during training, primarily pretraining.
+At inference time, models can "know" facts in one of two ways. One is that they're already embedded in the weights of the model's internal world model. In [[15-evaluation]] we tested models on factual-recall questions like "What's the largest city in Spain?". Models learn facts like these during training, primarily pretraining.
 
-The other way a model can "know" a fact is, when it's supplied in the prompt. We can also pose questions like "Kate is in 10th grade, how many years until she graduate high school?" To produce the right answer, the model must take a fact supplied in the prompt ("Kate is in 10th grade") with a fact that it hopefully learned in pretraining ("High school ends at grade 12").
+The other way a model can "know" a fact is when it's supplied in the prompt. We can also pose questions like "Kate is in 10th grade, how many years until she graduates high school?" To produce the right answer, the model must combine a fact supplied in the prompt ("Kate is in 10th grade") with a fact it hopefully learned in pretraining ("High school ends at grade 12").
 
 ```
    ┌───────────────────────────────────────────────────────────────────────┐
@@ -49,19 +49,19 @@ The other way a model can "know" a fact is, when it's supplied in the prompt. We
    └───────────────────────────────────────────────────────────────────────┘
 ```
 
-**Retrieval** is how assistant systems bridges between a large collection of information in the form of a corpus (not necessarily the same corpus used in pretraining) and what information it selectively curates at [[16-inference]] time to actually put into the prompt.
+**Retrieval** is how assistant systems bridge between a large collection of information in the form of a corpus (not necessarily the same corpus used in pretraining) and what information it selectively curates at [[16-inference]] time to actually put into the prompt.
 
 A simple example: "what did the president say in his speech last night?". First we know this fact isn't going to be internally known to the model, because it occurred too recently to be in the pretraining corpus. Therefore the assistant system must recall it from a retrieval corpus. If users frequently ask about current events, then it's reasonable for our assistant system's retrieval corpus to include something like BBC stories from the past week.
 
-It's not practically feasible to dump "all news from the past week" into a context window, and let the model figure it out. Something has to curate the potentially relevant information before we send the prompt to the model. In this example, the model doesn't need news stories about soccer matches or celebrity gossip, but it does need news stories about the president.
+It's not practically feasible to dump "all news from the past week" into a context window and let the model figure it out. Something has to curate the potentially relevant information before we send the prompt to the model. In this example, the model doesn't need news stories about soccer matches or celebrity gossip, but it does need news stories about the president.
 
-Retrieval makes assistant systems more intelligent by curating relevant information and exposing it to the model at inference time. When executed right, the end user sees a transpa assistant system that seamlessly knows everything in the corpus.
+Retrieval makes assistant systems more intelligent by curating relevant information and exposing it to the model at inference time. When executed right, the end user sees a transparent assistant system that seamlessly knows everything in the corpus.
 
 ## The big idea
 
 The goal of retrieval is to query a large corpus for data relevant to an arbitrary prompt. The retrieval system doesn't need to "understand" the data. It just has to curate a small context-sized subset of the corpus based on relevance. 
 
-In [[05-embeddings]] we learned a technique for converting language into geometry. Embeddings project tokens into a vector in a high dimensional semantic space. **Vector retrieval** that same idea to whole chunks of text. 
+In [[05-embeddings]] we learned a technique for converting language into geometry. Embeddings project tokens into a vector in a high dimensional semantic space. **Vector retrieval** applies that same idea to whole chunks of text. 
 
 Instead of asking the language model to internally remember every fact, we build a searchable map of an external corpus. Each chunk gets reduced to a vector by an embedding model. Each user question gets reduced to a vector by the same embedding model. Retrieval is then a nearest-neighbor problem: find the chunk vectors closest to the question vector.
 
@@ -70,7 +70,7 @@ That gives the assistant a practical two-step memory system:
 1. **Index time:** prepare the corpus before the user asks anything. Split documents into chunks, embed each chunk, and store `(chunk, vector)` pairs in an index.
 2. **Query time:** when the user asks a question, embed the question, search the index for the closest chunks, and put those chunks into the prompt before calling the inference backend.
 
-The important distinction is that retrieval does not answer the question by itself. Rather its a component of the **retrieval augmentation generation (RAG)** pipeline.  Retrieval only decides what evidence the model gets to read. Augmentation is how we incorporate that evidence into the prompt. Generation is running the LLM with the agumented prompt.
+The important distinction is that retrieval does not answer the question by itself. Rather, it's a component of the **retrieval-augmented generation (RAG)** pipeline.  Retrieval only decides what evidence the model gets to read. Augmentation is how we incorporate that evidence into the prompt. Generation is running the LLM with the augmented prompt.
 
 The generator still does the language work: combining the user's question with the retrieved context, reasoning over it, and producing the answer. If retrieval finds the right chunks, even a modest model can look much smarter. If retrieval finds the wrong chunks, a strong model may confidently answer from the wrong evidence.
 
@@ -177,7 +177,7 @@ Chunking systems in the wild generally fall under three categories:
 ![Embedding space and cosine search. Left half: a 2D scatter of chunk embeddings color-coded by cluster — Spain/Cities (green), Python/Code (blue), Cooking (orange), Machine Learning (purple). Texts about the same topic land in the same neighborhood. The user's query "What is the capital of Spain?" embeds to a point near the Spain/Cities cluster, marked with a star. A "cosine similarity intuition" panel pins the math: for L2-normalized vectors, `cos(u, v) = u · v` — small angle → high similarity → score near 1; orthogonal → score near 0; opposite → score near -1. Right half: the search algorithm in five steps. Step 1 — embed the query. Step 2 — dot the query against every row of the (N, d) store matrix to get N similarities. Step 3 — `np.argpartition(scores, -k)` finds the top-k indices in O(N) without sorting the full array. Step 4 — sort just those k indices by descending score. Step 5 — return the top-k chunks plus their similarity scores. A "key takeaway" panel: cosine similarity finds the chunks whose meaning is most similar to the query — not the chunks that share words.](17-rag/Module17-Embedding.png)
 *With embedding vectors, semantic similarity reduces to geometry*
 
-An embedding is a function from a string of text to a numerical vector in a high dimenstional space. Within an embedding space, semantic similarity is measured as the angle between the vectors. If two vectors share a small angle, then their coordinates in the semantic space are close in a geometric sense. The choice of embedding function determines what "similar" means:
+An embedding is a function from a string of text to a numerical vector in a high-dimensional space. Within an embedding space, semantic similarity is measured as the angle between the vectors. If two vectors share a small angle, then their coordinates in the semantic space are close in a geometric sense. The choice of embedding function determines what "similar" means:
 
 * **Sparse / lexical.** The vector is mostly zeros; non-zero entries correspond to terms (or n-grams, or hash buckets). Fast, deterministic, no model required. Captures lexical overlap, no semantics. Good for "find passages mentioning the same words" — bad for "find passages on the same topic."
 
@@ -211,7 +211,7 @@ In this module we build `HashEmbedder` as a toy lexical model. It captures lexic
 
 ### Retrieval
 
-Once we have query and corpus vectors, we want to construct a **k-Nearest Neighbors (kNN)** algorithm to find the chunks with the closest semantic similarities. We rely on the fact that embeddings are normalized to unit length. For unit normalized vectors, the cosine of the angle is monotonically decreasing with distance. This reduces similarity comparison to a simple, fast, GPU-friendly dot product.
+Once we have query and corpus vectors, we apply a **k-Nearest Neighbors (kNN)** search to find the chunks with the highest semantic similarity. We rely on the fact that embeddings are normalized to unit length. For unit-normalized vectors, the cosine of the angle is monotonically decreasing with distance. This reduces similarity comparison to a simple, fast, GPU-friendly dot product.
 
 ```
 Vectors are unit normal:
@@ -224,11 +224,11 @@ Similarity score ∈ [0,1]:
 
 Cosine similarity gives us a scalar similarity score for each of the `N` chunks in the corpus. To find the top-K closest chunks we apply the following algorithm:
 
-1. Argpartition the top-K scores. (Argpartition don't sort, avoid overhead of full sort)
+1. Argpartition the top-K scores. (Argpartition doesn't sort, avoiding the overhead of a full sort.)
 2. Sort the remaining top-K scores.
-3. Lookup and return the chunks corresponding to the top-K scores
+3. Look up and return the chunks corresponding to the top-K scores.
 
-That's the whole search algorithm for a flat index. Linear in `N` and therefore corpus size. Performance focused search algorithms — HNSW, IVF, GPU indexes — replace the above with something sub-linear in `N`. This usually involves trading off kNN with **approximate nearest neighbors (ANN)**. 
+That's the whole search algorithm for a flat index. Linear in `N`, and therefore in corpus size. Performance-focused search algorithms — HNSW, IVF, GPU indexes — replace the above with something sub-linear in `N`. This usually involves trading exact kNN for **approximate nearest neighbors (ANN)**. 
 
 ```
    ┌──────────────────────────────────────────────────────────────────────┐
@@ -289,7 +289,7 @@ Note what's *not* in the template: chat-template markers like `<|user|>...<|assi
 - **The "I don't know" guard is the single highest-leverage line in the prompt.** Models that have it abstain on insufficient context; models that don't, hallucinate.
 - **Chunks should be self-contained.** A chunk that ends mid-sentence forces the model to hallucinate the missing context. Real chunkers prefer natural breaks for this reason.
 - **Citations are alignment, not formatting.** The point of `[1] (source: foo.md)` isn't pretty output — it's that a reviewer can verify the claim.
-- **Embedders and chat models are different beasts.** A chat model `complete(prompt) → completion` expects to generate. An embedder `embed(text) → vector` expects to *score*  Confusing them (e.g., trying to use a chat model as an embedder) is a classic early mistake. They share the same family of architectures (transformers) but diverge entirely in usage.
+- **Embedders and chat models are different beasts.** A chat model `complete(prompt) → completion` expects to generate. An embedder `embed(text) → vector` expects to *score*. Confusing them (e.g., trying to use a chat model as an embedder) is a classic early mistake. They share the same family of architectures (transformers) but diverge entirely in usage.
 
 ### What we don't cover
 
@@ -426,13 +426,13 @@ pytest tests/test_rag.py -v                       # verbose
  To launch the exercise notebook run:
 
 ```bash
-./noteboosh.sh 17
+./notebook.sh 17
 ```
 
 If at any point you want to archive the work in your current notebook and restart fresh:
 
 ```bash
-./noteboosh.sh --fresh 17
+./notebook.sh 17 --fresh
 ```
 
 The notebook carries the exact indexing, retrieval, and RAG pipeline prompts. It defaults to ProdLM for live answers; set `MODEL_SELECTION = "course"` to try your strongest course artifact, preferring `-DPO`, then `-SFT`, then base. Concrete artifact base names follow the same fallback.

@@ -4,7 +4,7 @@
 
 ![Module 18 on one page: a four-panel circus map of the tool-use loop. PANEL 1 (top-left, "REGISTRATION"): a `ToolRegistry` shelf holds four labeled drawers — `calculator` (with a parameters schema scroll: {"expression": "string"}), `read_file` ({"path": "string", "max_chars": "integer"}), `web_search` ({"query": "string"}), `run_python` ({"code": "string"}). Each drawer's front shows the tool's description in plain English. PANEL 2 (top-right, "PROMPT TIME"): the registry's tools render into a system prompt block: "Tools available:\n- calculator: Evaluate an arithmetic expression...\n- read_file: Read a UTF-8 text file..." plus a "Call format: <tool_call>{...}</tool_call>" footer. The user message gets appended below: "User: What's the population of Madrid times 7?" The model reads it. PANEL 3 (bottom-left, "PARSE & DISPATCH"): the model's completion contains a `<tool_call>{"name": "calculator", "arguments": {"expression": "3220000 * 7"}}</tool_call>`. A `parse_tool_calls` machine extracts it; a `validate_arguments` checker stamps it OK; the dispatcher looks up "calculator" in the registry and invokes it. The result `22540000` becomes a `ToolResult`, formatted as `<tool_result name="calculator" id="call_0_xxxx">22540000</tool_result>` and appended back to the prompt. PANEL 4 (bottom-right, "FEEDBACK & STOP"): the model sees the tool result, decides it has enough information, and emits a final answer (no more `<tool_call>` blocks). The loop returns a `ToolRunResult` with `final_answer`, `steps` (every back-and-forth), `stopped_reason="no_more_calls"`. A right-edge sidebar lists key concepts: tool schemas (JSON-schema-lite), the `<tool_call>` format, the parse → dispatch → feedback loop, error surfacing as `<tool_error>` tags so the model can recover, max_steps as the safety net. Bottom caption: "Module 17 gave the model EYES (retrieval); Module 18 gives it HANDS (tools). Module 19 will give it INTENT (planning loops)."](18-tools/Module18-Hero.png)
 
-Tool use is the smallest possible architecture for "let the model affect the outside world." Define a tool a JSON, splice the schemas into the prompt, parse tool call blocks from the model's output.
+Tool use is the smallest possible architecture for "let the model affect the outside world." Define a tool as JSON, splice the schemas into the prompt, and parse tool-call blocks from the model's output.
 
 ---
 ## Before you start
@@ -17,7 +17,7 @@ Tool use is the smallest possible architecture for "let the model affect the out
 ---
 ## Where this fits in
 
-Module 16 built the interface we use to interact with the model. Module 17 moved input to the model beyond just user prompt. In this module we will expand the ways we consume model output, to go beyond text answers and allow the model to directly take actions.
+Module 16 built the interface we use to interact with the model. Module 17 extended the model's input beyond just the user prompt. In this module we will expand the ways we consume model output, to go beyond text answers and allow the model to directly take actions.
 
 Up through Module 17, we've built the model and its surrounding assistant system to be *knowledgeable*. The framing has been the questions the system could answer. But knowledge isn't enough for an assistant — there are tasks that fundamentally require *action*:
 
@@ -53,7 +53,7 @@ Up through Module 17, we've built the model and its surrounding assistant system
    └──────────────────────────────────────────────────────────────────────┘
 ```
 
-At the end of the day, LLMs can only output *text*. So to give an assistant the ability, and not just answer questions, we need a structured way to turn text output into action. This module introduces a way to do exactly that.
+At the end of the day, LLMs can only output *text*. So to let an assistant actually take action, not just answer questions, we need a structured way to turn text output into action. This module introduces a way to do exactly that.
 
 ## The big idea
 
@@ -62,14 +62,14 @@ To go from model completions to external actions, we rely on the **tool**. The s
 Each tool in the harness is made up of two components:
 
 1. **Tool specification**. This is what the model sees. Includes name, plain language description, and a structured parameter description. The specification informs the model when, why and how to use the tool.
-2. **Tool callable**. This is the external software that the tool harness runs when the model calls the specific tool. For example for web search the callable is responsible for actually making the queries to the search engine and returning the results.
+2. **Tool callable**. This is the external software that the tool harness runs when the model calls the specific tool. For example, for web search, the callable is responsible for actually making the queries to the search engine and returning the results.
 
-With that framework, the assistant system has everything it needs to support external actions with arbitrary tools. While models are on the tool specification convention, the individual tools are *modular*. The model doesn't have to learn the individual tools ahead of time. All we have to do to add a new tool is conform to the specification with enough descriptiveness that the model can infer at prompt time.
+With that framework, the assistant system has everything it needs to support external actions with arbitrary tools. As long as models follow the tool-specification convention, the individual tools are *modular*. The model doesn't have to learn the individual tools ahead of time. All we have to do to add a new tool is conform to the specification with enough descriptiveness that the model can figure out when to use it at prompt time.
 
 The typical flow in a tool call involves a three way interaction between the tool harness, the model and the external callable. At a high level it looks something like this:
 
 1. `weather_forecast` tool is registered with the tool harness 
-2. At prompt time, the harness injects  the `weather_harness` tool specification (along with all other active tools) into the system prompt. 
+2. At prompt time, the harness injects the `weather_forecast` tool specification (along with all other active tools) into the system prompt. 
 3. The model sees a list of tool specifications and a user prompt: "*daily high San Francisco*"
 4. The model emits a completion with a formatted tool call: `weather_forecast("San Francisco", "today")`
 5. The tool harness extracts the structured call, and dispatches it to the `weather_forecast` callable.
@@ -77,11 +77,11 @@ The typical flow in a tool call involves a three way interaction between the too
 7. The harness sends the tool call result back to the model.
 8. The model now sees the user query and the tool result, and answers the user's original question: "*The high today in San Francisco is 67F*"
 
-One important framework that's important to internalize is that this workflow means **assistant turns** are no longer synonymous with a single inference call to the model. 
+One important point to internalize: this workflow means **assistant turns** are no longer synonymous with a single inference call to the model. 
 
 ### Tool call format
 
-For the tool harness and model to coordinate, it's essential that they're aligned on the *exact* format for tool calls and results. If they're not the model will not emit tool calls in a way that's recognized by the harness, and the harness will not return tool results that are understand by the harness.
+For the tool harness and model to coordinate, it's essential that they're aligned on the *exact* format for tool calls and results. If they're not, the model will not emit tool calls in a way that's recognized by the harness, and the harness will not return tool results that are understood by the model.
 
 The exact format of the tool call and result doesn't actually matter. What matters is that the model is post-trained with high quality data to learn the exact format. This is essentially the same approach we used in [[13-sft]] post-training to teach the model the exact assistant role formatting.
 
@@ -97,7 +97,7 @@ In this course we'll use the tagged JSON convention, which will emit blocks that
 <tool_call>{"name": "calculator", "id": 123, "arguments": {"expression": "2 + 2"}}</tool_call>
 ```
 
-Why JSON inside? Because JSON has a `dict` and tools usually need named arguments. Positional arguments work for one-arg tools; but don't generalize to more complex cases. JSON is the lowest-friction option that's universally well-tokenized.
+Why JSON inside? Because JSON has a `dict` and tools usually need named arguments. Positional arguments work for one-arg tools, but don't generalize to more complex cases. JSON is the lowest-friction option that's universally well-tokenized.
 
 Tool calls are what the model writes and the harness reads. After the tool call completes, tool results are what the harness writes and the model reads back. They follow a similar formatting convention:
 
@@ -113,11 +113,11 @@ Tool calls are what the model writes and the harness reads. After the tool call 
   </tool_error>
 ```
 
-A few important things to note. First tool results are freeform text, they don't have to be formatted in JSON. Because they're being read by a language model (instead of deterministic harness software), this is fine. The model will know how to interpret the text.
+A few important things to note. First, tool results are freeform text; they don't have to be formatted in JSON. Because they're being read by a language model (instead of deterministic harness software), this is fine. The model will know how to interpret the text.
 
-Second tag distinction matters. `<tool_result>` for success, `<tool_error>` for failures. Without the distinction, the model often parrots an error string back as if it were a successful answer.
+Second, the tag distinction matters: `<tool_result>` for success, `<tool_error>` for failures. Without the distinction, the model often parrots an error string back as if it were a successful answer.
 
-Finally the tool harness returns the ID that correlates with the original tool call. This is important because completions can potentially include *multiple* tool calls. Without the ID, the model has no way of knowing which result matches to which tool call.
+Finally, the tool harness returns the ID that correlates with the original tool call. This matters because completions can include *multiple* tool calls. Without the ID, the model has no way of knowing which result matches which tool call.
 
 ### The feedback contract
 
@@ -153,9 +153,9 @@ Each step in the pipeline has a precise responsibility, and each responsibility 
    └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-The model may not call the tool correctly the first time. A natural response is to **retry** with an attempted correction. This is possible because the tool harness returns errors as text that the model can process, instead of raising errors in the harness itself. Without that the harness would just crash on the first error. 
+The model may not call the tool correctly the first time. A natural response is to **retry** with an attempted correction. This is possible because the tool harness returns errors as text that the model can process, instead of raising errors in the harness itself. Without that, the harness would just crash on the first error. 
 
-Therefore the tool harness has to handle multiple rounds of **tool-use steps** on a single query. Which means we need to know *when to stop.* Our harness supports two stopping conditions:
+Therefore, the tool harness has to handle multiple rounds of **tool-use steps** on a single query, which means we need to know *when to stop.* Our harness supports two stopping conditions:
 
 1. Zero tool_calls in the last completion. It's an oddly minimal contract — the model decides when it's done by simply not emitting another `<tool_call>`. The alternative (an explicit "DONE" sentinel) is fragile; instruction-tuned models reliably stop calling tools.
 2. We reach a `max_steps` threshold. Without a cap, a confused model can loop forever, eventually overflowing the context. 
@@ -167,11 +167,11 @@ Therefore the tool harness has to handle multiple rounds of **tool-use steps** o
 
 Unlike deterministic software, LLMs can behave in hard to anticipate ways. When we move from outputting text to directly acting, the blast radius of unpredictable behavior dramatically expands. When exposing tools to model generated input, we generally want to take a defensive posture and preemptively assume that anything the tool harness runs is potentially adversarial.
 
-The specifics of defensive posutre vary widely based on specific tool. A `datetime` doesn't have much surface for abuse. A `bash` tool that executes arbitrary system commands has a huge amount of risk. The risk can also be inverted. `web_search` probably can't do much from its own callable. But it could return **prompt injections** from the public Internet. Malicious instructions in the tool result that the model might read and try to follow. 
+The specifics of defensive posture vary widely based on the specific tool. A `datetime` tool doesn't have much surface for abuse. A `bash` tool that executes arbitrary system commands has a huge amount of risk. The risk can also be inverted. `web_search` probably can't do much from its own callable. But it could return **prompt injections** from the public Internet. Malicious instructions in the tool result that the model might read and try to follow. 
 
-The calculator tool we're building in this module is a good case study for tool security. While arithmetic itself isn't risky, the calculator uses the python interpreter to process the text input. There is a real risk of injection of arbitrary python code. There are three approaches to managing risk here:
+The calculator tool we're building in this module is a good case study for tool security. While arithmetic itself isn't risky, the calculator uses the Python interpreter to process the text input. There is a real risk of injecting arbitrary Python code. There are three approaches to managing risk here:
 
-- **Restricted globals + `eval()`.** Famously not safe — Many escapes documented in the safe-eval literature. Don't.
+- **Restricted globals + `eval()`.** Famously not safe — many escapes are documented in the safe-eval literature. Don't.
 - **AST whitelist.** Parse to AST, walk the tree, refuse every node not on the allowlist. What we do for the calculator. Structurally safe; the surface is what you explicitly admit.
 - **Subprocess + sandbox**. Spawn a separate process with reduced privileges (`seccomp`, `nsjail`, Docker, etc.). What real production code-runners use. 
 
@@ -204,7 +204,7 @@ Every other node type is refused. The surface is what we admit; nothing else get
 
 Each is rejected at the AST walker, not because we pattern-matched the source string but because the AST node type isn't on the allowlist. The technique generalizes — you'd build a safe regex evaluator the same way (allow `Concat`, `CharClass`, `Repeat`; reject everything else).
 
-The correct philsophy for tool safety is **permisstive parser, strict validator**. What this means is we expect models are going to emit noisy imperfectly formatted text. Bad json, missing fields, and malformed tool_call blocks are not security risks. If the parser we use to extract tool calls is overly strict, we are going suffer unnecessarily high tool call failures. *But* after the inputs are parsed, then we apply strict validation to what input the tool actually runs. 
+The correct philosophy for tool safety is **permissive parser, strict validator**. This means we expect models to emit noisy, imperfectly-formatted text. Bad JSON, missing fields, and malformed tool_call blocks are not security risks. If the parser we use to extract tool calls is overly strict, we are going to suffer unnecessarily high tool-call failures. *But* after the inputs are parsed, we apply strict validation to what input the tool actually runs. 
 
 ## Concepts to internalize
 
@@ -360,13 +360,13 @@ pytest tests/test_tools.py -v                       # verbose
 To launch the exercise notebook run:
 
 ```bash
-./noteboosh.sh 18
+./notebook.sh 18
 ```
 
 If at any point you want to archive the work in your current notebook and restart fresh:
 
 ```bash
-./noteboosh.sh --fresh 18
+./notebook.sh 18 --fresh
 ```
 
 The live section defaults to ProdLM because tool calling needs instruction-following behavior. You can switch the model-selection cell to `MODEL_SELECTION = "course"` for your strongest course artifact, preferring `-DPO`, then `-SFT`, then base. Concrete artifact base names follow the same fallback.
@@ -394,7 +394,7 @@ The live section defaults to ProdLM because tool calling needs instruction-follo
 
 ## M-series notes
 
-This module is comfortable on every M-series Mac.j Practical considerations:
+This module is comfortable on every M-series Mac. Practical considerations:
 
 - **Inference happens via `OllamaBackend`** (or `LocalTransformerBackend` for the from-scratch model — but the from-scratch model isn't trained for tool calling, so it won't follow the schema). All Module 16 caveats apply: first call is slow, steady-state matches the model's parameter count.
 - **Tool execution latency.** The calculator is microseconds; `read_file` is microseconds for small files; `web_search` depends on your backend (the stub is microseconds; a real DuckDuckGo / Tavily call is ~1 second); `run_python` is the slowest (subprocess startup + Python init is ~50–200ms on M-series).

@@ -29,7 +29,7 @@ What is the largest city in Spain?
 Lisbon.<|end|>
 ```
 
-Confident. Format-perfect. Wrong. The SFT loss has no way to penalize this output — every syntactically valid `{single sentence}<|end|>` response with the format markets in the right place is equally good. The model "knows" the prompt is asking about a Spanish city; it picks city-shaped tokens that pretraining over-represented from the corpus. SFT taught it the *shape* of the answer; nothing taught it which answers is correct.
+Confident. Format-perfect. Wrong. The SFT loss has no way to penalize this output — every syntactically valid `{single sentence}<|end|>` response with the format markers in the right place is equally good. The model "knows" the prompt is asking about a Spanish city; it picks city-shaped tokens that pretraining over-represented from the corpus. SFT taught it the *shape* of the answer; nothing taught it which answer is correct.
 
 SFT was the first layer of post-training in our LLM stack. This week we're exploring DPO, another form of post-training that teaches pairwise preferences. This is more powerful than it appears at first. Many behavioral criteria, including factual accuracy, can be represented by having graders repeatedly pick between two different examples.
 
@@ -39,7 +39,7 @@ The nomenclature can be a bit confusing. In almost every case the "base model" t
 
 ## The big idea
 
-In SFT post-training, we trained on a set of prompt-response examples. The limitation is this can teach generalized examples, but is weak at demonstrate specific properties. The model learns "answers should look like this". It doesn't learn "answer this way *instead of* that way". 
+In SFT post-training, we trained on a set of prompt-response examples. The limitation is that this can teach generalized behavior, but is weak at demonstrating specific properties. The model learns "answers should look like this". It doesn't learn "answer this way *instead of* that way". 
 
 The solution is pairwise comparisons. Unlike a response example, a comparison lets us specifically contrast a good example against a bad example. This means we can construct the comparisons so they're as close as possible in every way, besides the specific property we're trying to teach. 
 
@@ -61,7 +61,7 @@ Each training example is composed of a *preference triple* consisting of a user 
 (prompt, chosen_response, rejected_response)
 ```
 
-The training process rewards the tokens in the chosen response and penalizes the tokens in the rejected response. Because prompt prefix tokens are identical between the responses, they are non-relevant for comparison. Therefore we *mask* them in the loss function. (If you recall Module 13, we took the same approach with SFT.) 
+The training process rewards the tokens in the chosen response and penalizes the tokens in the rejected response. Because prompt prefix tokens are identical between the responses, they are irrelevant for comparison. Therefore we *mask* them in the loss function. (If you recall Module 13, we took the same approach with SFT.) 
 
 ```
    prompt_ids + chosen_ids       → score chosen response
@@ -75,7 +75,7 @@ DPO tends to feel similar to SFT in code. But SFT trains on "how likely is this 
 
 ### The direct preference shortcut
 
-Historically preference post-training was performed with *reinforcement learning (RL)*. RL relies on explicitly derived preference scores (often from a pairwise ranking system like ELO or Bradley-Terry). After scoring all the training examples, the model is updated a technique called *policy proximal optimization (PPO)*. The problem with RL is that PPO tends to be complex, expensive, hard to tune, unstable, and prone to reward hacking. 
+Historically preference post-training was performed with *reinforcement learning (RL)*. RL relies on explicitly derived preference scores (often from a pairwise ranking system like ELO or Bradley-Terry). After scoring all the training examples, the model is updated using a technique called *proximal policy optimization (PPO)*. The problem with RL is that PPO tends to be complex, expensive, hard to tune, unstable, and prone to reward hacking. 
 
 DPO is a "trick" to perform the equivalent of RL, but without any of the complexity of constructing explicit scores or policy functions. The "direct" in DPO means we go straight from pairwise comparisons to single supervised loss on the underlying model. And that means we can train with standard gradient descent. 
 
@@ -102,7 +102,7 @@ With an implicit reward of:
 r̂(x, y) = β · (log π(y|x) − log π_ref(y|x))
 ```
 
-Crossing two models against two pairwise examples means each pass calculate four log-probabilities:
+Crossing two models against two pairwise examples means each pass calculates four log-probabilities:
 
 * `logit_frozen_chosen` 
 * `logit_frozen_rejected` 
@@ -225,7 +225,7 @@ For a single preference example:
 
 **As training proceeds**: the policy pushes `log π(y_c|x)` **up** and `log π(y_r|x)` **down**. The reward margin (`chosen_reward − rejected_reward`) is the main number to watch. If training is working it should gradually increase over the run.
 
-**β controls the policy learning rate.**  Small β (e.g. 0.01) lets the policy diverge a long way for small preference signals. That invites risk of mode collapse, repetition, and gibberish. Large β (e.g. 1.0) pins the policy near the reference — safe but sometimes can't move enough to absorb the preference signal. The DPO paper and most follow-ups recommend `β ∈ [0.1, 0.5]`. **At toy scale `β = 0.1` is a fine default**, though its always worth sweeping.
+**β controls the policy learning rate.**  Small β (e.g. 0.01) lets the policy diverge a long way for small preference signals. That invites risk of mode collapse, repetition, and gibberish. Large β (e.g. 1.0) pins the policy near the reference — safe but sometimes can't move enough to absorb the preference signal. The DPO paper and most follow-ups recommend `β ∈ [0.1, 0.5]`. **At toy scale `β = 0.1` is a fine default**, though it's always worth sweeping.
 
 ### The frozen reference
 
@@ -291,7 +291,7 @@ A quality pin for any preference dataset: chosen and rejected should differ in t
 - **Sequence-level log-probabilities are sums, not means.**  A mean would change the objective by length-normalizing.
 - **At toy scale, 50–200 preference pairs is the right order of magnitude.** Not 5; not 5000. Controlling quality is more important than quantity at this scale.
 - **Length bias is the single most-studied DPO failure.** Always check chosen-vs-rejected length distributions before training.
-- **DPO does not teach new knowledge.** Like SFT, it shifts behavior over what the base model already knows. It learns to give *more probability* to similarly-shaped correct answers, but only when the base model's prior over the relevant tokens already them nonzero mass.
+- **DPO does not teach new knowledge.** Like SFT, it shifts behavior over what the base model already knows. It learns to give *more probability* to similarly-shaped correct answers, but only when the base model's prior over the relevant tokens already gives them nonzero mass.
 
 ### What we don't cover
 
@@ -375,13 +375,13 @@ pytest tests/test_dpo.py -v                    # verbose
 To launch the exercise notebook run:
 
 ```bash
-./noteboosh.sh 14
+./notebook.sh 14
 ```
 
 If at any point you want to archive the work in your current notebook and restart fresh:
 
 ```bash
-./noteboosh.sh --fresh 14
+./notebook.sh 14 --fresh
 ```
 
 The notebook contains the preference-data format, trainer setup, plots, and comparison prompts.

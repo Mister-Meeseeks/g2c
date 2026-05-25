@@ -18,7 +18,7 @@ Module 01 builds the **backward pass** — the autodiff machinery that converts 
 
 Modern AI is built on many ideas — transformers, attention, tokenization, pretraining, fine-tuning, RLHF, tool use, agents — but underneath almost all of them is the same basic engine: **gradient-based learning**. Gradients are what let a model take an error signal — “this prediction was a little wrong” — and turn it into millions or billions of tiny adjustments across its internal parameters.
 
-**Neural networks** are the primary form of gradient based learning. A neural net is just a circuit made up of individual differentiable functions (meaning they have a gradient). That matters because neural networks are not just fitting outputs. They are learning the internal representations that make future outputs easier to produce.
+**Neural networks** are the primary form of gradient-based learning. A neural net is just a circuit made up of individual differentiable functions (meaning they have a gradient). That matters because neural networks are not just fitting outputs. They are learning the internal representations that make future outputs easier to produce.
 
 This is the reason neural networks became the dominant primitive in deep learning. Other methods can be powerful: nearest-neighbor systems lean on stored examples, support vector machines learn separators, trees split the input space, and Gaussian processes reason over functions with elegant uncertainty. But neural networks trained with gradients have a special combination of properties: they scale to huge datasets, run efficiently as dense linear algebra on modern hardware, and can be stacked into deep systems where every layer is trained by the same learning signal. A single objective can shape the whole network, from low-level features to abstract patterns.
 
@@ -175,13 +175,13 @@ pytest tests/test_autodiff.py -v         # verbose: list every test
 To launch the exercise notebook run:
 
 ```bash
-./noteboosh.sh 01
+./notebook.sh 01
 ```
 
 If at any point you want to archive the work in your current notebook and restart fresh:
 
 ```bash
-./noteboosh.sh --fresh 01
+./notebook.sh 01 --fresh
 ```
 
 The notebook carries the exact prompts; this page lists the exercise arc.

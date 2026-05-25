@@ -17,7 +17,7 @@ This is the payoff week for Phase III. Module 09 built the architecture. Module 
 	* `g2c/pretraining` from  [[09b-pretraining]]
 	* `g2c/training` from [[03b-training]]. 
 	* The trained tokenizers from [[04-tokenizer]] notebook (optional; `datasets.sh` will generate if missing)
-* *Run*  `./datasets.sh` pre-prepare the datasets used for the large training runs.
+* *Run* `./datasets.sh` to pre-generate the datasets used for the large training runs.
 
 ---
 ## Where this fits in
@@ -160,13 +160,13 @@ pytest tests/test_pretraining.py -k trainer -v
 To launch the exercise notebook run:
 
 ```bash
-./noteboosh.sh 10
+./notebook.sh 10
 ```
 
 If at any point you want to archive the work in your current notebook and restart fresh:
 
 ```bash
-./noteboosh.sh --fresh 10
+./notebook.sh 10 --fresh
 ```
 
 Each exercise has `Question:` / `Answer:` cells inside the notebook. If you'd like a hint instead of a grade, write the request in the answer string and ask a coding agent for help. Blank answers are skipped rather than counted wrong.
@@ -195,11 +195,11 @@ Practical starting points:
 
 - **1M params, 2000 steps, TinyShakespeare:** minutes on MPS. Memory usage minimal.
 - **5M params on TinyStories:** hours depending on data slice, context length, and Mac.
-- **30M params on TinyStories:** a longer experiment; overnight to a couple days for the full run. But the notebook lets you stop early, inspect performance and save the model if it looks good enough.
+- **30M params on TinyStories:** a longer experiment; overnight to a couple of days for the full run. But the notebook lets you stop early, inspect performance, and save the model if it looks good enough.
 - **30M params on g2c:** same story as 30M TinyStories. The full run is longer, but tokens/s should be about the same. Stop early when performance is acceptable.
 - **If memory fails:** halve `batch_size` first, then `context_length`. The `(B, T, V)` logits tensor is often the largest activation.
-- **MacOS Activity Monitor.** GPU usage should stay close to 100% and memory pressure green or yellow.
-- **Avoid battery during run**. MacOS heavy throttles long-running GPU processes on battery.
+- **macOS Activity Monitor.** GPU usage should stay close to 100% and memory pressure green or yellow.
+- **Avoid running on battery**. macOS heavily throttles long-running GPU processes on battery.
 
 ---
 ## Reading

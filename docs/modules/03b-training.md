@@ -22,7 +22,7 @@ Module 03 taught the basic loop:
 forward -> loss -> backward -> optimizer.step()
 ```
 
-That loop is correct, but it does not tell you how to choose the knobs. A too-small learning rate makes a correct model crawl. A too-large learning rate can destroy a run. Vanilla SGD uses one global step size for every parameter, which often stalls on large models. Deep models occasionally produce gradient spikes; which can wreck an entire the run. Long runs usually need a learning-rate schedule so early steps can move fast and late steps can settle.
+That loop is correct, but it does not tell you how to choose the knobs. A too-small learning rate makes a correct model crawl. A too-large learning rate can destroy a run. Vanilla SGD uses one global step size for every parameter, which often stalls on large models. Deep models occasionally produce gradient spikes, which can wreck an entire run. Long runs usually need a learning-rate schedule so early steps can move fast and late steps can settle.
 
 The point of this module is not to turn training into a cookbook. The point is to give you a small diagnostic language:
 
@@ -34,7 +34,7 @@ train and val high   -> underfit or under-optimized
 train and val flat   -> stalled optimization
 ```
 
-When we pretrain our course LLM in Module 10, the ideas and techniques from this module will be heavily utilized.
+When we pretrain our course LLM in Module 10, we'll lean heavily on the ideas and techniques from this module.
 
 ## The big idea
 
@@ -44,7 +44,7 @@ The learning rate is not "how much the model learns." It is the scale of the par
 update size ~= learning_rate * gradient scale
 ```
 
-That means the same `lr` can be too small for one parameter and too large for another. A neuron that's rarely activated may receive tiny gradients. A load bearing hidden unit may receive huge gradients. In models with complex architecture, different parts of the architecture live on different gradient scales.
+That means the same `lr` can be too small for one parameter and too large for another. A neuron that's rarely activated may receive tiny gradients. A load-bearing hidden unit may receive huge gradients. In models with complex architecture, different parts of the architecture live on different gradient scales.
 
 SGD uses one global `lr`:
 
@@ -85,7 +85,7 @@ There is no universal answer, so the practical move is a small sweep. Try a few 
 ### AdamW's Effective Step Size
 
 ![Side-by-side comparison of SGD and AdamW. SGD applies one global step size to every parameter using the raw gradient. AdamW maintains per-parameter first-moment `m` (smoothed direction) and second-moment `v` (squared-gradient scale), applies bias correction, and produces a per-parameter adaptive step. Bottom callouts contrast "every parameter the same" against "shock absorbers per parameter" and call out decoupled weight decay.](03b-training/Module03b-Adam.png)
-*Both optimizers are still gradient descent — they differ in how the step is scaled. 
+*Both optimizers are still gradient descent — they differ in how the step is scaled.*
 
 AdamW still has a global `lr`, but the actual update is adapted per tensor element:
 
@@ -197,7 +197,7 @@ We are not implementing dropout in this course path because it is not the bottle
 ### What we don't cover
 
 - Formal convergence proofs. Mathematically interesting, practically unnecessary. 
-- The optimizer zoo. AdamW is more than sufficient for our goals 
+- The optimizer zoo. AdamW is more than sufficient for our goals.
 - BatchNorm and advanced regularization. They matter in deep learning generally, but not for this LLM stack.
 - Dropout was introduced conceptually, but you will not implement it in this module.
 
@@ -260,13 +260,13 @@ pytest tests/test_training.py -v          # verbose
 To launch the exercise notebook run:
 
 ```bash
-./noteboosh.sh 03b
+./notebook.sh 03b
 ```
 
 If at any point you want to archive the work in your current notebook and restart fresh:
 
 ```bash
-./noteboosh.sh --fresh 03b
+./notebook.sh 03b --fresh
 ```
 
 The notebook contains the runnable sweeps, plots, and answer cells.

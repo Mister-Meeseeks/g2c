@@ -1,8 +1,8 @@
 # Course Tracks and Artifacts
 
-This course is designed to be flexible across a wide range of system capabilities. The one hard constraint is that most of the exercises and libraries will only work on an M-Series Mac laptop or desktop. 
+This course is designed to be flexible across a wide range of system capabilities. The one hard constraint is that most of the exercises and libraries will only work on an M-series Mac laptop or desktop. 
 
-Everything runs on one conceptual path, but there are several local-compute tracks, depending on your specific machine and its CPU/GPU, memory and storage. Students are encouraged to experiment with different sized models, training runs, and datasets. However the course loaders will choose sensible defaults, designed to produce good results for relatively small resource requirements.
+Everything runs on one conceptual path, but there are several local-compute tracks, depending on your specific machine and its CPU/GPU, memory and storage. Students are encouraged to experiment with different-sized models, training runs, and datasets. However, the course loaders will choose sensible defaults, designed to produce good results for relatively small resource requirements.
 
 ## System Probe
 
@@ -12,11 +12,11 @@ The repo includes a helpful system probe script that will assess which size mode
 ./sysprobe.sh
 ```
 
-You can use the output from that to help you decide on sizing models and datasets. If that clears your system for the *standard track*, then you can most likely use the  defaults without issue.
+You can use the output from that to help you decide on sizing models and datasets. If that clears your system for the *standard track*, then you can most likely use the defaults without issue.
 
 ## What You Decide
 
-There are two reasons to deviate from the course defaults. One is your system does not have the resources to support the standard track choices. The other is because you want to experiment with different, various or more powerful models, which is highly encouraged.
+There are two reasons to deviate from the course defaults. One is that your system does not have the resources to support the standard track choices. The other is that you want to experiment with different or more powerful models, which is highly encouraged.
 
 You'll need to make four independent choices across possible tracks. The conceptual path is identical across tracks. Any can be deferred and will fall back to course defaults. The track choices are below:
 
@@ -27,7 +27,7 @@ You'll need to make four independent choices across possible tracks. The concept
 | BaseLM (Modules 13-16)     | `./baselm.sh`      | 125M base                        | 350M base                    | 600M base          |
 | ProdLM (Modules 16-20)     | `./prodlm.sh`      | 1.5B-3B instruct                 | 7B-8B instruct               | 14B-class instruct |
 
-The recommendations for each track 
+The recommendations for each track are:
 
 | Track    | Target                                                  | Chip                         | Memory |   Downloads | Free disk |
 | -------- | ------------------------------------------------------- | ---------------------------- | ------ | ----------: | --------: |
@@ -42,7 +42,7 @@ Datasets are loaded with
 ```bash
 ./datasets.sh --tiny    # Tiny dataset track, a few hundred MBs
 ./datasets.sh --small   # Small dataset track, several GBs
-./datasets.sh.          # Standard dataset track, around 10GB
+./datasets.sh          # Standard dataset track, around 10GB
 ```
 
 All `./datasets.sh` commands are intended to be idempotent. Rerunning should skip previously completed downloads and derived artifacts.
@@ -64,7 +64,7 @@ dataset tracks:
 ./prodlm.sh <ollama-tag> [OPTIONAL]
 ```
 
-Both scripts have sensible defaults if you omit the optional model tag. Pick any small base LM for BaseLM and any local instruct model for ProdLM that fits your machine. You can use `sysprobe.sh` to get a list of suggestions, or use any valid Hugging Face or Ollama tags:
+Both scripts have sensible defaults if you omit the optional model tag. Pick any small base LM for BaseLM and any local instruct model for ProdLM that fits your machine. You can use `sysprobe.sh` to get a list of suggestions, or use any valid Hugging Face or Ollama tag:
 
 ```bash
 ./sysprobe.sh    # Run sysprobe checks against suggested candidate set
@@ -72,17 +72,17 @@ Both scripts have sensible defaults if you omit the optional model tag. Pick any
 ./sysprobe.sh --prodlm-model qwen3.5:9b             # Eval for ProdLM
 ```
 
-You can use the scripts to download multiple models. The scripts are idempotent and cache the results, so you can run multiple times. The last tag the script is run with becomes the canonical BaseLM or ProdLM model:
+You can use the scripts to download multiple models. The scripts are idempotent and cache the results, so you can run them multiple times. The last tag the script is run with becomes the canonical BaseLM or ProdLM model:
 
 ```bash
-./prodlm.sh llama3.2:3b.    # Downloads llama, sets it as ProdLM
-./prodlm.sh qwen2.5:3b.     # Downloads qwen, ProdLM now points to qwen
-./prodlm.sh llama3.2:3b.    # Qwen still cached, ProdLM now points to llama
+./prodlm.sh llama3.2:3b    # Downloads llama, sets it as ProdLM
+./prodlm.sh qwen2.5:3b     # Downloads qwen, ProdLM now points to qwen
+./prodlm.sh llama3.2:3b    # Qwen still cached, ProdLM now points to llama
 ```
 
 The notebooks all allow you to specify any valid Hugging Face (BaseLM) or Ollama (ProdLM) model that you have previously downloaded. Re-running the same notebook with different models is a very good learning experience.
 
-Note that ProdLM and BaseLM have different system requirements for equivalent sized models. BaseLM is trained locally, whereas ProdLM is just used for Ollama inference. Therefore the ceiling for BaseLM is substantially lower than ProdLM. For example the course defaults use a 360M param model for BaseLM and a 2B model for ProdLM.
+Note that ProdLM and BaseLM have different system requirements for equivalent sized models. BaseLM is fine-tuned locally, whereas ProdLM is only used for Ollama inference. Therefore the ceiling for BaseLM is substantially lower than ProdLM's. For example, the course defaults use a 360M param model for BaseLM and a 2B model for ProdLM.
 
 ## Artifact Roles
 
@@ -118,7 +118,7 @@ Use these as planning ranges, not promises.
 | BaseLM fetch | Modules 13-16 | model-size and network dependent | `./baselm.sh`, HF cache under `data/cache/baselm/` |
 | ProdLM fetch | Modules 16-20 | model-size and network dependent | `./prodlm.sh`, external Ollama model cache |
 
-Downloads and tokenized corpora are one-time setup costs. Training runs are the recurring cost. Long training runs are setup to checkpoint so you can interrupt, inspect, sample, and continue.
+Downloads and tokenized corpora are one-time setup costs. Training runs are the recurring cost. Long training runs are set up to checkpoint so you can interrupt, inspect, sample, and continue.
 
 ## Module Expectations
 

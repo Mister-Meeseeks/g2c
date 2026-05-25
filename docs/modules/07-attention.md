@@ -15,7 +15,7 @@ The same pipeline runs at every position in parallel, with the only per-position
 ---
 ## Where this fits in
 
-With Module 06 you have a MLP language model that predicts next token from a fixed-length window of preceding tokens. It works, but has two ceilings that don't go away:
+With Module 06 you have an MLP language model that predicts the next token from a fixed-length window of preceding tokens. It works, but has two ceilings that don't go away:
 
 1. **Fixed context.** The MLP has one set of weights per position in its concat. To extend the context length you have to grow the weight matrix. Doubling the context doubles the parameter count.
 2. **No inter-token communication.** The MLP can attend to "what's at each position" but it can't attend to "the relationship between this position and that position." Embeddings are pooled by concatenation and never get to look at each other.
@@ -165,13 +165,13 @@ pytest tests/test_attention.py -v          # verbose
 To launch the exercise notebook run:
 
 ```bash
-./noteboosh.sh 07
+./notebook.sh 07
 ```
 
 If at any point you want to archive the work in your current notebook and restart fresh:
 
 ```bash
-./noteboosh.sh --fresh 07
+./notebook.sh 07 --fresh
 ```
 
 The notebook contains the runnable attention visualizations and small training probes.
@@ -214,7 +214,7 @@ The clean notebook uses `experiment_device = "auto"` in the strip-mask training 
 
 Primary:
 
-- **Vaswani et al., "Attention Is All You Need" (2017), §3.2.** The paper that introduced this exact mechanism. Sections 3.2.1 (Scaled Dot-Product Attention) and 3.2.3 (the masking scheme) are the parts you're implementing. The whole paper is short and a must read at least once.
+- **Vaswani et al., "Attention Is All You Need" (2017), §3.2.** The paper that introduced this exact mechanism. Sections 3.2.1 (Scaled Dot-Product Attention) and 3.2.3 (the masking scheme) are the parts you're implementing. The whole paper is short and a must-read at least once.
 - **Karpathy, "Let's build GPT: from scratch, in code, spelled out"** (YouTube). The attention section walks through this same construction with PyTorch — different idioms, identical math. The "self-attention block" derivation in particular is excellent.
 - **Alammar, "The Illustrated Transformer."** The classic visual explainer. The Q/K/V geometric intuition is hard to beat.
 
@@ -233,4 +233,4 @@ Optional:
 - [ ] `notebooks/clean/07-attention.ipynb`: attention heatmaps for the two "the animal didn't cross the street..." sentences using your `attention_weights` method.
 - [ ] Strip-mask experiment: side-by-side training runs of a tiny attention-only LM with `causal=True` and `causal=False`. Loss curves saved; the catastrophic collapse with `causal=False` is visible.
 - [ ] You can explain — out loud, without notes — why dividing by `sqrt(D)` is necessary and what specifically goes wrong without it.
-- [ ] You can explain — out loud, without notes — what a "permutation- equivariant layer" means and why self-attention is one.
+- [ ] You can explain — out loud, without notes — what a "permutation-equivariant layer" means and why self-attention is one.

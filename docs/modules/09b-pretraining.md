@@ -4,7 +4,7 @@
 
 ![Multi-position targets in three steps: sample a (B, T) window from the token stream with the target window shifted left by one; run one TransformerLM forward pass to produce (B, T, V) logits; compute per-position cross-entropy at every (b, t) pair and average across all B * T positions.](09b-pretraining/Module09b-Hero.png)
 
-Last week we built the transformer; a language model composed of stacked attention and neural networks. In terms of language model architecture, the transformer is the "final form". Every single major LLM in use today is built on top of the transformer. It will be the model we use for the remainder of the course.
+Last week we built the transformer — a language model composed of stacked attention and neural networks. In terms of language model architecture, the transformer is the "final form". Every single major LLM in use today is built on top of the transformer. It will be the model we use for the remainder of the course.
 
 The next step is turning the core architecture into an actual trained model. Training language models to even basic levels of competency requires vast scales of data and compute. There is no room for inefficiency in the process. This lesson will be about how to build an efficient and effective self-supervised learning pipeline on top of the transformer. 
 
@@ -15,7 +15,7 @@ The next step is turning the core architecture into an actual trained model. Tra
 	* [[03-nn]] on cross-entropy
 	* [[09-transformer-block]] on logit shapes
 * *Finish* packages:
-	* `g2c/transformer` ([[09-transformer-block]]])
+	* `g2c/transformer` ([[09-transformer-block]])
 	* `g2c/nn` ([[03-nn]])
 	* `g2c/training` ([[03b-training]])
 
@@ -150,8 +150,8 @@ The practical rule for this course: choose the corpus that matches the artifact 
 ### What we don't cover
 
 * **Distributed training.** Used to scale large-scale training beyond a single machine. Lots of devops considerations, but conceptually just an extension of gradient batching.
-* **Mixed precision.** Speeds up training by using lower precision floats for most operations and selectively keeping high precision for load bearing weights. 
-* **Packed datasets.** Combines multiple short training sequences into a single long sequence. Reduces wasting compute on padding.
+* **Mixed precision.** Speeds up training by using lower-precision floats for most operations and selectively keeping high precision for load-bearing weights. 
+* **Packed datasets.** Combines multiple short training sequences into a single long sequence. Avoids wasting compute on padding.
 
 ---
 ## What you'll build
@@ -195,13 +195,13 @@ pytest tests/test_pretraining_setup.py -v
 To launch the exercise notebook run:
 
 ```bash
-./noteboosh.sh 09b
+./notebook.sh 09b
 ```
 
 If at any point you want to archive the work in your current notebook and restart fresh:
 
 ```bash
-./noteboosh.sh --fresh 09b
+./notebook.sh 09b --fresh
 ```
 
 Each exercise has `Question:` / `Answer:` cells inside the notebook. If you'd like a hint instead of a grade, write the request in the answer string and ask a coding agent for help. Blank answers are skipped rather than counted wrong.

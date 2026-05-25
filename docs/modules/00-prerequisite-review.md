@@ -15,14 +15,14 @@ This module assumes you are already a competent programmer and have seen the mat
 - **Algebraic manipulation.** Rearranging formulas, reading subscripts, and following expressions with several variables.
 - **Derivatives.** Single-variable derivatives, partial derivatives, and the chain rule.
 - **Vectors and matrices.** Dot products, matrix multiplication, norms, and shape reasoning.
-- **Basic probability.** Discrete distributions, expected "probability mass over choices," logarithms, and sampling.
+- **Basic probability.** Discrete distributions, expectations, probability mass over choices, logarithms, and sampling.
 ### Computer science
 
 - **Functions and composition.** The whole course treats models as large composed functions.
 - **Loops and state.** Training loops, decode loops, and agent loops are all explicit loops with changing state.
 - **Graphs.** Computational graphs in Module 01 are directed acyclic graphs; later attention maps are dense communication graphs over tokens.
 - **Memory locality.** Why traversing memory sequentially is much faster than jumping around.
-- **GPU vs. CPU**. Basic familiarity with what a GPU does and why it's used for parallel computation 
+- **GPU vs. CPU.** Basic familiarity with what a GPU does and why it's used for parallel computation.
 -  **Asymptotic complexity.** Comfortable with "this is O(n³), this is O(n²)" and what that implies as `n` grows.
 ### Programming
 
@@ -33,7 +33,7 @@ This module assumes you are already a competent programmer and have seen the mat
 ---
 ## Why we start here
 
-Module 01 starts by building scalar autodiff. That only feels enlightening if derivatives, the chain rule, and "a computation as a graph" are already close at hand. Module 02 immediately moves to tensors and matrix multiplication. Module 03 adds loss functions, mini-batches, and train/validation splits. From there the building blocks keep rapidly stacking on top of one another.
+Module 01 starts by building scalar autodiff. That only feels enlightening if derivatives, the chain rule, and "a computation as a graph" are already close at hand. Module 02 immediately moves to tensors and matrix multiplication. Module 03 adds loss functions, mini-batches, and train/validation splits. From there the building blocks rapidly stack on top of one another.
 
 This module narrows the prerequisite surface to the parts that will actually be used. It is intentionally incomplete as a math course. You are reviewing just enough to keep the early modules focused on the ideas under study instead of turning every exercise into prerequisite archaeology.
 
@@ -283,12 +283,12 @@ You do not need to know all of PyTorch. You do need:
 - `torch.no_grad()` for inference
 - enough autograd familiarity to know that `loss.backward()` fills `.grad`
 
-This course includes a [[PyTorch Primer]] that can be used as both an in-depth review focused on the PyTorch features used in this course, as well as a general reference. 
+This course includes a [[PyTorch Primer]] that can be used both as an in-depth review focused on the PyTorch features used in this course and as a general reference. 
 
 ---
 ## Setup
 
-Module 00 is a readiness review. However it's a good idea to prepare your development environment for the rest of the course.
+Module 00 is a readiness review. However, it's a good idea to prepare your development environment for the rest of the course.
 
 Run the setup script once:
 
@@ -304,7 +304,7 @@ That prepares the Python environment, the small TinyShakespeare corpus, and the 
 ./datasets.sh          # full/stretch local data path
 ```
 
-You can also wait until a module asks for a dataset and download only that target, such as `./datasets.sh glove` for Module 05 or `./datasets.sh tinystories` for Module 10. TinyStories is stored as compressed 100MB-uncompressed text shards. The script is idempotent, so repeated runs skip files and artifacts that are already present.
+You can also wait until a module asks for a dataset and download only that target, such as `./datasets.sh glove` for Module 05 or `./datasets.sh tinystories` for Module 10. TinyStories is stored as compressed text shards (~100MB uncompressed each). The script is idempotent, so repeated runs skip files and artifacts that are already present.
 
 For the complete track guide, including download sizes, disk expectations, and heavy artifact-generation steps, read [Course Tracks and Artifacts](../tracks.md). To inspect what this checkout already has, run:
 

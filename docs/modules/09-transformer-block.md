@@ -19,7 +19,7 @@ Transformers are layers of blocks. Each block is an attention sublayer and a nor
 ---
 ## Where this fits in
 
-After Module 08, you have multi-head attention as a standalone mechanism — a learnable mixing operation that lets every position consult every other. But attention alone doesn't support multiple layers, which is the core of deep learning. Attention alone is insufficient at scale. This module shows us an architecture that allows us to *stack* attention.
+After Module 08, you have multi-head attention as a standalone mechanism — a learnable mixing operation that lets every position consult every other. But attention alone doesn't support multiple layers, which is the core of deep learning. This module shows us an architecture that allows us to *stack* attention.
 
 ## The big idea
 
@@ -43,7 +43,7 @@ Three new ideas wrap around the attention you already have:
 
 1. **Layer normalization** keeps activations in a numerically sane range as they flow through the network. Without it, activations can blow up or collapse — and gradients along with them.
 2. **Residual connections** turn the network into a *refinement pipeline* rather than a transformation pipeline. Without residuals, deep transformers don't train.
-3. **The position-wise feed-forward network** gives the model a way to do non-attention computation per position — a per-token MLP applied to whatever attention pulled in. V
+3. **The position-wise feed-forward network** gives the model a way to do non-attention computation per position — a per-token MLP applied to whatever attention pulled in.
 
 These mechanisms combine into the full pipeline of one block. With all the reshape-free arithmetic written out:
 
@@ -77,7 +77,7 @@ Everything important about the transformer architecture is encoded in those two 
 
 ### Feed forward network
 
-We covered attention in the past two modules. The second half of the transformer block is the feed-forward network (FFN). The FFN is just a 1-hidden layer MLP, like the ones we trained in Module 3. It uses a slightly version of ReLU (GELU) as the activation layer:
+We covered attention in the past two modules. The second half of the transformer block is the feed-forward network (FFN). The FFN is just a 1-hidden layer MLP, like the ones we trained in Module 3. It uses a slight variation of ReLU (GELU) as the activation layer:
 
 ```
   FFN(x_t)  =  W_2 · GELU(W_1 · x_t + b_1) + b_2     for each position t
@@ -85,10 +85,10 @@ We covered attention in the past two modules. The second half of the transformer
 
 The most important thing to keep in mind is that the FFN is *per position*. There is no mixing between the token positions. The FFN is the "compute" half of the block, attention is the "communication" half. Position `t` and position `s` see the same `W_1, W_2` but process their own `x_t`, `x_s` independently.
 
-In practice, the convetion is to set `hidden_dim = 4 × embedding_dim` . The complete intermediate projection gives the GELU activation layer room to carve out nonlinear features. Because of this most of the parameters in a transformer actually live in the FFN, not the attention heads.
+In practice, the convention is to set `hidden_dim = 4 × embedding_dim` . The wider intermediate projection gives the GELU activation layer room to carve out nonlinear features. Because of this most of the parameters in a transformer actually live in the FFN, not the attention heads.
 
 ![The position-wise FFN: the SAME two-layer MLP applied independently to every position. Per-position view: x_t (D channels) → Linear up to 4D → GELU → Linear back down to D. Block view: attention writes a per-token update into the residual stream, then LayerNorm + FFN compute a second per-token update. Side panels show the parameter counts (2 · 4D² = 8D² weights, dominating the block's parameter budget) and the per-position independence (mutate one token, no others change).](09-transformer-block/Module09-FFN.png)
-*The FFN is the "compute" half of the block. Attention mixes information, the FFN is what the model does with that mixture.
+*The FFN is the "compute" half of the block. Attention mixes information; the FFN is what the model does with that mixture.*
 
 ### Residual connections
 
@@ -96,7 +96,7 @@ Residual connections are how we "stack" layers of transformer blocks. Without re
 
 **Residual-stream view.** Think of `x` as a "communication bus" through the layers of the network. Each sublayer reads the bus, produces an update, and writes the update back onto the bus. Sublayers are *contributions* to the residual stream rather than *replacements* of it. The model's "no-op behavior" is to pass information through. Sublayers therefore *specialize* to make targeted edits.
 
-**Gradient-flow view.** During backprop, `∂loss/∂x` at the input depends on the chain of partial derivatives through every sublayer. In a non-residual network, that chain multiplies through every sublayer's Jacobian; if those Jacobians have spectral norm `< 1` , the gradient shrinks exponentially with depth — vanishing gradients. By contrast the residual approach turns the chain into `1 + ∂sublayer/∂x` at each step. The `1` term ensures gradients flow through the residual path even when `∂sublayer/∂x ≈ 0`. Gradients no longer vanish completely.
+**Gradient-flow view.** During backprop, `∂loss/∂x` at the input depends on the chain of partial derivatives through every sublayer. In a non-residual network, that chain multiplies through every sublayer's Jacobian; if those Jacobians have spectral norm `< 1`, the gradient shrinks exponentially with depth — vanishing gradients. By contrast the residual approach turns the chain into `1 + ∂sublayer/∂x` at each step. The `1` term ensures gradients flow through the residual path even when `∂sublayer/∂x ≈ 0`. Gradients no longer vanish completely.
 
 
 ```
@@ -110,11 +110,11 @@ Residual connections are how we "stack" layers of transformer blocks. Without re
 ```
 
 ![The residual stream as a horizontal "bus" that threads through every block. The embedding sum enters on the left; each block reads the stream, computes a small update Δᵢ via its sublayer (attention or FFN), and adds it back onto the stream. Δ₁ might do "communication across tokens" (attention), Δ₂ might do "per-token computation" (the FFN), Δ₃ might be "feature refinement" — each block specializes in what it adds. After N blocks, the stream is x_N = x + Σᵢ Δᵢ; the final layer norm and unembedding head consume that sum.](09-transformer-block/Module09-ResidualBus.png)
-*Sublayers make incremental edits, not replacements. This is the property that makes deep transformers trainable (gradient-flow view)
+*Sublayers make incremental edits, not replacements. This is the property that makes deep transformers trainable (gradient-flow view).*
 
 ### LayerNorm
 
-LayerNorm is what keeps the scale of the residual stream bounded as we move between layers. Without it, after a few blocks the residual may accumulate so many unnormalized sublayer outputs that its magnitude diverges, and training stop works.
+LayerNorm is what keeps the scale of the residual stream bounded as we move between layers. Without it, after a few blocks the residual may accumulate so many unnormalized sublayer outputs that its magnitude diverges, and training stops working.
 
 ```
   LayerNorm(x):
@@ -133,7 +133,7 @@ Three properties of LayerNorm are worth internalizing:
   * **The `ε` in the sqrt is structural, not cosmetic.** A near-constant input has near-zero variance, and dividing by `sqrt(0)` produces `NaN`. `ε = 1e-5` keeps the divisor away from zero with negligible effect on normal inputs.
 
 ![LayerNorm worked through on a single token vector x ∈ ℝ^D: compute mean μ and variance σ² across the D channels of THIS token only (no pooling across batch or sequence positions); subtract μ and divide by √(σ²+ε); apply the learned per-channel affine γ * x̂ + β. A side panel contrasts what LayerNorm does NOT do (pool across batch — that's BatchNorm; pool across sequence positions — that doesn't exist as a standard layer) and pins down the headline: every token in every position is normalized independently with the same γ, β.](09-transformer-block/Module09-LayerNorm.png)
-*LayerNorm normalizes each token vector independently across channels, and learns scale/shfit. The key distinction from BatchNorm is "pool over channels, not over the batch."*
+*LayerNorm normalizes each token vector independently across channels, and learns scale/shift. The key distinction from BatchNorm is "pool over channels, not over the batch."*
 
 One minor note for how LayerNorm is applied. The original 2017 transformer (Vaswani et al.) used **post-norm**:
 
@@ -147,7 +147,7 @@ The modern transformer uses **pre-norm**
   Pre-norm:     x = x + sublayer(LN(x))
 ```
 
-The difference is one of operation order, but it's load-bearing for numerical stability during training and preventing vanishing gradients. Xiong (2020) go into more details on the reasons why. For this course it's sufficient to simply remember to always normalize first *then* apply the sublayer, rather than appying the sublayer first then normalizing.
+The difference is one of operation order, but it's load-bearing for numerical stability during training and preventing vanishing gradients. Xiong (2020) goes into more detail on the reasons why. For this course it's sufficient to simply remember to always normalize first, *then* apply the sublayer, rather than applying the sublayer first then normalizing.
 
 ```
   Pre-norm pipeline (this module):
@@ -165,7 +165,7 @@ The difference is one of operation order, but it's load-bearing for numerical st
 
 ### Tied embeddings
 
-The final part of our transformer stack are tied embeddings. This just means the model uses the same token embeddings at the initial input and final output. Transformers have *embedding weights* to convert tokens to vectors at input, and *unembedding weights* to convert vectors back to tokens at the the ouput. With tied embeddings we make both sides same matrix.
+The final piece of our transformer stack is tied embeddings. This just means the model uses the same token embeddings at the initial input and final output. Transformers have *embedding weights* to convert tokens to vectors at input, and *unembedding weights* to convert vectors back to tokens at the output. With tied embeddings we make both sides the same matrix.
 
 ```
   TokenEmbedding.weight    (V, D)   ◄── input end of the tie
@@ -308,13 +308,13 @@ pytest tests/test_transformer.py -v          # verbose
 To launch the exercise notebook run:
 
 ```bash
-./noteboosh.sh 09
+./notebook.sh 09
 ```
 
 If at any point you want to archive the work in your current notebook and restart fresh:
 
 ```bash
-./noteboosh.sh --fresh 09
+./notebook.sh 09 --fresh
 ```
 
 The notebook contains the ablations and plotting scaffolds.
@@ -353,7 +353,7 @@ This module is still light on compute.
 - Exercise 2's strip-residuals study at `num_layers = 8` is the first configuration big enough that MPS starts paying off — about 2× over CPU at this size.
 - Exercise 4's parameter-budget comparison is also CPU-comfortable but a good place to start using MPS as practice for Module 10.
 
-The notebook uses MPS by default for training. switch to `device="cpu"` if you want to compare explicitly.
+The notebook uses MPS by default for training. Switch to `device="cpu"` if you want to compare explicitly.
 
 ---
 ## Reading
