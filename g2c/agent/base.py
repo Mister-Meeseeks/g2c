@@ -141,6 +141,98 @@ class AgentStep:
     parse_error: str | None
     inference: InferenceResult
 
+    # --- Named constructors for the three legal step shapes -------------
+    # A well-formed step is exactly one of: a Final Answer, an Action +
+    # Observation, or a stuck step (parse failure). These factories make
+    # that trichotomy explicit and fill in the mechanical fields for you:
+    # the always-`None`s that distinguish the shapes, and `completion`,
+    # which is always `inference.completion`. Build steps with these in
+    # the loop so the loop reads as *policy* (which shape, when) rather
+    # than seven-field record-keeping. Constructing `AgentStep(...)`
+    # directly still works; the factories are sugar, not a gate.
+
+    @classmethod
+    def final(
+        cls, inference: InferenceResult, *, thought: str, final_answer: str
+    ) -> AgentStep:
+        """A clean exit: the model emitted a Final Answer, no action."""
+        return cls(
+            completion=inference.completion,
+            thought=thought,
+            action=None,
+            observation=None,
+            final_answer=final_answer,
+            parse_error=None,
+            inference=inference,
+        )
+
+    @classmethod
+    def act(
+        cls,
+        inference: InferenceResult,
+        *,
+        thought: str,
+        action: Action,
+        observation: Observation,
+    ) -> AgentStep:
+        """An action step: the model called a tool and got an Observation."""
+        return cls(
+            completion=inference.completion,
+            thought=thought,
+            action=action,
+            observation=observation,
+            final_answer=None,
+            parse_error=None,
+            inference=inference,
+        )
+
+    @classmethod
+    def stuck(
+        cls, inference: InferenceResult, *, thought: str, parse_error: str
+    ) -> AgentStep:
+        """A stuck step: parser found neither an Action nor a Final Answer."""
+        return cls(
+            completion=inference.completion,
+            thought=thought,
+            action=None,
+            observation=None,
+            final_answer=None,
+            parse_error=parse_error,
+            inference=inference,
+        )
+
+
+@dataclass(frozen=True)
+class StepOutcome:
+    """What the agent's per-step policy decided for one iteration.
+
+    `Agent._decide_step` (the scaffolded Module-19 deliverable) classifies
+    a parsed step and returns a `StepOutcome`. The driver (`_run_loop`,
+    provided) consumes it mechanically: it always appends `step` to the
+    run's step list, appends to the scratchpad iff `remember`, and stops
+    the loop iff `stop_reason` is set. Keeping the decision PURE — a
+    value returned, not a side effect on the loop's state — means the
+    policy can be unit-tested in isolation: feed it a `ParsedStep`, assert
+    the `StepOutcome`, with no scratchpad or step-list to thread.
+
+    Attributes:
+        step: the `AgentStep` record for this iteration. Always present —
+            even a stuck step is recorded, so the run's history is
+            complete.
+        stop_reason: if set, the loop halts and this becomes the run's
+            `stopped_reason` (`"final_answer"`, `"duplicate_action"`, or
+            `"no_progress"`). `None` keeps the loop going.
+        remember: whether the driver should append `step` to the
+            scratchpad so the NEXT prompt can see it. Action steps and
+            retried stuck steps are remembered; a final answer and a
+            halted stuck step are not (the loop is ending — nothing reads
+            the scratchpad again).
+    """
+
+    step: AgentStep
+    stop_reason: str | None = None
+    remember: bool = True
+
 
 @dataclass
 class Plan:

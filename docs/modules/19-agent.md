@@ -379,6 +379,8 @@ class AgentStep:                                                  # implemented
     final_answer: str | None
     parse_error: str | None
     inference: InferenceResult
+    # + .final() / .act() / .stuck() named constructors that fill the
+    #   mechanical fields, so _decide_step reads as policy, not plumbing.
 
 @dataclass
 class AgentRunResult:                                             # implemented
@@ -388,6 +390,12 @@ class AgentRunResult:                                             # implemented
     steps: list[AgentStep]
     stopped_reason: str
     metadata: dict[str, Any] = field(default_factory=dict)
+
+@dataclass(frozen=True)
+class StepOutcome:                                                # implemented
+    step: AgentStep                  # the record for one turn
+    stop_reason: str | None = None   # set -> the driver stops the loop
+    remember: bool = True            # append step to the scratchpad?
 
 
 # parser.py
@@ -433,7 +441,18 @@ class Agent:
     def _build_prompt(self, user_message, plan, scratchpad) 
 	    -> str: ...                                               # implemented
 
-    def run(self, user_message) -> AgentRunResult:                # SCAFFOLDED
+    # The loop is PROVIDED — the same bounded driver you built in
+    # Module 18 (run_with_tools). run() validates + plans, then hands
+    # off to _run_loop, which calls your _decide_step once per turn.
+    def run(self, user_message) -> AgentRunResult: ...            # implemented
+    def _run_loop(self, user_message, plan, scratchpad): ...      # implemented
+    def _observe(self, action, step_index) -> Observation: ...    # implemented
+
+    # The policy is YOURS — the whole Module-19 deliverable. Classify
+    # one parsed step, dispatch a tool if needed, return a StepOutcome
+    # telling the driver whether to remember it and whether to stop.
+    def _decide_step(self, parsed, inference, steps)              # SCAFFOLDED
+            -> StepOutcome:
         ...
 
 
@@ -447,11 +466,11 @@ class NativeAgent:                                                # implemented
     def run(self, user_message) -> AgentRunResult: ...
 ```
 
-Total scaffolded code: roughly 100 lines across four function bodies. The lesson is the contracts (parsing, scratchpad rendering, plan extraction, loop control). The orchestration is layout. `native.py` is fully implemented and offered as the modern alternative — the parallel structure makes the format difference visible at a glance.
+Total scaffolded code: four function bodies — `parse_react_step`, `Scratchpad.render`, `extract_plan`, and `Agent._decide_step` (≈25 lines). The lesson is the contracts (parsing, scratchpad rendering, plan extraction) plus the per-step **policy**. The loop itself — the bounded iterate → complete → parse → record driver you already wrote in Module 18 — is provided as `run` / `_run_loop`; what's new in Module 19, the goal-directed decision and the four stop conditions, is exactly what `_decide_step` expresses. And because the policy is *pure* — it returns a `StepOutcome` instead of mutating the loop's state — you can unit-test it directly: feed it a `ParsedStep`, assert the outcome, with no loop or scratchpad to set up. `native.py` is fully implemented and offered as the modern alternative — the parallel structure makes the format difference visible at a glance.
 
 ## How to run the tests
 
-Tests live in `tests/test_agent.py`. Initial state: 45 tests pass, 76 tests fail
+Tests live in `tests/test_agent.py`. Initial state: 61 tests pass, 93 tests fail
 
 ```bash
 source .venv/bin/activate
@@ -461,6 +480,7 @@ pytest tests/test_agent.py -x                       # stop at first failure
 pytest tests/test_agent.py -k Parse                 # parser tests
 pytest tests/test_agent.py -k Plan                  # planner tests
 pytest tests/test_agent.py -k Scratchpad            # scratchpad tests
+pytest tests/test_agent.py -k Decide                # per-step policy tests
 pytest tests/test_agent.py -k AgentRun              # main loop tests
 pytest tests/test_agent.py -k Integration           # full-pipeline smoke
 pytest tests/test_agent.py -v                       # verbose

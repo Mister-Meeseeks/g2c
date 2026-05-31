@@ -1242,6 +1242,141 @@ class TestAgentRunPlanning:
 
 
 # ---------------------------------------------------------------------------
+# _decide_step — the pure per-step policy, tested in isolation
+# ---------------------------------------------------------------------------
+
+
+def _inf(completion: str = "") -> InferenceResult:
+    """Minimal InferenceResult for driving `_decide_step` directly."""
+    return InferenceResult(
+        prompt="prompt",
+        completion=completion,
+        prompt_tokens=1,
+        completion_tokens=1,
+        latency_ms=1.0,
+        backend=BackendInfo(name="fake", model_id="fake-model"),
+    )
+
+
+def _policy_agent(**kwargs: Any) -> Agent:
+    """Agent wired with a calculator; backend is never called by the policy."""
+    return Agent(
+        _FakeBackend([]),
+        ToolRegistry([make_calculator()]),
+        plan=False,
+        **kwargs,
+    )
+
+
+class TestDecideStep:
+    """The policy is pure: feed it a ParsedStep, assert the StepOutcome.
+
+    No loop, no scratchpad, no backend completion — these exercise the
+    Module-19 decision logic directly, which is only possible because
+    `_decide_step` returns a value instead of mutating loop state.
+    """
+
+    def test_final_answer_stops_and_is_not_remembered(self) -> None:
+        agent = _policy_agent()
+        parsed = ParsedStep(thought="done", action=None,
+                            final_answer="42", parse_error=None)
+        outcome = agent._decide_step(parsed, _inf("Final Answer: 42"), [])
+        assert outcome.stop_reason == "final_answer"
+        assert outcome.remember is False
+        assert outcome.step.final_answer == "42"
+        assert outcome.step.action is None
+
+    def test_action_dispatches_observes_and_continues(self) -> None:
+        agent = _policy_agent()
+        action = Action(tool="calculator", arguments={"expression": "2 + 2"})
+        parsed = ParsedStep(thought="compute", action=action,
+                            final_answer=None, parse_error=None)
+        outcome = agent._decide_step(parsed, _inf(), [])
+        assert outcome.stop_reason is None
+        assert outcome.remember is True
+        assert outcome.step.action == action
+        assert outcome.step.observation is not None
+        assert outcome.step.observation.is_error is False
+        assert "4" in outcome.step.observation.output
+
+    def test_repeat_action_with_loop_detection_stops(self) -> None:
+        agent = _policy_agent(loop_detection=True)
+        action = Action(tool="calculator", arguments={"expression": "1 + 1"})
+        prior = _make_step(action=action,
+                           observation=Observation(output="2"))
+        parsed = ParsedStep(thought="again", action=action,
+                            final_answer=None, parse_error=None)
+        outcome = agent._decide_step(parsed, _inf(), [prior])
+        assert outcome.stop_reason == "duplicate_action"
+        assert outcome.remember is True  # the duplicate is still recorded
+
+    def test_repeat_action_without_loop_detection_continues(self) -> None:
+        agent = _policy_agent(loop_detection=False)
+        action = Action(tool="calculator", arguments={"expression": "1 + 1"})
+        prior = _make_step(action=action,
+                           observation=Observation(output="2"))
+        parsed = ParsedStep(thought="again", action=action,
+                            final_answer=None, parse_error=None)
+        outcome = agent._decide_step(parsed, _inf(), [prior])
+        assert outcome.stop_reason is None
+
+    def test_loop_detection_scans_past_stuck_step(self) -> None:
+        # A, stuck, A -> the second A is still a duplicate of the first.
+        agent = _policy_agent(loop_detection=True)
+        action = Action(tool="calculator", arguments={"expression": "1 + 1"})
+        a_step = _make_step(action=action, observation=Observation(output="2"))
+        stuck_step = _make_step(parse_error="no parse")
+        parsed = ParsedStep(thought="again", action=action,
+                            final_answer=None, parse_error=None)
+        outcome = agent._decide_step(parsed, _inf(), [a_step, stuck_step])
+        assert outcome.stop_reason == "duplicate_action"
+
+    def test_stuck_with_halt_stops_and_is_not_remembered(self) -> None:
+        agent = _policy_agent(halt_on_stuck=True)
+        parsed = ParsedStep(thought="", action=None,
+                            final_answer=None, parse_error="bad json")
+        outcome = agent._decide_step(parsed, _inf(), [])
+        assert outcome.stop_reason == "no_progress"
+        assert outcome.remember is False
+        assert outcome.step.parse_error == "bad json"
+
+    def test_stuck_without_halt_continues_and_remembers(self) -> None:
+        agent = _policy_agent(halt_on_stuck=False)
+        parsed = ParsedStep(thought="", action=None,
+                            final_answer=None, parse_error="bad json")
+        outcome = agent._decide_step(parsed, _inf(), [])
+        assert outcome.stop_reason is None
+        assert outcome.remember is True
+
+    def test_stuck_falls_back_to_no_parse_label(self) -> None:
+        agent = _policy_agent(halt_on_stuck=True)
+        parsed = ParsedStep(thought="", action=None,
+                            final_answer=None, parse_error=None)
+        outcome = agent._decide_step(parsed, _inf(), [])
+        assert outcome.step.parse_error == "no parse"
+
+    def test_unknown_tool_observation_is_error_and_augmented(self) -> None:
+        agent = _policy_agent()
+        action = Action(tool="nonexistent", arguments={})
+        parsed = ParsedStep(thought="try", action=action,
+                            final_answer=None, parse_error=None)
+        outcome = agent._decide_step(parsed, _inf(), [])
+        assert outcome.step.observation.is_error is True
+        assert "calculator" in outcome.step.observation.output
+        assert outcome.stop_reason is None
+
+    def test_policy_does_not_mutate_the_steps_list(self) -> None:
+        # The whole point of the pure design: the policy decides, the
+        # driver records. _decide_step must not append to `steps`.
+        agent = _policy_agent()
+        parsed = ParsedStep(thought="done", action=None,
+                            final_answer="x", parse_error=None)
+        steps: list[AgentStep] = []
+        agent._decide_step(parsed, _inf(), steps)
+        assert steps == []
+
+
+# ---------------------------------------------------------------------------
 # Integration smoke
 # ---------------------------------------------------------------------------
 

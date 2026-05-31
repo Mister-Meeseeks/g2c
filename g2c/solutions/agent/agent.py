@@ -8,15 +8,11 @@ Patched onto the scaffold targets by g2c.solutions.apply().
 from __future__ import annotations
 
 import json
-from g2c.inference import Backend
-from g2c.tools import (
-    ToolCall,  # noqa: F401 (used by run scaffold)
-    ToolRegistry,
-    dispatch_tool_call,  # noqa: F401 (used by run scaffold)
-)
-from g2c.agent.base import AgentError, AgentRunResult, AgentStep, Observation, Plan
+from g2c.inference import Backend, InferenceResult
+from g2c.tools import ToolCall, ToolRegistry, dispatch_tool_call
+from g2c.agent.base import Action, AgentError, AgentRunResult, AgentStep, Observation, Plan, StepOutcome
 from g2c.agent.memory import Scratchpad
-from g2c.agent.parser import parse_react_step
+from g2c.agent.parser import ParsedStep, parse_react_step
 from g2c.agent.planner import make_plan
 from g2c.agent.prompts import render_plan_block, render_system_prompt
 
@@ -24,353 +20,124 @@ from g2c.agent.agent import Agent
 
 
 class _AgentImpl:  # patched onto Agent by apply()
-    def run(self, user_message: str) -> AgentRunResult:
-        """Execute the ReAct loop on `user_message`.
+    def _decide_step(
+        self,
+        parsed: ParsedStep,
+        inference: InferenceResult,
+        steps: list[AgentStep],
+    ) -> StepOutcome:
+        """Decide what one parsed step means — the Module-19 deliverable.
+
+        This is the agent's policy. Given the `ParsedStep` the model just
+        produced (and the steps so far, for loop detection), classify it,
+        dispatch a tool if needed, and return a `StepOutcome` telling the
+        driver what to record and whether to stop. The driver
+        (`_run_loop`) owns the loop; you own the decision.
 
         Args:
-            user_message: the user's task / question. Non-empty str.
+            parsed: the `ParsedStep` from `parse_react_step`. On a
+                well-formed step exactly one of `final_answer` / `action`
+                is set; on a stuck step neither is (and `parse_error` is).
+            inference: the `InferenceResult` that produced `parsed`. Pass
+                it straight into the `AgentStep.*` factory.
+            steps: every step recorded SO FAR this run (NOT including the
+                current one). Used only for loop detection.
 
         Returns:
-            `AgentRunResult` with `final_answer` (or None on
-            timeout/stuck), `steps` (every iteration's record),
-            `stopped_reason`, the parsed `plan` (or None), and
-            `metadata`.
+            A `StepOutcome(step, stop_reason=None, remember=True)`:
+              * `step` — build it with `AgentStep.final/.act/.stuck`
+                (these fill the mechanical fields for you).
+              * `stop_reason` — set it to halt the loop (`"final_answer"`,
+                `"duplicate_action"`, `"no_progress"`); leave `None` to
+                keep going.
+              * `remember` — leave True to append the step to the
+                scratchpad (so the next prompt sees it); set False when
+                the loop is ending and nothing will read it again.
 
-        The loop NEVER raises on model wobble. Bad parses, unknown
-        tools, tool exceptions — all surface as data on the step
-        records. The only way `run` raises is misuse: empty
-        `user_message`, etc.
+        Do NOT mutate `steps` or the scratchpad here — return a value and
+        let the driver act on it. That keeps this method pure and
+        unit-testable: feed it a `ParsedStep`, assert the `StepOutcome`.
 
         Recipe:
 
-            1. # Validate.
-               if not isinstance(user_message, str) or not user_message:
-                   raise ValueError("user_message must be a non-empty str")
+            1. # Final answer -> clean exit. Nothing more will run, so
+               #   there's no point remembering it.
+               if parsed.final_answer is not None:
+                   return StepOutcome(
+                       AgentStep.final(inference, thought=parsed.thought,
+                                       final_answer=parsed.final_answer),
+                       stop_reason="final_answer", remember=False)
 
-            2. # Optional planning phase. Failure → run without plan.
-               plan: Plan | None = None
-               if self.plan:
-                   try:
-                       plan = make_plan(
-                           self.backend,
-                           user_message,
-                           self.registry,
-                           max_new_tokens=min(self.max_new_tokens, 256),
-                           temperature=self.temperature,
-                       )
-                   except Exception:
-                       plan = None
+            2. # Action -> dispatch, observe, remember. Stop only if this
+               #   repeats the previous action (loop detection).
+               if parsed.action is not None:
+                   observation = self._observe(parsed.action, len(steps))
+                   step = AgentStep.act(inference, thought=parsed.thought,
+                                        action=parsed.action,
+                                        observation=observation)
+                   if self.loop_detection and (
+                           _prev_action_key(steps)
+                           == _action_key(parsed.action)):
+                       return StepOutcome(step, stop_reason="duplicate_action")
+                   return StepOutcome(step)
 
-            3. # Init state.
-               scratchpad = Scratchpad(max_chars=self.scratchpad_max_chars)
-               steps: list[AgentStep] = []
-               final_answer: str | None = None
-               stopped_reason = "max_steps"
-               last_action_key: tuple[str, str] | None = None
+            3. # Stuck -> neither action nor final answer. Halt if
+               #   configured to; otherwise remember it and let the model
+               #   recover on the next turn.
+               step = AgentStep.stuck(
+                   inference, thought=parsed.thought,
+                   parse_error=parsed.parse_error or "no parse")
+               if self.halt_on_stuck:
+                   return StepOutcome(step, stop_reason="no_progress",
+                                      remember=False)
+               return StepOutcome(step)
 
-            4. # Main loop.
-               for _ in range(self.max_steps):
-                   prompt = self._build_prompt(user_message, plan, scratchpad)
-                   inference = self.backend.complete(
-                       prompt,
-                       max_new_tokens=self.max_new_tokens,
-                       temperature=self.temperature,
-                       top_k=self.top_k,
-                       top_p=self.top_p,
-                   )
-                   parsed = parse_react_step(inference.completion)
+        Sanity values (paired with the driver):
 
-            5. #     Final answer branch.
-                   if parsed.final_answer is not None:
-                       step = AgentStep(
-                           completion=inference.completion,
-                           thought=parsed.thought,
-                           action=None,
-                           observation=None,
-                           final_answer=parsed.final_answer,
-                           parse_error=None,
-                           inference=inference,
-                       )
-                       steps.append(step)
-                       final_answer = parsed.final_answer
-                       stopped_reason = "final_answer"
-                       break
-
-            6. #     Action branch.
-                   if parsed.action is not None:
-                       # Loop detection — same action + same args twice in a row.
-                       import json
-                       action_key = (
-                           parsed.action.tool,
-                           json.dumps(parsed.action.arguments, sort_keys=True),
-                       )
-                       if self.loop_detection and last_action_key == action_key:
-                           # Record the step, then stop.
-                           call = ToolCall(
-                               name=parsed.action.tool,
-                               arguments=parsed.action.arguments,
-                               call_id=f"call_{len(steps)}",
-                           )
-                           tool_result = dispatch_tool_call(self.registry, call)
-                           obs = Observation(
-                               output=tool_result.output,
-                               is_error=tool_result.is_error,
-                           )
-                           step = AgentStep(
-                               completion=inference.completion,
-                               thought=parsed.thought,
-                               action=parsed.action,
-                               observation=obs,
-                               final_answer=None,
-                               parse_error=None,
-                               inference=inference,
-                           )
-                           steps.append(step)
-                           scratchpad.append(step)
-                           stopped_reason = "duplicate_action"
-                           break
-                       last_action_key = action_key
-
-                       # Dispatch via Module 18.
-                       call = ToolCall(
-                           name=parsed.action.tool,
-                           arguments=parsed.action.arguments,
-                           call_id=f"call_{len(steps)}",
-                       )
-                       tool_result = dispatch_tool_call(self.registry, call)
-                       obs = Observation(
-                           output=tool_result.output,
-                           is_error=tool_result.is_error,
-                       )
-                       step = AgentStep(
-                           completion=inference.completion,
-                           thought=parsed.thought,
-                           action=parsed.action,
-                           observation=obs,
-                           final_answer=None,
-                           parse_error=None,
-                           inference=inference,
-                       )
-                       steps.append(step)
-                       scratchpad.append(step)
-                       continue
-
-            7. #     Stuck step — no action AND no final answer.
-                   step = AgentStep(
-                       completion=inference.completion,
-                       thought=parsed.thought,
-                       action=None,
-                       observation=None,
-                       final_answer=None,
-                       parse_error=parsed.parse_error or "no parse",
-                       inference=inference,
-                   )
-                   steps.append(step)
-                   if self.halt_on_stuck:
-                       stopped_reason = "no_progress"
-                       break
-                   # Otherwise: append to scratchpad (renders as
-                   # parse-error observation) and let the model retry.
-                   scratchpad.append(step)
-
-            8. # Build result.
-               return AgentRunResult(
-                   user_message=user_message,
-                   plan=plan,
-                   final_answer=final_answer,
-                   steps=steps,
-                   stopped_reason=stopped_reason,
-                   metadata={
-                       "n_steps": len(steps),
-                       "n_tool_calls": sum(1 for s in steps if s.action is not None),
-                       "tools_available": self.registry.names(),
-                       "backend_name": self.backend.info.name,
-                       "backend_model_id": self.backend.info.model_id,
-                       "had_plan": plan is not None,
-                   },
-               )
-
-        Implementation notes:
-
-          * **The "Thought:" prefix at end of prompt.** The
-            `_build_prompt` helper adds `"\\n\\nThought:"` after the
-            scratchpad. This nudges instruction-tuned models into the
-            ReAct format. Without it, they often start with a sentence
-            of prose ("I think we should...") that the parser then
-            has to recover from.
-
-          * **Why catch all exceptions in the planning phase?** The
-            agent should not crash because the planner emitted bad
-            JSON or the backend hiccuped. A failed plan just means
-            "run without one" — graceful degradation.
-
-          * **Why dispatch through Module 18's `dispatch_tool_call`?**
-            Because Module 18 already implements the validate →
-            execute → wrap-result pipeline, including the three error
-            branches (unknown tool, bad args, runtime exception). The
-            agent module shouldn't reimplement it.
-
-          * **Why is `is_error` propagated to Observation?** So the
-            scratchpad can render `"Observation: [error] ..."` instead
-            of `"Observation: ..."`. Empirically, the `[error]` prefix
-            is what makes the model reliably treat errors as recovery
-            signals rather than parroting them as answers.
-
-          * **Loop detection is a simple equality check.** Same tool,
-            same arguments (compared by canonical JSON), TWO STEPS IN
-            A ROW. A more sophisticated check would look at the last
-            N steps, or use semantic similarity between actions. The
-            simple check catches the most common loop pattern (model
-            calls the same tool with the same args because it didn't
-            understand the observation).
-
-          * **Why does loop detection still record the duplicate
-            step?** So the AgentRunResult has a complete picture of
-            what happened. The model called the duplicate; we
-            dispatched it; we just chose to stop afterward.
-
-        Sanity values:
-
-          * Backend that always emits "Final Answer: 42":
-            run("anything") → final_answer="42", stopped_reason=
-            "final_answer", 1 step (the planning step doesn't count;
-            it's not in `steps`).
-
-          * Backend that emits Action calculator(2+2) on step 1 and
-            "Final Answer: 4" on step 2: 2 steps, final_answer="4".
-
-          * Backend that always emits an Action: max_steps trips,
-            final_answer=None, stopped_reason="max_steps".
-
-          * Backend that emits the same Action twice with
-            loop_detection=True: 2 steps recorded, stopped_reason=
-            "duplicate_action", final_answer=None.
-
-          * Backend that emits "I don't know" (no parse) twice with
-            halt_on_stuck=True: 1 step, stopped_reason="no_progress".
-
-          * Backend that emits "I don't know" (no parse) twice with
-            halt_on_stuck=False: 2 steps, both with parse_error set,
-            stopped_reason="max_steps" (or whatever the next branch
-            triggers).
+          * parsed.final_answer="42" -> stop_reason="final_answer",
+            remember=False; the run ends with final_answer="42".
+          * parsed.action=calculator(2+2), not a repeat -> stop_reason=None,
+            remember=True; the observation ("4") lands in the scratchpad.
+          * same action as the previous step, loop_detection=True ->
+            stop_reason="duplicate_action" (the step is still recorded).
+          * stuck step, halt_on_stuck=True -> stop_reason="no_progress".
+          * stuck step, halt_on_stuck=False -> stop_reason=None,
+            remember=True (parse error feeds back as an observation).
         """
-        if not isinstance(user_message, str) or not user_message:
-            raise ValueError("user_message must be a non-empty str")
-
-        plan: Plan | None = None
-        if self.plan:
-            try:
-                plan = make_plan(
-                    self.backend,
-                    user_message,
-                    self.registry,
-                    max_new_tokens=min(self.max_new_tokens, 256),
-                    temperature=self.temperature,
-                )
-            except Exception:  # noqa: BLE001 - failed planning is non-fatal
-                plan = None
-
-        scratchpad = Scratchpad(max_chars=self.scratchpad_max_chars)
-        steps: list[AgentStep] = []
-        final_answer: str | None = None
-        stopped_reason = "max_steps"
-        last_action_key: tuple[str, str] | None = None
-
-        for _ in range(self.max_steps):
-            prompt = self._build_prompt(user_message, plan, scratchpad)
-            inference = self.backend.complete(
-                prompt,
-                max_new_tokens=self.max_new_tokens,
-                temperature=self.temperature,
-                top_k=self.top_k,
-                top_p=self.top_p,
-            )
-            parsed = parse_react_step(inference.completion)
-
-            if parsed.final_answer is not None:
-                step = AgentStep(
-                    completion=inference.completion,
+        # Final answer -> clean exit; nothing more reads the scratchpad.
+        if parsed.final_answer is not None:
+            return StepOutcome(
+                AgentStep.final(
+                    inference,
                     thought=parsed.thought,
-                    action=None,
-                    observation=None,
                     final_answer=parsed.final_answer,
-                    parse_error=None,
-                    inference=inference,
-                )
-                steps.append(step)
-                final_answer = parsed.final_answer
-                stopped_reason = "final_answer"
-                break
-
-            if parsed.action is not None:
-                action_key = (
-                    parsed.action.tool,
-                    json.dumps(parsed.action.arguments, sort_keys=True),
-                )
-                call = ToolCall(
-                    name=parsed.action.tool,
-                    arguments=parsed.action.arguments,
-                    call_id=f"call_{len(steps)}",
-                )
-                tool_result = dispatch_tool_call(self.registry, call)
-                output = tool_result.output
-                if tool_result.is_error and parsed.action.tool not in self.registry:
-                    allowed = ", ".join(self.registry.names()) or "(none)"
-                    output = (
-                        f"{output} Use Action with one of the registered tool "
-                        f"names: {allowed}. Put operators or other inputs inside "
-                        "the Action Input JSON."
-                    )
-                observation = Observation(
-                    output=output,
-                    is_error=tool_result.is_error,
-                )
-                step = AgentStep(
-                    completion=inference.completion,
-                    thought=parsed.thought,
-                    action=parsed.action,
-                    observation=observation,
-                    final_answer=None,
-                    parse_error=None,
-                    inference=inference,
-                )
-                steps.append(step)
-                scratchpad.append(step)
-
-                if self.loop_detection and last_action_key == action_key:
-                    stopped_reason = "duplicate_action"
-                    break
-                last_action_key = action_key
-                continue
-
-            step = AgentStep(
-                completion=inference.completion,
-                thought=parsed.thought,
-                action=None,
-                observation=None,
-                final_answer=None,
-                parse_error=parsed.parse_error or "no parse",
-                inference=inference,
+                ),
+                stop_reason="final_answer",
+                remember=False,
             )
-            steps.append(step)
-            if self.halt_on_stuck:
-                stopped_reason = "no_progress"
-                break
-            scratchpad.append(step)
 
-        return AgentRunResult(
-            user_message=user_message,
-            plan=plan,
-            final_answer=final_answer,
-            steps=steps,
-            stopped_reason=stopped_reason,
-            metadata={
-                "n_steps": len(steps),
-                "n_tool_calls": sum(1 for s in steps if s.action is not None),
-                "tools_available": self.registry.names(),
-                "backend_name": self.backend.info.name,
-                "backend_model_id": self.backend.info.model_id,
-                "had_plan": plan is not None,
-            },
+        # Action -> dispatch, observe, remember; stop on a repeat.
+        if parsed.action is not None:
+            observation = self._observe(parsed.action, len(steps))
+            step = AgentStep.act(
+                inference,
+                thought=parsed.thought,
+                action=parsed.action,
+                observation=observation,
+            )
+            if self.loop_detection and (
+                _prev_action_key(steps) == _action_key(parsed.action)
+            ):
+                return StepOutcome(step, stop_reason="duplicate_action")
+            return StepOutcome(step)
+
+        # Stuck -> halt if configured, else remember and let the model retry.
+        step = AgentStep.stuck(
+            inference,
+            thought=parsed.thought,
+            parse_error=parsed.parse_error or "no parse",
         )
+        if self.halt_on_stuck:
+            return StepOutcome(step, stop_reason="no_progress", remember=False)
+        return StepOutcome(step)
 

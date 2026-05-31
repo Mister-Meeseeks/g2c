@@ -6,6 +6,7 @@ from .base import (
     AgentStep,
     Observation,
     Plan,
+    StepOutcome,
 )
 from .memory import Scratchpad
 from .native import NATIVE_DEFAULT_AGENT_SYSTEM, NativeAgent
@@ -33,6 +34,7 @@ __all__ = [
     "ParsedStep",
     "Plan",
     "Scratchpad",
+    "StepOutcome",
     "extract_plan",
     "make_plan",
     "parse_react_step",
