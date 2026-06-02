@@ -250,6 +250,7 @@ class OllamaBackend(Backend):
         temperature: float = 1.0,
         top_k: int | None = None,
         top_p: float | None = None,
+        think: bool | None = None,
     ) -> InferenceResult:
         """POST to `{base_url}/api/generate` and parse the response.
 
@@ -261,6 +262,10 @@ class OllamaBackend(Backend):
                 payload entirely if None — letting Ollama use its
                 default rather than passing 0).
             top_p: forwarded as `options.top_p` (likewise).
+            think: if set, forwarded as the top-level `think` flag
+                (sibling of `options`, not inside it). Toggles
+                "thinking mode" on models that support it; omitted
+                entirely when None.
 
         Returns:
             `InferenceResult` with:
@@ -310,6 +315,8 @@ class OllamaBackend(Backend):
                    "stream":  False,
                    "options": options,
                }
+               if think is not None:        # top-level flag, not in options
+                   body["think"] = bool(think)
 
             3. # Send it. `_post_generate` (provided) does the HTTP
                # round trip and hands back the parsed response JSON +
