@@ -217,7 +217,7 @@ When adding a new worked implementation:
 2. Run `pytest tests/test_scaffold_invariant.py` — the target function in `g2c/<topic>/` must still be scaffolded.
 3. Verify the impl works end-to-end with `G2C_APPLY_SOLUTIONS=1 pytest tests/test_<topic>.py`.
 
-The `g2c/solutions/` mirror is canonical and lives in `main` — maintain it by editing the holder files in place (the three steps above). `scripts/build_solutions_mirror.py` remains as a one-shot bootstrap that can regenerate the whole mirror from a separate worked tree, but it is **not** part of the normal workflow; the `solutions` git branch it historically read from is no longer kept canonical or in sync.
+The `g2c/solutions/` mirror is canonical and lives in `main` — maintain it by editing the holder files in place (the three steps above). `scripts/build_solutions_mirror.py` is a **legacy re-bootstrap escape hatch only**: it regenerates the whole mirror from the `solutions` git branch, which is no longer kept in sync, so running it would overwrite the hand-maintained mirror with stale content. It refuses to run without `--force` for exactly that reason; you should not need it in the normal workflow.
 
 ### Visual aids in lesson pages
 
