@@ -217,7 +217,7 @@ When adding a new worked implementation:
 2. Run `pytest tests/test_scaffold_invariant.py` — the target function in `g2c/<topic>/` must still be scaffolded.
 3. Verify the impl works end-to-end with `G2C_APPLY_SOLUTIONS=1 pytest tests/test_<topic>.py`.
 
-To regenerate the entire mirror from an implemented tree (e.g. after a structural refactor or to bootstrap from another branch), run `python scripts/build_solutions_mirror.py`.
+The `g2c/solutions/` mirror is canonical and lives in `main` — maintain it by editing the holder files in place (the three steps above). `scripts/build_solutions_mirror.py` remains as a one-shot bootstrap that can regenerate the whole mirror from a separate worked tree, but it is **not** part of the normal workflow; the `solutions` git branch it historically read from is no longer kept canonical or in sync.
 
 ### Visual aids in lesson pages
 

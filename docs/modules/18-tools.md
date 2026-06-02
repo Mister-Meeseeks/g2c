@@ -333,12 +333,16 @@ def make_run_python(*, timeout=10) -> Tool: ...                   # implemented
 
 # loop.py
 def dispatch_tool_call(registry, call) -> ToolResult: ...         # implemented
-def run_with_tools(                                               
-    backend, registry, user_message, *, ...,
+def run_with_tools(                                               # implemented (wrapper:
+    backend, registry, user_message, *, ...,                      #   validate + channel select)
 ) -> ToolRunResult: ...
+def run_text_loop(                                                # <- your deliverable: the
+    backend, registry, user_message, *, ...,                      #   complete -> parse ->
+) -> ToolRunResult: ...                                           #   dispatch -> feedback loop
+# _init_transcript / _grow_transcript / _build_run_result          # implemented (loop plumbing)
 ```
 
-Total scaffolded code: roughly 60 lines across four function bodies. 
+Total scaffolded code: four function bodies — `validate_arguments`, `parse_tool_calls`, `calculator_evaluate`, and `run_text_loop`. The feedback loop is the centerpiece; the boilerplate around it (input validation, native-vs-text channel routing, transcript formatting, and `ToolRunResult` assembly) is provided in and around the `run_with_tools` wrapper, so `run_text_loop` stays a tight ~40-line call → parse → dispatch → feed-back cycle. 
 
 ## How to run the tests
 

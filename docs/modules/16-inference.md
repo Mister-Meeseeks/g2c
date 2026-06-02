@@ -327,17 +327,20 @@ class OllamaBackend(Backend):
     def info(self) -> BackendInfo: ...                         # implemented
     @property
     def base_url(self) -> str: ...                             # implemented
+    def _post_generate(self, body                              # implemented (HTTP transport:
+                       ) -> tuple[dict, float]: ...            #   POST, error->OllamaError,
+                                                               #   JSON parse, latency timing)
     def complete(self, prompt, *, max_new_tokens=128,
                  temperature=1.0, top_k=None, top_p=None,
-                 ) -> InferenceResult:                         # SCAFFOLDED
-        ...
+                 ) -> InferenceResult:                         # SCAFFOLDED (map params +
+        ...                                                    #   response fields; call
+                                                               #   self._post_generate)
     def chat_with_tools(self, messages, tools=None, *,         # implemented
                         max_new_tokens=512, temperature=0.2,
                         top_k=None, top_p=None) -> ChatResult: ...
         # Native tool-calling path used by Module 18. Hits Ollama's
         # /api/chat endpoint with a structured tools= array. Not part
-        # of this module's lesson; built on top of the same HTTP
-        # plumbing as `complete`.
+        # of this module's lesson; HTTP plumbing like `_post_generate`.
 
 
 # artifact.py
@@ -383,7 +386,7 @@ def benchmark(
     ...
 ```
 
-Total scaffolded code: roughly 70 lines across three function bodies. The pedagogical content is the wiring — taking a string in, a string out, and recording what happened in between.
+Total scaffolded code: roughly 50 lines across three function bodies (`LocalTransformerBackend.complete`, `OllamaBackend.complete`, `benchmark`). The Ollama path's HTTP transport — request building, error translation, JSON parsing, timing — is provided as `_post_generate`, so `OllamaBackend.complete` is just the contract mapping: sampling params in, response fields out. The pedagogical content is the wiring — taking a string in, a string out, and recording what happened in between.
 
 ## How to run the tests
 

@@ -22,13 +22,17 @@ Suggested order to implement & turn green:
          TestCalculatorRejection
          TestMakeCalculator
 
-    4. `run_with_tools` in `g2c/tools/loop.py`. Orchestrates the
-       call-parse-dispatch loop. Once 1-3 are done, this turns green
+    4. `run_text_loop` in `g2c/tools/loop.py`. The text-format
+       complete-parse-dispatch-feedback loop behind the provided
+       `run_with_tools` wrapper. Once 1-3 are done, this turns green
        and the integration smoke tests pass:
          TestRunWithTools
          TestRunWithToolsLoop
          TestRunWithToolsErrors
          TestIntegrationSmoke
+       (The tests drive the public `run_with_tools`; the wrapper's
+       input validation is provided, so `test_max_steps_zero_rejected`
+       and `test_empty_user_message_rejected` pass before you start.)
 
 The four are independent — work in any order. Boilerplate tests
 (`TestToolBoilerplate`, etc.) pass from the start.

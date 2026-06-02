@@ -46,8 +46,10 @@ Request/response shapes (from the Ollama API spec):
     }
 ```
 
-The boilerplate (constructor + info property + error class):
-implemented. The `complete` method: scaffolded.
+The boilerplate (constructor + info property + error class + the
+`_post_generate` HTTP transport): implemented. The `complete` method
+— mapping sampling params and response fields onto the `Backend`
+contract — is scaffolded.
 """
 from __future__ import annotations
 
@@ -145,8 +147,10 @@ class OllamaBackend(Backend):
     the constructor args. The base URL is stored in `info.extra`
     automatically.
 
-    The boilerplate (constructor + `info`) is implemented. The
-    `complete` method is scaffolded — that's the lesson.
+    The boilerplate (constructor + `info` + the `_post_generate` HTTP
+    transport) is implemented. The `complete` method — mapping params
+    and response fields onto the contract — is scaffolded; that's the
+    lesson.
     """
 
     def __init__(
@@ -187,6 +191,56 @@ class OllamaBackend(Backend):
     @property
     def base_url(self) -> str:
         return self._base_url
+
+    def _post_generate(
+        self, body: dict[str, Any]
+    ) -> tuple[dict[str, Any], float]:
+        """POST `body` to `{base_url}/api/generate`; return (json, latency_ms).
+
+        PROVIDED transport for `complete`. Handles the parts that are
+        not the lesson: building the urllib request, timing the round
+        trip, translating `HTTPError`/`URLError` into `OllamaError`,
+        parsing the JSON, and asserting the response carries a
+        `"response"` field. What goes INTO `body` and what you read OUT
+        of the returned dict is the lesson — that stays in `complete`.
+
+        Raises:
+            OllamaError: connection failure, non-2xx status, a non-JSON
+                body, or a response missing the `"response"` field.
+        """
+        url = f"{self._base_url}/api/generate"
+        request = urllib.request.Request(
+            url,
+            data=json.dumps(body).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        start = time.perf_counter()
+        try:
+            with self._urlopen(request, timeout=self._timeout) as response:
+                response_bytes = response.read()
+        except urllib.error.HTTPError as exc:
+            raise OllamaError(
+                f"Ollama HTTP error {exc.code} at {url}: {exc.reason}"
+            ) from exc
+        except urllib.error.URLError as exc:
+            raise OllamaError(
+                f"Could not reach Ollama at {url}: {exc.reason}"
+            ) from exc
+        latency_ms = (time.perf_counter() - start) * 1000.0
+
+        try:
+            data = json.loads(response_bytes)
+        except json.JSONDecodeError as exc:
+            raise OllamaError(
+                f"Ollama returned non-JSON response from {url}"
+            ) from exc
+        if "response" not in data:
+            raise OllamaError(
+                "Ollama response missing 'response' field: "
+                f"keys={list(data.keys())}"
+            )
+        return data, latency_ms
 
     def complete(
         self,
@@ -238,9 +292,9 @@ class OllamaBackend(Backend):
                if max_new_tokens <= 0:
                    raise ValueError("max_new_tokens must be > 0")
 
-            2. # Build the request body. Only include sampling
-               # options that were explicitly set — leaving an option
-               # absent lets Ollama fill in its default.
+            2. # Map the sampling params onto Ollama's `options` block.
+               # Only include options that were explicitly set —
+               # leaving one absent lets Ollama use its own default.
                options: dict[str, Any] = {
                    "num_predict": int(max_new_tokens),
                    "temperature": float(temperature),
@@ -256,64 +310,19 @@ class OllamaBackend(Backend):
                    "stream":  False,
                    "options": options,
                }
-               body_bytes = json.dumps(body).encode("utf-8")
 
-            3. # Build the HTTP request.
-               url = f"{self._base_url}/api/generate"
-               req = urllib.request.Request(
-                   url,
-                   data=body_bytes,
-                   headers={"Content-Type": "application/json"},
-                   method="POST",
-               )
+            3. # Send it. `_post_generate` (provided) does the HTTP
+               # round trip and hands back the parsed response JSON +
+               # wall-clock latency, raising OllamaError on any
+               # transport failure.
+               data, latency_ms = self._post_generate(body)
 
-            4. # Time + send. Wrap stdlib errors in OllamaError so
-               # callers have one type to catch.
-               t0 = time.perf_counter()
-               try:
-                   with self._urlopen(req, timeout=self._timeout) as resp:
-                       resp_bytes = resp.read()
-               except urllib.error.HTTPError as e:
-                   raise OllamaError(
-                       f"Ollama HTTP error {e.code} at {url}: {e.reason}"
-                   ) from e
-               except urllib.error.URLError as e:
-                   raise OllamaError(
-                       f"Could not reach Ollama at {url}: {e.reason}"
-                   ) from e
-               t1 = time.perf_counter()
-               latency_ms = (t1 - t0) * 1000.0
-
-            5. # Parse JSON.
-               try:
-                   data = json.loads(resp_bytes)
-               except json.JSONDecodeError as e:
-                   raise OllamaError(
-                       f"Ollama returned non-JSON response from {url}"
-                   ) from e
-               if "response" not in data:
-                   raise OllamaError(
-                       f"Ollama response missing 'response' field: "
-                       f"keys={list(data.keys())}"
-                   )
-
-            6. # Build result.
+            4. # Map the response fields onto an InferenceResult. Mind
+               # the API's names: `eval_count` is OUTPUT tokens,
+               # `prompt_eval_count` is INPUT tokens, and the durations
+               # are in NANOSECONDS (divide by 1e6 for ms).
                total_dur_ns = data.get("total_duration")
                eval_dur_ns  = data.get("eval_duration")
-               metadata = {
-                   "sampling": {
-                       "max_new_tokens": max_new_tokens,
-                       "temperature":    temperature,
-                       "top_k":          top_k,
-                       "top_p":          top_p,
-                   },
-                   "server_total_duration_ms": (
-                       float(total_dur_ns) / 1e6 if total_dur_ns is not None else None
-                   ),
-                   "server_eval_duration_ms": (
-                       float(eval_dur_ns)  / 1e6 if eval_dur_ns  is not None else None
-                   ),
-               }
                return InferenceResult(
                    prompt=prompt,
                    completion=data["response"],
@@ -321,18 +330,28 @@ class OllamaBackend(Backend):
                    completion_tokens=data.get("eval_count"),
                    latency_ms=latency_ms,
                    backend=self._info,
-                   metadata=metadata,
+                   metadata={
+                       "sampling": {
+                           "max_new_tokens": max_new_tokens,
+                           "temperature":    temperature,
+                           "top_k":          top_k,
+                           "top_p":          top_p,
+                       },
+                       "server_total_duration_ms": (
+                           float(total_dur_ns) / 1e6 if total_dur_ns is not None else None
+                       ),
+                       "server_eval_duration_ms": (
+                           float(eval_dur_ns)  / 1e6 if eval_dur_ns  is not None else None
+                       ),
+                   },
                )
 
         Implementation notes:
 
-          * `Content-Type: application/json` is required by Ollama;
-            without it the server rejects the request with a 400.
-
-          * `urllib.request.urlopen` raises `HTTPError` on non-2xx
-            (a subclass of `URLError`), and `URLError` on network
-            failure. We translate both to `OllamaError` so callers
-            don't need to care about stdlib exception hierarchy.
+          * The HTTP round trip lives in `_post_generate` (provided):
+            it sets the required `Content-Type: application/json`
+            header and translates urllib's `HTTPError`/`URLError` into
+            `OllamaError`, so callers catch one exception type.
 
           * Ollama's `total_duration` is in NANOSECONDS. The conversion
             to milliseconds is `/ 1e6`. (Off-by-1000 here means

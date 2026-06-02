@@ -1,8 +1,7 @@
 """The tool-using loop — backend.complete → parse → execute → feed back.
 
-`run_with_tools` is the tiny dispatcher that turns a one-shot
-`Backend.complete` into a multi-step "model can use tools" interaction.
-The shape:
+`run_with_tools` turns a one-shot `Backend.complete` into a multi-step
+"model can use tools" interaction. The shape:
 
   1. Build the system prompt: instructions + tool list + the user's
      message.
@@ -14,10 +13,17 @@ The shape:
   6. Stop when the model emits no more tool calls (success) or when
      `max_steps` is reached (timeout).
 
-This is the **lesson** for Module 18 — SCAFFOLDED. The ReAct-style
-agent loop with planning, scratchpad memory, and goal-tracking is
-Module 19. Module 18 is the *substrate*: the parse/dispatch/feedback
-mechanism the agent will sit on.
+This is the **substrate** for Module 18 — the ReAct-style agent loop
+with planning, scratchpad memory, and goal-tracking is Module 19.
+
+`run_with_tools` (the public entry) is PROVIDED: it validates inputs
+and selects the channel (native tool-calling when the backend exposes
+`chat_with_tools`, else the text-format path). The **lesson** is
+`run_text_loop` — the text-format complete → parse → dispatch →
+feed-back loop, left SCAFFOLDED. Three small helpers
+(`_init_transcript`, `_grow_transcript`, `_build_run_result`) hand you
+the prompt-formatting and result bookkeeping so the loop body stays the
+concept and nothing else.
 
 `dispatch_tool_call` is the per-call wrapper:
   validate args → execute → wrap result.
@@ -39,14 +45,14 @@ from .base import (
     ToolError,
     ToolResult,
     ToolRunResult,
-    ToolStep,  # noqa: F401 (used by run_with_tools scaffold)
+    ToolStep,
 )
-from .parser import (  # noqa: F401 (used by run_with_tools scaffold)
+from .parser import (
     format_tool_results,
-    parse_tool_calls,
+    parse_tool_calls,  # noqa: F401 — used by run_text_loop, your deliverable
 )
 from .registry import ToolRegistry
-from .schema import (  # noqa: F401 (used by run_with_tools scaffold)
+from .schema import (
     DEFAULT_SYSTEM,
     NATIVE_DEFAULT_SYSTEM,
     render_tools_for_ollama,
@@ -218,58 +224,167 @@ def run_with_tools(
     registry: ToolRegistry,
     user_message: str,
     *,
-    system: str = DEFAULT_SYSTEM,
+    system: str | None = None,
     max_steps: int = 5,
-    max_new_tokens: int = 512,
+    max_new_tokens: int = 1024,
     temperature: float = 0.2,
     top_k: int | None = None,
     top_p: float | None = None,
+    use_native_tools: bool | None = None,
+    think: bool | None = None,
 ) -> ToolRunResult:
-    """Run the call → parse → dispatch → feedback loop until the model
-    stops calling tools (or `max_steps` is hit).
+    """Public entry point for the tool-using loop — PROVIDED.
+
+    Validates inputs, picks the channel, defaults the system prompt to
+    match, and dispatches to the loop:
+
+      * native → `_run_with_native_tools` (provided; structured
+        tool_calls via `backend.chat_with_tools`).
+      * text   → `run_text_loop` (YOUR deliverable; the
+        complete → parse → dispatch → feed-back loop).
+
+    The pedagogical core is `run_text_loop`. This wrapper is the
+    boilerplate around it — argument checks and channel selection —
+    handed to you so your attention lands on the loop itself.
 
     Args:
         backend: an inference `Backend` from Module 16.
         registry: the `ToolRegistry` describing available tools.
         user_message: the user's question / instruction. Non-empty.
-        system: the leading system prompt. Defaults to `DEFAULT_SYSTEM`,
-            which describes the tool-call format.
+        system: the leading system prompt. Defaults (when None) to the
+            channel-appropriate prompt: `DEFAULT_SYSTEM` for the text
+            path, `NATIVE_DEFAULT_SYSTEM` for native.
         max_steps: cap on the number of complete-parse-dispatch
             iterations. Each step is one backend call. Defaults to 5
             — enough for "fetch + transform + answer," not enough for
             an agent to hang in a loop.
-        max_new_tokens: forwarded to `backend.complete`.
+        max_new_tokens: forwarded to the backend each step.
         temperature: forwarded. Default 0.2 — tool-using models work
             best near-greedy because tool selection benefits from
             consistency.
         top_k, top_p: forwarded.
+        use_native_tools: force the channel. None (default)
+            auto-detects via `backend_supports_native_tools`.
+        think: forwarded to the native channel's chat call (controls
+            "thinking mode" on models that support it); ignored on the
+            text path.
 
     Returns:
-        `ToolRunResult` with `final_answer`, `steps`, and
-        `stopped_reason` filled in.
+        `ToolRunResult` with `final_answer`, `steps`, `stopped_reason`,
+        and `metadata` filled in.
+    """
+    if not isinstance(user_message, str) or not user_message:
+        raise ValueError("user_message must be a non-empty str")
+    if max_steps <= 0:
+        raise ValueError(f"max_steps must be > 0, got {max_steps}")
+
+    # Channel selection: native when the backend exposes chat_with_tools,
+    # unless the caller forces it one way.
+    if use_native_tools is None:
+        use_native_tools = backend_supports_native_tools(backend)
+    if use_native_tools and not backend_supports_native_tools(backend):
+        raise ValueError(
+            f"use_native_tools=True but backend {type(backend).__name__} "
+            "has no chat_with_tools method"
+        )
+
+    # Default the system prompt to the channel-appropriate one. The
+    # text-format channel needs the model to be told about <tool_call>
+    # blocks; the native channel actively does not — the chat template
+    # handles the format and the model has been post-trained for it.
+    if system is None:
+        system = NATIVE_DEFAULT_SYSTEM if use_native_tools else DEFAULT_SYSTEM
+
+    if use_native_tools:
+        return _run_with_native_tools(
+            backend=backend,
+            registry=registry,
+            user_message=user_message,
+            system=system,
+            max_steps=max_steps,
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+            top_k=top_k,
+            top_p=top_p,
+            think=think,
+        )
+
+    return run_text_loop(
+        backend,
+        registry,
+        user_message,
+        system=system,
+        max_steps=max_steps,
+        max_new_tokens=max_new_tokens,
+        temperature=temperature,
+        top_k=top_k,
+        top_p=top_p,
+    )
+
+
+def run_text_loop(
+    backend: Backend,
+    registry: ToolRegistry,
+    user_message: str,
+    *,
+    system: str,
+    max_steps: int,
+    max_new_tokens: int,
+    temperature: float,
+    top_k: int | None,
+    top_p: float | None,
+) -> ToolRunResult:
+    """The text-format tool-feedback loop — the Module-18 deliverable.
+
+    This is the heart of tool use: turn a one-shot `backend.complete`
+    into a multi-step interaction where the model can call tools and
+    read their results. The provided `run_with_tools` wrapper has
+    already validated inputs and chosen this (text) channel; you write
+    the loop.
+
+    The shape, one iteration per `max_steps`:
+
+        complete → parse `<tool_call>` blocks →
+            none?  this completion is the final answer; stop.
+            some?  dispatch each, record the step, feed the results
+                   back into the transcript, and loop.
+
+    Three provided helpers do the plumbing so the loop body stays the
+    concept:
+
+        * `_init_transcript(system, registry, user_message)` builds the
+          starting prompt (system + tool descriptions + the user turn +
+          an `Assistant:` cue).
+        * `_grow_transcript(transcript, completion, results)` appends one
+          assistant turn + its formatted tool results and a fresh
+          `Assistant:` cue — the monotonic growth that lets the model
+          read its own past actions.
+        * `_build_run_result(...)` assembles the `ToolRunResult` + its
+          metadata.
+
+    You still call `parse_tool_calls`, `dispatch_tool_call`, and build
+    each `ToolStep` — those ARE the lesson.
+
+    Args:
+        backend, registry, user_message: as for `run_with_tools`.
+        system: the resolved system prompt (already defaulted upstream).
+        max_steps: iteration cap. The loop runs at most this many
+            backend calls.
+        max_new_tokens, temperature, top_k, top_p: forward each to
+            `backend.complete`.
+
+    Returns:
+        `ToolRunResult`. Build it with `_build_run_result`, passing
+        `stopped_reason="no_more_calls"` when the model produced a
+        final answer, or `"max_steps"` when the loop ran out.
 
     Recipe:
 
-        1. # Validate inputs.
-           if not isinstance(user_message, str) or not user_message:
-               raise ValueError("user_message must be a non-empty str")
-           if max_steps <= 0:
-               raise ValueError(f"max_steps must be > 0, got {max_steps}")
-
-        2. # Build the initial transcript.
-           tools_block = render_tools_for_prompt(registry.tools)
-           transcript = "\n\n".join([
-               system,
-               tools_block,
-               f"User: {user_message}",
-               "Assistant:",
-           ])
-
-        3. # Loop. At each step: complete, parse, dispatch, append.
+        1. # Start the transcript and the step log.
+           transcript = _init_transcript(system, registry, user_message)
            steps: list[ToolStep] = []
-           final_answer: str | None = None
-           stopped_reason = "max_steps"
 
+        2. # Up to max_steps passes; each pass is one backend call.
            for _ in range(max_steps):
                inference = backend.complete(
                    transcript,
@@ -278,104 +393,157 @@ def run_with_tools(
                    top_k=top_k,
                    top_p=top_p,
                )
-               completion = inference.completion
-               tool_calls = parse_tool_calls(completion)
+               tool_calls = parse_tool_calls(inference.completion)
 
-        4. #     No tool calls → this is the final answer.
+        3. #     No tool calls -> this completion IS the final answer.
                if not tool_calls:
-                   final_answer = completion
                    steps.append(ToolStep(
-                       completion=completion,
+                       completion=inference.completion,
                        tool_calls=[],
                        tool_results=[],
                        inference=inference,
                    ))
-                   stopped_reason = "no_more_calls"
-                   break
+                   return _build_run_result(
+                       user_message=user_message,
+                       final_answer=inference.completion,
+                       steps=steps,
+                       stopped_reason="no_more_calls",
+                       registry=registry,
+                       backend=backend,
+                   )
 
-        5. #     Dispatch each call; record the step.
-               results = [dispatch_tool_call(registry, c) for c in tool_calls]
+        4. #     Otherwise dispatch every call, record the step, and
+           #     feed the results back by growing the transcript.
+               results = [
+                   dispatch_tool_call(registry, c) for c in tool_calls
+               ]
                steps.append(ToolStep(
-                   completion=completion,
+                   completion=inference.completion,
                    tool_calls=tool_calls,
                    tool_results=results,
                    inference=inference,
                ))
+               transcript = _grow_transcript(
+                   transcript, inference.completion, results)
 
-        6. #     Append the assistant's tool-calling output and the
-               #     formatted results to the transcript, prompting
-               #     for the next assistant turn.
-               transcript = (
-                   transcript
-                   + " "
-                   + completion
-                   + "\n\n"
-                   + format_tool_results(results)
-                   + "\n\nAssistant:"
-               )
-
-        7. # Build and return the final result.
-           return ToolRunResult(
+        5. # Fell out of the loop with no final answer -> max_steps.
+           return _build_run_result(
                user_message=user_message,
-               final_answer=final_answer,
+               final_answer=None,
                steps=steps,
-               stopped_reason=stopped_reason,
-               metadata={
-                   "n_steps": len(steps),
-                   "n_tool_calls": sum(len(s.tool_calls) for s in steps),
-                   "tools_available": registry.names(),
-                   "backend_name": backend.info.name,
-                   "backend_model_id": backend.info.model_id,
-               },
+               stopped_reason="max_steps",
+               registry=registry,
+               backend=backend,
            )
 
     Implementation notes:
 
-      * **Why not a full ReAct loop here?** ReAct interleaves
-        "Thought / Action / Observation" turns and trains the model
-        to plan explicitly. Module 19 builds that. Module 18's loop
-        is purposely minimal: we trust the model to use tools when
-        it needs to and to stop when it has the answer. The "no tool
-        calls = done" exit condition is the simplest contract that
-        works.
+      * **Why "no tool calls = done."** Module 18's loop is purposely
+        minimal: we trust the model to call tools when it needs them
+        and to stop when it has the answer. The ReAct-style loop with
+        explicit Thought / Action / Observation turns, planning, and
+        scratchpad memory is Module 19; this is the substrate it sits
+        on.
 
       * **Why the transcript grows monotonically.** Each step appends
-        the assistant's last completion + the tool results. The
-        prompt grows; the model reads its own past actions. This is
-        a tiny conversation, not a true chat template — for a real
-        chat-template-aware loop, you'd wrap each turn in
-        `<|user|>...<|assistant|>...` markers per the model's
-        instruction-tuning.
+        the assistant's completion + the tool results. The prompt
+        grows; the model reads its own past actions. This is a tiny
+        conversation, not a real chat template — a production loop
+        would wrap each turn in the model's `<|user|>...<|assistant|>`
+        markers.
 
-      * **What `stopped_reason="max_steps"` looks like.** The loop
-        ran out without the model emitting a final answer. The last
-        step's `completion` is the model's last tool-calling output;
-        `final_answer` is None. This is the "the model is stuck in
-        a loop" mode — Module 19's agent has more sophisticated stop
-        criteria, but for now `max_steps` is the safety net.
-
-      * **Why not stream tokens?** Streaming a tool-calling loop
-        requires server-sent events, partial-JSON parsing, and a
-        much bigger interface. We do the synchronous version. Real
-        production tool-calling streams; the conceptual shape is the
-        same.
+      * **What `stopped_reason="max_steps"` looks like.** The loop ran
+        out without the model emitting a final answer. The last step's
+        `completion` is the model's last tool-calling output;
+        `final_answer` is None.
 
     Sanity values:
 
-      * Backend that always emits `"the answer is 42"` (no tool
-        calls) → `final_answer="the answer is 42"`, one step,
+      * Backend that always emits `"the answer is 42"` (no tool calls)
+        → `final_answer="the answer is 42"`, one step,
         `stopped_reason="no_more_calls"`.
 
       * Backend that emits `<tool_call>{...calculator...}</tool_call>`
-        on step 1 and `"the result is 4"` on step 2 → two steps,
-        first step has tool_calls + tool_results, second step has
-        the final answer.
+        on step 1 and `"the result is 4"` on step 2 → two steps; the
+        first step has tool_calls + tool_results, the second is the
+        final answer.
 
-      * Backend that always emits a tool call and `max_steps=2` →
-        two steps, `final_answer=None`, `stopped_reason="max_steps"`.
+      * Backend that always emits a tool call with `max_steps=2` → two
+        steps, `final_answer=None`, `stopped_reason="max_steps"`.
     """
     # TODO
     raise NotImplementedError
+
+
+def _init_transcript(
+    system: str, registry: ToolRegistry, user_message: str
+) -> str:
+    """Build the initial transcript for the text-format loop. PROVIDED.
+
+    Layout: the system prompt, the rendered tool descriptions, the
+    user's turn, and a trailing `Assistant:` cue for the model to
+    continue from. The exact prompt format is plumbing, not the lesson.
+    """
+    tools_block = render_tools_for_prompt(registry.tools)
+    return "\n\n".join(
+        [
+            system,
+            tools_block,
+            f"User: {user_message}",
+            "Assistant:",
+        ]
+    )
+
+
+def _grow_transcript(
+    transcript: str, completion: str, results: list[ToolResult]
+) -> str:
+    """Append one assistant turn + its tool results to the transcript.
+
+    Ends with a fresh `Assistant:` cue so the model continues from the
+    results. This monotonic growth is what lets the model read its own
+    past actions across steps; the exact delimiters are plumbing.
+    PROVIDED.
+    """
+    return (
+        transcript
+        + " "
+        + completion
+        + "\n\n"
+        + format_tool_results(results)
+        + "\n\nAssistant:"
+    )
+
+
+def _build_run_result(
+    *,
+    user_message: str,
+    final_answer: str | None,
+    steps: list[ToolStep],
+    stopped_reason: str,
+    registry: ToolRegistry,
+    backend: Backend,
+    channel: str = "text-format",
+) -> ToolRunResult:
+    """Assemble the end-of-run `ToolRunResult` + metadata. PROVIDED.
+
+    Counting steps and tool calls into a metadata dict is bookkeeping,
+    not the lesson — so it's handed to you.
+    """
+    return ToolRunResult(
+        user_message=user_message,
+        final_answer=final_answer,
+        steps=steps,
+        stopped_reason=stopped_reason,
+        metadata={
+            "n_steps": len(steps),
+            "n_tool_calls": sum(len(s.tool_calls) for s in steps),
+            "tools_available": registry.names(),
+            "backend_name": backend.info.name,
+            "backend_model_id": backend.info.model_id,
+            "channel": channel,
+        },
+    )
 
 
 def _run_with_native_tools(
