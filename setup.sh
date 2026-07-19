@@ -3,7 +3,9 @@
 #
 # Strategy:
 #   - SYSTEM-LEVEL tools (python, uv, curl, ollama) are CHECKED, not installed.
-#     If missing, the script prints how to install them and exits.
+#     Missing python/uv/curl print an install hint and exit. Missing ollama
+#     only warns (it isn't needed until Module 16) — except with --full,
+#     which runs ./prodlm.sh and therefore requires ollama up front.
 #   - PROJECT-LEVEL tools (torch, pytest, ruff, jupyter, Hugging Face helpers,
 #     and the g2c package itself) are installed into a project-local venv at
 #     ./.venv via uv.
@@ -87,16 +89,23 @@ if ! command -v uv >/dev/null 2>&1; then
 fi
 ok "uv $(uv --version | awk '{print $2}')"
 
-# ---- 3. Ollama ----------------------------------------------------------------
-info "Checking Ollama"
+# ---- 3. Ollama (optional until Module 16) ------------------------------------
+info "Checking Ollama (optional; first needed in Module 16)"
 if command -v ollama >/dev/null 2>&1; then
     ok "ollama $(ollama --version 2>/dev/null | head -n 1 | sed 's/^ollama version //')"
-else
-    fail "ollama not found.
-       Install: 
-         - Download the macOS app:  
+elif [[ "$MODE" == "full" ]]; then
+    fail "ollama not found, and --full runs ./prodlm.sh, which requires it.
+       Install:
+         - Download the macOS app:
                https://ollama.com/download
-         - OR:        
+         - OR:
+               brew install ollama"
+else
+    warn "ollama not found. Modules 00-15 don't need it; ./prodlm.sh checks again
+       before the ProdLM modules (16-20). Install when you get there:
+         - Download the macOS app:
+               https://ollama.com/download
+         - OR:
                brew install ollama"
 fi
 

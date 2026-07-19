@@ -10,7 +10,7 @@ The hard constraint: **everything runs on an M-series MacBook** — no cloud GPU
 
 Millions interact with LLMs on a daily basis. But few bother to understand how these systems actually work. How does an LLM understand language? What is a "model" and how does it learn? How does a chat assistant "know" how to answer a question? How does matrix multiplication produce intelligent behavior? In this course we answer these questions from first principles.
 
-Our goal is to go *below the API*. To understand every part of the LLM stack, end to end. You start with basic autodiff, and over twenty modules grow it: tensors, a neural net, a tokenizer, embeddings, attention, the transformer, pretraining, sampling, SFT, DPO, evaluation, RAG, tool use, an agent loop. By the final module you have a chat assistant running on a model you trained yourself, with tools and retrieval. All on your laptop. All built by you. 
+Our goal is to go *below the API*. To understand every part of the LLM stack, end to end. You start with basic autodiff, and over twenty modules grow it: tensors, a neural net, a tokenizer, embeddings, attention, the transformer, pretraining, sampling, SFT, DPO, evaluation, RAG, tool use, an agent loop. By the final module you have a chat assistant you built end to end — tools, retrieval, and a swappable backend: the tiny model you trained yourself, or a stronger local open model when you want it to be genuinely useful. All on your laptop. All built by you. 
 
 The scaffolding is real but small: a tokenizer that takes ten minutes to train, a transformer with a few million parameters, a corpus that fits in RAM. Tiny is deliberate. Once you've built every layer once at toy scale, the production-scale versions stop being magic.
 

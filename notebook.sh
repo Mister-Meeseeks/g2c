@@ -71,11 +71,14 @@ Flags:
 Module → extras mapping:
   04            ./datasets.sh --tiny
   05            ./datasets.sh glove
-  10            ./datasets.sh
+  10, 12        ./datasets.sh --small
   13, 14, 15    ./baselm.sh
   16            ./baselm.sh + ./prodlm.sh
   17-20         ./prodlm.sh
   (others)      no extras
+
+Modules 10/12 stage the Standard-track datasets. For the full track, run
+./datasets.sh (no args) yourself before launching.
 
 Examples:
   ./notebook.sh 01
@@ -151,9 +154,10 @@ case "$MODULE_NORM" in
     08)  TEST_FILES=("tests/test_multi_head_attention.py") ;;
     09)  TEST_FILES=("tests/test_transformer.py") ;;
     09b) TEST_FILES=("tests/test_pretraining_setup.py" "tests/test_pretraining.py") ;;
-    10)  EXTRAS+=("./datasets.sh")
+    10)  EXTRAS+=("./datasets.sh --small")
          TEST_FILES=("tests/test_training.py" "tests/test_pretraining_setup.py" "tests/test_pretraining.py") ;;
     11)  TEST_FILES=("tests/test_sampling.py") ;;
+    12)  EXTRAS+=("./datasets.sh --small") ;;
     13)  EXTRAS+=("./baselm.sh")
          TEST_FILES=("tests/test_sft.py") ;;
     14)  EXTRAS+=("./baselm.sh")

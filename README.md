@@ -18,6 +18,20 @@ cd g2c/
 ./setup.sh
 ```
 
+**Prerequisites.** `setup.sh` checks for (but does not install) three system tools:
+
+* **Python 3.11+** — `brew install python@3.11`
+* **[uv](https://docs.astral.sh/uv/)** — `brew install uv`
+* **[Ollama](https://ollama.com/download)** — `brew install ollama`. Only needed from Module 16 on; fine to defer.
+
+Everything else (PyTorch, Jupyter, the `g2c` package itself) is installed into a project-local `.venv` by the script.
+
+Then open the first module's notebook:
+
+```bash
+./notebook.sh 00
+```
+
 ## Contents
 
 Start with the [syllabus](docs/syllabus.md) for the full 20-week arc.
@@ -63,6 +77,10 @@ The focus of the course is on *building*. The lecture notes are generally short 
 The `g2c/` package grows through each week of the course. Every module's package is consumed by later modules in some way. To complete the course, students must implement all the module packages, until it comes together in the capstone project. Each module has a test suite to help students validate their implementation. Iterate until tests come back green. 
 
 The course is agent friendly. Students should use their favorite coding agent (like Claude or Codex) to answer questions, give hints, grade problems, etc. The `AGENTS.md`/`CLAUDE.md` is set up so coding agents launched in the repo will naturally act like teacher assistants. 
+
+### The answer key is public, on purpose
+
+The worked implementations (`g2c/solutions/`) and the grading rubrics (`docs/rubrics/`, a growing set) ship in this repo, in the open. That's deliberate. This is a self-study course: there is no transcript, no credential, and no proctor — a student who pastes in the answers is only cheating themself out of the thing they came for. And the open answer key is what makes the course work: it lets maintainers and coding agents verify every module end-to-end, it powers `./notebook.sh NN --solutions`, which runs a notebook against the reference implementations, and it gives a stuck student a way to get unstuck without abandoning the course. Treat it like the answers in the back of a math textbook: reach for it after you've fought with the problem, not before.
 
 ## System requirements
 

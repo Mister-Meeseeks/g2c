@@ -26,10 +26,11 @@ notebooks/solutions/revisions/
 # OS
 Thumbs.db
 
-# Editors
+# Editors and coding agents
 .vscode/
 .idea/
 *.swp
+.claude/
 
 # Data — keep the directory but not its contents
 data/*

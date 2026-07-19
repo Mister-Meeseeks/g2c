@@ -236,6 +236,6 @@ def run_cli(
         try:
             turn = assistant.chat(line)
         except Exception as e:
-            print(f"(error: {e})", file=out)
+            print(f"(error: {type(e).__name__}: {e})", file=out)
             continue
         _print_turn(turn, out)

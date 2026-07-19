@@ -29,11 +29,11 @@ What is the largest city in Spain?
 Lisbon.<|end|>
 ```
 
-Confident. Format-perfect. Wrong. The SFT loss has no way to penalize this output — every syntactically valid `{single sentence}<|end|>` response with the format markers in the right place is equally good. The model "knows" the prompt is asking about a Spanish city; it picks city-shaped tokens that pretraining over-represented from the corpus. SFT taught it the *shape* of the answer; nothing taught it which answer is correct.
+Confident. Format-perfect. Wrong. Nothing in SFT training penalized this output: unless this exact question appeared in the SFT set with `Madrid.` as the target, the loss never expressed a preference between one well-formatted city and another. SFT only supplies positive demonstrations — "produce this target" — so its reach ends where the data's coverage ends. The model "knows" the prompt is asking about a Spanish city; it picks city-shaped tokens that pretraining over-represented from the corpus. SFT taught it the *shape* of the answer; nothing taught it which answer is correct.
 
 SFT was the first layer of post-training in our LLM stack. This week we're exploring DPO, another form of post-training that teaches pairwise preferences. This is more powerful than it appears at first. Many behavioral criteria, including factual accuracy, can be represented by having graders repeatedly pick between two different examples.
 
-SFT is used to post-train the shape of the output response. DPO is used to introduce behavior like helpfulness, honesty, tone, safety, and instruction following. Because these properties are downstream of having the basic assistant-like shape, DPO comes *after* SFT in the post-training pipeline. 
+SFT is used to post-train the shape of the output response. DPO is used to introduce behavior like helpfulness, honesty, tone, safety, and instruction following — or more precisely, whatever distinctions the preference data actually exhibits; DPO shifts probability toward what the chosen examples share, no more. Because these properties are downstream of having the basic assistant-like shape, DPO comes *after* SFT in the post-training pipeline. 
 
 The nomenclature can be a bit confusing. In almost every case the "base model" that DPO trains over is the SFT model, *not* the original pretrained model. In this module we'll train DPO on top of the SFT model from Module 13.
 
@@ -93,7 +93,7 @@ Did the policy increase chosen-over-rejected more than the reference does?
 The end result is a loss that depends only on:
   - the trainable policy model `π`
   - the frozen reference model `π_ref`
-  - a learning rate `β`
+  - a drift coefficient `β` — how strongly the loss pins the policy to the reference
   - the preference dataset
 
 With an implicit reward of:
@@ -225,7 +225,7 @@ For a single preference example:
 
 **As training proceeds**: the policy pushes `log π(y_c|x)` **up** and `log π(y_r|x)` **down**. The reward margin (`chosen_reward − rejected_reward`) is the main number to watch. If training is working it should gradually increase over the run.
 
-**β controls the policy learning rate.**  Small β (e.g. 0.01) lets the policy diverge a long way for small preference signals. That invites risk of mode collapse, repetition, and gibberish. Large β (e.g. 1.0) pins the policy near the reference — safe but sometimes can't move enough to absorb the preference signal. The DPO paper and most follow-ups recommend `β ∈ [0.1, 0.5]`. **At toy scale `β = 0.1` is a fine default**, though it's always worth sweeping.
+**β controls how far the policy can drift from the reference.** It is the KL-regularization strength, not the optimizer learning rate — AdamW's step size is a separate knob in the same training loop. Small β (e.g. 0.01) lets the policy diverge a long way for small preference signals. That invites risk of mode collapse, repetition, and gibberish. Large β (e.g. 1.0) pins the policy near the reference — safe but sometimes can't move enough to absorb the preference signal. The DPO paper and most follow-ups recommend `β ∈ [0.1, 0.5]`. **At toy scale `β = 0.1` is a fine default**, though it's always worth sweeping.
 
 ### The frozen reference
 
@@ -286,7 +286,7 @@ A quality pin for any preference dataset: chosen and rejected should differ in t
 - **DPO is closed-form supervised loss.** The implementation collapses to a single forward+backward per step.
 - **The policy is the reward model.** DPO trains the implicit reward; you can read it off any (x, y) pair after training.
 - **The reference must stay frozen.** If reference updates, the log-ratios do not correspond to learning.
-- **β controls the learning rate.** Small β: more drift, more risk of collapse. Large β: less drift, less learning.
+- **β controls drift from the reference.** Small β: more drift, more risk of collapse. Large β: less drift, less learning.
 - **The preference dataset format is `(prompt, chosen, rejected)` triples.** Chosen and rejected share the prompt prefix and diverge over the response. 
 - **Sequence-level log-probabilities are sums, not means.**  A mean would change the objective by length-normalizing.
 - **At toy scale, 50–200 preference pairs is the right order of magnitude.** Not 5; not 5000. Controlling quality is more important than quantity at this scale.

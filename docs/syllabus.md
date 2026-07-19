@@ -52,9 +52,9 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 | Phase              | Weeks           | Theme                                                            |
 | ------------------ | --------------- | ---------------------------------------------------------------- |
 | 0 — Review         | 0               | Fast prerequisite refresh                                        |
-| I — Learning       | 1–3 + draft 03B | Scalar autograd → tensors → first neural net → training dynamics |
+| I — Learning       | 1–3 + 03B       | Scalar autograd → tensors → first neural net → training dynamics |
 | II — Language      | 4–6             | Tokenization → embeddings/positions → next-token prediction      |
-| III — Transformers | 7–10 + draft 09B | Attention → multi-head → block → pretraining → first LLM milestone |
+| III — Transformers | 7–10 + 09B       | Attention → multi-head → block → pretraining → first LLM milestone |
 | IV — Behavior      | 11–15           | Sampling → scaling → SFT → DPO → eval                            |
 | V — Assistants     | 16–20           | Pretrained inference → RAG → tools → agents → capstone           |
 
