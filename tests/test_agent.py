@@ -20,9 +20,12 @@ Suggested order to implement & turn green:
          TestScratchpadRender
          TestScratchpadTruncation
 
-    4. `Agent.run` in `g2c/agent/agent.py`. The orchestration loop.
-       Once 1-3 are done, this turns green and the integration smoke
-       tests pass:
+    4. `Agent._decide_step` in `g2c/agent/agent.py`. The per-step
+       policy. The `run`/`_run_loop` driver is provided; it parses each
+       completion and hands the step to `_decide_step`, which decides
+       act / finish / stop. Once 1-3 are done, this turns green and the
+       integration smoke tests pass:
+         TestDecideStep
          TestAgentRun
          TestAgentRunStopConditions
          TestAgentRunErrorRecovery

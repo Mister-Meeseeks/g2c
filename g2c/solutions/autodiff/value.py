@@ -126,15 +126,21 @@ class _ValueImpl:  # patched onto Value by apply()
         Returns:
             A list of Values in topological order (i.e., each node only appears after all its parents).
 
-        Hint: 
-            You will have to use recursion. Don't add the same node twice.
+        Hint:
+            Recursive depth-first search with a `visited` set: skip nodes
+            already seen, recurse into `_prev` first, then append the node.
         """
         topo_nodes: list[Value] = []
-        for node in self._prev:
-            next_nodes = node.topological_sort()
-            for next_node in next_nodes:
-                if next_node not in topo_nodes:
-                    topo_nodes.append(next_node)
-        topo_nodes.append(self)
+        visited: set[int] = set()
+
+        def visit(node: "Value") -> None:
+            if id(node) in visited:
+                return
+            visited.add(id(node))
+            for child in node._prev:
+                visit(child)
+            topo_nodes.append(node)
+
+        visit(self)
         return topo_nodes
 

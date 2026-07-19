@@ -138,8 +138,9 @@ class Value:
         Returns:
             A list of Values in topological order (i.e., each node only appears after all its parents).
 
-        Hint: 
-            You will have to use recursion. Don't add the same node twice.
+        Hint:
+            Recursive depth-first search with a `visited` set: skip nodes
+            already seen, recurse into `_prev` first, then append the node.
         """
         # TODO
         raise NotImplementedError
