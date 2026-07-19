@@ -7,8 +7,10 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
+
 from g2c.rag.chunk import Chunk
 from g2c.rag.retrieve import RetrievedChunk
+
 DEFAULT_SYSTEM = (
     "You are a helpful assistant. Answer the user's question using "
     "ONLY the context below. Refer to context items by their bracket "

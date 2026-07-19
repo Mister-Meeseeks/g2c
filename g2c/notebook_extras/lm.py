@@ -26,7 +26,10 @@ def load_language_modeling_text(repo_root: Path) -> str:
         print("Using data/datasets/tinyshakespeare.txt")
         return tiny_shakespeare
 
-    print("Using built-in tiny corpus. Run ./setup.sh to download data/datasets/tinyshakespeare.txt.")
+    print(
+        "Using built-in tiny corpus. "
+        "Run ./setup.sh to download data/datasets/tinyshakespeare.txt."
+    )
     base = """
     the model predicts the next token from the context
     the context helps the model choose a better next token

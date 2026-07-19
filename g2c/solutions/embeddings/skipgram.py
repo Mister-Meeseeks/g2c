@@ -6,8 +6,9 @@ Patched onto the scaffold targets by g2c.solutions.apply().
 from __future__ import annotations
 
 import torch
-from g2c.nn import CrossEntropyLoss, Linear, SGD
+
 from g2c.embeddings.token import TokenEmbedding
+from g2c.nn import SGD, CrossEntropyLoss, Linear
 
 
 def make_skipgram_pairs(

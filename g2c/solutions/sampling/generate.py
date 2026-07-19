@@ -6,6 +6,7 @@ Patched onto the scaffold targets by g2c.solutions.apply().
 from __future__ import annotations
 
 import torch
+
 from g2c.sampling.repetition_penalty import apply_repetition_penalty
 from g2c.sampling.temperature import apply_temperature
 from g2c.sampling.top_k import top_k_filter
@@ -144,7 +145,7 @@ def generate(
                 "Encode prompts with tokenizer.encode_with_vocab_size(..., "
                 "model.vocab_size)."
             )
-    
+
     greedy = (temperature == 0.0)
     full_ids = prompt_ids.detach().cpu().clone()
     device = getattr(model, "device", torch.device("cpu"))

@@ -26,6 +26,11 @@ jobs:
           source .venv/bin/activate
           uv pip install -e ".[dev,baselm]"
 
+      - name: Lint
+        run: |
+          source .venv/bin/activate
+          ruff check .
+
       - name: Scaffold invariant (solutions must not leak into g2c/)
         run: |
           source .venv/bin/activate

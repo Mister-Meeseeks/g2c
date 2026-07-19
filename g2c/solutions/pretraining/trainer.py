@@ -9,13 +9,14 @@ import time
 from collections.abc import Callable
 from os import PathLike
 from pathlib import Path
+
 import torch
+
 from g2c.nn import SGD, Module, resolve_device
-from g2c.training import AdamW, clip_grad_norm_, cosine_with_warmup
 from g2c.pretraining.data import get_lm_batch
 from g2c.pretraining.loss import lm_cross_entropy
-
 from g2c.pretraining.trainer import Trainer
+from g2c.training import AdamW, clip_grad_norm_, cosine_with_warmup
 
 
 class _TrainerImpl:  # patched onto Trainer by apply()

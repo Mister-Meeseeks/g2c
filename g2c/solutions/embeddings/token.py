@@ -7,10 +7,11 @@ from __future__ import annotations
 
 import math
 from collections.abc import Iterable
+
 import torch
-from g2c.nn import Module
 
 from g2c.embeddings.token import TokenEmbedding
+from g2c.nn import Module
 
 
 class _TokenEmbeddingImpl:  # patched onto TokenEmbedding by apply()

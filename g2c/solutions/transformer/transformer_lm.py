@@ -6,13 +6,14 @@ Patched onto the scaffold targets by g2c.solutions.apply().
 from __future__ import annotations
 
 from collections.abc import Iterable
+
 import torch
+
 from g2c.embeddings import LearnedPositionalEmbedding, TokenEmbedding
 from g2c.nn import Module
 from g2c.transformer.block import Block
 from g2c.transformer.kv_cache import KVCache
 from g2c.transformer.layer_norm import LayerNorm
-
 from g2c.transformer.transformer_lm import TransformerLM
 
 

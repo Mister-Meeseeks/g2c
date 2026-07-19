@@ -47,6 +47,7 @@ from dataclasses import FrozenInstanceError
 import pytest
 import torch
 
+from g2c.artifacts import LoadedModelArtifact, model_artifact_dir
 from g2c.inference import (
     DEFAULT_OLLAMA_URL,
     DEFAULT_PRODLM_MODEL_ID,
@@ -68,7 +69,6 @@ from g2c.inference import (
     prodlm_manifest_exists,
     write_prodlm_manifest,
 )
-from g2c.artifacts import LoadedModelArtifact, model_artifact_dir
 from g2c.inference.artifact import resolve_preferred_artifact_name
 
 # -----------------------------------------------------------------------
@@ -498,7 +498,7 @@ class TestArtifactSelection:
 
         assert resolve_preferred_artifact_name("StoryLM-5M", repo_root=tmp_path) == "StoryLM-5M-SFT"
 
-    def test_resolve_preferred_artifact_name_course_means_strongest_course_dpo(self, tmp_path) -> None:
+    def test_resolve_preferred_name_course_means_strongest_course_dpo(self, tmp_path) -> None:
         _write_artifact_marker(tmp_path, "StoryLM-5M-DPO")
         _write_artifact_marker(tmp_path, "TinyLLM-30M-DPO")
         _write_artifact_marker(tmp_path, "BaseLM-DPO")

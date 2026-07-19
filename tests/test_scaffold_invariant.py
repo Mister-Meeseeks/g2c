@@ -29,7 +29,6 @@ from pathlib import Path
 
 import pytest
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 G2C = REPO_ROOT / "g2c"
 SOLUTIONS = G2C / "solutions"

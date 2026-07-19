@@ -5,16 +5,16 @@ Patched onto the scaffold targets by g2c.solutions.apply().
 """
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
-from typing import Union
 import math
-Number = Union[int, float]
+from collections.abc import Callable, Iterable
+
+Number = int | float
 
 from g2c.autodiff.value import Value
 
 
 class _ValueImpl:  # patched onto Value by apply()
-    def __add__(self, other: Union["Value", Number]) -> "Value":
+    def __add__(self, other: Value | Number) -> Value:
         """Forward: self + other.
 
         Hint: Gradient is the partial derivatives of y = x + z
@@ -29,7 +29,7 @@ class _ValueImpl:  # patched onto Value by apply()
         out._backward = _backward
         return out
 
-    def __mul__(self, other: Union["Value", Number]) -> "Value":
+    def __mul__(self, other: Value | Number) -> Value:
         """Forward: self * other.
 
         Hint: Gradient is the partial derivatives of y = x * z
@@ -44,7 +44,7 @@ class _ValueImpl:  # patched onto Value by apply()
         out._backward = _backward
         return out
 
-    def __pow__(self, exponent: Number) -> "Value":
+    def __pow__(self, exponent: Number) -> Value:
         """Forward: self ** exponent. `exponent` is a numeric constant.
 
         Hint: Gradient is the derivative of y = x^c
@@ -54,9 +54,9 @@ class _ValueImpl:  # patched onto Value by apply()
         def _backward() -> None:
             self.grad += out.grad * exponent * self.data ** (exponent - 1)
         out._backward = _backward
-        return out  
+        return out
 
-    def exp(self) -> "Value":
+    def exp(self) -> Value:
         """Forward: e ** self.
 
         Hint: Gradient is the derivative of y = e^x
@@ -68,7 +68,7 @@ class _ValueImpl:  # patched onto Value by apply()
         out._backward = _backward
         return out
 
-    def log(self) -> "Value":
+    def log(self) -> Value:
         """Forward: ln(self). Requires self.data > 0.
 
         Hint: Gradient is the derivative of y = ln(x)
@@ -80,7 +80,7 @@ class _ValueImpl:  # patched onto Value by apply()
         out._backward = _backward
         return out
 
-    def tanh(self) -> "Value":
+    def tanh(self) -> Value:
         """Forward: tanh(self).
 
         Hint: Gradient is the derivative of y = tanh(x)
@@ -93,7 +93,7 @@ class _ValueImpl:  # patched onto Value by apply()
         out._backward = _backward
         return out
 
-    def relu(self) -> "Value":
+    def relu(self) -> Value:
         """Forward: max(0, self).
 
         Hint: Gradient is the derivative of y = max(0, x)
@@ -120,11 +120,12 @@ class _ValueImpl:  # patched onto Value by apply()
         for node in topo_nodes:
             node._backward()
 
-    def topological_sort(self) -> list["Value"]:
+    def topological_sort(self) -> list[Value]:
         """ Helper for topological sorting of the child nodes.
 
         Returns:
-            A list of Values in topological order (i.e., each node only appears after all its parents).
+            A list of Values in topological order (i.e., each node only
+            appears after all its parents).
 
         Hint:
             Recursive depth-first search with a `visited` set: skip nodes
@@ -133,7 +134,7 @@ class _ValueImpl:  # patched onto Value by apply()
         topo_nodes: list[Value] = []
         visited: set[int] = set()
 
-        def visit(node: "Value") -> None:
+        def visit(node: Value) -> None:
             if id(node) in visited:
                 return
             visited.add(id(node))

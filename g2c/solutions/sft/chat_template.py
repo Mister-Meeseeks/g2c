@@ -6,9 +6,9 @@ Patched onto the scaffold targets by g2c.solutions.apply().
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from g2c.sft.data import SFTExample
 
 from g2c.sft.chat_template import ChatTemplate
+from g2c.sft.data import SFTExample
 
 
 class _ChatTemplateImpl:  # patched onto ChatTemplate by apply()
@@ -75,7 +75,7 @@ class _ChatTemplateImpl:  # patched onto ChatTemplate by apply()
     def render_with_mask(
         self,
         messages: list[dict],
-        tokenizer: "BPETokenizer",
+        tokenizer: BPETokenizer,
         *,
         vocab_size: int | None = None,
     ) -> SFTExample:

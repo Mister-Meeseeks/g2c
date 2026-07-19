@@ -7,10 +7,11 @@ from __future__ import annotations
 
 import math
 from collections.abc import Iterable
+
 import torch
-from g2c.nn import Module
 
 from g2c.embeddings.positional import LearnedPositionalEmbedding, SinusoidalPositionalEmbedding
+from g2c.nn import Module
 
 
 class _LearnedPositionalEmbeddingImpl:  # patched onto LearnedPositionalEmbedding by apply()
@@ -48,12 +49,13 @@ class _SinusoidalPositionalEmbeddingImpl:  # patched onto SinusoidalPositionalEm
         #   1. positions = arange(max_seq_len)                shape (max_seq_len,)
         #   2. i = arange(0, embedding_dim, 2)                shape (embedding_dim/2,)
         #      div_term = 1.0 / (10000 ** (i / embedding_dim))
-        #   3. angles = positions[:, None] * div_term[None, :]   shape (max_seq_len, embedding_dim/2)
+        #   3. angles = positions[:, None] * div_term[None, :]
+        #      shape (max_seq_len, embedding_dim/2)
         #   4. weight = empty(max_seq_len, embedding_dim)
         #      weight[:, 0::2] = sin(angles)
         #      weight[:, 1::2] = cos(angles)
         #   5. self.weight = weight   (no requires_grad — fixed table)
-        
+
         positions = torch.arange(max_seq_len)
         i = torch.arange(0, embedding_dim, 2)
         div_term = 1.0 / (10000 ** (i / embedding_dim))

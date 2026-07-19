@@ -36,9 +36,19 @@ packages = ["g2c"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+# Student notebooks are exercise surfaces, not lint targets.
+extend-exclude = ["notebooks"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+# The solutions mirror is patched onto the scaffold package at runtime:
+# imports mirror the scaffold surface (F401), names resolve only after
+# binding (F821), and impl imports follow patcher plumbing (E402).
+"g2c/solutions/**" = ["F401", "F821", "E402"]
+# Usage examples in the header docstring are copy-paste commands; keep one line.
+"scripts/sysprobe.py" = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

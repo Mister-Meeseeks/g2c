@@ -45,7 +45,7 @@ class Module:
     def forward(self, *args, **kwargs):
         raise NotImplementedError("Subclasses must implement forward()")
 
-    def train(self, mode: bool = True) -> "Module":
+    def train(self, mode: bool = True) -> Module:
         """Set training/eval mode and return self.
 
         The course modules do not currently have mode-dependent layers such as
@@ -55,7 +55,7 @@ class Module:
         self.training = bool(mode)
         return self
 
-    def eval(self) -> "Module":
+    def eval(self) -> Module:
         """Switch to evaluation mode and return self."""
         return self.train(False)
 
@@ -63,7 +63,7 @@ class Module:
         """Return all trainable parameters of this module. Override in subclasses."""
         return []
 
-    def to(self, device: str | torch.device | None = "auto") -> "Module":
+    def to(self, device: str | torch.device | None = "auto") -> Module:
         """Move all trainable parameters to `device` and return self.
 
         This mirrors the everyday `torch.nn.Module.to(...)` ergonomics,

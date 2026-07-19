@@ -42,7 +42,6 @@ from g2c.dpo import (
 from g2c.training import AdamW
 from g2c.transformer import TransformerLM
 
-
 # ----------------------------------------------------------------------
 # PreferenceExample — boilerplate (NamedTuple)
 # ----------------------------------------------------------------------

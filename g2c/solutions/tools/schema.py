@@ -8,7 +8,9 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable
 from typing import Any
+
 from g2c.tools.base import Tool, ToolError
+
 _TYPE_TAGS: dict[str, tuple[type, ...]] = {
     "string": (str,),
     "number": (int, float),

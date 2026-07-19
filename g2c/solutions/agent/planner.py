@@ -6,10 +6,12 @@ Patched onto the scaffold targets by g2c.solutions.apply().
 from __future__ import annotations
 
 import re
-from g2c.inference import Backend
-from g2c.tools import ToolRegistry
+
 from g2c.agent.base import Plan
 from g2c.agent.prompts import render_planning_prompt
+from g2c.inference import Backend
+from g2c.tools import ToolRegistry
+
 _GOAL_RE = re.compile(r"Goal\s*:\s*([^\n]+)", re.IGNORECASE)
 _STEP_RE = re.compile(
     r"^[ \t]*(\d+)[ \t]*[\.\)\-][ \t]*(.+?)[ \t]*$",

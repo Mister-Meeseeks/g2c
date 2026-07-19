@@ -78,10 +78,12 @@ from __future__ import annotations
 
 import torch
 
-from .repetition_penalty import apply_repetition_penalty
-from .temperature import apply_temperature
-from .top_k import top_k_filter
-from .top_p import top_p_filter
+from .repetition_penalty import (
+    apply_repetition_penalty,  # noqa: F401 (for the student implementation)
+)
+from .temperature import apply_temperature  # noqa: F401 (for the student implementation)
+from .top_k import top_k_filter  # noqa: F401 (for the student implementation)
+from .top_p import top_p_filter  # noqa: F401 (for the student implementation)
 
 
 @torch.no_grad()

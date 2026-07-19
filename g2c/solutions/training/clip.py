@@ -6,6 +6,7 @@ Patched onto the scaffold targets by g2c.solutions.apply().
 from __future__ import annotations
 
 from collections.abc import Iterable
+
 import torch
 
 
@@ -58,7 +59,7 @@ def clip_grad_norm_(
     params = [p for p in params if p.grad is not None]
     if not params:
         return 0.0
-    
+
     with torch.no_grad():
         total_norm_sq = sum((p.grad ** 2).sum() for p in params)
         total_norm = torch.sqrt(total_norm_sq).item()
@@ -66,5 +67,5 @@ def clip_grad_norm_(
             scale = max_norm / (total_norm + 1e-6)
             for p in params:
                 p.grad.mul_(scale)
-                
+
     return total_norm

@@ -42,7 +42,7 @@ class LayerKVCache:
             return 0
         return int(self.keys.shape[-2])
 
-    def append(self, key: torch.Tensor, value: torch.Tensor) -> "LayerKVCache":
+    def append(self, key: torch.Tensor, value: torch.Tensor) -> LayerKVCache:
         """Append one or more key/value positions and return ``self``.
 
         Args:
@@ -78,7 +78,7 @@ class KVCache:
     layers: list[LayerKVCache]
 
     @classmethod
-    def empty(cls, num_layers: int) -> "KVCache":
+    def empty(cls, num_layers: int) -> KVCache:
         if num_layers <= 0:
             raise ValueError("num_layers must be positive")
         return cls([LayerKVCache() for _ in range(num_layers)])

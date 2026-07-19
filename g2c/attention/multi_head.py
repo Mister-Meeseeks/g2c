@@ -197,7 +197,7 @@ class MultiHeadAttention(Module):
         """
         # TODO
         raise NotImplementedError
-                                           
+
     def forward_cached(self, x: torch.Tensor, cache):
         """Apply attention to a single new token using cached K/V state.
 

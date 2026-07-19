@@ -6,14 +6,14 @@ Patched onto the scaffold targets by g2c.solutions.apply().
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import Union
-Number = Union[int, float]
+
+Number = int | float
 
 from g2c.tensors.broadcasting import TinyArray
 
 
 class _TinyArrayImpl:  # patched onto TinyArray by apply()
-    def __add__(self, other: "TinyArray") -> "TinyArray":
+    def __add__(self, other: TinyArray) -> TinyArray:
         """Element-wise add with broadcasting.
 
         Steps:
@@ -26,10 +26,10 @@ class _TinyArrayImpl:  # patched onto TinyArray by apply()
                  c. Sum the two scalar values into the output position.
             4. Return TinyArray(out_data, out_shape).
         """
-        
+
         return self.__cross__(other, lambda a, b: a + b)
 
-    def __mul__(self, other: "TinyArray") -> "TinyArray":
+    def __mul__(self, other: TinyArray) -> TinyArray:
         """Element-wise multiply with broadcasting. Same logic as __add__,
         with multiplication instead of addition."""
 
@@ -86,5 +86,5 @@ def broadcast_shapes(
             reverse_output_shape.append(dim_a)
         else:
             raise ValueError(f"Shapes {shape_a} and {shape_b} are not broadcast-compatible")
-    
+
     return tuple(reverse_output_shape[::-1])

@@ -24,7 +24,7 @@ class TestNotebookModelSelection:
         with pytest.raises(RuntimeError, match="BaseLM is not configured"):
             select_base_artifact_name("BaseLM", repo_root=tmp_path)
 
-    def test_select_base_artifact_name_course_uses_strongest_base_course_model(self, tmp_path) -> None:
+    def test_select_base_name_course_uses_strongest_base_course_model(self, tmp_path) -> None:
         _write_course_artifact_marker(tmp_path, "StoryLM-5M-base")
         _write_course_artifact_marker(tmp_path, "TinyLLM-30M-base")
 

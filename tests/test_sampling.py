@@ -39,7 +39,6 @@ from g2c.sampling import (
 )
 from g2c.transformer import TransformerLM
 
-
 # ----------------------------------------------------------------------
 # apply_temperature — scaffolded
 # ----------------------------------------------------------------------

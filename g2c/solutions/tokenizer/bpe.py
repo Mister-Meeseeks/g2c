@@ -9,6 +9,7 @@ from collections.abc import Callable
 from os import PathLike
 from time import perf_counter
 from typing import Self
+
 ProgressCallback = Callable[[dict[str, object]], None]
 COURSE_SPECIAL_TOKENS: tuple[str, ...] = (
     "<|endoftext|>",

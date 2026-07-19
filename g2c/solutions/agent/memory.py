@@ -6,8 +6,8 @@ Patched onto the scaffold targets by g2c.solutions.apply().
 from __future__ import annotations
 
 import json  # noqa: F401 (used by render scaffold)
-from g2c.agent.base import AgentStep
 
+from g2c.agent.base import AgentStep
 from g2c.agent.memory import Scratchpad
 
 

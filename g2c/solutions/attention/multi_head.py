@@ -7,10 +7,11 @@ from __future__ import annotations
 
 import math
 from collections.abc import Iterable
+
 import torch
-from g2c.nn import Linear, Module
 
 from g2c.attention.multi_head import MultiHeadAttention
+from g2c.nn import Linear, Module
 
 
 class _MultiHeadAttentionImpl:  # patched onto MultiHeadAttention by apply()

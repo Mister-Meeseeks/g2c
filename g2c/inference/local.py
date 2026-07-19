@@ -39,12 +39,12 @@ fake)`) without threading a kwarg through.
 """
 from __future__ import annotations
 
-import time
+import time  # noqa: F401 (for the student implementation)
 from typing import Any
 
 import torch
 
-from g2c.sampling import generate
+from g2c.sampling import generate  # noqa: F401 (for the student implementation)
 
 from .backend import Backend, BackendInfo, InferenceResult
 

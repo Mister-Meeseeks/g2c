@@ -33,7 +33,7 @@ without improving the ranking. Read Guo et al. 2017 for context.
 """
 from __future__ import annotations
 
-import math
+import math  # noqa: F401 (for the student implementation)
 
 
 def expected_calibration_error(

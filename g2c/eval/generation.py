@@ -44,10 +44,9 @@ fact with `continuation_logprob` and post-process — see exercise 6.
 """
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 from .data import EvalReport, EvalResult, GenerationExample
-
 
 Matcher = Callable[[str, list[str]], bool]
 GenerateFn = Callable[[str], str]

@@ -29,7 +29,7 @@ both more interpretable and a tighter bound on capability.
 from __future__ import annotations
 
 import re
-import string
+import string  # noqa: F401 (for the student implementation)
 
 
 def exact_match(prediction: str, references: list[str]) -> bool:

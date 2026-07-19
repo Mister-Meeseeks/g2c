@@ -52,7 +52,11 @@ from pathlib import Path
 import torch
 
 from g2c.nn import SGD, Module, resolve_device
-from g2c.training import AdamW, clip_grad_norm_, cosine_with_warmup
+from g2c.training import (  # noqa: F401 (for the student implementation)
+    AdamW,
+    clip_grad_norm_,
+    cosine_with_warmup,
+)
 
 from .data import get_lm_batch
 from .loss import lm_cross_entropy

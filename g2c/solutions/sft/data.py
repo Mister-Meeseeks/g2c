@@ -6,6 +6,7 @@ Patched onto the scaffold targets by g2c.solutions.apply().
 from __future__ import annotations
 
 from typing import NamedTuple
+
 import torch
 
 
@@ -93,7 +94,7 @@ def pad_and_collate(
     for ex in examples:
         if len(ex.ids) != len(ex.mask):
             raise ValueError("example ids and mask have different lengths")
-        
+
         ids = ex.ids[:max_seq_len]
         mask = ex.mask[:max_seq_len]
 
@@ -102,10 +103,10 @@ def pad_and_collate(
             mask.append(0)
 
         fitted.append(SFTExample(ids=ids, mask=mask))
-        
+
     ids_b = torch.tensor([ex.ids for ex in fitted], dtype=torch.long)
     mask_b = torch.tensor([ex.mask for ex in fitted], dtype=torch.long)
-    
+
     x = ids_b[:, :-1]
     y = ids_b[:, 1:]
     loss_mask = mask_b[:, 1:]

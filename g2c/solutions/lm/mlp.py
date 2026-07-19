@@ -6,11 +6,12 @@ Patched onto the scaffold targets by g2c.solutions.apply().
 from __future__ import annotations
 
 from collections.abc import Iterable
-import torch
-from g2c.embeddings import TokenEmbedding
-from g2c.nn import Linear, Module
 
+import torch
+
+from g2c.embeddings import TokenEmbedding
 from g2c.lm.mlp import MLPLanguageModel
+from g2c.nn import Linear, Module
 
 
 class _MLPLanguageModelImpl:  # patched onto MLPLanguageModel by apply()

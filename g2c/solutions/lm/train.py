@@ -6,7 +6,8 @@ Patched onto the scaffold targets by g2c.solutions.apply().
 from __future__ import annotations
 
 import torch
-from g2c.nn import CrossEntropyLoss, SGD, resolve_device
+
+from g2c.nn import SGD, CrossEntropyLoss, resolve_device
 
 
 def perplexity(
@@ -161,7 +162,7 @@ def sample(
     ctx_len = model.context_length
     if prompt_ids.shape[0] < ctx_len:
         raise ValueError(f"prompt_ids has length {len(prompt_ids)}; need at least {ctx_len}")
-    
+
     out = list(prompt_ids.tolist())
     for _ in range(num_tokens):
         ctx = torch.tensor(out[-ctx_len:]).unsqueeze(0)   # (1, ctx_len)

@@ -74,7 +74,7 @@ def top_p_filter(logits: torch.Tensor, p: float) -> torch.Tensor:
     """
     if not (0 < p <= 1):
         raise ValueError(f'p must be in (0, 1], got {p}')
-    
+
     sorted_logits, sorted_indices = torch.sort(
         logits, dim=-1, descending=True)
     sorted_probs = torch.softmax(sorted_logits, dim=-1)
@@ -83,7 +83,7 @@ def top_p_filter(logits: torch.Tensor, p: float) -> torch.Tensor:
     sorted_mask = cumulative > p
     sorted_mask[..., 1:] = sorted_mask[..., :-1].clone()
     sorted_mask[..., 0] = False
-    
+
     mask = torch.zeros_like(sorted_mask)
     mask.scatter_(-1, sorted_indices, sorted_mask)
     return logits.masked_fill(mask, float('-inf'))

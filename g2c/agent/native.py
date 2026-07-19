@@ -72,7 +72,6 @@ from .memory import Scratchpad  # noqa: F401 — kept for display compatibility
 from .planner import make_plan
 from .prompts import render_plan_block
 
-
 # ---------------------------------------------------------------------------
 # Default system prompt for the native channel.
 # ---------------------------------------------------------------------------

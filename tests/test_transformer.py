@@ -36,7 +36,6 @@ import torch
 from g2c.nn import CrossEntropyLoss
 from g2c.transformer import Block, FeedForward, KVCache, LayerNorm, TransformerLM
 
-
 # ----------------------------------------------------------------------
 # LayerNorm — construction (boilerplate)
 # ----------------------------------------------------------------------

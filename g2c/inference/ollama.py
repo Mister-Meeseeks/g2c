@@ -58,7 +58,6 @@ import time
 import urllib.error
 import urllib.request
 from typing import Any
-
 from uuid import uuid4
 
 from .backend import Backend, BackendInfo, ChatResult, InferenceResult

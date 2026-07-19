@@ -6,6 +6,7 @@ Patched onto the scaffold targets by g2c.solutions.apply().
 from __future__ import annotations
 
 from typing import NamedTuple
+
 import torch
 
 

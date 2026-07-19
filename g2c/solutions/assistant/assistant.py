@@ -8,13 +8,13 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any, Protocol
+
 from g2c.agent import Agent, AgentRunResult, NativeAgent
-from g2c.inference import Backend, is_thinking_model
-from g2c.tools import ToolRegistry
+from g2c.assistant.assistant import Assistant
 from g2c.assistant.config import AssistantConfig, AssistantError
 from g2c.assistant.conversation import Conversation, Message
-
-from g2c.assistant.assistant import Assistant
+from g2c.inference import Backend, is_thinking_model
+from g2c.tools import ToolRegistry
 
 
 class _AssistantImpl:  # patched onto Assistant by apply()

@@ -9,7 +9,9 @@ import json  # noqa: F401 (used by parse_tool_calls scaffold)
 import re
 from collections.abc import Iterable
 from uuid import uuid4  # noqa: F401 (used by parse_tool_calls scaffold)
+
 from g2c.tools.base import ToolCall, ToolResult
+
 _TOOL_CALL_RE = re.compile(r"<tool_call>(.*?)</tool_call>", re.DOTALL)
 
 

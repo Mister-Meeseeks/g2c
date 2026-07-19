@@ -4,16 +4,6 @@ Artifacts are generated outputs that later modules can reload without depending
 on notebook state. Keep bulky path, detection, and load/save plumbing here so
 notebooks can focus on the exercise workflow and visual inspection.
 """
-from .corpora import (
-    CorpusShard,
-    CorpusSource,
-    CorpusSpec,
-    iter_corpus_byte_chunks,
-    iter_corpus_text_chunks,
-    load_corpus_bytes,
-    load_corpus_text,
-    resolve_corpus,
-)
 from .baselm import (
     DEFAULT_BASELM_MODEL_ID,
     DEFAULT_BASELM_NAME,
@@ -25,6 +15,16 @@ from .baselm import (
     load_huggingface_model_artifact,
     save_huggingface_model_artifact,
     write_baselm_manifest,
+)
+from .corpora import (
+    CorpusShard,
+    CorpusSource,
+    CorpusSpec,
+    iter_corpus_byte_chunks,
+    iter_corpus_text_chunks,
+    load_corpus_bytes,
+    load_corpus_text,
+    resolve_corpus,
 )
 from .models import (
     BASE_STAGE,

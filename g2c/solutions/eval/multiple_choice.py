@@ -6,6 +6,7 @@ Patched onto the scaffold targets by g2c.solutions.apply().
 from __future__ import annotations
 
 import math
+
 from g2c.eval.calibration import expected_calibration_error
 from g2c.eval.data import EvalReport, EvalResult, MultipleChoiceExample
 from g2c.eval.logprob import continuation_logprob

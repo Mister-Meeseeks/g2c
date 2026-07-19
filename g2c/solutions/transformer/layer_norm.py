@@ -6,9 +6,10 @@ Patched onto the scaffold targets by g2c.solutions.apply().
 from __future__ import annotations
 
 from collections.abc import Iterable
-import torch
-from g2c.nn import Module
 
+import torch
+
+from g2c.nn import Module
 from g2c.transformer.layer_norm import LayerNorm
 
 

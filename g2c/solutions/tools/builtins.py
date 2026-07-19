@@ -13,7 +13,9 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+
 from g2c.tools.base import Tool, ToolError
+
 _BINOPS: dict[type, Callable[[Any, Any], Any]] = {
     ast.Add: operator.add,
     ast.Sub: operator.sub,

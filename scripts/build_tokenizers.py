@@ -36,7 +36,6 @@ from g2c.artifacts import (
     train_or_load_tokenizer_artifact,
 )
 
-
 # ---------------------------------------------------------------------------
 # Configs — keep in sync with notebooks/clean/04-tokenizer.ipynb
 # ---------------------------------------------------------------------------
@@ -162,7 +161,7 @@ def _build_one(key: str, repo_root: Path, *, force: bool) -> bool:
         f"vocab={config.vocab_size:,}, max_chars={config.max_chars:,}) ==="
     )
     if not force and tokenizer_artifact_exists(config.name, repo_root=repo_root):
-        print(f"  artifact already exists; skipping (use --force to retrain)")
+        print("  artifact already exists; skipping (use --force to retrain)")
         return True
 
     progress = _make_cli_progress()

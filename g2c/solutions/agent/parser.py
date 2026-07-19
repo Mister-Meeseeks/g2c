@@ -8,7 +8,9 @@ from __future__ import annotations
 import json  # noqa: F401 (used by parse_react_step scaffold)
 import re
 from dataclasses import dataclass
+
 from g2c.agent.base import Action
+
 _THOUGHT_RE = re.compile(
     r"Thought\s*:\s*(.*?)(?=\n\s*(?:Action|Action Input|Final Answer|Observation)\s*:|\Z)",
     re.DOTALL | re.IGNORECASE,

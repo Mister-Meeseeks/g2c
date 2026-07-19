@@ -49,7 +49,7 @@ if TYPE_CHECKING:
 
 
 def _encode_template_chunk(
-    tokenizer: "BPETokenizer",
+    tokenizer: BPETokenizer,
     text: str,
     *,
     vocab_size: int | None,
@@ -151,7 +151,7 @@ class ChatTemplate:
     def render_with_mask(
         self,
         messages: list[dict],
-        tokenizer: "BPETokenizer",
+        tokenizer: BPETokenizer,
         *,
         vocab_size: int | None = None,
     ) -> SFTExample:

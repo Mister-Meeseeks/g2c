@@ -36,7 +36,6 @@ from __future__ import annotations
 import argparse
 import json
 import platform
-import shutil
 import struct
 import subprocess
 import sys
@@ -45,7 +44,6 @@ import urllib.error
 import urllib.request
 from dataclasses import asdict, dataclass, replace
 from typing import Any
-
 
 # ---------------------------------------------------------------------------
 # Canonical training sizes pulled from notebooks/clean/10-tinyllm.ipynb.

@@ -47,11 +47,11 @@ Two design points worth flagging:
 """
 from __future__ import annotations
 
-import math
+import math  # noqa: F401 (for the student implementation)
 
 from .calibration import expected_calibration_error
 from .data import EvalReport, EvalResult, MultipleChoiceExample
-from .logprob import continuation_logprob
+from .logprob import continuation_logprob  # noqa: F401 (for the student implementation)
 
 
 def score_multiple_choice(

@@ -29,8 +29,8 @@ from g2c.nn import (
     SGD,
     CrossEntropyLoss,
     Linear,
-    MSELoss,
     Module,
+    MSELoss,
     ReLU,
     Sequential,
     Sigmoid,
@@ -44,7 +44,6 @@ from g2c.nn import (
     train_linear_regression,
     train_one_epoch,
 )
-
 
 # ----------------------------------------------------------------------
 # Module base class (boilerplate — passes from the start)

@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import torch
 
-from .loss import CrossEntropyLoss, MSELoss
-from .modules import Linear, ReLU, Sequential
+from .loss import CrossEntropyLoss, MSELoss  # noqa: F401 (for the student implementation)
+from .modules import Linear, ReLU, Sequential  # noqa: F401 (for the student implementation)
 from .optim import SGD
 
 

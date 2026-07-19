@@ -39,7 +39,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 import torch
-import torch.nn.functional as F
+import torch.nn.functional as F  # noqa: F401 (for the student implementation)
 
 from g2c.nn import Linear, Module
 

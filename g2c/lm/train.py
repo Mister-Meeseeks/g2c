@@ -22,7 +22,11 @@ from __future__ import annotations
 
 import torch
 
-from g2c.nn import CrossEntropyLoss, SGD, resolve_device
+from g2c.nn import (  # noqa: F401 (for the student implementation)
+    SGD,
+    CrossEntropyLoss,
+    resolve_device,
+)
 
 
 def get_batch(

@@ -6,10 +6,11 @@ Patched onto the scaffold targets by g2c.solutions.apply().
 from __future__ import annotations
 
 from collections.abc import Iterable
+
 import torch
 import torch.nn.functional as F
-from g2c.nn import Linear, Module
 
+from g2c.nn import Linear, Module
 from g2c.transformer.ffn import FeedForward
 
 

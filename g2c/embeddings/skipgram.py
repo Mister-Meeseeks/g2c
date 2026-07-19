@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import torch
 
-from g2c.nn import CrossEntropyLoss, Linear, SGD
+from g2c.nn import SGD, CrossEntropyLoss, Linear  # noqa: F401 (for the student implementation)
 
 from .token import TokenEmbedding
 

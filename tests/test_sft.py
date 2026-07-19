@@ -32,6 +32,7 @@ import math
 import pytest
 import torch
 
+from g2c.pretraining import lm_cross_entropy
 from g2c.sft import (
     ChatTemplate,
     SFTExample,
@@ -39,10 +40,8 @@ from g2c.sft import (
     masked_cross_entropy,
     pad_and_collate,
 )
-from g2c.pretraining import lm_cross_entropy
 from g2c.training import AdamW
 from g2c.transformer import TransformerLM
-
 
 # ----------------------------------------------------------------------
 # Test fixtures: a tiny character-level fake tokenizer

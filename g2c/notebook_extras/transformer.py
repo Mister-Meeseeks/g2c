@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import torch
 
-from g2c.nn import CrossEntropyLoss, SGD, resolve_device
+from g2c.nn import SGD, CrossEntropyLoss, resolve_device
 from g2c.transformer import Block, TransformerLM
 
 __all__ = [

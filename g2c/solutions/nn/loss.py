@@ -6,9 +6,9 @@ Patched onto the scaffold targets by g2c.solutions.apply().
 from __future__ import annotations
 
 import torch
-from g2c.nn.modules import Module
 
 from g2c.nn.loss import CrossEntropyLoss
+from g2c.nn.modules import Module
 
 
 class _CrossEntropyLossImpl:  # patched onto CrossEntropyLoss by apply()

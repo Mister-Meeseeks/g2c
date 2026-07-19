@@ -33,7 +33,11 @@ from __future__ import annotations
 import torch
 
 from g2c.nn import Module, resolve_device
-from g2c.training import AdamW, clip_grad_norm_, cosine_with_warmup
+from g2c.training import (  # noqa: F401 (for the student implementation)
+    AdamW,
+    clip_grad_norm_,
+    cosine_with_warmup,
+)
 
 from .data import SFTExample, pad_and_collate
 from .loss import masked_cross_entropy
@@ -244,7 +248,7 @@ class SFTTrainer:
         """
         # TODO
         raise NotImplementedError
-    
+
 
     def evaluate(self, eval_examples: list[SFTExample]) -> float:
         """Average masked CE over `eval_iters` random batches.

@@ -51,7 +51,7 @@ no PyTorch dependence. Three to five lines. Scaffolded.
 """
 from __future__ import annotations
 
-import math
+import math  # noqa: F401 (for the student implementation)
 
 
 def cosine_with_warmup(

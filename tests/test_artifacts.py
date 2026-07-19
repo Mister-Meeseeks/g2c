@@ -8,10 +8,10 @@ import numpy as np
 import torch
 
 from g2c.artifacts import (
+    DEFAULT_BASELM_MODEL_ID,
     TokenizedCorpus,
     TokenizedCorpusArtifact,
     TokenizerArtifactConfig,
-    DEFAULT_BASELM_MODEL_ID,
     atomic_torch_save,
     available_model_artifacts,
     baselm_artifact_exists,
@@ -355,7 +355,9 @@ def test_build_tokenized_corpus_standard_jobs_reflect_local_corpus_variant(tmp_p
         encoding="utf-8",
     ) as f:
         f.write("sample")
-    _write_g2c_manifested_shard(repo / "data" / "datasets" / "g2c-corpus-v1-small", "tinystories", "S")
+    _write_g2c_manifested_shard(
+        repo / "data" / "datasets" / "g2c-corpus-v1-small", "tinystories", "S"
+    )
 
     story_job = standard_job_for_tokenizer("StoryTokenizer", repo)
     g2c_job = standard_job_for_tokenizer("G2CTokenizer", repo)

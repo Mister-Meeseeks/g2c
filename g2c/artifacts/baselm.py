@@ -110,7 +110,7 @@ class HuggingFaceCausalLMAdapter(torch.nn.Module):
             return parameter.device
         return torch.device("cpu")
 
-    def to(self, device: str | torch.device | None = "auto") -> "HuggingFaceCausalLMAdapter":
+    def to(self, device: str | torch.device | None = "auto") -> HuggingFaceCausalLMAdapter:
         self.inner.to(resolve_device(device))
         return self
 

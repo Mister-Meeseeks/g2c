@@ -11,7 +11,9 @@ import urllib.error
 import urllib.request
 from abc import ABC, abstractmethod
 from typing import Any
+
 import numpy as np
+
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
 DEFAULT_OLLAMA_EMBED_MODEL = "nomic-embed-text"
 

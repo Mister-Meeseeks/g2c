@@ -6,10 +6,11 @@ Patched onto the scaffold targets by g2c.solutions.apply().
 from __future__ import annotations
 
 from collections.abc import Iterable
+
 import torch
-from g2c.nn import Module
 
 from g2c.embeddings.rotary import RotaryEmbedding
+from g2c.nn import Module
 
 
 class _RotaryEmbeddingImpl:  # patched onto RotaryEmbedding by apply()

@@ -34,7 +34,7 @@ shift-by-one as Modules 13–14.
 from __future__ import annotations
 
 import torch
-import torch.nn.functional as F
+import torch.nn.functional as F  # noqa: F401 (for the student implementation)
 
 
 def continuation_logprob(

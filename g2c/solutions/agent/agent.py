@@ -6,15 +6,23 @@ Patched onto the scaffold targets by g2c.solutions.apply().
 from __future__ import annotations
 
 import json
-from g2c.inference import Backend, InferenceResult
-from g2c.tools import ToolCall, ToolRegistry, dispatch_tool_call
-from g2c.agent.base import Action, AgentError, AgentRunResult, AgentStep, Observation, Plan, StepOutcome
+
+from g2c.agent.agent import Agent
+from g2c.agent.base import (
+    Action,
+    AgentError,
+    AgentRunResult,
+    AgentStep,
+    Observation,
+    Plan,
+    StepOutcome,
+)
 from g2c.agent.memory import Scratchpad
 from g2c.agent.parser import ParsedStep, parse_react_step
 from g2c.agent.planner import make_plan
 from g2c.agent.prompts import render_plan_block, render_system_prompt
-
-from g2c.agent.agent import Agent
+from g2c.inference import Backend, InferenceResult
+from g2c.tools import ToolCall, ToolRegistry, dispatch_tool_call
 
 
 class _AgentImpl:  # patched onto Agent by apply()

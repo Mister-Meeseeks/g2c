@@ -7,11 +7,12 @@ from __future__ import annotations
 
 import time
 from typing import Any
-import torch
-from g2c.sampling import generate
-from g2c.inference.backend import Backend, BackendInfo, InferenceResult
 
+import torch
+
+from g2c.inference.backend import Backend, BackendInfo, InferenceResult
 from g2c.inference.local import LocalTransformerBackend
+from g2c.sampling import generate
 
 
 class _LocalTransformerBackendImpl:  # patched onto LocalTransformerBackend by apply()

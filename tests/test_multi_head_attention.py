@@ -28,7 +28,6 @@ import torch
 from g2c.attention import MultiHeadAttention
 from g2c.transformer import LayerKVCache
 
-
 # ----------------------------------------------------------------------
 # Construction (boilerplate)
 # ----------------------------------------------------------------------

@@ -33,7 +33,7 @@ contain the real lesson.
 """
 from __future__ import annotations
 
-import math
+import math  # noqa: F401 (for the student implementation)
 from collections.abc import Iterable
 
 import torch
@@ -158,7 +158,7 @@ class SelfAttention(Module):
         """
         # TODO
         raise NotImplementedError
-                                                     
+
 
     def attention_weights(self, x: torch.Tensor) -> torch.Tensor:
         """Return the attention weight matrix for visualization.

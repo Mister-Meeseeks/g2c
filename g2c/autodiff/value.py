@@ -14,11 +14,10 @@ Search for `# TODO` to find the spots that need work.
 """
 from __future__ import annotations
 
+import math  # noqa: F401 (for the student implementation)
 from collections.abc import Callable, Iterable
-from typing import Union
-import math
 
-Number = Union[int, float]
+Number = int | float
 
 
 class Value:
@@ -26,14 +25,14 @@ class Value:
 
     data: float
     grad: float
-    _prev: set["Value"]
+    _prev: set[Value]
     _op: str
     _backward: Callable[[], None]
 
     def __init__(
         self,
         data: Number,
-        _children: Iterable["Value"] = (),
+        _children: Iterable[Value] = (),
         _op: str = "",
     ) -> None:
         self.data = float(data)
@@ -58,7 +57,7 @@ class Value:
     #   6. Return `out`.
     # ------------------------------------------------------------------
 
-    def __add__(self, other: Union["Value", Number]) -> "Value":
+    def __add__(self, other: Value | Number) -> Value:
         """Forward: self + other.
 
         Hint: Gradient is the partial derivatives of y = x + z
@@ -66,7 +65,7 @@ class Value:
         # TODO
         raise NotImplementedError
 
-    def __mul__(self, other: Union["Value", Number]) -> "Value":
+    def __mul__(self, other: Value | Number) -> Value:
         """Forward: self * other.
 
         Hint: Gradient is the partial derivatives of y = x * z
@@ -74,7 +73,7 @@ class Value:
         # TODO
         raise NotImplementedError
 
-    def __pow__(self, exponent: Number) -> "Value":
+    def __pow__(self, exponent: Number) -> Value:
         """Forward: self ** exponent. `exponent` is a numeric constant.
 
         Hint: Gradient is the derivative of y = x^c
@@ -82,7 +81,7 @@ class Value:
         # TODO
         raise NotImplementedError
 
-    def exp(self) -> "Value":
+    def exp(self) -> Value:
         """Forward: e ** self.
 
         Hint: Gradient is the derivative of y = e^x
@@ -90,7 +89,7 @@ class Value:
         # TODO
         raise NotImplementedError
 
-    def log(self) -> "Value":
+    def log(self) -> Value:
         """Forward: ln(self). Requires self.data > 0.
 
         Hint: Gradient is the derivative of y = ln(x)
@@ -98,7 +97,7 @@ class Value:
         # TODO
         raise NotImplementedError
 
-    def tanh(self) -> "Value":
+    def tanh(self) -> Value:
         """Forward: tanh(self).
 
         Hint: Gradient is the derivative of y = tanh(x)
@@ -106,7 +105,7 @@ class Value:
         # TODO
         raise NotImplementedError
 
-    def relu(self) -> "Value":
+    def relu(self) -> Value:
         """Forward: max(0, self).
 
         Hint: Gradient is the derivative of y = max(0, x)
@@ -128,15 +127,16 @@ class Value:
         """
         # TODO
         raise NotImplementedError
-    
+
     # ------------------------------------------------------------------
     # Helper for backward() — STUDENT IMPLEMENTS
     # ------------------------------------------------------------------
-    def topological_sort(self) -> list["Value"]:
+    def topological_sort(self) -> list[Value]:
         """ Helper for topological sorting of the child nodes.
 
         Returns:
-            A list of Values in topological order (i.e., each node only appears after all its parents).
+            A list of Values in topological order (i.e., each node only
+            appears after all its parents).
 
         Hint:
             Recursive depth-first search with a `visited` set: skip nodes
@@ -151,23 +151,23 @@ class Value:
     # these auto-work.
     # ------------------------------------------------------------------
 
-    def __neg__(self) -> "Value":
+    def __neg__(self) -> Value:
         return self * -1
 
-    def __sub__(self, other: Union["Value", Number]) -> "Value":
+    def __sub__(self, other: Value | Number) -> Value:
         return self + (-other)
 
-    def __truediv__(self, other: Union["Value", Number]) -> "Value":
+    def __truediv__(self, other: Value | Number) -> Value:
         return self * (other ** -1)
 
-    def __radd__(self, other: Number) -> "Value":
+    def __radd__(self, other: Number) -> Value:
         return self + other
 
-    def __rsub__(self, other: Number) -> "Value":
+    def __rsub__(self, other: Number) -> Value:
         return (-self) + other
 
-    def __rmul__(self, other: Number) -> "Value":
+    def __rmul__(self, other: Number) -> Value:
         return self * other
 
-    def __rtruediv__(self, other: Number) -> "Value":
+    def __rtruediv__(self, other: Number) -> Value:
         return (self ** -1) * other

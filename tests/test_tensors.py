@@ -35,7 +35,6 @@ from g2c.tensors import (
     softmax,
 )
 
-
 # ----------------------------------------------------------------------
 # TinyArray construction (plumbing — passes from the start)
 # ----------------------------------------------------------------------
@@ -75,7 +74,7 @@ def test_matmul_loops_2x2():
 def test_matmul_loops_identity():
     """A @ I == A."""
     A = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
-    I = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
+    I = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]  # noqa: E741 (identity matrix)
     result = matmul_loops(A, I)
     assert result == A
 

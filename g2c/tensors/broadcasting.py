@@ -15,9 +15,8 @@ Search for `# TODO` to find the spots that need work.
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import Union
 
-Number = Union[int, float]
+Number = int | float
 
 
 def broadcast_shapes(
@@ -88,10 +87,10 @@ class TinyArray:
     def __repr__(self) -> str:
         return f"TinyArray(shape={self.shape}, data={self.data})"
 
-    def to_nested(self) -> Union[float, list]:
+    def to_nested(self) -> float | list:
         """Convert to nested Python lists for inspection (helper for tests)."""
 
-        def _build(offset: int, dims: tuple[int, ...]) -> Union[float, list]:
+        def _build(offset: int, dims: tuple[int, ...]) -> float | list:
             if not dims:
                 return self.data[offset]
             head, *rest = dims
@@ -104,7 +103,7 @@ class TinyArray:
 
     # ----- broadcasting element-wise ops — STUDENT IMPLEMENTS -----
 
-    def __add__(self, other: "TinyArray") -> "TinyArray":
+    def __add__(self, other: TinyArray) -> TinyArray:
         """Element-wise add with broadcasting.
 
         Steps:
@@ -120,14 +119,14 @@ class TinyArray:
         # TODO
         raise NotImplementedError
 
-    def __mul__(self, other: "TinyArray") -> "TinyArray":
+    def __mul__(self, other: TinyArray) -> TinyArray:
         """Element-wise multiply with broadcasting. Same logic as __add__,
         with multiplication instead of addition."""
         # TODO
         raise NotImplementedError
 
 
-    def __cross__(self, other: "TinyArray", op: callable) -> "TinyArray":
+    def __cross__(self, other: TinyArray, op: callable) -> TinyArray:
         """Element-wise add with broadcasting.
 
         Steps:
@@ -140,7 +139,7 @@ class TinyArray:
                  c. Sum the two scalar values into the output position.
             4. Return TinyArray(out_data, out_shape).
         """
-        
+
         out_shape = broadcast_shapes(self.shape, other.shape)
         out_data = alloc_shape_array(out_shape)
 
@@ -163,11 +162,11 @@ class TinyArray:
                 else:
                     self_index.append(multidim_index_rev[dim_idx])
             self_index.reverse()
-            
+
             other_shape_rev = list(reversed(other.shape))
             for _ in range(len(out_shape) - len(other.shape)):
                 other_shape_rev = list(other_shape_rev) + [1]
-            
+
             other_index = []
             for dim_idx in range(len(out_shape)):
                 dim = other_shape_rev[dim_idx]
@@ -179,7 +178,7 @@ class TinyArray:
 
             out_data[i] = op(_nested_index(self, self_index), _nested_index(other, other_index))
 
-        return TinyArray(out_data, out_shape) 
+        return TinyArray(out_data, out_shape)
 
 def _nested_index (arr: TinyArray, index: list[int]) -> float:
     flat_index = 0

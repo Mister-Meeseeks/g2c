@@ -6,13 +6,14 @@ Patched onto the scaffold targets by g2c.solutions.apply().
 from __future__ import annotations
 
 from collections.abc import Iterable
+
 import torch
+
 from g2c.attention import MultiHeadAttention
 from g2c.nn import Module
+from g2c.transformer.block import Block
 from g2c.transformer.ffn import FeedForward
 from g2c.transformer.layer_norm import LayerNorm
-
-from g2c.transformer.block import Block
 
 
 class _BlockImpl:  # patched onto Block by apply()
