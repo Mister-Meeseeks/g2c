@@ -122,12 +122,12 @@ return stopped_without_answer
 
 Each piece is small. The parser extracts structure from model text. The tool dispatcher turns actions into observations. The scratchpad records the working trace. Stop conditions prevent the loop from running forever.
 
-![Agent state machine — the ReAct loop. A flowchart of `Agent.run` from start to exit. (1) INITIALIZE: build the system prompt; optionally call `make_plan(...)` for a goal + numbered steps; create an empty Scratchpad. (2) MAIN STEP: render the prompt (system + plan + user message + scratchpad + trailing `Thought:`); call `backend.complete(...)`; receive a completion. (3) PARSE: `parse_react_step(completion)` extracts a `ParsedStep(thought, action, final_answer, parse_error)`. (4) BRANCH: if `final_answer` present → return clean exit (`stopped_reason="final_answer"`); if `action` present → dispatch through Module 18's `dispatch_tool_call`, build an `Observation`, append `AgentStep` to scratchpad, loop; if neither (parse error or stuck) → if `halt_on_stuck` halt with `no_progress`, else record a parse-error observation and continue. (5) STOP-CONDITION CHECK (after each step): if duplicate action with `loop_detection=True` → halt with `duplicate_action`; if `max_steps` reached → halt with `max_steps`. A right-side panel pins the four stop conditions: `final_answer` (clean), `duplicate_action` (loop detection), `no_progress` (stuck step + halt_on_stuck), `max_steps` (safety net). A "scratchpad format" sidebar shows how each step renders back into the next prompt. A "key idea" callout at top: the agent repeatedly asks the model what to do next, executes the chosen action, and keeps going until either a final answer appears or a stop condition fires.](19-agent/Module19-Loop.png)
+![Flowchart of the Agent.run ReAct loop: render prompt, call the backend, parse thought/action/final answer, dispatch tools and append observations to the scratchpad, repeating until a final answer or one of four stop conditions fires.](19-agent/Module19-Loop.png)
 *The control-flow picture for `Agent.run`: model output is parsed, actions are dispatched, observations go into the scratchpad, and the next prompt is rebuilt from that state.*
 
 ### One ReAct step
 
-![One ReAct step](19-agent/Module19-Turn.png)
+![Anatomy of one ReAct turn in five stages: the model writes Thought, Action, and Action Input; the runtime parses, dispatches the tool, adds an Observation, and records the step to the scratchpad.](19-agent/Module19-Turn.png)
 *Inside one iteration of the loop.*
 
 ```
@@ -165,7 +165,7 @@ The model sees prior `Thought` / `Action` / `Action Input` / `Observation` block
 
 ### The scratchpad
 
-![Hero](19-agent/Module19-Scratchpad.png)
+![Diagram of the scratchpad as agent working memory: three side-by-side prompts show the rendered history growing each turn, making a stateless backend behave statefully.](19-agent/Module19-Scratchpad.png)
 *Each prompt is built from stable prompt context plus the growing scratchpad.*
 
 ```

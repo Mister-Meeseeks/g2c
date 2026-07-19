@@ -2,7 +2,7 @@
 
 > **Question this module answers:** *How do we make the model follow requests?*
 
-![Module 13 on one page: the TinyShakespeare-pretrained TransformerLM from Modules 10/12 confronted with an instruction-style prompt before and after SFT. Top half: the BASE model's continuation of "What is the capital of France?" — it ignores the question entirely and produces "What is the capital of France? And the noble Duke of Norfolk hath sworn..." (the question is just text to continue). Bottom half: the SFT'd version of the same model on the same prompt, formatted with the chat template "<|user|>\\nWhat is the capital of France?\\n<|assistant|>\\n" — it now produces "Paris.<|end|>" and stops. A central panel shows the SFT data flow: 50 hand-authored (instruction, response) pairs → render through chat template → tokenize + build label mask (only assistant tokens get loss=1; user tokens get loss=0) → fine-tune the base model for ~500 steps at 10× lower LR → SFT'd checkpoint. A right-edge panel highlights the three behavioral shifts: (1) the model now respects turn boundaries, (2) the assistant turn is short and stops on <|end|>, (3) the model still hallucinates confidently — alignment teaches FORMAT, not TRUTH (the truth/calibration question waits for Modules 14–15). A bottom strip captions the headline: "SFT changes behavior, not knowledge — the base model already had to know what 'capital of France' means; SFT just taught it to answer rather than to continue."](13-sft/Module13-Hero.png)
+![Before-and-after SFT comparison: the base model continues a question as Shakespearean prose, while the SFT'd model answers "Paris." and stops, with a center panel tracing the 50-pair fine-tuning data flow.](13-sft/Module13-Hero.png)
 
 This week is about how to shape model **behavior**. The mechanics are minimal but the qualitative effect is the largest single change in this course. The model goes from "autocompletes prose" to "answers questions like an assistant." The entire data set is 50 directed examples. Everything else is plumbing.
 
@@ -56,7 +56,7 @@ That's the whole pipeline. There is no new architecture, no new optimizer, no ne
 
 An SFT'd model stops continuing text and starts producing assistant turns. Often short, often plausible-sounding, often wrong on facts (that's a Module 15 problem). The model has not learned new facts. It has learned a new *format*.
 
-![SFT changes behavior, not knowledge: a one-page summary of the module. The base model produced by Module 12 trains on next-token prediction over TinyShakespeare prose and continues a question prompt as if it were more prose. After SFT on 50 hand-authored (instruction, response) pairs — rendered through a chat template, tokenized with a loss mask that zeroes out user tokens, fine-tuned for ~500 steps at 10× lower LR — the same model recognizes the assistant turn marker, produces a single short response, and stops on `<|end|>`. A "what improves, what doesn't" panel pins the central distinction: format compliance, turn boundaries, and concision are taught; factual knowledge is unchanged from the base model. A "key insight" callout closes with: pretraining gives the model a world model; SFT gives it a job description.](13-sft/Module13-Behavior.png)
+![One-page summary of how SFT changes behavior but not knowledge: the same base model, fine-tuned on 50 masked instruction-response pairs, learns turn boundaries and stopping while its factual knowledge stays unchanged.](13-sft/Module13-Behavior.png)
 *SFT is about shaping assistant-shaped text, not teaching new abilities.*
 
 The "knowledge stays the same" claim is empirically robust: SFT'd models, probed for factual recall, score within a few percent of their base versions on factual benchmarks. What changes dramatically is *response style* — short vs long, format-compliant vs free-form, refusal-aware vs refusal-naive. 
@@ -155,7 +155,7 @@ In pretraining, every token in the window is a training target. The model learns
 
 The fix is the **loss mask**: a `(T-1,)` boolean tensor that's `0` at every user token and `1` at every assistant token (including the `<|end|>` token).
 
-![Loss Mask](13-sft/Module13-LossMask.png)
+![Worked example of loss-mask alignment: a chat-templated "What is 2+2?" is tokenized and shifted, the mask is set to 1 only on assistant target tokens, and an off-by-one input-aligned mask is shown failing.](13-sft/Module13-LossMask.png)
 *The shift-by-one between `mask` and `y` is the bug-prone seam — get it right once and the rest of the SFT pipeline follows.*
 
 The masked-loss formula is the same familiar cross-entropy formula, but only applied to `1`-masked tokens:

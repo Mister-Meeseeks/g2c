@@ -2,7 +2,7 @@
 
 > **Question this module answers:** *How can tokens communicate?*
 
-![Self-attention as six steps from tokens to refined representations: input embeddings (T, D); query/key/value projections via three Linear layers; pairwise compatibility scores from Q · Kᵀ / √D; softmax to row-normalized attention weights; mixed value vectors; an output projection. The bottom strip restates the same recipe as a one-position view ("ask, compare, pass, gather, update") and pins the headline takeaway: every token looks at every token, decides who is relevant, and mixes their information.](07-attention/Module07-Hero.png)
+![Self-attention as six steps from token embeddings to refined representations: Q/K/V projections, scaled dot-product scores, softmax attention weights, value mixing, and an output projection — every token attends to every token and mixes information.](07-attention/Module07-Hero.png)
 
 The same pipeline runs at every position in parallel, with the only per-position difference being which Q vector poses the question. Most of the rest of this lesson page is unpacking the "why" behind the pipeline. This week is the hinge of the course — everything from here through the transformer block is variations on what you build this week.
 
@@ -56,7 +56,7 @@ The "match score" between query `t` and key `s` is the dot product `q_t · k_s`.
 
 The whole module is that diagram, generalized to a batch dim.
 
-![Scaled dot-product attention as a six-stage pipeline: input X (T, D); three linear projections build Q, K, V; scores S = Q · Kᵀ / √D; a softmax (with optional causal mask) turns scores into attention weights A (each row a probability distribution over key positions); the weights mix the value vectors to produce Z = A · V; an output projection W_O lands the result back in (T, D).](07-attention/Module07-DotProduct.png)
+![Scaled dot-product attention as a six-stage pipeline: linear projections build Q, K, V from input X; scores Q·Kᵀ/√D pass through softmax (with optional causal mask) into attention weights that mix V into the output.](07-attention/Module07-DotProduct.png)
 *Two details worth lingering on: the score matrix is always (T, T) regardless of D — that's the quadratic cost ceiling — and the √D divide before softmax is what keeps the softmax in a non-saturated regime as D grows, which is the most common bug to forget.*
 
 ### Why Q, K, V are three different projections
@@ -65,7 +65,7 @@ In principle you could use the input vectors themselves as queries, keys, and va
 
 The output projection `W_o` plays a similar role: it lets the model remap the mixed values back into a representation space that's useful for the next layer. (In single-head attention `W_o` is mostly ceremonial; in multi-head attention it's where the heads' outputs get combined and is genuinely critical.)
 
-![Each token plays three roles, each parameterized by its own learned matrix: the query asks "what am I looking for?", the key advertises "what's distinctive about me?", the value contributes "what I'd pass on if attended to." A worked example over the sentence "the animal didn't cross the street because it was too tired" shows how the three projections specialize after training, with separate row-vectors per token labelled by their semantic content.](07-attention/Module07-QKV.png)
+![Each token plays three roles via separate learned matrices — the query asks, the key advertises, the value contributes — illustrated with a worked example sentence showing how the three projections specialize after training.](07-attention/Module07-QKV.png)
 *The decoupling is what gives attention its expressive power. With one shared projection ("just use x"), the same vector would have to simultaneously be a question, an advertisement, and a contribution — three jobs that pull in different directions during training. Three separate matrices let each role specialize.*
 
 ### The √D scaling
@@ -94,7 +94,7 @@ The fix is to set `scores[t, s] = -inf` for all `s > t` BEFORE the softmax. Afte
   Above-diagonal is True — no peeking at the future.
 ```
 
-![The causal mask shown three ways for T=6: as a True/False checkmark grid where True means blocked, as the same grid applied to the (T, T) score matrix with above-diagonal scores set to −∞, and as the post-softmax weight matrix where above-diagonal weights are exactly 0. A side panel pins the conceptual point: token at position t can only attend to positions 0..t.](07-attention/Module07-Causal.png)
+![The causal mask shown three ways: a True-means-blocked grid, the score matrix with above-diagonal entries set to −∞, and the post-softmax weights where those entries are zero, so position t attends only to positions 0..t.](07-attention/Module07-Causal.png)
 *The mask is applied BEFORE the softmax so the −∞ scores become exact zeros after exponentiation, not merely small numbers. Setting the post-softmax weights to zero directly would be wrong — the remaining weights wouldn't sum to 1.*
 
 The convention "True means blocked" matches `masked_fill(mask, value)`, which fills wherever the mask is True. The `causal_mask` static method on `SelfAttention` is implemented for you because it's bookkeeping, not the lesson.

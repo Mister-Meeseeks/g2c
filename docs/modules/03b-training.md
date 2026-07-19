@@ -84,7 +84,7 @@ There is no universal answer, so the practical move is a small sweep. Try a few 
 
 ### AdamW's Effective Step Size
 
-![Side-by-side comparison of SGD and AdamW. SGD applies one global step size to every parameter using the raw gradient. AdamW maintains per-parameter first-moment `m` (smoothed direction) and second-moment `v` (squared-gradient scale), applies bias correction, and produces a per-parameter adaptive step. Bottom callouts contrast "every parameter the same" against "shock absorbers per parameter" and call out decoupled weight decay.](03b-training/Module03b-Adam.png)
+![Side-by-side comparison of SGD and AdamW updates: SGD applies one global step size to every parameter, while AdamW uses first- and second-moment estimates to produce a bias-corrected, per-parameter adaptive step plus decoupled weight decay.](03b-training/Module03b-Adam.png)
 *Both optimizers are still gradient descent — they differ in how the step is scaled.*
 
 AdamW still has a global `lr`, but the actual update is adapted per tensor element:
@@ -105,7 +105,7 @@ That direct shrink is the "W" in AdamW. Do not fold it into the gradient update.
 
 ### Norms And Scale
 
-![Three-panel diagram. Panel 1 defines the L2 norm of a vector with a worked example. Panel 2 builds the global gradient norm by flattening every parameter gradient into one long vector and taking its L2 norm. Panel 3 shows before/after gradient clipping: when the global norm exceeds the threshold, every gradient is rescaled by the same factor, so direction is preserved and step size is capped. Side panels show example loss-spike traces and what to monitor during training.](03b-training/Module03b-Norms.png)
+![Three-panel diagram: the L2 norm of a vector, the global gradient norm over all parameter gradients flattened into one vector, and gradient clipping rescaling every gradient by one factor when that norm exceeds the threshold.](03b-training/Module03b-Norms.png)
 *A norm is just a measurement (panels 1–2), and clipping is the response when that measurement is too large (panel 3). Clipping multiplies every gradient by one shared scalar — direction is preserved, only the step length is shortened.*
 
 A norm is a way to turn a vector into one number that says "how large is this?" The norm we use most is the L2 norm:

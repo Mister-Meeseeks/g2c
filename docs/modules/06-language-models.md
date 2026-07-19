@@ -2,7 +2,7 @@
 
 > **Question this module answers:** *What is the actual training objective of a language model?*
 
-![Four panels showing language modeling as next-token prediction: (1) raw text becomes a sequence of token IDs via BPE; (2) a sliding window over those IDs produces (context, target) training examples; (3) at each position the model emits a probability distribution over the vocabulary, scored by cross-entropy against the true next token; (4) at inference the same model is called autoregressively — predict, append, repeat — to generate text.](06-language-models/Module06-Hero.png)
+![Four panels showing language modeling as next-token prediction: text becomes token IDs, a sliding window makes (context, target) pairs, cross-entropy scores each predicted distribution, and inference generates autoregressively by predict-append-repeat.](06-language-models/Module06-Hero.png)
 
 The training-time path and the inference-time path use the same model with the same forward pass — the only difference is whether the next token comes from the corpus (training) or from sampling the model's own output (generation). Internalizing that they're the same loop is what this lesson is built around.
 

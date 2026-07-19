@@ -2,7 +2,7 @@
 
 > **Question this module answers:** *Why is the model helpful, polite, or stylistically consistent?*
 
-![DPO at a glance: a pretrained-and-SFT'd model receives pairs of candidate responses to the same prompt; a preference label marks one as "chosen" and the other as "rejected"; the DPO loss directly nudges the model toward the chosen response and away from the rejected one — no separate reward model, no RLHF rollout.](14-dpo/Module14-Hero.png)
+![DPO overview: an SFT'd model scores chosen and rejected responses to the same prompt, and the DPO loss pushes it toward the chosen one — no reward model or RLHF rollout needed.](14-dpo/Module14-Hero.png)
 
 Preference tuning changes the training signal from "imitate this answer" to "prefer this answer over that one." That comparative signal is what DPO turns into a direct loss. Last week we taught the model to **format** an answer. This week we teach it to **prefer** one answer over another. Pair up responses, evaluate the preferred choice, and train on those preferences. No new architecture, no reward model. The 50–200 preference pairs are the entire training set. Everything else is plumbing.
 
@@ -180,7 +180,7 @@ After DPO training, chosen completions should have higher implicit reward than r
 
 ### DPO loss
 
-![DPO mechanism: four log-probs → one margin → one loss. Step 1 takes one preference example `(prompt, chosen, rejected)`. Step 2 forwards both the policy and the frozen reference on (prompt + chosen) and (prompt + rejected) — four sequences, four scalar log-probabilities `log π(c|x)`, `log π(r|x)`, `log π_ref(c|x)`, `log π_ref(r|x)`, each computed by log-softmaxing logits, gathering the target's column, and summing over the response tokens (mask = 1 only on the response, including `<|end|>`). Step 3 turns four log-probs into two log-ratios — chosen ratio `Δ_c = log π(c|x) − log π_ref(c|x)` and rejected ratio `Δ_r = log π(r|x) − log π_ref(r|x)` — and one margin `m = Δ_c − Δ_r`. Step 4 plugs the margin into the closed-form DPO loss `L = −log σ(β · m)`. A "step 0 sanity check" panel pins the canonical invariant: when the policy equals the reference, every Δ is zero, m is zero, σ(0) = 0.5, and the loss is exactly `log 2 ≈ 0.693`. An "intuition: what the loss does" panel shows three regimes — before training the policy and reference produce equal probabilities; during training the policy pushes chosen log-probs UP and rejected log-probs DOWN; bad training pushes both down (implicit-reward collapse).](14-dpo/Module14-FourLogs.png)
+![Four-step DPO mechanism diagram: policy and frozen reference score the chosen and rejected responses, the four log-probs form two log-ratios and one margin, and the loss is −log σ(β·m), equal to log 2 at initialization.](14-dpo/Module14-FourLogs.png)
 *preference triplet → four log-probs → two log-ratios → one margin → one scalar loss.*
 
 For a single preference example:
@@ -229,7 +229,7 @@ For a single preference example:
 
 ### The frozen reference
 
-![Policy vs frozen reference. Both models start from the same SFT'd checkpoint produced by Module 13 — `ref_model = copy.deepcopy(model)`. The policy is trainable: gradients flow, weights update, it learns to prefer chosen over rejected. The reference is frozen: never gradients (`with torch.no_grad():` around its forwards), only used to score the same prompts under the original SFT distribution so the log-ratios `log π / log π_ref` have a fixed denominator. A single preference triple `(prompt, chosen, rejected)` is fed to both models; both compute scalar log-probabilities `log π_θ(c|x)`, `log π_θ(r|x)`, `log π_ref(c|x)`, `log π_ref(r|x)`. The DPO loss combines these into a margin and pushes the policy to widen it without drifting too far from the reference. A "key idea" panel: we don't care about the absolute probabilities, only how the policy moves relative to the reference. An "important" panel: the reference must not change, ever — the deepest invariant test of a DPO implementation is to snapshot reference params before/after training and assert byte-for-byte equality.](14-dpo/Module14-Policy.png)
+![Diagram of the trainable policy versus the frozen reference, both starting from the same SFT checkpoint: both score each preference triple, and the loss widens the policy's margin while the reference anchors the log-ratios.](14-dpo/Module14-Policy.png)
 *The two-model setup. The SFT model plays both roles — one copy trainable, one copy frozen.*
 
 The reference is the **anchor** for the implicit-reward computation. The whole DPO loss is a function of *log-ratios* between the policy and the reference. If for some reason both moved together (e.g. an update bug), the log-ratios stay zero and nothing changes.

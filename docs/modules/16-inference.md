@@ -35,7 +35,7 @@ We now turn our attention towards turning sampling generation into a model backe
 
 ### Quantization: how a 7B model fits in 4 GB
 
-![Quantization ladder — more model, less memory. Lower precision means fewer bits per weight, smaller checkpoint, more model fits on a laptop. A vertical "ladder" shows precision steps from FP32 (32 bits/param, 28 GB for 7B, highest fidelity) → FP16/BF16 (16 bits, 14 GB, near-lossless for inference) → INT8 (8 bits, 7 GB, mild accuracy hit) → INT4 (4 bits, ~3.5 GB, larger but still tractable accuracy hit). A right-side panel pins the speed lever: inference is memory-bandwidth-bound, so halving weight bytes roughly halves the time to fetch them per matmul — the headline 2-4× speedup at int4 comes from bandwidth, not faster math. A "GGUF Q-K variants" panel decodes the cryptic naming: `Q4_K_S` (most weights at 4 bits, smallest), `Q4_K_M` (recommended default — most weights at 4 bits, more important ones at 5–6 bits), `Q5_K_M` (slightly bigger, slightly better quality). A "memory budget example" computes 16 GB Mac − 4 GB OS − 2 GB KV cache = ~10 GB usable for weights, which fits a 7B Q4_K_M comfortably. The takeaway pinned at the bottom: quantization buys headroom, not magic — Q4_K_M is the default for the rest of the course.](16-inference/Module16-Quant.png)
+![Quantization ladder diagram stepping from FP32 down to INT4, showing bits per weight and 7B-model memory at each rung, with side panels on bandwidth-driven speedups, GGUF Q-K variants, and a 16 GB memory budget.](16-inference/Module16-Quant.png)
 *Choosing a quantization level is an important exercise in the tradeoff curve between performance and accuracy.*
 
 Quantization is a technique that allows us to tradeoff performance for accuracy given a set of model weights. It relies on the fact that the least significant bits in numerical parameters exert vastly less influence on the model's activations. We can represent a set of weights using 50% of the bits, and lose much much less than 50% of its numerical accuracy.
@@ -76,7 +76,7 @@ The reason quantization speeds up inference isn't the math — int4 multiplicati
 
 ### KV cache: from O(T²) per token to O(T) per token
 
-![KV cache — remember once, reuse forever. Two side-by-side flow diagrams. WITHOUT KV CACHE: each generation step recomputes attention over the whole sequence. Step 1 computes K/V for tokens 0..2; step 2 recomputes K/V for tokens 0..3 (re-doing the work for 0..2); step 3 redoes 0..4; cost per step grows linearly with sequence length, total work is O(T²). WITH KV CACHE: step 1 computes K/V for tokens 0..2, stores them; step 2 only computes K/V for the new token (one row), appends to the cache, attends from the new query against the entire cached K/V; per-step cost is O(T), total work is O(T·T) but with a much smaller constant. A "what is stored" panel pins the layout: `K_cache` and `V_cache` per layer, shape `(max_seq_len, n_heads, head_dim)`, dtype fp16. A memory-budget example for a 7B model (Llama 3.1 8B): 32 layers × 32 heads × 128 head_dim × 2 (K and V) × 2 bytes (fp16) × 2048 context = ~1 GB; doubles linearly with context length. A "scaling with context length" panel shows weights stay fixed while the cache grows — long-context inference is memory-bound on the cache, not the weights. A "the takeaway" panel: KV cache is mandatory at scale; production servers like llama.cpp build one in; the optional course-model cache makes the mechanism inspectable.](16-inference/Module16-KVCache.png)
+![Side-by-side flow diagrams contrasting generation without a KV cache (O(T²) recomputation) versus with one (append-only, O(T) per step), plus a memory example: ~1 GB of fp16 cache for a 7B-class MHA model at 2048 context.](16-inference/Module16-KVCache.png)
 *Why 30 tok/s on a 7B model is even possible. The KV cache turns autoregressive decoding from O(T²) to O(T) per step — a 5–20× speedup at production context lengths.*
 
 Unlike quantization, KV caching is pretty close to a free lunch — at least on larger models and context windows. It depends on the fact that in next-token autoregression, we are constantly revisiting the same prompt tokens.
@@ -132,7 +132,7 @@ Total: `O(T)` per step → `O(T²)` for the whole generation, but with a ~10× s
 
 ### Speculative decoding
 
-![Speculative decoding](16-inference/Module16-Decoding.png)
+![Diagram of speculative decoding: a small draft model proposes K tokens, the large model verifies them in one forward pass, and the longest matching prefix is accepted — yielding 2-3x fewer expensive passes.](16-inference/Module16-Decoding.png)
 *Speculative decoding is to LLMs what branch prediction is to microprocessors*
 
 Speculative decoding runs a small "draft" model (e.g., a 1B-param sibling of a 70B model) ahead of the main model, generating several candidate tokens at once. The main model then verifies all of them in a single forward pass — comparing its softmax over each position against what the draft chose. Whichever prefix the main model agrees with is accepted; the rest are discarded; the next round starts.

@@ -2,7 +2,7 @@
 
 > **Question this module answers:** *How can the model use external knowledge it doesn't have memorized?*
 
-![Hero](17-rag/Module17-Hero.png)
+![Overview poster of retrieval-augmented generation: documents are chunked and embedded into a vector index, a query retrieves the top-k chunks, and the model answers from the assembled context.](17-rag/Module17-Hero.png)
 
 RAG is the smallest possible architecture for "give the model access to information it doesn't have memorized." Chunk the corpus, embed each chunk, store the vectors, embed the query, retrieve the top-k by cosine similarity, splice them into a citation-formatted prompt, send to the inference backend. None of the components are individually deep — but the wiring is the lesson, because RAG is the substrate Module 18's tools and Module 19's agent loop both build on.
 
@@ -174,7 +174,7 @@ Chunking systems in the wild generally fall under three categories:
 
 ### Embedding
 
-![Embedding space and cosine search. Left half: a 2D scatter of chunk embeddings color-coded by cluster — Spain/Cities (green), Python/Code (blue), Cooking (orange), Machine Learning (purple). Texts about the same topic land in the same neighborhood. The user's query "What is the capital of Spain?" embeds to a point near the Spain/Cities cluster, marked with a star. A "cosine similarity intuition" panel pins the math: for L2-normalized vectors, `cos(u, v) = u · v` — small angle → high similarity → score near 1; orthogonal → score near 0; opposite → score near -1. Right half: the search algorithm in five steps. Step 1 — embed the query. Step 2 — dot the query against every row of the (N, d) store matrix to get N similarities. Step 3 — `np.argpartition(scores, -k)` finds the top-k indices in O(N) without sorting the full array. Step 4 — sort just those k indices by descending score. Step 5 — return the top-k chunks plus their similarity scores. A "key takeaway" panel: cosine similarity finds the chunks whose meaning is most similar to the query — not the chunks that share words.](17-rag/Module17-Embedding.png)
+![Left, a 2D scatter of chunk embeddings clustered by topic with a query point landing near the matching cluster; right, the five-step cosine-similarity search that returns the top-k nearest chunks.](17-rag/Module17-Embedding.png)
 *With embedding vectors, semantic similarity reduces to geometry*
 
 An embedding is a function from a string of text to a numerical vector in a high-dimensional space. Within an embedding space, semantic similarity is measured as the angle between the vectors. If two vectors share a small angle, then their coordinates in the semantic space are close in a geometric sense. The choice of embedding function determines what "similar" means:
@@ -252,7 +252,7 @@ That's the whole search algorithm for a flat index. Linear in `N`, and therefore
 
 ### Prompt assembly
 
-![Prompt](17-rag/Module17-Prompt.png)
+![Diagram of RAG prompt assembly: retrieved chunks with scores and sources are formatted into a prompt with numbered citations, the user question, and an "if not in context, say you don't know" instruction.](17-rag/Module17-Prompt.png)
 *The "I don't know" guard at the bottom of the prompt actually triggers refusal — it's the single highest-leverage line in the whole template.*
 
 Once the retriever has handed you `[chunk_1, chunk_2, ..., chunk_k]`, the question is how to splice them into the model's input. The default template:

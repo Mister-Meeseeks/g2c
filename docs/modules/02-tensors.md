@@ -43,7 +43,7 @@ Two ideas dominate tensor-based numerical code:
         outer dims (m and n) survive.
 ```
 
-![Matrix Mult](02-tensors/Module02-MatMul.png)
+![Diagram of matrix multiplication as row-column dot products: each entry C[i, j] of C = A @ B pairs row i of A with column j of B, multiplying element-wise and summing.](02-tensors/Module02-MatMul.png)
 *Matmul broken down to its atoms. The triple-loop implementation in Exercise 1 just enumerates this directly. Vendor BLAS does the same operation in a fundamentally different way (cache blocking, SIMD, parallelism), but the math is identical.*
 
 **2. Broadcasting.** When two tensors with different but compatible shapes are combined element-wise, smaller dimensions are *implicitly stretched* without copying memory. The standard rules (NumPy and PyTorch use the same):
@@ -82,7 +82,7 @@ The trickiest case is the two-way stretch — `(1, 3) + (2, 1)` — where neithe
       [12  22  32]
 ```
 
-![Broadcasting Illustrated](02-tensors/Module02-Broadcast.png)
+![Broadcasting cheat-sheet: the right-align and pad-with-1s rules, worked shape examples including a two-way stretch and an incompatible ValueError case, and a note that size-1 dimensions are re-read rather than copied.](02-tensors/Module02-Broadcast.png)
 *Broadcasting is just a simple (and efficient) way to "stretch" shapes so they can be added or multiplied with other shapes of different dimensions*
 
 No memory is actually copied during the stretch — the size-1 dimension is just re-read at every position. This is what makes broadcasting cheap.

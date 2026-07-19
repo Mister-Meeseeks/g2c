@@ -2,7 +2,7 @@
 
 > **Question this module answers:** *How does attention specialize?*
 
-![Multi-head attention end-to-end: input X (B, T, D); three big linear projections produce Q, K, V each of shape (B, T, D); a reshape + transpose splits the channel dim into H heads, each of size d_h = D/H, so every tensor becomes (B, H, T, d_h); H independent attention computations run in parallel (each with its own scaling factor √d_h); concatenation merges the heads back to (B, T, D); a final output projection W_O lands the result. A side panel emphasizes the headline fact: same total parameter count as a single big attention, but H different "ways of looking" at the same sequence.](08-multi-head-attention/Module08-Hero.png)
+![Multi-head attention end-to-end: Q, K, V projections are reshaped into H heads of size D/H, attended in parallel, then concatenated and output-projected — same parameter count as single-head, but H different ways of looking.](08-multi-head-attention/Module08-Hero.png)
 
 This week is short on content. Almost everything is already in place from the last lesson. Review the scaled dot-product and softmax machinery from the previous module. The conceptual move is "split D into H slots and run H copies of attention in parallel"; the engineering move is "do that with one matmul, not H of them."
 
@@ -69,7 +69,7 @@ The `transpose(1, 2)` then swaps `T` and `H` so heads are the leading batch-like
 
 Why this order? Because the next operation is `q @ k.transpose(-2, -1)`, and PyTorch's batched matmul treats all dims except the last two as batch dims. With `H` in the leading batch slot, the matmul produces one `(T, T)` score matrix per head independently. With `H` *not* in the leading slot, the matmul would mix queries from different heads together — which is the wrong thing.
 
-![A worked reshape: starting from Q of shape (B=2, T=5, D=8), `view(B, T, H=4, d_h=2)` reinterprets the channel dim as (H, d_h), then `transpose(1, 2)` swaps T and H to land at (B, H, T, d_h). Concrete numbers fill the cells so you can trace exactly which D-channels become which head's d_h slots; a "why this order?" panel explains that PyTorch's batched matmul treats every dim before the last two as batch dims, so heads MUST be in a leading batch-like position before scoring.](08-multi-head-attention/Module08-Reshape.png)
+![A worked reshape from Q of shape (B, T, D) via view(B, T, H, d_h) and transpose(1, 2) to (B, H, T, d_h), with concrete numbers tracing which D-channels land in which head's slots.](08-multi-head-attention/Module08-Reshape.png)
 *The two-line `view + transpose` is doing all the work that a Python loop over heads would otherwise do. Internalizing which dim ends up where, and why the matmul that follows treats H as just another batch dim, is the entire engineering content of multi-head attention.*
 
 ### One projection plus reshape ≠ H independent projections
@@ -120,7 +120,7 @@ This is the empirical surprise: when you train a transformer with multi-head att
 
 You won't see these in your tiny model from Module 10 with high fidelity — you need many more parameters and training data — but the mechanism is set up here. The visualization exercise (exercise 4) will let you LOOK at attention patterns after training and see whether any heads have learned anything interpretable.
 
-![Four canonical head-specialization patterns visualized as attention heatmaps over a sample sentence: (1) a previous-token head — all mass on the position immediately before the query, a clean sub-diagonal stripe; (2) a syntactic head — sparse off-diagonal links between grammatically related tokens (subject↔verb, modifier↔noun); (3) an induction head — for the pattern "...A B...A", weight concentrates on the token after the previous A; (4) a global / broadcast head — diffuse weight covering most of the sequence. A side caption emphasizes the headline: nothing in the architecture forces these patterns; they emerge during training.](08-multi-head-attention/Module08-DiffHeads.png)
+![Four canonical head-specialization patterns as attention heatmaps: a previous-token head (sub-diagonal stripe), a syntactic head (links between related tokens), an induction head (weight on the token after the previous A), and a diffuse global head.](08-multi-head-attention/Module08-DiffHeads.png)
 *Multi-head attention's empirical payoff isn't visible from the math — it shows up only when you train and look. With H heads available, the optimizer is free to use one for previous-token copying, another for syntactic dependencies, another for induction, etc., and it tends to do so. Single-head attention has to commit one set of weights to ALL of these jobs simultaneously; multi-head attention can specialize and recombine via W_O.*
 
 ## Concepts to internalize

@@ -2,7 +2,7 @@
 
 > **Question this module answers:** *How do we compose attention and "thinking"?*
 
-![One transformer block, drawn as two pre-norm sublayers wrapped in residual connections. The residual stream (the (B, T, D) tensor at the top) flows forward unchanged by default; each sublayer reads it through a LayerNorm, computes an update, and adds the update back. Sublayer 1 is multi-head attention; sublayer 2 is the position-wise feed-forward network. Side panels label the two structural ideas (LayerNorm normalizes per token, residual connections add a small update) and pin the recipe `x = x + attn(ln1(x)); x = x + ffn(ln2(x))`.](09-transformer-block/Module09-Hero.png)
+![One transformer block drawn as two pre-norm sublayers — multi-head attention, then a position-wise feed-forward network — each reading the residual stream through a LayerNorm and adding its update back.](09-transformer-block/Module09-Hero.png)
 
 Transformers are layers of blocks. Each block is an attention sublayer and a normal neural network sublayer. Once you have this block, scaling up is just "stack N of these and add embeddings" + a final unembedding head. The rest of the lesson page is unpacking why each one is where it is.
 
@@ -87,7 +87,7 @@ The most important thing to keep in mind is that the FFN is *per position*. Ther
 
 In practice, the convention is to set `hidden_dim = 4 × embedding_dim` . The wider intermediate projection gives the GELU activation layer room to carve out nonlinear features. Because of this most of the parameters in a transformer actually live in the FFN, not the attention heads.
 
-![The position-wise FFN: the SAME two-layer MLP applied independently to every position. Per-position view: x_t (D channels) → Linear up to 4D → GELU → Linear back down to D. Block view: attention writes a per-token update into the residual stream, then LayerNorm + FFN compute a second per-token update. Side panels show the parameter counts (2 · 4D² = 8D² weights, dominating the block's parameter budget) and the per-position independence (mutate one token, no others change).](09-transformer-block/Module09-FFN.png)
+![The position-wise FFN: the same two-layer MLP (Linear up to 4D, GELU, Linear back to D) applied independently at every position, holding most of the block's parameters (about 8D² weights).](09-transformer-block/Module09-FFN.png)
 *The FFN is the "compute" half of the block. Attention mixes information; the FFN is what the model does with that mixture.*
 
 ### Residual connections
@@ -109,7 +109,7 @@ Residual connections are how we "stack" layers of transformer blocks. Without re
                                                              └──── ...
 ```
 
-![The residual stream as a horizontal "bus" that threads through every block. The embedding sum enters on the left; each block reads the stream, computes a small update Δᵢ via its sublayer (attention or FFN), and adds it back onto the stream. Δ₁ might do "communication across tokens" (attention), Δ₂ might do "per-token computation" (the FFN), Δ₃ might be "feature refinement" — each block specializes in what it adds. After N blocks, the stream is x_N = x + Σᵢ Δᵢ; the final layer norm and unembedding head consume that sum.](09-transformer-block/Module09-ResidualBus.png)
+![The residual stream as a horizontal bus: embeddings enter at left; each block adds a small update Δᵢ onto the stream; the final LayerNorm and unembedding head consume the accumulated sum.](09-transformer-block/Module09-ResidualBus.png)
 *Sublayers make incremental edits, not replacements. This is the property that makes deep transformers trainable (gradient-flow view).*
 
 ### LayerNorm
@@ -132,7 +132,7 @@ Three properties of LayerNorm are worth internalizing:
 
   * **The `ε` in the sqrt is structural, not cosmetic.** A near-constant input has near-zero variance, and dividing by `sqrt(0)` produces `NaN`. `ε = 1e-5` keeps the divisor away from zero with negligible effect on normal inputs.
 
-![LayerNorm worked through on a single token vector x ∈ ℝ^D: compute mean μ and variance σ² across the D channels of THIS token only (no pooling across batch or sequence positions); subtract μ and divide by √(σ²+ε); apply the learned per-channel affine γ * x̂ + β. A side panel contrasts what LayerNorm does NOT do (pool across batch — that's BatchNorm; pool across sequence positions — that doesn't exist as a standard layer) and pins down the headline: every token in every position is normalized independently with the same γ, β.](09-transformer-block/Module09-LayerNorm.png)
+![LayerNorm worked through on one token vector: compute mean and variance across that token's D channels only, standardize, then apply the learned per-channel affine γ, β — every position is normalized independently.](09-transformer-block/Module09-LayerNorm.png)
 *LayerNorm normalizes each token vector independently across channels, and learns scale/shift. The key distinction from BatchNorm is "pool over channels, not over the batch."*
 
 One minor note for how LayerNorm is applied. The original 2017 transformer (Vaswani et al.) used **post-norm**:

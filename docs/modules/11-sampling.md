@@ -2,7 +2,7 @@
 
 > **Question this module answers:** *How do we use a model to produce text?*
 
-![Sampling and decoding on one page: the trained TransformerLM (left) emits (B, T, V) logits at every step; only the last position's row, (1, V), is used. Four logit warpers — repetition penalty, temperature, top-k, top-p — apply in that order, each transforming logits to logits and setting dropped tokens to -inf. The warped logits go through softmax and multinomial to sample one new token id, which is appended to the running sequence. A side panel contrasts greedy decoding (skip every warper, take argmax — deterministic) with sampled decoding (full pipeline). The whole loop repeats max_new_tokens times.](11-sampling/Module11-Hero.png)
+![Overview of sampled decoding: the model's last-position logits pass through repetition penalty, temperature, top-k, and top-p warpers, then softmax and multinomial pick each new token, contrasted with greedy argmax decoding.](11-sampling/Module11-Hero.png)
 
 You trained a model in Module 10, and now you need to actually generate text from it. Sampling is just the loop that calls the model. Four small "warper" functions reshape the model's native distribution before each draw. Internalizing those four warpers and the eight-step loop *is* the module.
 
@@ -41,7 +41,7 @@ Another simple and obvious approach is pure random sampling. Multinomial draw fr
 
 Native softmax puts nonzero mass on every possible token, including thousands of long-tail tokens that are essentially unrelated to the prefix. Once in a while one of them gets sampled, and the output derails. Both naive approaches are brittle for generating text, especially over long ranges.
 
-![Three decoding strategies side-by-side as train tracks. (1) Greedy decoding (argmax) always picks the single most-likely token; the train runs the same closed loop forever — deterministic, often stuck. (2) Sampled decoding (with warpers) draws from a shaped distribution; the train branches to plausible alternatives and explores new regions of context space without derailing. (3) Pure random sampling from the full softmax sometimes lands on long-tail tokens like "quartz" or "xyz123"; the train hops the rails entirely. A probability-bar strip underneath shows what each strategy actually selects from the model's native distribution. Bottom panels summarize: greedy loops because the argmax doesn't shift the context enough to break the cycle; sampling helps because warpers (rep penalty, top-k/top-p, temperature) keep the candidate set plausible while admitting alternatives; the diversity-vs-quality dial slides between the two extremes.](11-sampling/Module11-Greedy.png)
+![Three train-track diagrams comparing decoding strategies: greedy argmax loops forever on the same track, warper-shaped sampling branches to plausible alternatives, and pure random sampling derails onto long-tail tokens.](11-sampling/Module11-Greedy.png)
 *Greedy and pure-random are the two failure modes. The warpers shape the model's native distribution into something that's neither argmax-locked nor long-tail-derailed.*
 
 ## The big idea
@@ -73,7 +73,7 @@ Same shape in, same shape out. Dropped tokens are replaced with `-inf` (so `soft
 
 The order matters but the contract doesn't change: each box takes a logit tensor and returns a logit tensor.
 
-![The four warpers laid out as a pipeline of (V,)-shape vectors. Initial logits from the model: a smooth distribution with one prominent peak. After repetition_penalty: a few prior-token positions have been pushed down (their bars shrink). After temperature: the WHOLE distribution sharpens or flattens uniformly (every bar scales). After top_k_filter: only the top-k bars remain; the rest are replaced by sentinel "-inf" markers (drawn as black bars at the bottom). After top_p_filter: bars beyond the cumulative-p mark are also "-inf"-marked. After softmax: the surviving bars are renormalized to sum to 1; the multinomial draws one. A bottom strip captures the headline: each warper is a pure function on (..., V), composes freely, and the actual probability normalization happens only at the final softmax.](11-sampling/Module11-Warpers.png)
+![The four warpers as a pipeline of logit bar charts: repetition penalty lowers prior tokens, temperature rescales every bar, top-k and top-p mark dropped tokens -inf, and only the final softmax normalizes.](11-sampling/Module11-Warpers.png)
 *The four warpers are pure functions of `(logits, args)` — none of them maintain state, none of them peek at each other, and the order in which they apply is the lesson.*
 
 ### Temperature: a single-knob sharpness control
@@ -143,7 +143,7 @@ When the model is confident, the prefix is small (one or two tokens). When the m
 
 One important note: the implementation should always *keep* the first token after the cumulative threshold `mass >= p` is crossed. Otherwise a high-confidence argmax could result in no token. 
 
-![Top-k vs top-p side-by-side on two model states. Top row — confident model: native probabilities have one dominant token. Top-k=5 keeps a fixed five tokens regardless, including four near-zero distractors; top-p=0.9 keeps just the one or two tokens that already cover 90% of the mass. Bottom row — uncertain model: native probabilities are spread across many comparable tokens. Top-k=5 cuts off many reasonable continuations and keeps the same fixed count; top-p=0.9 expands its surviving set to whatever number of tokens it takes to reach 0.9 cumulative mass. A summary panel at the bottom contrasts the two methods: top-k is a fixed count (simple, predictable, doesn't adapt); top-p is an adaptive mass cutoff (small set when confident, large set when uncertain). Both methods always preserve the argmax — the smallest possible surviving set is exactly one token.](11-sampling/Module11-TopK.png)
+![Top-k versus top-p on a confident and an uncertain distribution: top-k keeps a fixed five tokens either way, while top-p's surviving set shrinks when the model is confident and grows when it is uncertain.](11-sampling/Module11-TopK.png)
 *The reason top-p tends to read as "smarter" than top-k in practice: it spends its budget where the budget actually matters.*
 
 ### Repetition penalty: discouraging loops
@@ -238,7 +238,7 @@ A reordering that *looks* equivalent but isn't:
       Stay in logit space until the very last softmax.
 ```
 
-![The eight-step decode loop drawn in order: (1) crop full_ids to model.max_seq_len; (2) forward the cropped context to (1, T_ctx, V) logits; (3) slice the last position to (1, V); (4) apply the warpers in canonical order; (5) softmax to probabilities; (6) multinomial draw of one token; (7) append to the running sequence; (8) stop early on eos_id else loop. A side panel pins three reorderings that produce silently-wrong or silently-slow outputs: warping the full (T, V) tensor instead of the last row (T× slower), warping in probability space instead of logit space (composition breaks), and forgetting to crop (crash or silently-lost positional signal once T > max_seq_len).](11-sampling/Module11-DecodeLoop.png)
+![The eight-step decode loop in order — crop context, forward, slice the last logit row, warp, softmax, multinomial draw, append, check eos — with a side panel of reorderings that fail silently.](11-sampling/Module11-DecodeLoop.png)
 *Most miswirings of this loop produce code that looks correct — output still appears, no exceptions raised. But the output will be miscalculated and produce subtly incorrect results.*
 
 ### The diversity-vs-quality tradeoff

@@ -2,7 +2,7 @@
 
 > **Question this module answers:** *How do we learn from text?*
 
-![Multi-position targets in three steps: sample a (B, T) window from the token stream with the target window shifted left by one; run one TransformerLM forward pass to produce (B, T, V) logits; compute per-position cross-entropy at every (b, t) pair and average across all B * T positions.](09b-pretraining/Module09b-Hero.png)
+![Multi-position targets in three steps: sample a (B, T) window with targets shifted left by one, run one TransformerLM forward pass to (B, T, V) logits, and average per-position cross-entropy over all B·T positions.](09b-pretraining/Module09b-Hero.png)
 
 Last week we built the transformer — a language model composed of stacked attention and neural networks. In terms of language model architecture, the transformer is the "final form". Every single major LLM in use today is built on top of the transformer. It will be the model we use for the remainder of the course.
 

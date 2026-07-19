@@ -2,7 +2,7 @@
 
 > **Question this module answers:** *Why does the model confidently invent things, and how do we measure it?*
 
-![Hero](15-evaluation/Module15-Hero.png)
+![Module 15 hero poster: fluent but false model claims beside a lighthouse path of evaluation steps, with panels for closed-set and open-set scoring, calibration, and a hallucination taxonomy.](15-evaluation/Module15-Hero.png)
 
 The last two modules have been about tuning a base model's behavior. This week is about measuring how well we did. It's a three-pronged evaluation: closed-set scoring for capability ranking, open-set scoring for behavior, and a calibration metric for "how well does the model know what it doesn't know?". The minimum viable harness for any serious model work. A single loss number alone won't cut it for assistant grade models.
 
@@ -113,14 +113,14 @@ Evaluation harnesses come in two flavors:
 1. **Closed-set eval.** Asks a question, then evaluates against a pre-determined set of multiple-choice answers.
 2. **Open-set eval.** Asks a question, then lets the model complete text normally. Grades the text response using a **matcher**. 
 
-![Closed-set (multiple choice) vs open-set (generation) eval. Two complementary harnesses, side by side. Closed-set: the model chooses from a finite list of candidate continuations; we score each candidate by sequence-log-probability, take argmax for the prediction, and softmax over scores for confidence. Open-set: the model generates freely, and a matcher decides whether the generated string matches any reference answer. A "key differences at a glance" panel pins the trade-off: closed-set is fast and calibration-friendly but bounded by the candidate list; open-set is realistic and uncalibrated by default. Use both — they expose different aspects of the same model.](15-evaluation/Module15-Closed.png)
+![Side-by-side comparison of the two harnesses: closed-set scores candidate continuations by sequence log-probability for a prediction and confidence, while open-set generates freely and grades with a matcher.](15-evaluation/Module15-Closed.png)
 *The two halves of the harness. Closed-set scoring is what builds calibration; open-set generation is what surfaces hallucination.*
 
 ### Closed-set eval
 
 Multiple-choice scoring is the cleanest eval primitive. Given a prompt and N candidate continuations, the model scores each based on sequence-log-probability. Up until now we've used models by *sampling*: enter the prompt, generate logits for next token, sample the next token, and repeat until the completion finishes. Multiple choice inverts this procedure. 
 
-![MultiChoice](15-evaluation/Module15-MultiChoice.png)
+![Step-by-step diagram of multiple-choice scoring: each candidate continuation's token log-probabilities are summed into a sequence log probability, then exponentiated and normalized across candidates to give relative probabilities.](15-evaluation/Module15-MultiChoice.png)
 *Tokenize each option, score, argmax for prediction, softmax for confidence.*
 
 We still generate logits for next token prediction. However instead of randomly sampling the next token, we already "know" the next tokens based on the pre-written answer. Let's say the question is "Who was the first president of the United States?". We start by generating the next-token logits from the prompt, applying softmax, and finding the probability assigned to the "George " token.
@@ -140,7 +140,7 @@ This recovers a "predictions weighted by certainty" measure. Not only do we know
 
 ### Calibration
 
-![Calibration](15-evaluation/Module15-Calibration.png)
+![Reliability diagram with ten confidence bins: blue empirical-accuracy bars against red mean-confidence dots and the perfect-calibration diagonal, alongside the ECE formula summarizing the gap as a single number.](15-evaluation/Module15-Calibration.png)
 *Calibration uses the model's internal logits to distinguish when the model is confidently wrong and when it's guessing*
 
 A non-obvious framing: multiple-choice is a diagnostic on the model's internal probability landscape. When you ask the model `Madrid? Lisbon? Barcelona? Berlin?` and read its softmax over options, you're querying the *implicit world model* the network has learned. A confident-and-correct model has world knowledge; a confident-and-wrong model has confidently-wrong world knowledge (the textbook hallucination case); an uncertain model is honest about not knowing. 
@@ -252,7 +252,7 @@ If closed-set eval is a multiple choice, open-set eval is the essay section of t
 
 Selecting the right matcher is the load-bearing decision. Choose well:
 
-![Matcher zoo — pick the right tool for the job. Four matchers, side by side. `exact_match`: character-equality, use for single-token answers and trailing-space sensitivity. `normalized_match`: case/punctuation/whitespace stripped, then equality — best for factual QA where surface form varies but content matches. `numeric_match`: extract first number from prediction, compare to first number in references within tolerance — best for arithmetic and quantitative answers. `contains_match`: any reference appears as a substring of the prediction (case-insensitive) — best for refusal probes and long-form outputs with target keywords. Each matcher has an "example: prediction vs references" panel showing one representative case with True/False; an "important" panel calls out asymmetric matchers like `contains_match` (search direction matters) and the silent-failure mode of using `numeric_match` with a regex that catches the wrong number.](15-evaluation/Module15-Matcher.png)
+![Four matchers compared side by side — exact_match, normalized_match, numeric_match, and contains_match — each with a representative example and its best use case, plus warnings about asymmetric and wrong-number failure modes.](15-evaluation/Module15-Matcher.png)
 *The lookup table for choosing a matcher. Picking the right matcher is half the eval design problem — the wrong matcher silently produces the wrong accuracy.*
 
 ```
@@ -270,7 +270,7 @@ By default open-set eval doesn't generate a confidence. However, it is possible 
 
 ### Hallucination categories
 
-![Hallucination taxonomy — not all wrongs are the same. Five columns. (1) Factual hallucination: the model states a fact that contradicts the real world ("the largest city in Spain is Lisbon"). Cause: gaps in pretraining knowledge, over-generalization. Detect with: ground-truth Q&A. (2) Contextual hallucination: the model contradicts a fact stated explicitly in the prompt ("Alice is 30. How old is Alice? → 25"). Cause: weak in-context attention, recency bias, insufficient reasoning capacity. Detect with: prompts containing explicit facts. (3) Intrinsic vs extrinsic: intrinsic — the wrong information was implied by but contradicts the prompt or training data; extrinsic — the wrong information has no support anywhere, the model invented it. (4) Refusal failure: the model answers a question it should refuse ("What's my mother's maiden name? → Smith"). Cause: training data lacks refusals; refusal behavior was never reinforced. (5) Format breakage: the model emits valid content but breaks the chat-template format (forgets `<|end|>`, emits stray `<|user|>`). A "key takeaway" panel below: a wrong answer is not one thing — labeling failure modes turns error analysis into a roadmap for better data, training, and evaluation.](15-evaluation/Module15-Hallucination.png)
+![Five-column hallucination taxonomy — factual, contextual, intrinsic vs extrinsic, refusal failure, and format breakage — each with an example, likely cause, and how to detect it.](15-evaluation/Module15-Hallucination.png)
 *Naming the failure mode is more useful than reporting raw accuracy: a 30% accuracy with 90% factual hallucinations needs different fixes than a 30% accuracy with 90% refusal failures.*
 
 When the eval harness flags a wrong answer, it's useful to classify *why* it was wrong. The categories below are loose but common:

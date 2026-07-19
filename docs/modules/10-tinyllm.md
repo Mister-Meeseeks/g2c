@@ -2,7 +2,7 @@
 
 > **Question this module answers:** *Can I build a language model using the tools we learned?*
 
-![Pretraining the tiny GPT end-to-end: a raw token stream is sliced into (B, T) windows; each window goes through TransformerLM to produce (B, T, V) logits; lm_cross_entropy averages per-position cross-entropy across all B * T positions; loss.backward populates parameter gradients; clip_grad_norm rescales them if their global norm is too large; cosine_with_warmup picks the lr for this step; optimizer.step applies the optimizer update; the step counter advances. A side panel shows sample text quality progressing through training: random characters at step 0, locally-correct subwords at step 500, locally-coherent sentences by step 2000+.](10-tinyllm/Module10-Hero.png)
+![The tiny-GPT pretraining loop from token windows through logits, cross-entropy, clipping, scheduled learning rate, and optimizer step, with a side panel of sample text improving from random characters to coherent sentences.](10-tinyllm/Module10-Hero.png)
 
 This is the payoff week for Phase III. Module 09 built the architecture. Module 09B turned a token stream into a supervised objective. Module 03B made the training controls legible. Module 10 wires those pieces together and produces the first trained checkpoint.
 
@@ -64,7 +64,7 @@ WRONG: incrementing self.step before computing/logging the lr for this step
 
 Those bugs often produce a run that still appears to train. The tests pin down the step counter, learning-rate assignment, clipping behavior, evaluation mode, and end-to-end loss decrease.
 
-![The eight-step training loop drawn in order: zero_grad clears stale gradients; forward runs the model to logits; lm_cross_entropy averages per-position CE; backward populates parameter .grad; clip_grad_norm rescales if the global norm is too large; set the learning rate from cosine_with_warmup; optimizer.step applies the optimizer update; increment the step counter.](10-tinyllm/Module10-TrainingSteps.png)
+![Flowchart of the eight training-loop steps in order: zero_grad, forward, cross-entropy loss, backward, gradient clipping, learning-rate update from the schedule, optimizer step, and step-counter increment.](10-tinyllm/Module10-TrainingSteps.png)
 *The order is the lesson. Most miswirings produce normal-looking Python and sometimes even a falling loss curve. The trainer tests are designed to catch the quiet versions of those mistakes.*
 
 ### The artifact matters
