@@ -10,11 +10,11 @@ You trained a model in Module 10, and now you need to actually generate text fro
 ## Before you start
 
 * *Review*
-	* [[09b-pretraining]] (logits)
-	* [[PyTorch Primer]]
+	* [09b-pretraining](09b-pretraining.md) (logits)
+	* [PyTorch Primer](../primers/pytorch.md)
 * *Finish* 
-	* `g2c/transformer` ([[09-transformer-block]]) 
-	* At least one trained model from [[10-tinyllm]] notebook (`ShakespeareLM`, `StoryLM`, or `TinyLLM`), or run `./baselm.sh` and explicitly load `BaseLM` for comparison
+	* `g2c/transformer` ([09-transformer-block](09-transformer-block.md)) 
+	* At least one trained model from [10-tinyllm](10-tinyllm.md) notebook (`ShakespeareLM`, `StoryLM`, or `TinyLLM`), or run `./baselm.sh` and explicitly load `BaseLM` for comparison
 * *Run*
 	* `./baselm.sh` (optional) if you want to run the notebook with a more powerful model
 

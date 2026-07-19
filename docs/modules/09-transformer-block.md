@@ -10,12 +10,12 @@ Transformers are layers of blocks. Each block is an attention sublayer and a nor
 ## Before you start
 
 * *Review* 
-	* [[08-multi-head-attention]] 
-	* [[PyTorch Primer]] if any PyTorch code feels unfamiliar or confusing
+	* [08-multi-head-attention](08-multi-head-attention.md) 
+	* [PyTorch Primer](../primers/pytorch.md) if any PyTorch code feels unfamiliar or confusing
 * *Finish*
-	* `g2c/nn` ([[03-nn]])
-	* `g2c/embeddings` ([[05-embeddings]])
-	* `g2c/attention` ([[08-multi-head-attention]] and [[07-attention]])
+	* `g2c/nn` ([03-nn](03-nn.md))
+	* `g2c/embeddings` ([05-embeddings](05-embeddings.md))
+	* `g2c/attention` ([08-multi-head-attention](08-multi-head-attention.md) and [07-attention](07-attention.md))
 ---
 ## Where this fits in
 

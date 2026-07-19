@@ -10,14 +10,14 @@ This week is about how to shape model **behavior**. The mechanics are minimal bu
 ## Before you start
 
 * *Review*
-	* [[10-tinyllm]] for the training-loop contract
-	* [[PyTorch Primer]] if any PyTorch code is unfamiliar or confusing
+	* [10-tinyllm](10-tinyllm.md) for the training-loop contract
+	* [PyTorch Primer](../primers/pytorch.md) if any PyTorch code is unfamiliar or confusing
 * *Finish*
-	* `g2c/nn` from [[03-nn]]
-	* `g2c/training` from [[03b-training]]
-	* `g2c/tokenizer` from [[04-tokenizer]]
-	* Either `./baselm.sh` for the default BaseLM path, or at least one trained model from [[10-tinyllm]] (`ShakespeareLM`, `StoryLM`, or `TinyLLM`) if you want the course-artifact path
-	* Trained tokenizer from [[04-tokenizer]] (alternatively run `./datasets.sh`)
+	* `g2c/nn` from [03-nn](03-nn.md)
+	* `g2c/training` from [03b-training](03b-training.md)
+	* `g2c/tokenizer` from [04-tokenizer](04-tokenizer.md)
+	* Either `./baselm.sh` for the default BaseLM path, or at least one trained model from [10-tinyllm](10-tinyllm.md) (`ShakespeareLM`, `StoryLM`, or `TinyLLM`) if you want the course-artifact path
+	* Trained tokenizer from [04-tokenizer](04-tokenizer.md) (alternatively run `./datasets.sh`)
 * *Run*
 	* `./baselm.sh` to setup the model we'll use for post-training
 

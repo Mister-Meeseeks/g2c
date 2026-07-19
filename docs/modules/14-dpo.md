@@ -10,12 +10,12 @@ Preference tuning changes the training signal from "imitate this answer" to "pre
 ## Before you start
 
 * *Review* 
-	* [[13-sft]] for the chat template and masking
-	* [[PyTorch Primer]] if any PyTorch code is unfamiliar or confusing
+	* [13-sft](13-sft.md) for the chat template and masking
+	* [PyTorch Primer](../primers/pytorch.md) if any PyTorch code is unfamiliar or confusing
 * *Finish* 
-	* `g2c/nn` from [[03-nn]] 
-	* `g2c/training` from [[03b-training]] 
-	* A post-SFT instruct model from the [[13-sft.md]] exercise notebook
+	* `g2c/nn` from [03-nn](03-nn.md) 
+	* `g2c/training` from [03b-training](03b-training.md) 
+	* A post-SFT instruct model from the [13-sft](13-sft.md) exercise notebook
 
 ---
 ## Where this fits in

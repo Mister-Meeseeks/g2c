@@ -12,12 +12,12 @@ The next step is turning the core architecture into an actual trained model. Tra
 ## Before you start
 
 * *Review* 
-	* [[03-nn]] on cross-entropy
-	* [[09-transformer-block]] on logit shapes
+	* [03-nn](03-nn.md) on cross-entropy
+	* [09-transformer-block](09-transformer-block.md) on logit shapes
 * *Finish* packages:
-	* `g2c/transformer` ([[09-transformer-block]])
-	* `g2c/nn` ([[03-nn]])
-	* `g2c/training` ([[03b-training]])
+	* `g2c/transformer` ([09-transformer-block](09-transformer-block.md))
+	* `g2c/nn` ([03-nn](03-nn.md))
+	* `g2c/training` ([03b-training](03b-training.md))
 
 ---
 ## Where this fits in

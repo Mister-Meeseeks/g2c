@@ -10,8 +10,8 @@ The last module handed us integer IDs. This module turns them into vectors. The 
 ## Before you start
 
 * *Review* high-school trig (sin/cos basics, multiple frequencies — nothing exotic)
-* *Review* [[PyTorch Primer]] if any PyTorch code looks unfamiliar or confusing
-* *Finish* the `g2c/nn` package implementation from [[03-nn]] — this module relies on it
+* *Review* [PyTorch Primer](../primers/pytorch.md) if any PyTorch code looks unfamiliar or confusing
+* *Finish* the `g2c/nn` package implementation from [03-nn](03-nn.md) — this module relies on it
 * *Run* `./datasets.sh glove` if you want the optional pretrained GloVe vector exercise
 
 ---

@@ -9,9 +9,9 @@ By the end of this module you will have a working chat assistant — and, more i
 ---
 ## Before you start
 
-* *Finish* `g2c/agent` from [[19-agent]] — `Assistant.chat` wraps `Agent.run`, threading conversation history into each turn
-* *Finish* `g2c/tools` from [[18-tools]] and `g2c/inference` from [[16-inference]] — the assistant supplies the tool registry and backend that the agent runs against
-* *Finish* `g2c/rag` from [[17-rag]] (optional) — only needed if you wire prefix-style retrieval into the assistant
+* *Finish* `g2c/agent` from [19-agent](19-agent.md) — `Assistant.chat` wraps `Agent.run`, threading conversation history into each turn
+* *Finish* `g2c/tools` from [18-tools](18-tools.md) and `g2c/inference` from [16-inference](16-inference.md) — the assistant supplies the tool registry and backend that the agent runs against
+* *Finish* `g2c/rag` from [17-rag](17-rag.md) (optional) — only needed if you wire prefix-style retrieval into the assistant
 
 ---
 ## Where this fits in

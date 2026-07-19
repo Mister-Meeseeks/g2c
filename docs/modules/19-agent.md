@@ -9,8 +9,8 @@
 ---
 ## Before you start
 
-* *Finish* `g2c/tools` from [[18-tools]] — the agent dispatches through `dispatch_tool_call`, reusing the registry, schema validation, and error wrapping
-* *Finish* `g2c/inference` from [[16-inference]] — the agent calls `backend.complete(...)` for every reasoning step
+* *Finish* `g2c/tools` from [18-tools](18-tools.md) — the agent dispatches through `dispatch_tool_call`, reusing the registry, schema validation, and error wrapping
+* *Finish* `g2c/inference` from [16-inference](16-inference.md) — the agent calls `backend.complete(...)` for every reasoning step
 * *Configure* ProdLM with `./prodlm.sh llama3.2:3b` or another local instruction model — the default live path needs a model that can follow ReAct-style formatting
 * *Refresh* JSON request/response patterns — tool inputs and tool results are structured data even when the model emits them as text
 * *Refresh* basic regular expressions — the parser extracts line-oriented markers from free-form model completions

@@ -9,8 +9,8 @@ In Module 01, every number was its own Python object; one operation at a time, h
 ---
 ## Before you start
 
-* **Review** [[00-prerequisite-review]] for matrix basics, and [[01-autodiff]] for autodiff mechanics
-* **Review** [[PyTorch Primer]] if any of the PyTorch code feels unfamiliar or confusing
+* **Review** [00-prerequisite-review](00-prerequisite-review.md) for matrix basics, and [01-autodiff](01-autodiff.md) for autodiff mechanics
+* **Review** [PyTorch Primer](../primers/pytorch.md) if any of the PyTorch code feels unfamiliar or confusing
 
 ---
 ## Where this fits in

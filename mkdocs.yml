@@ -40,7 +40,6 @@ theme:
 
 plugins:
   - search
-  - roamlinks
 
 extra_css:
   - stylesheets/extra.css

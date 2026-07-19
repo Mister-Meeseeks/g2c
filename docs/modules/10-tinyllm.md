@@ -10,13 +10,13 @@ This is the payoff week for Phase III. Module 09 built the architecture. Module 
 ## Before you start
 
 * *Review* 
-	* [[03b-training]] (AdamW, clipping, lr schedule)
-	* [[09b-pretraining]] (batching, cross-entropy)
+	* [03b-training](03b-training.md) (AdamW, clipping, lr schedule)
+	* [09b-pretraining](09b-pretraining.md) (batching, cross-entropy)
 * *Finish* 
-	* `g2c/transformer-block` from [[09-transformer-block]]
-	* `g2c/pretraining` from  [[09b-pretraining]]
-	* `g2c/training` from [[03b-training]]. 
-	* The trained tokenizers from [[04-tokenizer]] notebook (optional; `datasets.sh` will generate if missing)
+	* `g2c/transformer-block` from [09-transformer-block](09-transformer-block.md)
+	* `g2c/pretraining` from  [09b-pretraining](09b-pretraining.md)
+	* `g2c/training` from [03b-training](03b-training.md). 
+	* The trained tokenizers from [04-tokenizer](04-tokenizer.md) notebook (optional; `datasets.sh` will generate if missing)
 * *Run* `./datasets.sh` to pre-generate the datasets used for the large training runs.
 
 ---

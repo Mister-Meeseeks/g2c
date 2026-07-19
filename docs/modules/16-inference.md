@@ -9,7 +9,7 @@ Every module up to this point has been about making the model smarter. In this l
 ---
 ## Before you start
 
-* *Finish* `g2c/sampling` from [[11-sampling]] — `LocalTransformerBackend` drives the from-scratch model through `g2c.sampling.generate`
+* *Finish* `g2c/sampling` from [11-sampling](11-sampling.md) — `LocalTransformerBackend` drives the from-scratch model through `g2c.sampling.generate`
 * *Finish* at least one saved model artifact from Module 10, 13, or 14, or run `./baselm.sh` — `ArtifactBackend` lets you use course-trained and BaseLM artifacts through the inference API
 * *Install* Ollama. Use `./setup.sh` to verify installation.
 * *Configure* ProdLM with `./prodlm.sh` 
@@ -425,7 +425,7 @@ The notebook defaults to BaseLM for the artifact backend, automatically preferri
 
 1. **Backend smoke test.** Compare artifact and ProdLM completions on a few prompts.
 2. **Benchmark ProdLM.** Measure latency, throughput, and wall-clock behavior.
-3. **MLX backend.** Implement the same backend interface through MLX.
+3. **Optional MLX backend.** Extension path: install `mlx-lm` and implement the same backend interface through MLX.
 4. **ProdLM evaluation.** Re-run a Module 15-style eval through the ProdLM adapter.
 5. **Quantization quality.** Compare fp16 and fake-quantized BaseLM outputs.
 6. **Router backend.** Dispatch between a tiny artifact and ProdLM.

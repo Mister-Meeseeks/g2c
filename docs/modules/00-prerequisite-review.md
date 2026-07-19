@@ -283,7 +283,7 @@ You do not need to know all of PyTorch. You do need:
 - `torch.no_grad()` for inference
 - enough autograd familiarity to know that `loss.backward()` fills `.grad`
 
-This course includes a [[PyTorch Primer]] that can be used both as an in-depth review focused on the PyTorch features used in this course and as a general reference. 
+This course includes a [PyTorch Primer](../primers/pytorch.md) that can be used both as an in-depth review focused on the PyTorch features used in this course and as a general reference. 
 
 ---
 ## Setup

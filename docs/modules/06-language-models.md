@@ -9,9 +9,9 @@ The training-time path and the inference-time path use the same model with the s
 ---
 ## Before you start
 
-* *Review* [[03-nn]] for neural models, [[05-embeddings]] and [[04-tokenizer]] for representing language
-* *Review* [[PyTorch Primer]] if any PyTorch code feels unfamiliar or confusing
-* *Finish* the `g2c/nn` package from [[03-nn]] and the `g2c/embeddings` package from [[05-embeddings]] — this module relies on both
+* *Review* [03-nn](03-nn.md) for neural models, [05-embeddings](05-embeddings.md) and [04-tokenizer](04-tokenizer.md) for representing language
+* *Review* [PyTorch Primer](../primers/pytorch.md) if any PyTorch code feels unfamiliar or confusing
+* *Finish* the `g2c/nn` package from [03-nn](03-nn.md) and the `g2c/embeddings` package from [05-embeddings](05-embeddings.md) — this module relies on both
 
 ---
 ## Where this fits in

@@ -9,8 +9,8 @@ Tool use is the smallest possible architecture for "let the model affect the out
 ---
 ## Before you start
 
-* *Finish* `g2c/inference` from [[16-inference]] — the tool-use loop calls `backend.complete(...)` to produce each model turn
-* *Configure* a ProdLM backend from [[16-inference]] — tool calling works best with an instruction-tuned model that already understands structured tool-call formats
+* *Finish* `g2c/inference` from [16-inference](16-inference.md) — the tool-use loop calls `backend.complete(...)` to produce each model turn
+* *Configure* a ProdLM backend from [16-inference](16-inference.md) — tool calling works best with an instruction-tuned model that already understands structured tool-call formats
 * *Refresh* JSON objects and basic regex — tool calls are JSON blocks extracted from model text
 * *Skim* Python AST basics if you have not used `ast.parse` before — the calculator tool uses an AST whitelist instead of `eval`
 
@@ -83,7 +83,7 @@ One important point to internalize: this workflow means **assistant turns** are 
 
 For the tool harness and model to coordinate, it's essential that they're aligned on the *exact* format for tool calls and results. If they're not, the model will not emit tool calls in a way that's recognized by the harness, and the harness will not return tool results that are understood by the model.
 
-The exact format of the tool call and result doesn't actually matter. What matters is that the model is post-trained with high quality data to learn the exact format. This is essentially the same approach we used in [[13-sft]] post-training to teach the model the exact assistant role formatting.
+The exact format of the tool call and result doesn't actually matter. What matters is that the model is post-trained with high quality data to learn the exact format. This is essentially the same approach we used in [13-sft](13-sft.md) post-training to teach the model the exact assistant role formatting.
 
 For tool call protocols, three competing conventions have emerged:
 

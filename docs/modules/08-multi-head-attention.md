@@ -9,9 +9,9 @@ This week is short on content. Almost everything is already in place from the la
 ---
 ## Before you start
 
-* *Review* [[07-attention]] — multi-head is one structural change on top of single-head attention
-* *Finish* `g2c/attention` from [[07-attention]] — Module 08 extends the same package; M07's prerequisites cover the underlying deps
-* *Finish* `g2c/nn` from [[03-nn]], `g2c/embeddings` from [[05-embeddings]], and `g2c/tokenizer` from [[04-tokenizer]] — exercise 3 trains a tiny LM end-to-end and uses all three
+* *Review* [07-attention](07-attention.md) — multi-head is one structural change on top of single-head attention
+* *Finish* `g2c/attention` from [07-attention](07-attention.md) — Module 08 extends the same package; M07's prerequisites cover the underlying deps
+* *Finish* `g2c/nn` from [03-nn](03-nn.md), `g2c/embeddings` from [05-embeddings](05-embeddings.md), and `g2c/tokenizer` from [04-tokenizer](04-tokenizer.md) — exercise 3 trains a tiny LM end-to-end and uses all three
 
 ---
 ## Where this fits in

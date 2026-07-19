@@ -9,8 +9,8 @@ The same pipeline runs at every position in parallel, with the only per-position
 ---
 ## Before you start
 
-* *Review* [[06-language-models]] for the next-token-prediction setup that attention extends
-* *Finish* `g2c/nn` from [[03-nn]], `g2c/embeddings` from [[05-embeddings]], and `g2c/tokenizer` from [[04-tokenizer]] — exercise 3 trains a tiny LM end-to-end and needs all three
+* *Review* [06-language-models](06-language-models.md) for the next-token-prediction setup that attention extends
+* *Finish* `g2c/nn` from [03-nn](03-nn.md), `g2c/embeddings` from [05-embeddings](05-embeddings.md), and `g2c/tokenizer` from [04-tokenizer](04-tokenizer.md) — exercise 3 trains a tiny LM end-to-end and needs all three
 
 ---
 ## Where this fits in

@@ -9,9 +9,9 @@ The model architecture is only half the story. The training recipe controls whet
 ---
 ## Before you start
 
-* *Review* [[03-nn]] for neural net overview and [[02-tensors]] for tensor arithmetic.
-* *Review* [[PyTorch Primer]] if any PyTorch code feels unfamiliar or confusing.
-* *Finish* the `g2c/nn` implementation from [[03-nn]] — it's used in this section's exercises.
+* *Review* [03-nn](03-nn.md) for neural net overview and [02-tensors](02-tensors.md) for tensor arithmetic.
+* *Review* [PyTorch Primer](../primers/pytorch.md) if any PyTorch code feels unfamiliar or confusing.
+* *Finish* the `g2c/nn` implementation from [03-nn](03-nn.md) — it's used in this section's exercises.
 
 ---
 ## Where this fits

@@ -11,11 +11,11 @@ RAG is the smallest possible architecture for "give the model access to informat
 
 * *Review
 	* Numpy review  `np.linalg.norm`, `@` (matrix multiply), `np.argpartition`, `np.argsort`
-	* [[05-embeddings]] for embedding vectors, semantic geometry and cosine similarity
-	* [[13-sft]] for the general assistant prompt format. 
-	* [[16-inference]] for Ollama and the abstracted backend pattern
+	* [05-embeddings](05-embeddings.md) for embedding vectors, semantic geometry and cosine similarity
+	* [13-sft](13-sft.md) for the general assistant prompt format. 
+	* [16-inference](16-inference.md) for Ollama and the abstracted backend pattern
 * *Finish* 
-	* `g2c/inference` from [[16-inference]] 
+	* `g2c/inference` from [16-inference](16-inference.md) 
 * *Configure* Production embedding model with `./prodlm.sh` 
 
 ---
@@ -23,7 +23,7 @@ RAG is the smallest possible architecture for "give the model access to informat
 
 Modules 1–16 built a model and made it usable. The tiny model from Module 14 doesn't know facts — Module 16 fixed that by pivoting to a real pretrained model behind a unified `Backend`. But even a 7B-class model has gaps:
 
-At inference time, models can "know" facts in one of two ways. One is that they're already embedded in the weights of the model's internal world model. In [[15-evaluation]] we tested models on factual-recall questions like "What's the largest city in Spain?". Models learn facts like these during training, primarily pretraining.
+At inference time, models can "know" facts in one of two ways. One is that they're already embedded in the weights of the model's internal world model. In [15-evaluation](15-evaluation.md) we tested models on factual-recall questions like "What's the largest city in Spain?". Models learn facts like these during training, primarily pretraining.
 
 The other way a model can "know" a fact is when it's supplied in the prompt. We can also pose questions like "Kate is in 10th grade, how many years until she graduates high school?" To produce the right answer, the model must combine a fact supplied in the prompt ("Kate is in 10th grade") with a fact it hopefully learned in pretraining ("High school ends at grade 12").
 
@@ -49,7 +49,7 @@ The other way a model can "know" a fact is when it's supplied in the prompt. We 
    └───────────────────────────────────────────────────────────────────────┘
 ```
 
-**Retrieval** is how assistant systems bridge between a large collection of information in the form of a corpus (not necessarily the same corpus used in pretraining) and what information it selectively curates at [[16-inference]] time to actually put into the prompt.
+**Retrieval** is how assistant systems bridge between a large collection of information in the form of a corpus (not necessarily the same corpus used in pretraining) and what information it selectively curates at [16-inference](16-inference.md) time to actually put into the prompt.
 
 A simple example: "what did the president say in his speech last night?". First we know this fact isn't going to be internally known to the model, because it occurred too recently to be in the pretraining corpus. Therefore the assistant system must recall it from a retrieval corpus. If users frequently ask about current events, then it's reasonable for our assistant system's retrieval corpus to include something like BBC stories from the past week.
 
@@ -61,7 +61,7 @@ Retrieval makes assistant systems more intelligent by curating relevant informat
 
 The goal of retrieval is to query a large corpus for data relevant to an arbitrary prompt. The retrieval system doesn't need to "understand" the data. It just has to curate a small context-sized subset of the corpus based on relevance. 
 
-In [[05-embeddings]] we learned a technique for converting language into geometry. Embeddings project tokens into a vector in a high dimensional semantic space. **Vector retrieval** applies that same idea to whole chunks of text. 
+In [05-embeddings](05-embeddings.md) we learned a technique for converting language into geometry. Embeddings project tokens into a vector in a high dimensional semantic space. **Vector retrieval** applies that same idea to whole chunks of text. 
 
 Instead of asking the language model to internally remember every fact, we build a searchable map of an external corpus. Each chunk gets reduced to a vector by an embedding model. Each user question gets reduced to a vector by the same embedding model. Retrieval is then a nearest-neighbor problem: find the chunk vectors closest to the question vector.
 

@@ -10,13 +10,13 @@ The last two modules have been about tuning a base model's behavior. This week i
 ## Before you start
 
 * *Review*
-	* [[11-sampling]] for the difference between logits and text completion
-	* [[13-sft]] for format targeting
-	* [[14-dpo]] for the framework of how to score comparisons
-	* [[PyTorch Primer]] if any PyTorch code is unfamiliar or confusing
+	* [11-sampling](11-sampling.md) for the difference between logits and text completion
+	* [13-sft](13-sft.md) for format targeting
+	* [14-dpo](14-dpo.md) for the framework of how to score comparisons
+	* [PyTorch Primer](../primers/pytorch.md) if any PyTorch code is unfamiliar or confusing
 * *Finish*
-	* `g2c/sampling` from [[11-sampling]]
-	* [[14-dpo]] notebook. The eval harness will use the post-trained model generated and saved in this notebook
+	* `g2c/sampling` from [11-sampling](11-sampling.md)
+	* [14-dpo](14-dpo.md) notebook. The eval harness will use the post-trained model generated and saved in this notebook
 
 ---
 ## Where this fits in
