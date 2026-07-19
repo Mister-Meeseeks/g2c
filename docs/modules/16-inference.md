@@ -390,7 +390,7 @@ Total scaffolded code: roughly 50 lines across three function bodies (`LocalTran
 
 ## How to run the tests
 
-Tests live in `tests/test_inference.py`.
+Tests live in `tests/test_inference.py`. Initial state: 80 passed, 51 failed, 1 skipped.
 
 ```bash
 source .venv/bin/activate
@@ -511,7 +511,7 @@ Optional:
 
 - [ ] All tests in `tests/test_inference.py` pass. 
 - [ ] Ollama installed and ProdLM configured
-- [ ] Notebook: `notebooks/16-inference.ipynb`. 
+- [ ] Notebook: `notebooks/solutions/16-inference.ipynb`. 
 - [ ] **Inference-stack post-mortem** (Exercise 9) in `docs/inference-postmortem.md`. 3–4 paragraphs. The actual deliverable. Cover: what ran, where the gaps were, the cost-quality frontier, and which backend you're committing to for the rest of the course.
 - [ ] You can explain — out loud, without notes — the rough memory cost of running a 7B model at fp32 vs fp16 vs int8 vs int4, and which fits on a 16 GB Mac.
 - [ ] You can explain — out loud, without notes — what a KV cache is, why it's necessary at scale, and why the required course path relies on ProdLM's production cache instead of your toy cache.

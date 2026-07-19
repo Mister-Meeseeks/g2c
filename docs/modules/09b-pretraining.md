@@ -236,7 +236,7 @@ This module is CPU-light. The tensors are tiny, and no serious training run happ
 ## Deliverable checklist
 
 - [ ] `pytest tests/test_pretraining_setup.py` passes.
-- [ ] Notebook: `notebooks/clean/09b-pretraining.ipynb`.
+- [ ] Notebook: `notebooks/solutions/09b-pretraining.ipynb`.
 - [ ] You can explain why one `(B, T)` batch contains `B * T` next-token prediction examples.
 - [ ] You can implement `lm_cross_entropy` from the shape contract alone.
 - [ ] You can use `log(V)` as a step-0 sanity check before a Module 10 training run.

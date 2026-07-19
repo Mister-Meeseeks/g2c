@@ -346,6 +346,8 @@ Total scaffolded code: four function bodies — `validate_arguments`, `parse_too
 
 ## How to run the tests
 
+Tests live in `tests/test_tools.py`. Initial state: 84 passed, 105 failed.
+
 ```bash
 source .venv/bin/activate
 
@@ -431,7 +433,7 @@ Optional:
 
 - [ ] All tests in `tests/test_tools.py` pass: 172 tests, all green.
 - [ ] Ollama running with a tool-calling-capable chat model. `ollama list` shows your chosen model.
-- [ ] Notebook: `notebooks/18-tools.ipynb`. 
+- [ ] Notebook: `notebooks/solutions/18-tools.ipynb`. 
 - [ ] **Tool-use post-mortem** (Exercise 9) in 3-4 paragraphs. The main deliverable.
 - [ ] You can explain — out loud, without notes — why errors are surfaced as `ToolResult(is_error=True)` instead of raised exceptions.
 - [ ] You can explain — out loud, without notes — why AST-walking is structurally safer than `eval()` with restricted globals.

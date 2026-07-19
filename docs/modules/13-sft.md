@@ -297,9 +297,11 @@ Total scaffolded code: roughly 50 lines across five locations.
 
 ## How to run the tests
 
-Tests live in `tests/test_sft.py`. 
+Tests live in `tests/test_sft.py`. Initial state: 10 passed, 34 failed. 
 
 ```bash
+source .venv/bin/activate
+
 pytest tests/test_sft.py                       # all module-13 tests
 pytest tests/test_sft.py -x                    # stop at first failure
 pytest tests/test_sft.py -k chat_template      # template tests only

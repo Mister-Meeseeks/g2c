@@ -230,7 +230,7 @@ Optional:
 ## Deliverable checklist
 
 - [ ] All tests in `tests/test_attention.py` pass.
-- [ ] `notebooks/clean/07-attention.ipynb`: attention heatmaps for the two "the animal didn't cross the street..." sentences using your `attention_weights` method.
+- [ ] `notebooks/solutions/07-attention.ipynb`: attention heatmaps for the two "the animal didn't cross the street..." sentences using your `attention_weights` method.
 - [ ] Strip-mask experiment: side-by-side training runs of a tiny attention-only LM with `causal=True` and `causal=False`. Loss curves saved; the catastrophic collapse with `causal=False` is visible.
 - [ ] You can explain — out loud, without notes — why dividing by `sqrt(D)` is necessary and what specifically goes wrong without it.
 - [ ] You can explain — out loud, without notes — what a "permutation-equivariant layer" means and why self-attention is one.

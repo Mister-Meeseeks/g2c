@@ -138,7 +138,7 @@ A linear layer (`y = x @ W + b`) and a numerically stable softmax. Together they
 
 ## How to run the tests
 
-A pytest suite is in `tests/test_tensors.py`. Initial state: a small number of construction/repr tests pass; the rest fail informatively until you implement.
+A pytest suite is in `tests/test_tensors.py`. Initial state: 4 passed, 33 failed. The construction/repr tests pass; the rest fail informatively until you implement.
 
 ```bash
 source .venv/bin/activate

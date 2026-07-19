@@ -184,9 +184,10 @@ also ranks text chunks by vector similarity.
 
 ## How to run the tests
 
-Tests live in `tests/test_embeddings.py`. Construction tests pass from the
-start; lookup forwards, positional tables, RoPE, skip-gram pairing, and vector
-similarity turn green as you implement the TODOs.
+Tests live in `tests/test_embeddings.py`. Initial state: 10 passed, 30 failed.
+Construction tests pass from the start; lookup forwards, positional tables,
+RoPE, skip-gram pairing, and vector similarity turn green as you implement the
+TODOs.
 
 ```bash
 source .venv/bin/activate

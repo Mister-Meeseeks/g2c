@@ -169,7 +169,7 @@ Roughly 20 lines of real code split across the two scaffolded methods. The conce
 
 ## How to run the tests
 
-Tests live in `tests/test_multi_head_attention.py`. Initial state: 11 passed (construction + `causal_mask` + parameter counts), 16 failed.
+Tests live in `tests/test_multi_head_attention.py`. Initial state: 13 passed (construction + `causal_mask` + parameter counts), 17 failed.
 
 ```bash
 source .venv/bin/activate
@@ -248,7 +248,7 @@ Optional:
 ## Deliverable checklist
 
 - [ ] All tests in `tests/test_multi_head_attention.py` pass.
-- [ ] Notebook: `notebooks/clean/08-multi-head-attention.ipynb`. Train tiny LMs at `num_heads = 1, 4, 8` with fixed `embedding_dim = 64` and matched training budgets; plot validation loss curves on the same axes.
+- [ ] Notebook: `notebooks/solutions/08-multi-head-attention.ipynb`. Train tiny LMs at `num_heads = 1, 4, 8` with fixed `embedding_dim = 64` and matched training budgets; plot validation loss curves on the same axes.
 - [ ] Notebook: per-head attention visualization on a chosen sentence using one of the trained models — `H` heatmaps in a grid.
 - [ ] You can explain — out loud, without notes — why the scaling factor is `√head_dim` rather than `√D`, and what specifically goes wrong if you use `√D`.
 - [ ] You can explain — out loud, without notes — why the reshape `view(B, T, H, head_dim).transpose(1, 2)` is the right operation, and what would go wrong with `view(B, T, head_dim, H)`.

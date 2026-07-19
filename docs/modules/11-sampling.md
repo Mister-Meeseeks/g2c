@@ -317,7 +317,7 @@ Total scaffolded code: roughly 30 lines across five functions. The math is light
 
 ## How to run the tests
 
-Tests live in `tests/test_sampling.py`. Initial state: 0 passed, 43 failed.
+Tests live in `tests/test_sampling.py`. Initial state: 1 passed, 47 failed.
 
 ```bash
 source .venv/bin/activate

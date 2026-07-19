@@ -366,7 +366,7 @@ Total scaffolded code: roughly 50 lines across two function bodies. The lesson i
 
 ## How to run the tests
 
-Tests live in `tests/test_assistant.py`. On the clean scaffold, boilerplate tests pass and the scaffolded behavior tests fail until you implement `Conversation.format_for_prompt` and `Assistant.chat`.
+Tests live in `tests/test_assistant.py`. Initial state: 74 passed, 58 failed. Boilerplate tests pass on the clean scaffold; the behavior tests fail until you implement `Conversation.format_for_prompt` and `Assistant.chat`.
 
 ```bash
 source .venv/bin/activate
@@ -469,8 +469,8 @@ Optional:
 
 - [ ] All tests in `tests/test_assistant.py` pass.
 - [ ] ProdLM configured. `./prodlm.sh llama3.2:3b` is the recommended fast default.
-- [ ] Notebook: `notebooks/20-capstone.ipynb`. 
-- [ ] **Eval suite**: `notebooks/20-eval-cases.py` (or similar) with 5-15 `EvalCase`s. Pass rate ≥ 80% on your assistant configuration.
+- [ ] Notebook: `notebooks/solutions/20-capstone.ipynb`. 
+- [ ] **Eval suite**: `data/work/module20/eval-cases.py` (or similar) with 5-15 `EvalCase`s. Pass rate ≥ 80% on your assistant configuration.
 - [ ] **Failure-mode catalog** (Exercise 8) in `docs/capstone-failure-modes.md`. Five failure modes, each with a transcript, localization, and proposed mitigation.
 - [ ] **The post-mortem** (Exercise 10) at `docs/capstone-postmortem.md`. The actual deliverable. 1500-3000 words. The required sections are listed in Exercise 10.
 - [ ] CLI wrapper script that you've actually used for a work session. Doesn't need to be polished; needs to exist.

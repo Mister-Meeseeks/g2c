@@ -159,7 +159,7 @@ ids = tok.encode("<|user|>\nHello<|end|>")
 
 ## How to run the tests
 
-Tests live in `tests/test_tokenizer.py`. Initial state: 19 passed, 51 failed. The construction and train-validation tests pass; the BPE algorithm tests fail with `NotImplementedError` until you fill in the TODOs.
+Tests live in `tests/test_tokenizer.py`. Initial state: 23 passed, 47 failed. The construction and train-validation tests pass; the BPE algorithm tests fail with `NotImplementedError` until you fill in the TODOs.
 
 ```bash
 source .venv/bin/activate

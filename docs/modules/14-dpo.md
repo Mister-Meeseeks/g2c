@@ -358,9 +358,11 @@ Total scaffolded code: roughly 60 lines across four locations. The math is light
 
 ## How to run the tests
 
-Tests live in `tests/test_dpo.py`.
+Tests live in `tests/test_dpo.py`. Initial state: 10 passed, 33 failed.
 
 ```bash
+source .venv/bin/activate
+
 pytest tests/test_dpo.py                       # all module-14 tests
 pytest tests/test_dpo.py -x                    # stop at first failure
 pytest tests/test_dpo.py -k pad_and_collate    # collator tests only

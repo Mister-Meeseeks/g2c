@@ -470,7 +470,7 @@ Total scaffolded code: four function bodies — `parse_react_step`, `Scratchpad.
 
 ## How to run the tests
 
-Tests live in `tests/test_agent.py`. Initial state: 61 tests pass, 93 tests fail
+Tests live in `tests/test_agent.py`. Initial state: 61 passed, 93 failed.
 
 ```bash
 source .venv/bin/activate
@@ -568,9 +568,9 @@ Optional:
 
 ## Deliverable checklist
 
-- [ ] All tests in `tests/test_agent.py` pass: 144 tests, all green.
+- [ ] All tests in `tests/test_agent.py` pass: 154 tests, all green.
 - [ ] ProdLM configured and Ollama running. `ollama list` shows `llama3.2:3b` (or your chosen model).
-- [ ] Notebook: `notebooks/19-agent.ipynb`. Wires `Agent` + a multi-tool registry, runs Exercises 1, 2, 3, 4 with output cells visible.
+- [ ] Notebook: `notebooks/solutions/19-agent.ipynb`. Wires `Agent` + a multi-tool registry, runs Exercises 1, 2, 3, 4 with output cells visible.
 - [ ] **Failure-mode catalog** (Exercise 9) in `docs/agent-failure-modes.md`. Three failure modes, each with a transcript, hypothesis, and proposed mitigation. The actual deliverable.
 - [ ] You can explain — out loud, without notes — why the parser must use `[ \t]*` instead of `\s*` after the markers' colons.
 - [ ] You can explain — out loud, without notes — why Final Answer wins over Action when both appear in the same completion.

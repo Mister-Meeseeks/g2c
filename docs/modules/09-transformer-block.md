@@ -291,7 +291,7 @@ Total scaffolded code: roughly 20 lines split across four `forward` methods. Mos
 
 ## How to run the tests
 
-Tests live in `tests/test_transformer.py`. Initial state: 22 passed (all the construction, parameter-count, and init-value checks), 22 failed.
+Tests live in `tests/test_transformer.py`. Initial state: 24 passed (construction, parameter-count, and init-value checks), 26 failed.
 
 ```bash
 source .venv/bin/activate
@@ -378,7 +378,7 @@ Optional:
 ## Deliverable checklist
 
 - [ ] All tests in `tests/test_transformer.py` pass.
-- [ ] Notebook: `notebooks/clean/09-transformer-block.ipynb`. Work through pre-vs-post norm, residual ablations, shape checks, and parameter-budget sanity checks.
+- [ ] Notebook: `notebooks/solutions/09-transformer-block.ipynb`. Work through pre-vs-post norm, residual ablations, shape checks, and parameter-budget sanity checks.
 - [ ] You can explain — out loud, without notes — why residual connections make deep transformers trainable, in both the gradient-flow and residual-stream framings.
 - [ ] You can explain — out loud, without notes — what LayerNorm normalizes over, and why batch size doesn't affect its output.
 - [ ] You can explain — out loud, without notes — the difference between pre-norm and post-norm, and why pre-norm is the modern default.

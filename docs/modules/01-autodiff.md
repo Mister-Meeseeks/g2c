@@ -158,9 +158,10 @@ Keep the implementation small — well under 100 lines. Legibility wins.
 
 ## How to run the tests
 
-Tests are in `tests/test_autodiff.py`. The construction tests pass from the
-start; the operation, backward, gradient-checking, and scalar-XOR helper tests
-turn green as you implement the TODOs.
+Tests are in `tests/test_autodiff.py`. Initial state: 6 passed, 48 failed. The
+construction tests pass from the start; the operation, backward,
+gradient-checking, and scalar-XOR helper tests turn green as you implement the
+TODOs.
 
 ```bash
 source .venv/bin/activate

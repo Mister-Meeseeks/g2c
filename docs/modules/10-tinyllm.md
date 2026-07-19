@@ -217,7 +217,7 @@ Secondary:
 ## Deliverable checklist
 
 - [ ] All tests in `tests/test_pretraining.py` pass.
-- [ ] Notebook: `notebooks/clean/10-tinyllm.ipynb`.
+- [ ] Notebook: `notebooks/solutions/10-tinyllm.ipynb`.
 - [ ] A tiny trained checkpoint is saved locally.
 - [ ] StoryLM scale-up checkpoints can be interrupted, sampled, and resumed.
 - [ ] Training history includes train loss, validation loss, learning rate, and gradient norm.

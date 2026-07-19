@@ -407,7 +407,7 @@ Total scaffolded code: roughly 60 lines across four function bodies. Everything 
 
 ## How to run the tests
 
-Tests live in `tests/test_rag.py`. Initial state: 73 tests pass, 69 tests fail
+Tests live in `tests/test_rag.py`. Initial state: 73 passed, 69 failed.
 
 ```bash
 source .venv/bin/activate
@@ -494,7 +494,7 @@ Optional:
 
 - [ ] All tests in `tests/test_rag.py` pass
 - [ ] Ollama running with at least one embedding model pulled. `ollama list` shows `nomic-embed-text` (or your chosen embedder).
-- [ ] Notebook: `notebooks/17-rag.ipynb` complete
+- [ ] Notebook: `notebooks/solutions/17-rag.ipynb` complete
 - [ ] **RAG post-mortem** (Exercise 9) in `docs/rag-postmortem.md`. 3–4 paragraphs. The actual deliverable — what you indexed, what worked, what broke, what you'd build next.
 - [ ] You can explain — out loud, without notes — why retrieval quality dominates RAG quality, and why improving the retriever buys more than improving the model.
 - [ ] You can explain — out loud, without notes — what cosine similarity means as a dot product, and why every embedder in this module L2-normalizes its rows.

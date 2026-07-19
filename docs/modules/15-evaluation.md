@@ -447,7 +447,7 @@ Roughly 80 lines across seven functions.
 
 ## How to run the tests
 
-Tests live in `tests/test_eval.py`. Initial state: 19 tests pass, 70 tests fail
+Tests live in `tests/test_eval.py`. Initial state: 19 passed, 70 failed.
 
 ```bash
 source .venv/bin/activate
@@ -537,7 +537,7 @@ Optional:
 - [ ] Hand-authored multiple-choice eval set of 60+ questions in `data/eval/multiple_choice.json`.
 - [ ] Hand-authored generation eval set of 20+ questions in `data/eval/generation.json`, with categorized expected-failure modes.
 - [ ] Hand-authored arithmetic eval set of 50 questions in `data/eval/arithmetic.json`, spanning 1+1-digit through 3+3-digit.
-- [ ] Notebook: `notebooks/15-evaluation.ipynb`. Runs the multiple-choice and generation harnesses on your DPO'd model. 
+- [ ] Notebook: `notebooks/solutions/15-evaluation.ipynb`. Runs the multiple-choice and generation harnesses on your DPO'd model. 
 - [ ] **Written characterization** of your model's typical failure modes. 2–3 paragraphs. Cover: what it can do (with eval numbers), what it cannot do (with eval numbers), how it fails (categorized), and how well-calibrated it is.
 - [ ] You can explain — out loud, without notes — the difference between accuracy and calibration, and why a model can be highly accurate yet poorly calibrated.
 - [ ] You can explain — out loud, without notes — the multiple-choice scoring procedure.

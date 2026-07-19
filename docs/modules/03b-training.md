@@ -14,7 +14,7 @@ The model architecture is only half the story. The training recipe controls whet
 * *Finish* the `g2c/nn` implementation from [03-nn](03-nn.md) — it's used in this section's exercises.
 
 ---
-## Where this fits
+## Where this fits in
 
 Module 03 taught the basic loop:
 
@@ -244,7 +244,7 @@ def cosine_with_warmup(
 
 ## How to run the tests
 
-Tests live in `tests/test_training.py`. Initial state: 7 passed, 14 failed.
+Tests live in `tests/test_training.py`. Initial state: 2 passed, 19 failed.
 
 ```bash
 source .venv/bin/activate
