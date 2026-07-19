@@ -46,6 +46,15 @@ warn_if_notebook_kernels_running() {
     printf "\n"
 }
 
+tinystories_ready() {
+    # Any TinyStories tier on disk satisfies Modules 10/12 — the notebooks
+    # load the strongest local artifact they can find. Raw shards (full or
+    # 100MB sample) or a built tokenized corpus all count.
+    compgen -G "data/datasets/tinystories/TinyStories-train-*.gz" >/dev/null 2>&1 && return 0
+    compgen -G "data/datasets/tinystories-100MB/TinyStories-train-*.gz" >/dev/null 2>&1 && return 0
+    compgen -G "data/cache/token-corpus/StoryLM-tinystories-*" >/dev/null 2>&1
+}
+
 usage() {
     cat <<'EOF'
 Usage: ./notebook.sh <module> [open_notebook.py args]
@@ -71,14 +80,16 @@ Flags:
 Module → extras mapping:
   04            ./datasets.sh --tiny
   05            ./datasets.sh glove
-  10, 12        ./datasets.sh --small
+  10, 12        ./datasets.sh --small (only when no TinyStories data exists)
   13, 14, 15    ./baselm.sh
   16            ./baselm.sh + ./prodlm.sh
   17-20         ./prodlm.sh
   (others)      no extras
 
-Modules 10/12 stage the Standard-track datasets. For the full track, run
-./datasets.sh (no args) yourself before launching.
+Modules 10/12 stage the Standard-track datasets only when no TinyStories
+tier is on disk yet — a tier you already prepared (e.g. --tiny) is
+respected. For the full track, run ./datasets.sh (no args) yourself
+before launching.
 
 Examples:
   ./notebook.sh 01
@@ -154,10 +165,10 @@ case "$MODULE_NORM" in
     08)  TEST_FILES=("tests/test_multi_head_attention.py") ;;
     09)  TEST_FILES=("tests/test_transformer.py") ;;
     09b) TEST_FILES=("tests/test_pretraining_setup.py" "tests/test_pretraining.py") ;;
-    10)  EXTRAS+=("./datasets.sh --small")
+    10)  if ! tinystories_ready; then EXTRAS+=("./datasets.sh --small"); fi
          TEST_FILES=("tests/test_training.py" "tests/test_pretraining_setup.py" "tests/test_pretraining.py") ;;
     11)  TEST_FILES=("tests/test_sampling.py") ;;
-    12)  EXTRAS+=("./datasets.sh --small") ;;
+    12)  if ! tinystories_ready; then EXTRAS+=("./datasets.sh --small"); fi ;;
     13)  EXTRAS+=("./baselm.sh")
          TEST_FILES=("tests/test_sft.py") ;;
     14)  EXTRAS+=("./baselm.sh")
