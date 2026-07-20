@@ -429,7 +429,7 @@ The notebook defaults to BaseLM for the artifact backend, automatically preferri
 4. **ProdLM evaluation.** Re-run a Module 15-style eval through the ProdLM adapter.
 5. **Quantization quality.** Compare fp16 and fake-quantized BaseLM outputs.
 6. **Router backend.** Dispatch between a tiny artifact and ProdLM.
-7. **Optional KV cache.** Implement the toy cached forward path.
+7. **Optional KV cache.** The toy cached path (`KVCache`, `forward_cached`, `generate_cached`) ships implemented — read it, then verify it against your own uncached code with `pytest -k cached`. The tests assert the cached and uncached paths produce identical logits, so they only pass once your Module 08–11 implementations are correct.
 8. **Optional streaming.** Add a streaming completion method.
 9. **Inference post-mortem.** Summarize speed, quality, memory, and routing tradeoffs.
 
@@ -514,5 +514,5 @@ Optional:
 - [ ] Notebook: `notebooks/solutions/16-inference.ipynb`. 
 - [ ] **Inference-stack post-mortem** (Exercise 9) in `docs/inference-postmortem.md`. 3–4 paragraphs. The actual deliverable. Cover: what ran, where the gaps were, the cost-quality frontier, and which backend you're committing to for the rest of the course.
 - [ ] You can explain — out loud, without notes — the rough memory cost of running a 7B model at fp32 vs fp16 vs int8 vs int4, and which fits on a 16 GB Mac.
-- [ ] You can explain — out loud, without notes — what a KV cache is, why it's necessary at scale, and why the required course path relies on ProdLM's production cache instead of your toy cache.
+- [ ] You can explain — out loud, without notes — what a KV cache is, why it's necessary at scale, and why the required course path relies on ProdLM's production cache instead of the course's toy cache.
 - [ ] You can explain — out loud, without notes — the difference between wall-clock latency (what `InferenceResult.latency_ms` records) and server-reported latency (what Ollama's `total_duration` reports), and what each is good for.

@@ -123,7 +123,7 @@ The hyperparameters below are not universal rules. They are practical starting p
 
 - **50–500 examples.** Quality matters much more than quantity. Counterintuitively, larger models need *fewer* examples (but higher quality) since they tend to have more abilities.
 - **100–1,000 optimizer steps.** The main danger is overfitting from the model memorizing a tiny dataset. Watch samples and validation loss closely for early stopping.
-- **Learning rate at 5–20% of pretraining.** Larger models are more sensitive to regression from aggressive SFT, and should start lower.
+- **Learning rate at 5–20% of pretraining.** Larger models are more sensitive to regression from aggressive SFT, and should start lower. This is a fraction of *the base model's own pretraining lr*, so the right absolute value moves with your base. The notebook's default `max_lr` of `3e-4` is calibrated for BaseLM: it matches the SFT learning rate Hugging Face used for SmolLM's own instruct variants. The course-trained checkpoints, though, were pretrained at `3e-4` themselves — so if you point `MODEL_SELECTION` at one of those, that same default is *full pretraining lr*, roughly 10x higher than the rule above. Scale down to about `3e-5`.
 
 ```
    ┌─────────────────────────────────────────────────────────────────────┐
@@ -203,8 +203,8 @@ The visible failure modes of toy-scale SFT, in roughly the order you'll encounte
    │   CATASTROPHIC FORGETTING                                      │
    │   Model degrades at SFT objective AND base objective. Loss     │
    │   curve looks fine; outputs are gibberish. Symptom: too many   │
-   │   SFT steps at too high lr. Fix: lower both; we recommend      │
-   │   500–1000 steps at 3e-4.                                      │
+   │   SFT steps at too high lr. Fix: lower both — halve the lr     │
+   │   and shorten the run before changing anything else.           │
    └────────────────────────────────────────────────────────────────┘
 
    ┌────────────────────────────────────────────────────────────────┐
@@ -218,7 +218,7 @@ The visible failure modes of toy-scale SFT, in roughly the order you'll encounte
 
    ┌────────────────────────────────────────────────────────────────┐
    │   CONFIDENT HALLUCINATION                                      │
-   │   The format is perfect; the content is invented. The 20M      │
+   │   The format is perfect; the content is invented. The 30M      │
    │   model "knows" the capital of France is "Lyon." Symptom:      │
    │   fluent-sounding wrong answers. Fix: cannot — this is a       │
    │   capability problem, not a format problem. Module 15 returns  │
@@ -357,11 +357,11 @@ SFT is much less compute-hungry than pretraining — typically minutes, not hour
      ├────────┼────────────┼────────────┼────────────┤
      │  1M    │   ~2 min   │   ~1 min   │   <1 min   │
      │  5M    │   ~5 min   │   ~3 min   │   ~2 min   │
-     │  20M   │  ~15 min   │   ~7 min   │   ~5 min   │
+     │  30M   │  ~15 min   │   ~7 min   │   ~5 min   │
      └────────┴────────────┴────────────┴────────────┘
   ```
 
-  The 20M model's SFT comfortably fits in a coffee-break window. Run it on the largest checkpoint you have — quality scales with base-model size, and SFT is cheap enough that there's no reason to start small.
+  The 30M model's SFT comfortably fits in a coffee-break window. Run it on the largest checkpoint you have — quality scales with base-model size, and SFT is cheap enough that there's no reason to start small.
 
 - **Memory.** SFT memory cost is the same as pretraining training at the same `(B, T)`. No new tensors of meaningful size.
 

@@ -486,11 +486,13 @@ Modules 16-18 (inference, RAG, tools) keep the runtime harness backend-agnostic:
 the same messages, tools, and evals can run against TinyLLM/StoryLM when useful,
 but ProdLM is the default backend for actually usable assistant behavior.
 
-Modules 19 and 20 (agent loops, capstone) are **ProdLM-only**. Self-trained
-models are not currently a comparison backend for these modules because tiny
-from-scratch models do not reliably follow the ReAct or multi-turn assistant
-formats the loops depend on. The deterministic cells in both notebooks use a
-`FakeBackend` for architecture testing; the live cells use ProdLM exclusively.
+Modules 19 and 20 (agent loops, capstone) default to **ProdLM**. Self-trained
+models are exposed as a comparison backend via `MODEL_SELECTION` — the loader
+prefers `-DPO`, then `-SFT`, then the base artifact — but they are not a viable
+main backend, because tiny from-scratch models do not reliably follow the ReAct
+or multi-turn assistant formats the loops depend on. Characterizing that failure
+boundary is the point of the capstone's comparison exercise. The deterministic
+cells in both notebooks use a `FakeBackend` for architecture testing.
 
 ## Pedagogical Rules
 
