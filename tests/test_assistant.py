@@ -45,16 +45,17 @@ from g2c.assistant import (
     Assistant,
     AssistantConfig,
     AssistantError,
+    AssistantEvalReport,
     AssistantTurn,
     Conversation,
     EvalCase,
     EvalCaseResult,
-    EvalReport,
     Message,
     run_cli,
     run_evaluation,
 )
 from g2c.assistant.conversation import ASSISTANT_ROLE, USER_ROLE
+from g2c.eval.match import contains_match, normalized_match
 from g2c.inference import Backend, BackendInfo, InferenceResult
 from g2c.tools import ToolRegistry, make_calculator
 
@@ -1178,10 +1179,11 @@ class TestAssistantChatErrorHandling:
 
 class TestEvalCase:
     def test_construction(self) -> None:
-        c = EvalCase(name="basic", question="what is 2+2?", expected_substring="4")
+        c = EvalCase(name="basic", question="what is 2+2?", expected_answer="4")
         assert c.name == "basic"
         assert c.question == "what is 2+2?"
-        assert c.expected_substring == "4"
+        assert c.expected_answer == "4"
+        assert c.references() == ["4"]
         assert c.expected_tool is None
         assert c.rag is None
 
@@ -1203,6 +1205,17 @@ class TestEvalCase:
             c.name = "y"  # type: ignore[misc]
 
 
+def _contains(prediction: str, references: list[str]) -> bool:
+    """Stand-in matcher.
+
+    The harness tests below exercise ordering, reset, tool checks, and report
+    math -- not matching. Passing an explicit matcher keeps them independent of
+    whether Module 15's `contains_match` is implemented yet. The default
+    matcher is pinned separately in TestEvalCaseMatcherIntegration.
+    """
+    return any(r.lower() in prediction.lower() for r in references)
+
+
 class TestEvalSuite:
     def test_passes_when_substring_matches(self) -> None:
         cfg = AssistantConfig(plan=False)
@@ -1210,7 +1223,7 @@ class TestEvalSuite:
             [_final_answer_completion("the answer is 4")] * 2, config=cfg
         )
         cases = [
-            EvalCase(name="c1", question="2+2?", expected_substring="4"),
+            EvalCase(name="c1", question="2+2?", expected_answer="4", matcher=_contains),
         ]
         report = run_evaluation(a, cases)
         assert report.n_passed == 1
@@ -1223,11 +1236,11 @@ class TestEvalSuite:
             [_final_answer_completion("I don't know")] * 2, config=cfg
         )
         cases = [
-            EvalCase(name="c1", question="2+2?", expected_substring="4"),
+            EvalCase(name="c1", question="2+2?", expected_answer="4", matcher=_contains),
         ]
         report = run_evaluation(a, cases)
         assert report.n_failed == 1
-        assert "expected substring" in report.failures[0].failure_reason.lower()
+        assert "_contains" in report.failures[0].failure_reason
 
     def test_fails_on_no_final_answer(self) -> None:
         cfg = AssistantConfig(plan=False, max_steps=1, loop_detection=False)
@@ -1238,7 +1251,7 @@ class TestEvalSuite:
             registry=registry,
         )
         cases = [
-            EvalCase(name="c1", question="2+2?", expected_substring="4"),
+            EvalCase(name="c1", question="2+2?", expected_answer="4", matcher=_contains),
         ]
         report = run_evaluation(a, cases)
         assert report.n_failed == 1
@@ -1258,7 +1271,7 @@ class TestEvalSuite:
             EvalCase(
                 name="c1",
                 question="2+2?",
-                expected_substring="4",
+                expected_answer="4", matcher=_contains,
                 expected_tool="calc",
             ),
         ]
@@ -1274,7 +1287,7 @@ class TestEvalSuite:
             EvalCase(
                 name="c1",
                 question="2+2?",
-                expected_substring="4",
+                expected_answer="4", matcher=_contains,
                 expected_tool="calc",
             ),
         ]
@@ -1288,7 +1301,7 @@ class TestEvalSuite:
             [_final_answer_completion("Madrid is the capital")], config=cfg
         )
         cases = [
-            EvalCase(name="c1", question="capital?", expected_substring="MADRID"),
+            EvalCase(name="c1", question="capital?", expected_answer="MADRID", matcher=_contains),
         ]
         report = run_evaluation(a, cases)
         assert report.n_passed == 1
@@ -1299,7 +1312,7 @@ class TestEvalSuite:
             [_final_answer_completion(f"a{i}") for i in range(3)], config=cfg
         )
         cases = [
-            EvalCase(name=f"c{i}", question=f"q{i}", expected_substring=f"a{i}")
+            EvalCase(name=f"c{i}", question=f"q{i}", expected_answer=f"a{i}", matcher=_contains)
             for i in range(3)
         ]
         report = run_evaluation(a, cases, reset_each=True)
@@ -1314,7 +1327,7 @@ class TestEvalSuite:
             [_final_answer_completion(f"a{i}") for i in range(3)], config=cfg
         )
         cases = [
-            EvalCase(name=f"c{i}", question=f"q{i}", expected_substring=f"a{i}")
+            EvalCase(name=f"c{i}", question=f"q{i}", expected_answer=f"a{i}", matcher=_contains)
             for i in range(3)
         ]
         run_evaluation(a, cases, reset_each=False)
@@ -1327,8 +1340,8 @@ class TestEvalSuite:
             [_final_answer_completion("42")] * 3, config=cfg
         )
         cases = [
-            EvalCase(name="hit", question="q", expected_substring="42"),
-            EvalCase(name="miss", question="q", expected_substring="not-here"),
+            EvalCase(name="hit", question="q", expected_answer="42", matcher=_contains),
+            EvalCase(name="miss", question="q", expected_answer="not-here", matcher=_contains),
         ]
         report = run_evaluation(a, cases)
         s = report.summary()
@@ -1340,8 +1353,8 @@ class TestEvalSuite:
             [_final_answer_completion("42")] * 3, config=cfg
         )
         cases = [
-            EvalCase(name="hit", question="q", expected_substring="42"),
-            EvalCase(name="miss", question="q", expected_substring="zzz"),
+            EvalCase(name="hit", question="q", expected_answer="42", matcher=_contains),
+            EvalCase(name="miss", question="q", expected_answer="zzz", matcher=_contains),
         ]
         report = run_evaluation(a, cases)
         fails = report.failures
@@ -1356,9 +1369,66 @@ class TestEvalSuite:
         assert report.pass_rate == 0.0
 
 
-class TestEvalReport:
+class TestEvalCaseMatcherIntegration:
+    """The capstone gate scores answers with the Module 15 matchers.
+
+    These are the only eval tests that depend on `g2c/eval/match.py`. If they
+    raise NotImplementedError, finish Module 15 -- the capstone reuses the
+    matcher you wrote there rather than carrying a second copy.
+    """
+
+    def test_default_matcher_is_contains_match(self) -> None:
+        case = EvalCase(name="x", question="q")
+        assert case.matcher is None  # unset means "the Module 15 default"
+        assert case.resolve_matcher() is contains_match
+
+    def test_default_matcher_scores_the_answer(self) -> None:
+        cfg = AssistantConfig(plan=False)
+        a, _ = _make_assistant(
+            [_final_answer_completion("The capital is Madrid.")] * 2, config=cfg
+        )
+        cases = [EvalCase(name="c1", question="capital?", expected_answer="madrid")]
+        report = run_evaluation(a, cases)
+        assert report.n_passed == 1
+
+    def test_alternate_matcher_is_stricter(self) -> None:
+        """`normalized_match` rejects an answer `contains_match` would accept."""
+        cfg = AssistantConfig(plan=False)
+        a, _ = _make_assistant(
+            [_final_answer_completion("The capital is Madrid.")] * 4, config=cfg
+        )
+        loose = run_evaluation(
+            a, [EvalCase(name="loose", question="q", expected_answer="Madrid")]
+        )
+        strict = run_evaluation(
+            a,
+            [
+                EvalCase(
+                    name="strict",
+                    question="q",
+                    expected_answer="Madrid",
+                    matcher=normalized_match,
+                )
+            ],
+        )
+        assert loose.n_passed == 1
+        assert strict.n_failed == 1
+
+    def test_multiple_references_any_may_match(self) -> None:
+        cfg = AssistantConfig(plan=False)
+        a, _ = _make_assistant(
+            [_final_answer_completion("the answer is four")] * 2, config=cfg
+        )
+        cases = [
+            EvalCase(name="c1", question="2+2?", expected_answer=["4", "four"])
+        ]
+        report = run_evaluation(a, cases)
+        assert report.n_passed == 1
+
+
+class TestAssistantEvalReport:
     def test_pass_rate_zero_when_empty(self) -> None:
-        report = EvalReport()
+        report = AssistantEvalReport()
         assert report.pass_rate == 0.0
 
     def test_n_failed_calculated(self) -> None:
@@ -1384,7 +1454,7 @@ class TestEvalReport:
                 turn=turn,
             ),
         ]
-        report = EvalReport(results=results)
+        report = AssistantEvalReport(results=results)
         assert report.n_total == 2
         assert report.n_passed == 1
         assert report.n_failed == 1
@@ -1637,9 +1707,9 @@ class TestModuleExports:
         assert Message is not None
 
     def test_eval_exported(self) -> None:
-        from g2c.assistant import EvalCase, EvalReport, run_evaluation
+        from g2c.assistant import AssistantEvalReport, EvalCase, run_evaluation
         assert EvalCase is not None
-        assert EvalReport is not None
+        assert AssistantEvalReport is not None
         assert run_evaluation is not None
 
     def test_cli_exported(self) -> None:

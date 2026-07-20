@@ -194,13 +194,13 @@ cases = [
     EvalCase(
         name="arith",
         question="What is 47 * 23?",
-        expected_substring="1081",
+        expected_answer="1081",
         expected_tool="calculator",
     ),
     EvalCase(
         name="docs",
         question="What does Module 17 build?",
-        expected_substring="retrieval",
+        expected_answer=["retrieval", "RAG"],   # any reference may match
         rag=True,
     ),
 ]
@@ -210,6 +210,10 @@ assert report.pass_rate >= 0.8
 ```
 
 A good Module 20 eval suite is small: 5-15 cases that cover the assistant's main paths. Run it after every config change. If the pass rate drops, inspect the failed `AssistantTurn`: retrieved context, contextualized message, agent steps, and stopped reason.
+
+Scoring an answer is the one part this shares with Module 15, so it shares the code: `expected_answer` is checked by a matcher from `g2c/eval/match.py` — the ones you wrote in Module 15 — defaulting to `contains_match`. Pass `matcher=normalized_match` when you want punctuation-insensitive exact answers, or `matcher=numeric_match` when the answer is a number and "1081" should not be satisfied by "11081".
+
+What the two modules do *not* share is the report. Module 15's `EvalReport` is a measurement — accuracy, mean confidence, ECE over a benchmark. Module 20's `AssistantEvalReport` is a gate — named cases, pass/fail, and a failure reason for the first check that broke. Merging them would give you a type where `ece` is meaningless for a five-case suite and `expected_tool` is meaningless for a benchmark. Different questions, different reports, one matcher library.
 
 ### The unified assistant interface
 
@@ -223,7 +227,8 @@ g2c/assistant/
   AssistantTurn         # full record of one chat() call
   Assistant.chat(...)   # the integrated assistant runtime
   EvalCase              # one behavioral regression case
-  EvalReport            # eval summary
+  AssistantEvalReport   # eval summary (Module 15's EvalReport is a
+                        #   different thing — see below)
   run_evaluation(...)   # eval gate
   run_cli(...)          # terminal interface
 ```
@@ -342,7 +347,8 @@ class Assistant:
 class EvalCase:                                                   # implemented
     name: str
     question: str
-    expected_substring: str | None = None
+    expected_answer: str | list[str] | None = None
+    matcher: Callable[[str, list[str]], bool] | None = None   # Module 15 matcher
     expected_tool: str | None = None
     rag: bool | None = None
 
@@ -350,10 +356,10 @@ class EvalCase:                                                   # implemented
 class EvalCaseResult: ...                                         # implemented
 
 @dataclass
-class EvalReport: ...                                             # implemented
+class AssistantEvalReport: ...                                    # implemented
 
 def run_evaluation(assistant, cases, *,                           # implemented
-                   reset_each=True) -> EvalReport: ...
+                   reset_each=True) -> AssistantEvalReport: ...
 
 
 # cli.py
@@ -366,7 +372,7 @@ Total scaffolded code: roughly 50 lines across two function bodies. The lesson i
 
 ## How to run the tests
 
-Tests live in `tests/test_assistant.py`. Initial state: 74 passed, 58 failed. Boilerplate tests pass on the clean scaffold; the behavior tests fail until you implement `Conversation.format_for_prompt` and `Assistant.chat`.
+Tests live in `tests/test_assistant.py`. Initial state: 75 passed, 61 failed. Boilerplate tests pass on the clean scaffold; the behavior tests fail until you implement `Conversation.format_for_prompt` and `Assistant.chat`.
 
 ```bash
 source .venv/bin/activate
@@ -470,7 +476,7 @@ Optional:
 - [ ] All tests in `tests/test_assistant.py` pass.
 - [ ] ProdLM configured. `./prodlm.sh llama3.2:3b` is the recommended fast default.
 - [ ] Notebook: `notebooks/solutions/20-capstone.ipynb`. 
-- [ ] **Eval suite**: `data/work/module20/eval-cases.py` (or similar) with 5-15 `EvalCase`s. Pass rate ≥ 80% on your assistant configuration.
+- [ ] **Eval suite**: `data/work/module20/eval-cases.py` (or similar) with 5-15 `EvalCase`s, using at least two different Module 15 matchers. Pass rate ≥ 80% on your assistant configuration.
 - [ ] **Failure-mode catalog** (Exercise 8) in `docs/capstone-failure-modes.md`. Five failure modes, each with a transcript, localization, and proposed mitigation.
 - [ ] **The post-mortem** (Exercise 10) at `docs/capstone-postmortem.md`. The actual deliverable. 1500-3000 words. The required sections are listed in Exercise 10.
 - [ ] CLI wrapper script that you've actually used for a work session. Doesn't need to be polished; needs to exist.

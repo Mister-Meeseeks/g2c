@@ -8,9 +8,13 @@ The capstone's "did this still work?" gate. The pattern:
 
 The eval harness is intentionally minimal — three checks per case:
 
-  * `expected_substring` — the final answer must contain this string
-    (case-insensitive). Captures factual answers ("the capital is
-    Paris"); fails noisy / wrong / "I don't know" responses.
+  * `expected_answer` — the final answer must satisfy `matcher`
+    against these references. The default matcher is
+    `g2c.eval.match.contains_match`, the case-insensitive substring
+    matcher you wrote in Module 15, so the capstone gate scores
+    answers the same way Module 15's benchmarks do. Swap in
+    `exact_match`, `normalized_match`, or `numeric_match` from the
+    same module when a case needs stricter checking.
 
   * `expected_tool` — at least one tool call during the run must have
     used this tool. Captures behavioral expectations ("the model
@@ -20,21 +24,27 @@ The eval harness is intentionally minimal — three checks per case:
   * Implicit: the run must have produced a `final_answer` (i.e.,
     `stopped_reason == "final_answer"`). A run that timed out or hit
     a duplicate-action loop is treated as a failure even if the
-    `expected_substring` happens to appear in some scratchpad step.
+    `expected_answer` happens to appear in some scratchpad step.
 
 This is a regression gate, not a benchmark. The point is "is the
 assistant still doing the basic things right after I changed
 something" — not "how good is the assistant on a research-grade
 eval set." For richer evals, see Module 15's harness; this one is
-the smoke test.
+the smoke test. The two share matchers but not report types: Module
+15 measures accuracy and calibration over a benchmark, this measures
+pass/fail over named behaviors.
 
-Fully implemented. No scaffolds.
+Fully implemented — but the default matcher is `contains_match` from
+Module 15, so an unfinished `g2c/eval/match.py` will surface here as a
+`NotImplementedError` rather than a failed case.
 """
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
+
+from g2c.eval import match as eval_match
 
 if TYPE_CHECKING:
     from .assistant import Assistant, AssistantTurn
@@ -48,9 +58,16 @@ class EvalCase:
         name: a short identifier for the case. Shown in failure
             output so the user knows which case broke.
         question: the user message to send to the assistant.
-        expected_substring: a string that should appear in the
-            assistant's final answer. Case-insensitive substring
-            match. `None` skips the answer check.
+        expected_answer: reference answer(s) the assistant's final
+            answer is scored against by `matcher`. A bare string is
+            shorthand for a one-element list. `None` skips the
+            answer check.
+        matcher: a Module 15 matcher — any
+            `(prediction, references) -> bool`. `None` (the default)
+            means `g2c.eval.match.contains_match`, resolved when the
+            case runs rather than captured here. Use
+            `normalized_match` for punctuation-insensitive exact
+            answers or `numeric_match` when the answer is a number.
         expected_tool: name of a tool that should have been called
             during the agent run. `None` skips the tool check.
         rag: per-case override of `rag_enabled`. `None` defers to
@@ -60,21 +77,43 @@ class EvalCase:
 
     name: str
     question: str
-    expected_substring: str | None = None
+    expected_answer: str | list[str] | None = None
+    matcher: Callable[[str, list[str]], bool] | None = None
     expected_tool: str | None = None
     rag: bool | None = None
+
+    def resolve_matcher(self) -> Callable[[str, list[str]], bool]:
+        """The matcher this case scores with.
+
+        Looked up on the module rather than captured as a field default, so
+        the Module 15 implementation is picked up whenever it lands — including
+        when `g2c.solutions.apply()` swaps it in at runtime.
+        """
+        if self.matcher is not None:
+            return self.matcher
+        return eval_match.contains_match
+
+    def references(self) -> list[str]:
+        """`expected_answer` as a reference list, the matcher's input shape."""
+        if self.expected_answer is None:
+            return []
+        if isinstance(self.expected_answer, str):
+            return [self.expected_answer]
+        return list(self.expected_answer)
 
     def __post_init__(self) -> None:
         if not isinstance(self.name, str) or not self.name:
             raise ValueError("EvalCase.name must be a non-empty str")
         if not isinstance(self.question, str) or not self.question:
             raise ValueError("EvalCase.question must be a non-empty str")
-        if self.expected_substring is not None and not isinstance(
-            self.expected_substring, str
+        if self.expected_answer is not None and not isinstance(
+            self.expected_answer, (str, list)
         ):
             raise TypeError(
-                "EvalCase.expected_substring must be a str or None"
+                "EvalCase.expected_answer must be a str, a list of str, or None"
             )
+        if self.matcher is not None and not callable(self.matcher):
+            raise TypeError("EvalCase.matcher must be callable or None")
         if self.expected_tool is not None and not isinstance(
             self.expected_tool, str
         ):
@@ -107,7 +146,7 @@ class EvalCaseResult:
 
 
 @dataclass
-class EvalReport:
+class AssistantEvalReport:
     """Roll-up of an eval suite's results.
 
     Attributes:
@@ -146,7 +185,7 @@ class EvalReport:
     def summary(self) -> str:
         """A one-line summary string."""
         return (
-            f"EvalReport: {self.n_passed}/{self.n_total} passed "
+            f"AssistantEvalReport: {self.n_passed}/{self.n_total} passed "
             f"({self.pass_rate:.1%})"
         )
 
@@ -163,14 +202,14 @@ def _check_case(case: EvalCase, turn: AssistantTurn) -> tuple[bool, str | None]:
         )
         return False, reason
 
-    # Substring check.
-    if case.expected_substring is not None:
-        needle = case.expected_substring.lower()
-        haystack = turn.final_answer.lower()
-        if needle not in haystack:
+    # Answer check, scored by a Module 15 matcher.
+    if case.expected_answer is not None:
+        references = case.references()
+        matcher = case.resolve_matcher()
+        if not matcher(turn.final_answer, references):
             reason = (
-                f"final_answer did not contain expected substring "
-                f"{case.expected_substring!r}"
+                f"final_answer failed {matcher.__name__} against "
+                f"{references!r}"
             )
             return False, reason
 
@@ -196,7 +235,7 @@ def run_evaluation(
     cases: Iterable[EvalCase],
     *,
     reset_each: bool = True,
-) -> EvalReport:
+) -> AssistantEvalReport:
     """Run each case through the assistant and roll up the results.
 
     Args:
@@ -209,7 +248,7 @@ def run_evaluation(
             (e.g., a multi-turn eval suite).
 
     Returns:
-        `EvalReport` with one `EvalCaseResult` per case.
+        `AssistantEvalReport` with one `EvalCaseResult` per case.
 
     Each case's flow:
         1. (Optionally) reset the assistant.
@@ -237,4 +276,4 @@ def run_evaluation(
                 turn=turn,
             )
         )
-    return EvalReport(results=results)
+    return AssistantEvalReport(results=results)
