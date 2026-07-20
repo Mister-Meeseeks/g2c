@@ -45,8 +45,12 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from g2c.eval import match as eval_match
+from g2c.eval.data import EvalReport, GenerationExample
+from g2c.eval.generation import score_generation_example
 
 if TYPE_CHECKING:
+    from g2c.inference import Backend
+
     from .assistant import Assistant, AssistantTurn
 
 
@@ -277,3 +281,74 @@ def run_evaluation(
             )
         )
     return AssistantEvalReport(results=results)
+
+
+def run_capability_baseline(
+    backend: Backend,
+    cases: Iterable[EvalCase],
+    *,
+    max_new_tokens: int = 256,
+    temperature: float = 0.0,
+    task_name: str = "capability-baseline",
+) -> EvalReport:
+    """Answer the same eval cases with the bare model, and score them the same way.
+
+    `run_evaluation` measures the assistant: retrieval, tools, the agent loop,
+    the system prompt, all of it. This measures the model underneath, asked the
+    question directly with none of that. Run both over one set of cases and the
+    difference is what the scaffolding actually bought — stated as a number
+    instead of asserted.
+
+    Args:
+        backend: the inference backend to question directly. Pass
+            `assistant.backend` to hold the model fixed and remove only the
+            scaffolding.
+        cases: the same `EvalCase` list you give `run_evaluation`. Cases
+            without an `expected_answer` are skipped — a tool-call expectation
+            is meaningless without an agent loop to call tools.
+        max_new_tokens: generation cap per case.
+        temperature: defaults to 0.0 so the baseline is reproducible.
+        task_name: label for the returned report.
+
+    Returns:
+        Module 15's `EvalReport` — deliberately, not an `AssistantEvalReport`.
+        This is a capability measurement, so it belongs in the same type as the
+        Module 15 benchmarks and prints through the same helpers.
+
+    A large gap means the scaffolding is doing the work; a small one means you
+    are paying for orchestration the model did not need. A *negative* gap is
+    the interesting case: the assistant did worse than the raw model, which
+    means retrieval injected noise, a tool returned something misleading, or
+    the agent loop talked itself out of a correct answer.
+    """
+    scorable = [case for case in cases if case.expected_answer is not None]
+    if not scorable:
+        raise ValueError(
+            "run_capability_baseline needs at least one case with an "
+            "expected_answer; tool-only cases have nothing to score here."
+        )
+
+    def generate_fn(prompt: str) -> str:
+        return backend.complete(
+            prompt,
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+        ).completion
+
+    results = [
+        score_generation_example(
+            GenerationExample(prompt=case.question, references=case.references()),
+            generate_fn,
+            case.resolve_matcher(),
+        )
+        for case in scorable
+    ]
+    accuracy = sum(1 for r in results if r.correct) / len(results)
+    return EvalReport(
+        task_name=task_name,
+        n=len(results),
+        accuracy=accuracy,
+        mean_confidence=None,
+        ece=None,
+        results=results,
+    )

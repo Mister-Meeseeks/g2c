@@ -19,7 +19,13 @@ from .assistant import Assistant, AssistantTurn
 from .cli import CLI_HELP, run_cli
 from .config import AssistantConfig, AssistantError
 from .conversation import Conversation, Message
-from .eval import AssistantEvalReport, EvalCase, EvalCaseResult, run_evaluation
+from .eval import (
+    AssistantEvalReport,
+    EvalCase,
+    EvalCaseResult,
+    run_capability_baseline,
+    run_evaluation,
+)
 
 __all__ = [
     "Assistant",
@@ -33,5 +39,6 @@ __all__ = [
     "EvalCaseResult",
     "Message",
     "run_cli",
+    "run_capability_baseline",
     "run_evaluation",
 ]

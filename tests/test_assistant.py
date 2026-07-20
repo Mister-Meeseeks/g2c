@@ -51,6 +51,7 @@ from g2c.assistant import (
     EvalCase,
     EvalCaseResult,
     Message,
+    run_capability_baseline,
     run_cli,
     run_evaluation,
 )
@@ -1424,6 +1425,81 @@ class TestEvalCaseMatcherIntegration:
         ]
         report = run_evaluation(a, cases)
         assert report.n_passed == 1
+
+
+class TestCapabilityBaseline:
+    """The capstone's second eval leg: the same cases against the bare model.
+
+    `run_evaluation` scores the assistant; `run_capability_baseline` scores the
+    backend underneath it. The gap between them is what the scaffolding bought.
+    """
+
+    def test_scores_the_bare_backend(self) -> None:
+        backend = _FakeBackend(["Madrid is the capital.", "The answer is 4."])
+        cases = [
+            EvalCase(name="c1", question="capital of Spain?",
+                     expected_answer="Madrid", matcher=_contains),
+            EvalCase(name="c2", question="2+2?",
+                     expected_answer="4", matcher=_contains),
+        ]
+        report = run_capability_baseline(backend, cases)
+        assert report.n == 2
+        assert report.accuracy == 1.0
+        assert report.task_name == "capability-baseline"
+
+    def test_asks_the_question_directly_without_scaffolding(self) -> None:
+        """The prompt is the raw question — no system prompt, tools, or context."""
+        backend = _FakeBackend(["Madrid"])
+        cases = [EvalCase(name="c1", question="capital of Spain?",
+                          expected_answer="Madrid", matcher=_contains)]
+        run_capability_baseline(backend, cases)
+        assert backend.calls[0]["prompt"] == "capital of Spain?"
+
+    def test_skips_cases_without_an_expected_answer(self) -> None:
+        """A tool-call expectation can't be scored without an agent loop."""
+        backend = _FakeBackend(["Madrid"])
+        cases = [
+            EvalCase(name="tool_only", question="q", expected_tool="calculator"),
+            EvalCase(name="scorable", question="capital of Spain?",
+                     expected_answer="Madrid", matcher=_contains),
+        ]
+        report = run_capability_baseline(backend, cases)
+        assert report.n == 1
+
+    def test_raises_when_nothing_is_scorable(self) -> None:
+        backend = _FakeBackend([])
+        cases = [EvalCase(name="tool_only", question="q", expected_tool="calc")]
+        with pytest.raises(ValueError, match="expected_answer"):
+            run_capability_baseline(backend, cases)
+
+    def test_records_a_miss(self) -> None:
+        backend = _FakeBackend(["I don't know."])
+        cases = [EvalCase(name="c1", question="capital of Spain?",
+                          expected_answer="Madrid", matcher=_contains)]
+        report = run_capability_baseline(backend, cases)
+        assert report.accuracy == 0.0
+        assert report.results[0].correct is False
+
+    def test_uses_each_case_matcher(self) -> None:
+        """Per-case matchers carry over, so both legs score identically."""
+        def _never(prediction: str, references: list[str]) -> bool:
+            return False
+
+        backend = _FakeBackend(["Madrid"])
+        cases = [EvalCase(name="c1", question="q", expected_answer="Madrid",
+                          matcher=_never)]
+        assert run_capability_baseline(backend, cases).accuracy == 0.0
+
+    def test_report_is_module_15_type(self) -> None:
+        """A capability measurement, so it uses Module 15's report type."""
+        from g2c.eval import EvalReport as Module15EvalReport
+
+        backend = _FakeBackend(["Madrid"])
+        cases = [EvalCase(name="c1", question="q", expected_answer="Madrid",
+                          matcher=_contains)]
+        report = run_capability_baseline(backend, cases)
+        assert isinstance(report, Module15EvalReport)
+        assert report.ece is None  # generation eval exposes no confidence
 
 
 class TestAssistantEvalReport:

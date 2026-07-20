@@ -213,6 +213,16 @@ A good Module 20 eval suite is small: 5-15 cases that cover the assistant's main
 
 Scoring an answer is the one part this shares with Module 15, so it shares the code: `expected_answer` is checked by a matcher from `g2c/eval/match.py` — the ones you wrote in Module 15 — defaulting to `contains_match`. Pass `matcher=normalized_match` when you want punctuation-insensitive exact answers, or `matcher=numeric_match` when the answer is a number and "1081" should not be satisfied by "11081".
 
+One suite, two measurements. `run_evaluation(assistant, cases)` scores the whole system; `run_capability_baseline(assistant.backend, cases)` asks the same questions of the same model with no retrieval, no tools, and no agent loop, scoring with the same matchers. The difference is what your scaffolding is worth — a number, not a claim:
+
+```python
+report   = run_evaluation(assistant, cases)
+baseline = run_capability_baseline(assistant.backend, cases)
+print(f"gap: {report.pass_rate - baseline.accuracy:+.1%}")
+```
+
+Read the sign. A large positive gap means the scaffolding carries the system. Near zero means you are paying orchestration cost for something the model already knew. Negative is the interesting case — the assistant did *worse* than the bare model, which points at retrieval injecting noise, a tool returning something misleading, or the agent loop talking itself out of a correct answer. Cases without an `expected_answer` are skipped by the baseline; a tool-call expectation is meaningless with no loop to call tools.
+
 What the two modules do *not* share is the report. Module 15's `EvalReport` is a measurement — accuracy, mean confidence, ECE over a benchmark. Module 20's `AssistantEvalReport` is a gate — named cases, pass/fail, and a failure reason for the first check that broke. Merging them would give you a type where `ece` is meaningless for a five-case suite and `expected_tool` is meaningless for a benchmark. Different questions, different reports, one matcher library.
 
 ### The unified assistant interface
@@ -229,7 +239,8 @@ g2c/assistant/
   EvalCase              # one behavioral regression case
   AssistantEvalReport   # eval summary (Module 15's EvalReport is a
                         #   different thing — see below)
-  run_evaluation(...)   # eval gate
+  run_evaluation(...)   # eval gate: scores the assistant
+  run_capability_baseline(...)  # same cases, bare model — the comparison
   run_cli(...)          # terminal interface
 ```
 
@@ -361,6 +372,11 @@ class AssistantEvalReport: ...                                    # implemented
 def run_evaluation(assistant, cases, *,                           # implemented
                    reset_each=True) -> AssistantEvalReport: ...
 
+def run_capability_baseline(backend, cases, *,                    # implemented
+                            max_new_tokens=256, temperature=0.0,
+                            task_name="capability-baseline",
+                            ) -> EvalReport: ...   # Module 15's report type
+
 
 # cli.py
 CLI_HELP: str                                                     # implemented
@@ -372,7 +388,7 @@ Total scaffolded code: roughly 50 lines across two function bodies. The lesson i
 
 ## How to run the tests
 
-Tests live in `tests/test_assistant.py`. Initial state: 75 passed, 61 failed. Boilerplate tests pass on the clean scaffold; the behavior tests fail until you implement `Conversation.format_for_prompt` and `Assistant.chat`.
+Tests live in `tests/test_assistant.py`. Initial state: 82 passed, 61 failed. Boilerplate tests pass on the clean scaffold; the behavior tests fail until you implement `Conversation.format_for_prompt` and `Assistant.chat`.
 
 ```bash
 source .venv/bin/activate
@@ -404,7 +420,7 @@ If at any point you want to archive the work in your current notebook and restar
 These exercises assemble the full assistant and capture the final post-mortem. The live assistant defaults to ProdLM; set `MODEL_SELECTION = "course"` to try your strongest course artifact, preferring `-DPO`, then `-SFT`, then base. Concrete artifact base names follow the same fallback.
 
 1. **Wire up the assistant.** Connect backend, tools, and conversation state.
-2. **Eval gate.** Build a small regression suite for the assistant.
+2. **Eval gate.** Build a small regression suite for the assistant, then run the same cases against the bare backend and measure what the scaffolding bought.
 3. **Multi-turn calculator.** Test whether conversation memory carries references forward.
 4. **Add RAG.** Compare answers with and without retrieved context.
 5. **RAG as a tool.** Let the model decide when to search.
@@ -476,7 +492,7 @@ Optional:
 - [ ] All tests in `tests/test_assistant.py` pass.
 - [ ] ProdLM configured. `./prodlm.sh llama3.2:3b` is the recommended fast default.
 - [ ] Notebook: `notebooks/solutions/20-capstone.ipynb`. 
-- [ ] **Eval suite**: `data/work/module20/eval-cases.py` (or similar) with 5-15 `EvalCase`s, using at least two different Module 15 matchers. Pass rate ≥ 80% on your assistant configuration.
+- [ ] **Eval suite**: `data/work/module20/eval-cases.py` (or similar) with 5-15 `EvalCase`s, using at least two different Module 15 matchers. Pass rate ≥ 80%, reported alongside the `run_capability_baseline` number so the scaffolding gap is measured on your assistant configuration.
 - [ ] **Failure-mode catalog** (Exercise 8) in `docs/capstone-failure-modes.md`. Five failure modes, each with a transcript, localization, and proposed mitigation.
 - [ ] **The post-mortem** (Exercise 10) at `docs/capstone-postmortem.md`. The actual deliverable. 1500-3000 words. The required sections are listed in Exercise 10.
 - [ ] CLI wrapper script that you've actually used for a work session. Doesn't need to be polished; needs to exist.
