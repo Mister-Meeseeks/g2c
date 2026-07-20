@@ -22,11 +22,24 @@ from g2c.inference import resolve_preferred_artifact_name
 def select_base_artifact_name(selection: str, *, repo_root: str | Path | None = None) -> str:
     """Return the base artifact Module 13 should SFT.
 
+    ``"auto"`` prefers the strongest base course artifact and falls back to
+    BaseLM — the preference order the course design calls for, since the
+    lesson is weight updates on your own model where that is possible.
     ``"BaseLM"`` selects the external pretrained BaseLM artifact. ``"course"``
-    selects the strongest base course artifact from Module 10. Any other
-    non-empty string is treated as an explicit base artifact name.
+    requires a course artifact and fails if there is none. Any other non-empty
+    string is treated as an explicit base artifact name.
     """
     selection = selection.strip()
+    if selection == "auto":
+        candidate = best_model_artifact(repo_root=repo_root)
+        if candidate is not None:
+            return candidate.name
+        if baselm_artifact_exists(repo_root=repo_root):
+            return resolve_artifact_name("BaseLM", repo_root=repo_root)
+        raise RuntimeError(
+            "No course model artifact and no BaseLM. Run Module 10 to train "
+            "one, or run ./baselm.sh to fetch BaseLM."
+        )
     if selection == "BaseLM":
         if not baselm_artifact_exists(repo_root=repo_root):
             raise RuntimeError(

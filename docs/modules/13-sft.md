@@ -39,7 +39,7 @@ Once upon a time there was a girl nemed Lily who loved to pick flowers...
 
 It doesn't matter how big you make it — at any size, a base model trained on prose continues prose. This is *correct behavior under the training objective*. The model isn't broken. It's just not an assistant.
 
-The exercise notebook defaults to BaseLM because it has enough broad pretraining for the behavioral shift to be obvious. You can switch the model-selection cell to `MODEL_SELECTION = "course"` to run the same SFT loop on your own `StoryLM` or `TinyLLM` artifact.
+The exercise notebook defaults to BaseLM because it has enough broad pretraining for the behavioral shift to be obvious. You can switch the model-selection cell to `MODEL_SELECTION = "course"` to run the same SFT loop on your own `StoryLM` or `TinyLLM` artifact. If you have a capable self-trained artifact (30M or larger), `MODEL_SELECTION = "auto"` prefers your own model and falls back to BaseLM when there isn't one. A 1M-class model is generally too weak for the shift to be legible.
 
 ## The big idea
 
@@ -123,7 +123,7 @@ The hyperparameters below are not universal rules. They are practical starting p
 
 - **50–500 examples.** Quality matters much more than quantity. Counterintuitively, larger models need *fewer* examples (but higher quality) since they tend to have more abilities.
 - **100–1,000 optimizer steps.** The main danger is overfitting from the model memorizing a tiny dataset. Watch samples and validation loss closely for early stopping.
-- **Learning rate at 5–20% of pretraining.** Larger models are more sensitive to regression from aggressive SFT, and should start lower. This is a fraction of *the base model's own pretraining lr*, so the right absolute value moves with your base. The notebook's default `max_lr` of `3e-4` is calibrated for BaseLM: it matches the SFT learning rate Hugging Face used for SmolLM's own instruct variants. The course-trained checkpoints, though, were pretrained at `3e-4` themselves — so if you point `MODEL_SELECTION` at one of those, that same default is *full pretraining lr*, roughly 10x higher than the rule above. Scale down to about `3e-5`.
+- **Learning rate at 5–20% of pretraining.** Larger models are more sensitive to regression from aggressive SFT, and should start lower. This is a fraction of *the base model's own pretraining lr*, so the right absolute value moves with your base — and the notebook applies that rule for you rather than hardcoding a number. It reads the base artifact's recorded pretraining lr and takes 10% of it, so a course checkpoint pretrained at `3e-4` is fine-tuned at `3e-5`. BaseLM publishes no pretraining lr, so it falls back to `3e-4` — which is the SFT learning rate Hugging Face used for SmolLM's own instruct variants. Watch the printed value: if you ever see SFT running at the same lr the base was pretrained at, that is the catastrophic-forgetting recipe below.
 
 ```
    ┌─────────────────────────────────────────────────────────────────────┐

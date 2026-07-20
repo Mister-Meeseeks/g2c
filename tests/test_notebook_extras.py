@@ -32,3 +32,20 @@ class TestNotebookModelSelection:
 
     def test_select_base_artifact_name_explicit_name_passes_through(self, tmp_path) -> None:
         assert select_base_artifact_name("StoryLM-5M", repo_root=tmp_path) == "StoryLM-5M"
+
+    def test_select_base_auto_prefers_course_artifact_over_baselm(self, tmp_path) -> None:
+        """`auto` fine-tunes your own model when you have one — the lesson's point."""
+        write_baselm_manifest(repo_root=tmp_path)
+        _write_course_artifact_marker(tmp_path, "StoryLM-5M-base")
+
+        assert select_base_artifact_name("auto", repo_root=tmp_path) == "StoryLM-5M-base"
+
+    def test_select_base_auto_falls_back_to_baselm(self, tmp_path) -> None:
+        """No Module 10 artifact yet: BaseLM stands in rather than hard-failing."""
+        write_baselm_manifest(repo_root=tmp_path)
+
+        assert select_base_artifact_name("auto", repo_root=tmp_path) == "BaseLM-base"
+
+    def test_select_base_auto_errors_when_nothing_available(self, tmp_path) -> None:
+        with pytest.raises(RuntimeError, match="No course model artifact and no BaseLM"):
+            select_base_artifact_name("auto", repo_root=tmp_path)
