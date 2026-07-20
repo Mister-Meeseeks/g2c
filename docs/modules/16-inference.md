@@ -99,7 +99,9 @@ The KV cache stores `K_0, K_1, ..., K_t` and `V_0, V_1, ..., V_t` as the model g
   2. Append to the cache.
   3. Compute attention from the new query against the entire cached K/V (one matmul against a length-`T+1` matrix).
 
-Total: `O(T)` per step → `O(T²)` for the whole generation, but with a ~10× smaller constant. In practice, KV-cached inference is 5–20× faster than the naive loop for sequences past 128 tokens.
+Total: `O(T)` per step → `O(T²)` for the whole generation, but with a ~10× smaller constant. In practice, KV-cached inference is 5–20× faster than the naive loop for sequences past 128 tokens. 
+
+This week, you'll implement KV caching on top of the transformer machinery you already built in previous modules. In the notebook exercises you'll be able to measure the efficiency gains on inference for yourself. 
 
 ```
    ┌─────────────────────────────────────────────────────────────────────────┐
@@ -260,6 +262,8 @@ When benchmarking, be aware of cold-start overhead. The first request can includ
 ---
 ## What you'll build
 
+Two surfaces this week: the backend package that wraps any model behind one interface, and the cached-decoding path inside the model you already built.
+
 Package: `g2c/inference/`
 
 ```python
@@ -386,7 +390,47 @@ def benchmark(
     ...
 ```
 
-Total scaffolded code: roughly 50 lines across three function bodies (`LocalTransformerBackend.complete`, `OllamaBackend.complete`, `benchmark`), plus the KV-cache path in exercise 7 (`LayerKVCache.append`, `MultiHeadAttention.forward_cached`, `TransformerLM.forward_cached` — another ~25 lines, and the only part of this module that is model internals rather than wiring). The Ollama path's HTTP transport — request building, error translation, JSON parsing, timing — is provided as `_post_generate`, so `OllamaBackend.complete` is just the contract mapping: sampling params in, response fields out. The pedagogical content is the wiring — taking a string in, a string out, and recording what happened in between.
+The second half of the module is the cached-decoding path from exercise 7. It does not live in `g2c/inference/` — it goes back into the model packages you built in Modules 08–09, because a KV cache is not a serving concern bolted on the outside. It is a change to how attention is computed:
+
+```python
+# g2c/transformer/kv_cache.py
+@dataclass
+class LayerKVCache:                                  # one layer's stored K/V
+    keys: torch.Tensor | None = None
+    values: torch.Tensor | None = None
+    @property
+    def length(self) -> int: ...                               # implemented
+    def _validate_append(self, key, value) -> None: ...        # implemented
+    def append(self, key, value) -> LayerKVCache: ...          # SCAFFOLDED
+
+@dataclass
+class KVCache:                                       # one LayerKVCache per block
+    layers: list[LayerKVCache]
+    @classmethod
+    def empty(cls, num_layers: int) -> KVCache: ...            # implemented
+    @property
+    def length(self) -> int: ...                               # implemented
+
+# g2c/attention/multi_head.py
+class MultiHeadAttention(Module):
+    def forward_cached(self, x, cache): ...                    # SCAFFOLDED
+
+# g2c/transformer/block.py
+class Block(Module):
+    def forward_cached(self, x, cache): ...                    # implemented
+
+# g2c/transformer/transformer_lm.py
+class TransformerLM(Module):
+    def empty_kv_cache(self) -> KVCache: ...                   # implemented
+    def forward_cached(self, token_ids, cache=None): ...       # SCAFFOLDED
+
+# g2c/sampling/generate_cached.py
+def generate_cached(model, prompt_ids, max_new_tokens, ...): ...   # implemented
+```
+
+Total scaffolded code: roughly 50 lines of backend wiring across three function bodies (`LocalTransformerBackend.complete`, `OllamaBackend.complete`, `benchmark`), plus about 25 lines of cache. The Ollama path's HTTP transport — request building, error translation, JSON parsing, timing — is provided as `_post_generate`, so `OllamaBackend.complete` is just the contract mapping: sampling params in, response fields out. The pedagogical content there is the wiring — a string in, a string out, and a record of what happened in between.
+
+The cache is the opposite kind of work, and it is the only place this module touches model internals. The three scaffolded pieces are each small, and each is small for a reason: `append` is the concatenation that *is* the cache, `MultiHeadAttention.forward_cached` is one query attending over stored history instead of a full `(T, T)` score matrix, and `TransformerLM.forward_cached` is the position bookkeeping that keeps step `t` from thinking it is step `0`. Validation, the block-level threading, and the decode loop are provided, so what you write is the idea rather than the plumbing around it.
 
 ## How to run the tests
 
