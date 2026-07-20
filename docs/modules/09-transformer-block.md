@@ -291,7 +291,9 @@ Total scaffolded code: roughly 20 lines split across four `forward` methods. Mos
 
 ## How to run the tests
 
-Tests live in `tests/test_transformer.py`. Initial state: 24 passed (construction, parameter-count, and init-value checks), 26 failed.
+Tests live in `tests/test_transformer.py`. Initial state: 25 passed (construction, parameter-count, and init-value checks), 31 failed.
+
+Six of those tests cover `LayerKVCache.append` and `TransformerLM.forward_cached`, which belong to the cached-inference path you build in [Module 16](16-inference.md). Nothing in Modules 09-11 depends on them, so leaving `test_layer_kv_cache_append_*` and `test_transformer_lm_forward_cached_*` red for now is expected.
 
 ```bash
 source .venv/bin/activate

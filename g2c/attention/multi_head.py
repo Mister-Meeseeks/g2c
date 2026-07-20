@@ -43,7 +43,7 @@ is the same as Module 07 with reshape/transpose calls bolted on.
 """
 from __future__ import annotations
 
-import math
+import math  # noqa: F401  — provided for you; the scaffolds below need math.sqrt
 from collections.abc import Iterable
 
 import torch
@@ -220,6 +220,37 @@ class MultiHeadAttention(Module):
         No causal mask is needed here: during one-token decoding there are no
         future keys in the cache. The cache contains exactly past tokens plus
         the current token.
+
+        Recipe (the guards above are provided; start after them):
+
+            1. Project the ONE new token to q, k, v and reshape each to
+               per-head form, exactly as in `forward` — but with T = 1:
+                   q = self.q_proj(x).view(B, 1, H, d_h).transpose(1, 2)
+               giving `(B, H, 1, d_h)`. Same for k and v.
+
+            2. Append the new k/v to the cache and read back the full
+               history:
+                   cache.append(k, v)
+                   keys, values = cache.keys, cache.values
+               `keys` is now `(B, H, T_cache, d_h)` — every token so far,
+               including this one.
+
+            3. Score the single query against ALL cached keys:
+                   scores = q @ keys.transpose(-2, -1) / sqrt(d_h)
+               Shape `(B, H, 1, T_cache)`: one query row attending over the
+               whole history. This is the payoff — `forward` recomputes a
+               `(T, T)` score matrix every step, this computes one row.
+
+            4. NO CAUSAL MASK. Re-read the paragraph above before you reach
+               for `self.causal_mask` out of habit: the cache holds only
+               past-and-present keys, so there is nothing future to hide.
+               Masking here would incorrectly blank out real history.
+
+            5. softmax over the last dim, mix the values, fold the heads
+               back to `(B, 1, D)`, and apply `self.out_proj` — same as
+               `forward` steps 5-8.
+
+            6. Return `(out, cache)`, not just `out`.
         """
         if not self.causal:
             raise ValueError("cached attention is only defined for causal attention")
@@ -229,27 +260,8 @@ class MultiHeadAttention(Module):
                 f"got {tuple(x.shape)}"
             )
 
-        q = self.q_proj(x)
-        k = self.k_proj(x)
-        v = self.v_proj(x)
-
-        B, T, _ = x.shape
-        H, d_h = self.num_heads, self.head_dim
-        q = q.view(B, T, H, d_h).transpose(1, 2)
-        k = k.view(B, T, H, d_h).transpose(1, 2)
-        v = v.view(B, T, H, d_h).transpose(1, 2)
-
-        cache.append(k, v)
-        keys = cache.keys
-        values = cache.values
-        if keys is None or values is None:
-            raise RuntimeError("cache append did not store keys and values")
-
-        scores = q @ keys.transpose(-2, -1) / math.sqrt(d_h)
-        weights = scores.softmax(dim=-1)
-        mixed = weights @ values
-        mixed = mixed.transpose(1, 2).contiguous().view(B, 1, self.embedding_dim)
-        return self.out_proj(mixed), cache
+        # TODO
+        raise NotImplementedError
 
 
     def attention_weights(self, x: torch.Tensor) -> torch.Tensor:

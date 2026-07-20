@@ -216,6 +216,35 @@ class TransformerLM(Module):
         This is the inference-only sibling of ``forward``. It should match the
         final-position logits from ``forward(token_ids_so_far)`` when called
         step by step on the same token sequence.
+
+        Recipe (the guards below are provided; ``position`` is already
+        computed for you — start after it):
+
+            1. Embed the single token, and add the position embedding for
+               ``position`` — NOT for index 0:
+                   tok = self.token_embed(token_ids)         # (B, 1, D)
+                   pos = self.pos_embed.weight[position : position + 1]
+                   x = tok + pos.to(tok.device)
+
+               This is the bug to avoid. ``token_ids`` is always shape
+               ``(B, 1)``, so it is very natural to write the same
+               ``pos_embed(arange(T))`` you used in ``forward`` and get
+               position 0 on every single decode step. The model still
+               runs and still emits fluent text — it just quietly thinks
+               every token is the first one. ``cache.length`` is what tells
+               you where you actually are in the sequence.
+
+            2. Run the blocks, threading each layer's own cache through and
+               storing the updated cache back:
+                   for idx, block in enumerate(self.blocks):
+                       x, cache.layers[idx] = block.forward_cached(
+                           x, cache.layers[idx]
+                       )
+
+            3. Final layer norm, then the tied-weight output head — the
+               same two lines that close ``forward``.
+
+            4. Return ``(logits, cache)``, not just logits.
         """
         if token_ids.dim() != 2 or token_ids.shape[1] != 1:
             raise ValueError(
@@ -235,10 +264,5 @@ class TransformerLM(Module):
                 f"KV cache length {position} has reached max_seq_len {self.max_seq_len}"
             )
 
-        tok = self.token_embed(token_ids)
-        pos = self.pos_embed.weight[position : position + 1].to(tok.device)
-        x = tok + pos
-        for idx, block in enumerate(self.blocks):
-            x, cache.layers[idx] = block.forward_cached(x, cache.layers[idx])
-        x = self.ln_final(x)
-        return x @ self.token_embed.weight.T + self.head_bias, cache
+        # TODO
+        raise NotImplementedError

@@ -42,18 +42,17 @@ class LayerKVCache:
             return 0
         return int(self.keys.shape[-2])
 
-    def append(self, key: torch.Tensor, value: torch.Tensor) -> LayerKVCache:
-        """Append one or more key/value positions and return ``self``.
+    def _validate_append(self, key: torch.Tensor, value: torch.Tensor) -> None:
+        """Check that ``(key, value)`` may be appended to this cache.
 
-        Args:
-            key: ``(B, H, T_new, head_dim)``
-            value: ``(B, H, T_new, head_dim)``
+        Provided for you — this is bookkeeping, not the concept. Raises
+        ``ValueError`` if the pair is malformed on its own, or if it
+        disagrees with already-cached rows on batch, head count, head_dim,
+        device, or dtype.
         """
         _validate_kv_pair(key, value)
         if self.keys is None:
-            self.keys = key
-            self.values = value
-            return self
+            return
 
         assert self.values is not None
         if key.shape[:2] != self.keys.shape[:2] or key.shape[-1] != self.keys.shape[-1]:
@@ -66,9 +65,42 @@ class LayerKVCache:
         if key.dtype != self.keys.dtype or value.dtype != self.values.dtype:
             raise ValueError("new key/value tensors must match the cache dtype")
 
-        self.keys = torch.cat([self.keys, key], dim=-2)
-        self.values = torch.cat([self.values, value], dim=-2)
-        return self
+    def append(self, key: torch.Tensor, value: torch.Tensor) -> LayerKVCache:
+        """Append one or more key/value positions and return ``self``.
+
+        Args:
+            key: ``(B, H, T_new, head_dim)``
+            value: ``(B, H, T_new, head_dim)``
+
+        Returns:
+            ``self``, with ``keys`` and ``values`` each grown by ``T_new``
+            positions along the sequence axis.
+
+        This is the whole idea of a KV cache in one method: keys and values
+        for past tokens are never recomputed, they are *kept* and extended.
+
+        Recipe (validation is already called for you below — start after it):
+
+            1. If the cache is still empty (``self.keys is None``), the new
+               tensors simply become the cache. Store both and return.
+
+            2. Otherwise concatenate onto what's already there:
+                   self.keys = torch.cat([self.keys, key], dim=-2)
+
+               and the same for ``self.values``.
+
+               ``dim=-2`` is the ``T_cache`` slot of
+               ``(B, H, T_cache, head_dim)``. This axis is the one thing
+               to get right: ``dim=-1`` would grow head_dim and ``dim=0``
+               would grow the batch. Both "work" here and then fail as a
+               confusing shape error inside attention, far from the cause.
+
+            3. Return ``self`` so callers can chain.
+        """
+        self._validate_append(key, value)
+
+        # TODO
+        raise NotImplementedError
 
 
 @dataclass

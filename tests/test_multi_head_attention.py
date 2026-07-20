@@ -4,7 +4,9 @@ Suggested order to implement & turn green:
 
   1. MultiHeadAttention.forward             → test_forward_*
   2. MultiHeadAttention.attention_weights   → test_attention_weights_*
-  3. Optional cached inference path          → test_forward_cached_*
+  3. MultiHeadAttention.forward_cached      → test_forward_cached_*
+     (the Module 16 inference path; needs LayerKVCache.append from
+     Module 09's test_transformer.py first)
 
 Construction tests, the `causal_mask` static-method tests, and the
 parameter-count tests pass from the start — that part of the class is

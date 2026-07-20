@@ -386,7 +386,7 @@ def benchmark(
     ...
 ```
 
-Total scaffolded code: roughly 50 lines across three function bodies (`LocalTransformerBackend.complete`, `OllamaBackend.complete`, `benchmark`). The Ollama path's HTTP transport — request building, error translation, JSON parsing, timing — is provided as `_post_generate`, so `OllamaBackend.complete` is just the contract mapping: sampling params in, response fields out. The pedagogical content is the wiring — taking a string in, a string out, and recording what happened in between.
+Total scaffolded code: roughly 50 lines across three function bodies (`LocalTransformerBackend.complete`, `OllamaBackend.complete`, `benchmark`), plus the KV-cache path in exercise 7 (`LayerKVCache.append`, `MultiHeadAttention.forward_cached`, `TransformerLM.forward_cached` — another ~25 lines, and the only part of this module that is model internals rather than wiring). The Ollama path's HTTP transport — request building, error translation, JSON parsing, timing — is provided as `_post_generate`, so `OllamaBackend.complete` is just the contract mapping: sampling params in, response fields out. The pedagogical content is the wiring — taking a string in, a string out, and recording what happened in between.
 
 ## How to run the tests
 
@@ -401,9 +401,10 @@ pytest tests/test_inference.py -k Local                 # local-backend tests
 pytest tests/test_inference.py -k Ollama                # ollama-backend tests
 pytest tests/test_inference.py -k Benchmark             # benchmark tests
 pytest tests/test_inference.py -k boilerplate           # the boilerplate sanity tests
-pytest tests/test_multi_head_attention.py -k cached     # optional KV-cache attention tests
-pytest tests/test_transformer.py -k cached              # optional KV-cache model tests
-pytest tests/test_sampling.py -k cached                 # optional KV-cache generation tests
+pytest tests/test_transformer.py -k layer_kv_cache_append   # the cache container itself
+pytest tests/test_multi_head_attention.py -k cached      # cached attention step
+pytest tests/test_transformer.py -k cached               # cached model forward
+pytest tests/test_sampling.py -k cached                  # end-to-end cached generation
 pytest tests/test_inference.py -v                       # verbose
 ```
 
@@ -429,7 +430,7 @@ The notebook defaults to BaseLM for the artifact backend, automatically preferri
 4. **ProdLM evaluation.** Re-run a Module 15-style eval through the ProdLM adapter.
 5. **Quantization quality.** Compare fp16 and fake-quantized BaseLM outputs.
 6. **Router backend.** Dispatch between a tiny artifact and ProdLM.
-7. **Optional KV cache.** The toy cached path (`KVCache`, `forward_cached`, `generate_cached`) ships implemented — read it, then verify it against your own uncached code with `pytest -k cached`. The tests assert the cached and uncached paths produce identical logits, so they only pass once your Module 08–11 implementations are correct.
+7. **Build the KV cache.** Implement `LayerKVCache.append`, `MultiHeadAttention.forward_cached`, and `TransformerLM.forward_cached` (`pytest -k cached` plus `-k layer_kv_cache_append`). The contract is equivalence: decoding one token at a time through the cache must produce the same logits as re-running the full uncached `forward` on the whole prefix. `Block.forward_cached` and `generate_cached` are provided, so what you write is the cache itself, the single-query attention step, and the position bookkeeping. Then benchmark cached against uncached generation and confirm the O(T²) → O(T) claim on your own model.
 8. **Optional streaming.** Add a streaming completion method.
 9. **Inference post-mortem.** Summarize speed, quality, memory, and routing tradeoffs.
 
@@ -514,5 +515,6 @@ Optional:
 - [ ] Notebook: `notebooks/solutions/16-inference.ipynb`. 
 - [ ] **Inference-stack post-mortem** (Exercise 9) in `docs/inference-postmortem.md`. 3–4 paragraphs. The actual deliverable. Cover: what ran, where the gaps were, the cost-quality frontier, and which backend you're committing to for the rest of the course.
 - [ ] You can explain — out loud, without notes — the rough memory cost of running a 7B model at fp32 vs fp16 vs int8 vs int4, and which fits on a 16 GB Mac.
-- [ ] You can explain — out loud, without notes — what a KV cache is, why it's necessary at scale, and why the required course path relies on ProdLM's production cache instead of the course's toy cache.
+- [ ] `pytest -k "cached or layer_kv_cache_append"` passes: your cached decode path produces the same logits as the uncached `forward`.
+- [ ] You can explain — out loud, without notes — what a KV cache is, why it's necessary at scale, why no causal mask is needed in the cached step, and why the assistant path still runs on ProdLM's production cache rather than the toy one you built.
 - [ ] You can explain — out loud, without notes — the difference between wall-clock latency (what `InferenceResult.latency_ms` records) and server-reported latency (what Ollama's `total_duration` reports), and what each is good for.

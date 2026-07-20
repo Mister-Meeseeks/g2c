@@ -6,7 +6,14 @@ Suggested order to implement & turn green:
   2. FeedForward.forward           → test_ffn_*
   3. Block.forward                 → test_block_*
   4. TransformerLM.forward         → test_transformer_lm_*
-  5. Optional cached inference path → test_*_cached_*
+  5. LayerKVCache.append           → test_layer_kv_cache_append_*
+  6. TransformerLM.forward_cached  → test_*_cached_*
+
+Steps 5 and 6 are the Module 16 cached-inference path. They are the only
+part of this file you can leave for later without blocking anything else;
+the rest of Modules 09-11 never touch the cache. Do step 5 before step 6,
+and before `MultiHeadAttention.forward_cached` in Module 08's file —
+both of those call `append`.
 
 Construction tests, parameter-count tests, the LN init tests
 (`gamma`/`beta` start as ones/zeros), and the FFN default-hidden-dim
@@ -34,7 +41,14 @@ import pytest
 import torch
 
 from g2c.nn import CrossEntropyLoss
-from g2c.transformer import Block, FeedForward, KVCache, LayerNorm, TransformerLM
+from g2c.transformer import (
+    Block,
+    FeedForward,
+    KVCache,
+    LayerKVCache,
+    LayerNorm,
+    TransformerLM,
+)
 
 # ----------------------------------------------------------------------
 # LayerNorm — construction (boilerplate)
@@ -576,6 +590,75 @@ def test_kv_cache_empty_has_one_layer_cache_per_block():
     assert len(cache) == 3
     assert cache.length == 0
     assert [layer.length for layer in cache.layers] == [0, 0, 0]
+
+
+# ----------------------------------------------------------------------
+# LayerKVCache.append
+# ----------------------------------------------------------------------
+
+def test_layer_kv_cache_append_to_empty_cache_stores_tensors():
+    """Appending to an empty cache just adopts the tensors."""
+    cache = LayerKVCache()
+    k = torch.randn(2, 3, 1, 4)
+    v = torch.randn(2, 3, 1, 4)
+    cache.append(k, v)
+    assert cache.length == 1
+    assert torch.equal(cache.keys, k)
+    assert torch.equal(cache.values, v)
+
+
+def test_layer_kv_cache_append_grows_the_sequence_axis():
+    """Repeated appends grow T_cache in (B, H, T_cache, head_dim) — dim=-2.
+
+    If this reports a head_dim of 3 or a batch of 6, the concatenation is
+    happening on the wrong axis.
+    """
+    cache = LayerKVCache()
+    for _ in range(3):
+        cache.append(torch.randn(2, 3, 1, 4), torch.randn(2, 3, 1, 4))
+    assert cache.length == 3
+    assert cache.keys.shape == (2, 3, 3, 4)
+    assert cache.values.shape == (2, 3, 3, 4)
+
+
+def test_layer_kv_cache_append_preserves_order():
+    """Earlier tokens stay at earlier positions; the new token lands last."""
+    cache = LayerKVCache()
+    first_k, first_v = torch.randn(1, 2, 1, 4), torch.randn(1, 2, 1, 4)
+    second_k, second_v = torch.randn(1, 2, 1, 4), torch.randn(1, 2, 1, 4)
+    cache.append(first_k, first_v)
+    cache.append(second_k, second_v)
+    assert torch.equal(cache.keys[:, :, :1], first_k)
+    assert torch.equal(cache.keys[:, :, 1:], second_k)
+    assert torch.equal(cache.values[:, :, :1], first_v)
+    assert torch.equal(cache.values[:, :, 1:], second_v)
+
+
+def test_layer_kv_cache_append_accepts_multiple_positions():
+    """A prefill pass appends T_new > 1 positions in one call."""
+    cache = LayerKVCache()
+    cache.append(torch.randn(2, 3, 5, 4), torch.randn(2, 3, 5, 4))
+    assert cache.length == 5
+    cache.append(torch.randn(2, 3, 1, 4), torch.randn(2, 3, 1, 4))
+    assert cache.length == 6
+
+
+def test_layer_kv_cache_append_returns_self():
+    """append returns the cache so calls can chain."""
+    cache = LayerKVCache()
+    returned = cache.append(torch.randn(1, 1, 1, 2), torch.randn(1, 1, 1, 2))
+    assert returned is cache
+
+
+def test_layer_kv_cache_append_rejects_incompatible_head_dim():
+    """Validation is provided — this passes before you implement append.
+
+    The cache is populated via the constructor rather than `append` so the
+    check runs even while `append` is still scaffolded.
+    """
+    cache = LayerKVCache(keys=torch.randn(2, 3, 1, 4), values=torch.randn(2, 3, 1, 4))
+    with pytest.raises(ValueError):
+        cache.append(torch.randn(2, 3, 1, 8), torch.randn(2, 3, 1, 8))
 
 
 # ----------------------------------------------------------------------
