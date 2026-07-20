@@ -426,7 +426,10 @@ It should produce:
 
 ProdLM should not be the default training target for Module 13. Fine-tuning a
 production model can be optional later, but the core lesson is weight updates on
-the student's own small model (or, as a fallback, on BaseLM).
+the student's own small model (or, as a fallback, on BaseLM). In practice that
+fallback is the common case: the notebook defaults to BaseLM because a 1M- or
+5M-class model rarely shows the behavioral shift clearly, so switch to your own
+artifact once it is 30M or larger.
 
 ### Module 14 - Preference Tuning
 
