@@ -1,0 +1,66 @@
+name: bootstrap
+
+# Proves the README quickstart still works: clone the repo, run ./setup.sh,
+# and confirm it produces what Module 00 expects.
+#
+# The tests workflow installs dependencies directly with `uv pip install`, so
+# it never exercises setup.sh, the data directory layout, or the corpus
+# download. That gap let a dead TinyShakespeare URL and a missing `mkdir`
+# reach main — invisible to CI and to any maintainer whose data/ was already
+# populated, but fatal for every new student. This job closes it.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  fresh-clone-setup:
+    # arm64 macOS mirrors the student platform. No Metal GPU on CI runners;
+    # smoke_test.py warns and exits 0 when MPS is unavailable.
+    runs-on: macos-latest
+    timeout-minutes: 25
+    steps:
+      # A plain checkout is the point: data/ contains only .gitkeep here,
+      # exactly as it does for a student cloning for the first time.
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Run setup.sh
+        run: ./setup.sh
+
+      - name: Verify setup.sh produced what Module 00 expects
+        run: |
+          set -euo pipefail
+
+          fail() { echo "FAIL: $*" >&2; exit 1; }
+
+          # The corpus every early module reads. ~1.1MB; anything much smaller
+          # means we saved an error page instead of the text.
+          corpus="data/datasets/tinyshakespeare.txt"
+          [[ -f "$corpus" ]] || fail "$corpus missing after setup.sh"
+          size=$(wc -c < "$corpus" | tr -d ' ')
+          [[ "$size" -ge 1000000 ]] || fail "$corpus is only $size bytes; expected ~1.1MB"
+          echo "ok  $corpus ($size bytes)"
+
+          # Module 10 loads this tokenizer artifact by name.
+          for f in artifacts/tokenizers/ShakespeareTokenizer/manifest.json \
+                   artifacts/tokenizers/ShakespeareTokenizer/tokenizer.json; do
+            [[ -f "$f" ]] || fail "$f missing after setup.sh"
+            echo "ok  $f"
+          done
+
+          # Module 00's environment-check exercise reads this sentinel.
+          sentinel=".venv/.g2c-setup-complete"
+          [[ -f "$sentinel" ]] || fail "$sentinel missing; setup.sh did not finish"
+          echo "ok  $sentinel ($(cat "$sentinel"))"
+
+      - name: Check clean notebooks parse
+        run: |
+          source .venv/bin/activate
+          python scripts/check_notebooks.py

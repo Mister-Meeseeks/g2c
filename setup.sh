@@ -162,14 +162,16 @@ fi
 ok "deps installed"
 
 # ---- 6. Small data assets ----------------------------------------------------
-mkdir -p data
-
 if ! command -v curl >/dev/null 2>&1; then
     fail "curl not found; needed to download TinyShakespeare"
 fi
 
 TINY_SHAKESPEARE_FILE="data/datasets/tinyshakespeare.txt"
-TINY_SHAKESPEARE_URL="https://raw.githubusercontent.com/karpathy/char-rnn/master/data/datasets/tinyshakespeare/input.txt"
+TINY_SHAKESPEARE_URL="https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt"
+
+# A fresh clone ships only data/.gitkeep, so create the destination directory
+# before curl writes into it — curl will not create missing parents.
+mkdir -p "$(dirname "$TINY_SHAKESPEARE_FILE")"
 
 info "Checking TinyShakespeare corpus"
 if [[ -f "$TINY_SHAKESPEARE_FILE" ]]; then
@@ -224,7 +226,7 @@ echo "Configure the ProdLM runtime with:"
 echo "    ./prodlm.sh                # Modules 16-20 local production model"
 echo ""
 echo "Run the full suite with:"
-echo "    python -m pytest    # many tests intentionally fail on the scaffold branch"
+echo "    pytest    # many tests intentionally fail against the scaffolds"
 echo ""
 echo "Run the smoke test again with:"
 echo "    python scripts/smoke_test.py"

@@ -97,11 +97,15 @@ python_bin() {
 download_glove() {
     local glove_file="data/embeddings/glove.6B.50d.txt"
     local glove_zip="data/embeddings/glove.6B.zip"
-    local glove_url="https://downloads.cs.stanford.edu/nlp/data/embeddings/glove.6B.zip"
+    local glove_url="https://downloads.cs.stanford.edu/nlp/data/glove.6B.zip"
     local glove_min_bytes=171350079
+    local glove_dir
+    glove_dir="$(dirname "$glove_file")"
 
     require_tool curl
     info "Checking GloVe vectors"
+    # curl and unzip both need the destination directory to already exist.
+    mkdir -p "$glove_dir"
     if file_at_least_bytes "$glove_file" "$glove_min_bytes"; then
         ok "$glove_file exists"
         return
@@ -121,7 +125,7 @@ download_glove() {
     fi
 
     info "Extracting glove.6B.50d.txt"
-    unzip -o "$glove_zip" glove.6B.50d.txt -d data
+    unzip -o "$glove_zip" glove.6B.50d.txt -d "$glove_dir"
     rm -f "$glove_zip"
 
     if ! file_at_least_bytes "$glove_file" "$glove_min_bytes"; then

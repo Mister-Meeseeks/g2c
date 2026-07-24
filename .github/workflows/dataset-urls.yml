@@ -1,0 +1,26 @@
+name: dataset urls
+
+# Link rot is time-based, not commit-based: a corpus URL that worked at merge
+# can be dead months later with nothing in the repo having changed. So this
+# runs on a schedule rather than per-commit, where it would only add flakiness
+# from transient network failures.
+#
+# Deliberately does NOT download the corpora (GloVe is 822MB, TinyStories
+# 1.9GB) — a one-byte ranged request is enough to prove the URL resolves.
+
+on:
+  schedule:
+    # Mondays, 14:00 UTC.
+    - cron: "0 14 * * 1"
+  workflow_dispatch:
+
+jobs:
+  check-urls:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      # Stdlib only, so no venv or dependency install is needed.
+      - name: Check dataset URLs
+        run: python3 scripts/check_dataset_urls.py

@@ -41,6 +41,8 @@ Dependencies and build config live in `pyproject.toml`.
 - `docs/rubrics/module-NN.md` — course-owned grading rubric for written answers; use for review, not as a replacement for the student's work
 - `docs/design/model-artifacts-and-tracks.md` — durable model artifact, hardware track, and Modules 10-20 backend plan
 - `mkdocs.yml` + `.github/workflows/docs.yml` — lesson pages build to <https://mister-meeseeks.github.io/g2c/> on every push to `main`. Edits under `docs/` are publicly visible within a few minutes; preview locally with `pip install -r docs/requirements.txt && mkdocs serve`.
+- `.github/workflows/bootstrap.yml` — runs `./setup.sh` on a clean checkout and asserts it produces the TinyShakespeare corpus, the `ShakespeareTokenizer` artifact, and the `.venv/.g2c-setup-complete` sentinel Module 00 checks. `tests.yml` installs deps directly and so never exercises the setup path; this job is what proves the README quickstart still works for a new student.
+- `.github/workflows/dataset-urls.yml` + `scripts/check_dataset_urls.py` — weekly link-rot check for the corpora `setup.sh`/`datasets.sh` download. The checker extracts URLs from those scripts (any `*_URL`/`*_url` shell variable) rather than restating them, so it cannot drift from what is actually downloaded. **When adding a new download, assign it to a `*_URL` variable** and it is covered automatically. Run locally with `python3 scripts/check_dataset_urls.py` (stdlib only, no venv needed).
 - `data/` — local, mostly-gitignored working tree:
   - `data/datasets/` — raw corpora and benchmark datasets (TinyShakespeare, TinyStories, G2C Corpus v1, MNIST).
   - `data/embeddings/` — pretrained embedding artifacts (GloVe).
