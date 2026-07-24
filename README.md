@@ -82,6 +82,25 @@ The course is agent friendly. Students should use their favorite coding agent (l
 
 The worked implementations (`g2c/solutions/`) and the grading rubrics (`docs/rubrics/`, a growing set) ship in this repo, in the open. That's deliberate. This is a self-study course: there is no transcript, no credential, and no proctor — a student who pastes in the answers is only cheating themself out of the thing they came for. And the open answer key is what makes the course work: it lets maintainers and coding agents verify every module end-to-end, it powers `./notebook.sh NN --solutions`, which runs a notebook against the reference implementations, and it gives a stuck student a way to get unstuck without abandoning the course. Treat it like the answers in the back of a math textbook: reach for it after you've fought with the problem, not before.
 
+### Getting unstuck without starting over
+
+Every module imports the one before it, so a bug in Module 07 can surface as garbage output in Module 12. When that happens you shouldn't have to choose between debugging backwards through five modules and throwing away everything you wrote. Hand back only the modules you're not working on:
+
+```bash
+./notebook.sh 12 --solutions=01-07   # reference code for 01-07, your own from 08 on
+```
+
+The same selector works for tests and for Python:
+
+```bash
+G2C_APPLY_SOLUTIONS=01-07 pytest     # a range
+G2C_APPLY_SOLUTIONS=07,09b pytest    # specific modules
+G2C_APPLY_SOLUTIONS=attention pytest # a whole topic
+G2C_APPLY_SOLUTIONS=1 pytest         # everything
+```
+
+This is the intended way to keep moving when one module has you stuck. Your work stands everywhere you didn't name.
+
 ## System requirements
 
 The course is designed for M-series Macs, but not every student needs the same download size, model size, or training time. The track system is artifact-based: prepare as much data as you want, and notebooks should load the strongest local artifact they can find.

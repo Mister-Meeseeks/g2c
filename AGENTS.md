@@ -211,6 +211,27 @@ pytest                              # scaffolds; many tests intentionally fail
 
 `apply()` is idempotent — re-running it just re-binds the same impls.
 
+### Per-module selection
+
+The course is a linear chain, so a bug in an early module surfaces much later. Handing back *everything* to get unstuck would also discard the modules the student got right, so the selection is scoped:
+
+```bash
+./notebook.sh 12 --solutions=01-07   # reference impls for 01-07, student's own from 08
+G2C_APPLY_SOLUTIONS=01-07 pytest     # same lever for pytest
+G2C_APPLY_SOLUTIONS=07,09b pytest    # specific modules
+G2C_APPLY_SOLUTIONS=attention pytest # a whole package topic
+G2C_APPLY_SOLUTIONS=0 pytest         # explicitly off
+```
+
+In Python: `g2c.solutions.apply(["01-07"])`. Bare `apply()` still binds everything.
+
+The map lives in `g2c/solutions/_selection.py`. Two things it exists to get right, both of which a topic-level filter would break:
+
+- **Modules 07 and 08 share `g2c/attention/`.** Selection is per *mirror file*, so `07` yields `self_attention` only and never hands over Module 08's multi-head answer.
+- **`TransformerLM.forward` (Module 09) and `TransformerLM.forward_cached` (Module 16) share a class.** Those two entries carry member-level `include`/`exclude` sets, so selecting 16 does not leak Module 09's transformer forward pass.
+
+**When adding or renaming a mirror file, update `MODULE_TARGETS`.** `tests/test_solutions_selection.py` asserts the map and the mirror tree match exactly in both directions, so drift fails by name rather than silently under-applying.
+
 `tests/test_scaffold_invariant.py` is a parametrized pytest that asserts every function targeted by the mirror is still a direct `# TODO` + `raise NotImplementedError` scaffold. If a worked implementation ever leaks back into `g2c/`, that test fails by qualified function name (e.g. `g2c.autodiff.value.Value.__add__`).
 
 When adding a new worked implementation:

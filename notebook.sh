@@ -72,10 +72,22 @@ One-stop wrapper for opening a module notebook:
      through any extra args (e.g. --fresh, --no-launch).
 
 Flags:
-  --solutions   Launch with worked implementations from g2c/solutions/
-                applied at import time (sets G2C_APPLY_SOLUTIONS=1). The
+  --solutions[=WHICH]
+                Launch with worked implementations from g2c/solutions/
+                applied at import time (sets G2C_APPLY_SOLUTIONS). The
                 pre-launch test run inherits the same setting, so tests
                 pass instead of warning. Default: scaffolds only.
+
+                Bare --solutions hands back every module. WHICH narrows it
+                so you keep your own work everywhere else:
+
+                  --solutions=01-07      Modules 01 through 07
+                  --solutions=07         one module
+                  --solutions=07,09b     several
+                  --solutions=attention  a whole package topic
+
+                Use this when a bug in an early module is blocking a later
+                one: hand back only what you're not debugging.
 
 Module → extras mapping:
   04            ./datasets.sh --tiny
@@ -97,6 +109,7 @@ Examples:
   ./notebook.sh --fresh 13
   ./notebook.sh 10 --no-launch
   ./notebook.sh 01 --solutions
+  ./notebook.sh 12 --solutions=01-07
 EOF
 }
 
@@ -112,9 +125,16 @@ case "$1" in
 esac
 
 ORIGINAL_ARGS=("$@")
+# Args forwarded to open_notebook.py. Solutions flags are consumed here (we
+# export G2C_APPLY_SOLUTIONS ourselves) so the selector cannot be re-parsed
+# downstream and widened back to "every module".
+PASSTHRU_ARGS=()
 MODULE=""
 SHOULD_LAUNCH=1
 USE_SOLUTIONS=0
+# What to hand back: "1" means every module; otherwise a selector list such as
+# "01-07". Parsed and validated by g2c/solutions/_selection.py at import time.
+SOLUTIONS_WHICH="1"
 for arg in "${ORIGINAL_ARGS[@]}"; do
     if [[ "$arg" == "--no-launch" ]]; then
         SHOULD_LAUNCH=0
@@ -122,10 +142,21 @@ for arg in "${ORIGINAL_ARGS[@]}"; do
     if [[ "$arg" == "--solutions" ]]; then
         USE_SOLUTIONS=1
     fi
+    if [[ "$arg" == --solutions=* ]]; then
+        USE_SOLUTIONS=1
+        SOLUTIONS_WHICH="${arg#--solutions=}"
+        if [[ -z "$SOLUTIONS_WHICH" ]]; then
+            fail "--solutions= needs a value, e.g. --solutions=01-07 (or bare --solutions for all)"
+        fi
+    fi
     case "$arg" in
+        --solutions|--solutions=*)
+            ;;
         -*)
+            PASSTHRU_ARGS+=("$arg")
             ;;
         *)
+            PASSTHRU_ARGS+=("$arg")
             if [[ -z "$MODULE" ]]; then
                 MODULE="$arg"
             fi
@@ -134,7 +165,7 @@ for arg in "${ORIGINAL_ARGS[@]}"; do
 done
 
 if [[ $USE_SOLUTIONS -eq 1 ]]; then
-    export G2C_APPLY_SOLUTIONS=1
+    export G2C_APPLY_SOLUTIONS="$SOLUTIONS_WHICH"
 fi
 
 if [[ -z "$MODULE" ]]; then
@@ -193,7 +224,11 @@ esac
 printf "\n"
 info "Setting up environment for notebook $MODULE"
 if [[ $USE_SOLUTIONS -eq 1 ]]; then
-    info "Solutions mode: g2c.solutions.apply() will run at import time"
+    if [[ "$SOLUTIONS_WHICH" == "1" ]]; then
+        info "Solutions mode: every module's worked implementation applied at import time"
+    else
+        info "Solutions mode: applying '$SOLUTIONS_WHICH' only; your own code stands everywhere else"
+    fi
 fi
 printf "\n"
 
@@ -265,4 +300,4 @@ if [[ $SHOULD_LAUNCH -eq 1 ]]; then
 fi
 
 info "Opening module $MODULE notebook"
-exec .venv/bin/python scripts/open_notebook.py "${ORIGINAL_ARGS[@]}"
+exec .venv/bin/python scripts/open_notebook.py "${PASSTHRU_ARGS[@]}"

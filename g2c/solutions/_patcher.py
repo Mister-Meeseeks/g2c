@@ -14,7 +14,10 @@ from __future__ import annotations
 import importlib
 import inspect
 import types
+from collections.abc import Callable, Iterable
 from pathlib import Path
+
+from ._selection import SelectionError, resolve
 
 _ROOT = Path(__file__).parent
 _HOLDER_SUFFIX = "Impl"
@@ -87,7 +90,14 @@ def _rebind_globals(func: types.FunctionType, target_module) -> types.FunctionTy
     new_func.__kwdefaults__ = func.__kwdefaults__
     new_func.__qualname__ = func.__qualname__
     new_func.__module__ = target_module.__name__
-    new_func.__wrapped__ = getattr(func, "__wrapped__", None)
+    # Only copy `__wrapped__` when the original actually has one. Setting it
+    # to None unconditionally is not the same as leaving it absent:
+    # `inspect.unwrap` follows the attribute and hands None to `getfile`,
+    # so `inspect.getsource(...)` / `help(...)` raise TypeError on every
+    # patched function — which a student in solutions mode hits the first
+    # time they try to read an implementation they just enabled.
+    if hasattr(func, "__wrapped__"):
+        new_func.__wrapped__ = func.__wrapped__
     return new_func
 
 
@@ -142,8 +152,16 @@ def _maybe_rebind(value, target_module, target_class=None):
     return value  # property, descriptor, slot, etc. — leave alone
 
 
-def _patch_one(mirror_name: str) -> tuple[list[str], dict[int, object]]:
+def _patch_one(
+    mirror_name: str,
+    allow: Callable[[str], bool] | None = None,
+) -> tuple[list[str], dict[int, object]]:
     """Patch a single mirror module's impls onto its scaffold target.
+
+    `allow` optionally filters which members get bound, by member name. It is
+    how a per-module selection keeps `TransformerLM.forward` (Module 09) and
+    `TransformerLM.forward_cached` (Module 16) apart despite their sharing a
+    class. `None` binds everything in the mirror.
 
     Returns (swapped_qualnames, rebindings) where `rebindings` maps the
     id() of each replaced free-function object to the new impl, so that
@@ -173,6 +191,8 @@ def _patch_one(mirror_name: str) -> tuple[list[str], dict[int, object]]:
         for member_name, member in vars(holder).items():
             if member_name in _HOLDER_SKIP:
                 continue
+            if allow is not None and not allow(member_name):
+                continue
             bound = _maybe_rebind(member, target_module, target_class)
             setattr(target_class, member_name, bound)
             swapped.append(f"{target_name}.{target_class_name}.{member_name}")
@@ -185,6 +205,8 @@ def _patch_one(mirror_name: str) -> tuple[list[str], dict[int, object]]:
         if not inspect.isfunction(attr):
             continue
         if attr.__module__ != mirror_name:
+            continue
+        if allow is not None and not allow(attr_name):
             continue
         old = getattr(target_module, attr_name, None)
         bound = _rebind_globals(attr, target_module)
@@ -219,14 +241,58 @@ def _rebind_reexports(rebindings: dict[int, object]) -> list[str]:
     return rebound
 
 
-def apply() -> list[str]:
-    """Bind every mirror impl onto its scaffold target. Returns swapped qualnames."""
+def apply(only: Iterable[str] | None = None) -> list[str]:
+    """Bind mirror impls onto their scaffold targets. Returns swapped qualnames.
+
+    `only` selects which course modules to hand over. `None` (the default)
+    binds everything, preserving the original behavior. Otherwise it is an
+    iterable of selectors — module ids, ranges, topics, or mirror paths::
+
+        apply()                          # every module
+        apply(["01-07"])                 # Modules 01 through 07
+        apply(["attention", "09b"])      # one topic plus one module
+
+    Selecting a subset is the supported way to get unstuck without discarding
+    your own work: hand back only the modules you're not debugging. See
+    `_selection` for the full selector grammar.
+
+    Raises `SelectionError` if a selector names nothing in the course — a
+    silent no-op would leave a stuck student staring at the same failure.
+    """
+    if only is None:
+        mirrors: dict[str, Callable[[str], bool] | None] = {
+            name: None for name in _iter_mirror_modules()
+        }
+    else:
+        resolved = resolve(only)
+        _assert_mirrors_exist(resolved)
+        mirrors = {
+            name: (lambda member, ts=targets: any(t.allows(member) for t in ts))
+            for name, targets in resolved.items()
+        }
+
     swapped: list[str] = []
     rebindings: dict[int, object] = {}
-    for mirror_name in _iter_mirror_modules():
-        s, r = _patch_one(mirror_name)
+    for mirror_name, allow in mirrors.items():
+        s, r = _patch_one(mirror_name, allow)
         swapped.extend(s)
         rebindings.update(r)
     if rebindings:
         swapped.extend(_rebind_reexports(rebindings))
     return swapped
+
+
+def _assert_mirrors_exist(resolved: dict[str, object]) -> None:
+    """Fail loudly if the selection map names a mirror file that isn't there.
+
+    The map in `_selection` is hand-maintained course metadata; a renamed or
+    deleted mirror file would otherwise turn into a selection that silently
+    binds less than the student asked for.
+    """
+    known = set(_iter_mirror_modules())
+    missing = sorted(set(resolved) - known)
+    if missing:
+        raise SelectionError(
+            "solutions selection map is stale — these mirror modules do not "
+            f"exist: {', '.join(missing)}. Update g2c/solutions/_selection.py."
+        )

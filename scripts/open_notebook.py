@@ -132,10 +132,15 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--solutions",
-        action="store_true",
+        nargs="?",
+        const="1",
+        default=None,
+        metavar="WHICH",
         help=(
             "launch the notebook with worked implementations from g2c/solutions/ "
-            "applied at import time (sets G2C_APPLY_SOLUTIONS=1)"
+            "applied at import time (sets G2C_APPLY_SOLUTIONS). Bare --solutions "
+            "applies every module; --solutions=01-07 applies only those, leaving "
+            "your own code in place everywhere else"
         ),
     )
     return parser.parse_args()
@@ -144,8 +149,12 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
 
-    if args.solutions:
-        os.environ["G2C_APPLY_SOLUTIONS"] = "1"
+    # `notebook.sh` exports G2C_APPLY_SOLUTIONS itself and strips the flag
+    # before handing off, so this only fires on direct invocation. Pass the
+    # selector through verbatim rather than forcing "1", or a narrowed
+    # selection would silently widen to every module.
+    if args.solutions is not None:
+        os.environ["G2C_APPLY_SOLUTIONS"] = args.solutions
 
     try:
         clean_path = find_clean_notebook(args.module)
