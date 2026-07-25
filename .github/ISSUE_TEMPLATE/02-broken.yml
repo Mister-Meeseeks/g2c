@@ -36,6 +36,19 @@ body:
     validations:
       required: true
 
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      description: The course is only supported on Apple-Silicon Macs — see "System requirements" in the README.
+      options:
+        - "Apple-Silicon Mac (M1/M2/M3/M4)"
+        - "Intel Mac"
+        - "Linux"
+        - "Windows"
+    validations:
+      required: true
+
   - type: input
     id: module
     attributes:

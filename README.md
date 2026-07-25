@@ -148,6 +148,8 @@ Minimum system requirements (will likely have to use smaller models than default
 * 8GB memory
 * 5GB free storage
 
+**Not on an M-series Mac?** The course is developed, tested, and supported only on Apple Silicon. The code is ordinary PyTorch, so Part I will *probably* run on Linux — CUDA or even CPU — with small device-string changes, but no lesson, test, or wall-clock claim has been validated there, and the M-series notes assume unified memory. Intel Macs fall back to CPU-only PyTorch, which turns the training modules from minutes into hours. Windows is unsupported outright (the course scripts are bash; WSL2 puts you in the untested-Linux camp). You're welcome to adapt the course to other hardware — genuinely — but you'll be off the map, and problems that only reproduce off Apple Silicon aren't something we can debug for you.
+
 For sizing models and datasets, or going outside the standard defaults, see [Course Tracks and Artifacts](docs/tracks.md). 
 
 ## Repository layout
