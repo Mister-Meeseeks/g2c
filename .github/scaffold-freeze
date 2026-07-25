@@ -1,0 +1,16 @@
+# Scaffold freeze — the contract that lets students `git pull` mid-course.
+#
+# Enforced by scripts/check_scaffold_freeze.sh (run in CI by
+# .github/workflows/scaffold-freeze.yml). See CONTRIBUTING.md for the policy.
+#
+# Format: '#' starts a comment, blank lines are ignored.
+#   - The first entry is the git ref (normally a release tag) that the student
+#     edit surface — g2c/ minus g2c/solutions/ and g2c/notebook_extras/ — is
+#     frozen at. While no ref is set, the check is dormant (pre-release).
+#   - Each later entry is a path intentionally changed since the freeze: the
+#     breaking-change ledger. Give each a trailing comment telling a student
+#     who already edited that file how to patch their copy, e.g.:
+#       g2c/attention/self_attention.py  # v1.0.1: fixed mask dtype in the scaffold docstring — no code change needed
+#
+# At release: tag the release commit (e.g. v1.0) and put the tag on the first
+# non-comment line below.

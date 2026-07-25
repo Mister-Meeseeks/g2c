@@ -37,7 +37,16 @@ pytest                          # red here is expected; it's the work you haven'
 Corrections to lessons — wrong math, stale claims, broken links, typos — are welcome
 directly as PRs. So are fixes to setup scripts and tests.
 
-Two things to know before opening a larger PR:
+Three things to know before opening a larger PR:
+
+**The scaffold surface is frozen after release.** Students edit the files under
+`g2c/` (outside `g2c/solutions/` and `g2c/notebook_extras/`) in place, so an
+upstream change to them lands as a merge conflict inside somebody's homework.
+Post-release, fixes route to the solutions mirror, tests, docs, and rubrics —
+all of which merge cleanly into any student's copy. Adding new files is fine.
+CI enforces this against the release tag recorded in `.github/scaffold-freeze`;
+a genuinely unavoidable scaffold change goes in that file's exception ledger
+with a note telling students how to patch an already-edited copy.
 
 **Don't put worked implementations in `g2c/`.** Every pedagogical function there is
 deliberately a `# TODO` + `raise NotImplementedError` scaffold. Canonical implementations
@@ -58,6 +67,7 @@ source .venv/bin/activate
 ruff check .                        # lint
 G2C_APPLY_SOLUTIONS=1 pytest        # full suite against reference implementations
 pytest tests/test_scaffold_invariant.py   # no solutions leaked into g2c/
+bash scripts/check_scaffold_freeze.sh     # released scaffold files unchanged
 python3 scripts/check_dataset_urls.py     # course downloads still resolve
 mkdocs build --strict               # docs build clean (pip install -r docs/requirements.txt)
 ```

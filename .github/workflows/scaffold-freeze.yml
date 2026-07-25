@@ -1,0 +1,35 @@
+name: scaffold-freeze
+
+# Students edit g2c/ scaffold files in place, so any post-release change to
+# that surface lands as a merge conflict inside somebody's homework. This job
+# fails if the surface drifts from the freeze ref in .github/scaffold-freeze.
+# Dormant until a release tag is written into that file.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "g2c/**"
+      - ".github/scaffold-freeze"
+      - ".github/workflows/scaffold-freeze.yml"
+      - "scripts/check_scaffold_freeze.sh"
+  pull_request:
+    paths:
+      - "g2c/**"
+      - ".github/scaffold-freeze"
+      - ".github/workflows/scaffold-freeze.yml"
+      - "scripts/check_scaffold_freeze.sh"
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so the freeze tag and its diff base are reachable.
+          fetch-depth: 0
+
+      - name: Check the frozen scaffold surface
+        run: bash scripts/check_scaffold_freeze.sh

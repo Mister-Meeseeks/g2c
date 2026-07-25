@@ -12,8 +12,10 @@ The hard constraint: **all tasks are runnable locally on an M-series MacBook**, 
 
 This repo contains everything needed for the course exercises and student projects. Lecture notes are both in repo docs and hosted on the web at [the course site](https://mister-meeseeks.github.io/g2c/). 
 
+Start by [forking this repo](https://github.com/Mister-Meeseeks/g2c/fork). The course is months of your own work, and a fork gives that work a home on GitHub — backup, history, and one-click course updates. (A plain `git clone` of this repo works too; you just won't have anywhere to push.)
+
 ```bash
-git clone https://github.com/Mister-Meeseeks/g2c
+git clone https://github.com/<your-username>/g2c
 cd g2c/
 ./setup.sh
 ```
@@ -115,6 +117,20 @@ G2C_APPLY_SOLUTIONS=1 pytest         # everything
 ```
 
 This is the intended way to keep moving when one module has you stuck. Your work stands everywhere you didn't name.
+
+## Keeping your copy up to date
+
+The course keeps improving after you start it — lesson fixes, better tests, corrected reference implementations. Updates are safe to take mid-course, no matter how much you've written:
+
+```bash
+# In a fork: click "Sync fork" on your fork's GitHub page, then
+git pull
+# In a plain clone: just git pull
+```
+
+That safety is a deliberate contract, not luck: **course updates never modify the files you edit.** Your work lives in the `g2c/` scaffold files and your working notebooks (which aren't tracked at all); post-release fixes land in docs, tests, rubrics, and the solutions mirror. CI enforces the contract (`scripts/check_scaffold_freeze.sh`), and in the rare case a scaffold file itself must change, the exception is recorded in `.github/scaffold-freeze` with a note on how to patch an already-edited copy — so if a pull ever does conflict, that file tells you what happened.
+
+One default worth knowing: your written answers in `notebooks/solutions/` are gitignored, so that this repo never ships a solved notebook. In your own fork that protection serves no one — if you want your notebook answers versioned and backed up with the rest of your work, delete `notebooks/solutions/.gitignore` and commit them like anything else.
 
 ## System requirements
 
