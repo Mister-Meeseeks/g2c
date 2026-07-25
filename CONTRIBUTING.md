@@ -69,6 +69,7 @@ G2C_APPLY_SOLUTIONS=1 pytest        # full suite against reference implementatio
 pytest tests/test_scaffold_invariant.py   # no solutions leaked into g2c/
 bash scripts/check_scaffold_freeze.sh     # released scaffold files unchanged
 python3 scripts/check_dataset_urls.py     # course downloads still resolve
+python3 scripts/check_model_ids.py        # BaseLM/Ollama model ids still resolve
 mkdocs build --strict               # docs build clean (pip install -r docs/requirements.txt)
 ```
 

@@ -7,6 +7,10 @@ name: dataset urls
 #
 # Deliberately does NOT download the corpora (GloVe is 822MB, TinyStories
 # 1.9GB) — a one-byte ranged request is enough to prove the URL resolves.
+#
+# The model-id check is the same idea for Part II's upstream models: the
+# BaseLM Hugging Face repo and the Ollama tags prodlm.sh pulls, verified
+# against their registries' metadata endpoints without downloading weights.
 
 on:
   schedule:
@@ -24,3 +28,6 @@ jobs:
       # Stdlib only, so no venv or dependency install is needed.
       - name: Check dataset URLs
         run: python3 scripts/check_dataset_urls.py
+
+      - name: Check pretrained model ids (BaseLM + Ollama)
+        run: python3 scripts/check_model_ids.py
