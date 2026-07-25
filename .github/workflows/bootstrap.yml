@@ -8,6 +8,11 @@ name: bootstrap
 # download. That gap let a dead TinyShakespeare URL and a missing `mkdir`
 # reach main — invisible to CI and to any maintainer whose data/ was already
 # populated, but fatal for every new student. This job closes it.
+#
+# The final step executes notebooks 00-08 headlessly against the reference
+# solutions — the artifact students actually touch first, and the one thing
+# the pytest suite never opens. Scope stops at 08 because 09B+ notebooks do
+# real training runs; those are covered by pre-release dry runs, not CI.
 
 on:
   push:
@@ -20,7 +25,9 @@ jobs:
     # arm64 macOS mirrors the student platform. No Metal GPU on CI runners;
     # smoke_test.py warns and exits 0 when MPS is unavailable.
     runs-on: macos-latest
-    timeout-minutes: 25
+    # Generous: notebook execution runs CPU-only here (no Metal on runners),
+    # so cells that ride MPS locally take several times longer.
+    timeout-minutes: 45
     steps:
       # A plain checkout is the point: data/ contains only .gitkeep here,
       # exactly as it does for a student cloning for the first time.
@@ -64,3 +71,16 @@ jobs:
         run: |
           source .venv/bin/activate
           python scripts/check_notebooks.py
+
+      # No Metal GPU on CI runners: notebooks are expected to guard MPS use
+      # behind torch.backends.mps.is_available(), so a failure here is either
+      # a broken notebook or a missing guard — both worth failing on.
+      - name: Execute notebooks 00-08 against reference solutions
+        run: |
+          source .venv/bin/activate
+          for nb in notebooks/clean/0[0-8]*.ipynb; do
+            echo "==> $nb"
+            G2C_APPLY_SOLUTIONS=1 jupyter nbconvert --to notebook --execute \
+              --output-dir "$RUNNER_TEMP/executed-notebooks" \
+              --ExecutePreprocessor.timeout=600 "$nb"
+          done
