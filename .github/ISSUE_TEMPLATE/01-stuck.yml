@@ -1,0 +1,99 @@
+name: I got stuck on a module
+description: Tell us where the course lost you. This is the most useful feedback we can get.
+title: "[stuck] Module NN — "
+labels: ["stuck"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Getting stuck is not a failure report on you — it's a bug report on the course.
+
+        The single most valuable thing we can learn is **which module people stall on**, so
+        please pick one below even if the answer is "several." No need to have solved it
+        first; a half-finished "I don't get why the mask is upper-triangular" is exactly
+        what we want to see.
+
+        If you just want to get moving again, you don't have to wait on us. Hand back the
+        modules you aren't debugging and keep going:
+
+        ```bash
+        ./notebook.sh 12 --solutions=01-07
+        ```
+
+  - type: dropdown
+    id: module
+    attributes:
+      label: Which module?
+      options:
+        - "00 — Prerequisite review"
+        - "01 — Scalar autodiff"
+        - "02 — Tensors and matmul"
+        - "03 — A first neural network"
+        - "03B — Training"
+        - "04 — Tokenization"
+        - "05 — Embeddings and positions"
+        - "06 — Next-token prediction"
+        - "07 — Self-attention"
+        - "08 — Multi-head attention"
+        - "09 — The transformer block"
+        - "09B — Pretraining"
+        - "10 — Milestone: TinyLLM"
+        - "11 — Sampling and decoding"
+        - "12 — Scaling experiments"
+        - "13 — Instruction tuning (SFT)"
+        - "14 — Preference tuning (DPO)"
+        - "15 — Hallucination and evaluation"
+        - "16 — Local pretrained models and inference"
+        - "17 — Retrieval-augmented generation"
+        - "18 — Tool use"
+        - "19 — Agent loops"
+        - "20 — Capstone: a tiny ChatGPT"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What kind of stuck?
+      options:
+        - "I don't understand the concept"
+        - "I understand it but can't make the tests pass"
+        - "The lesson doesn't explain something it assumes I know"
+        - "A test or error message wasn't clear enough to act on"
+        - "It runs, but I can't tell whether my answer is right"
+        - "Something else"
+    validations:
+      required: true
+
+  - type: textarea
+    id: detail
+    attributes:
+      label: Where exactly did it break down?
+      description: >
+        Name the function, exercise number, or paragraph if you can. Rough is fine —
+        "somewhere in the backward pass" is still useful.
+      placeholder: |
+        I'm on exercise 3. I can get attention_weights to match the test for the
+        non-causal case, but the causal one is off and I don't understand what the
+        mask is supposed to do to the softmax.
+    validations:
+      required: true
+
+  - type: textarea
+    id: tried
+    attributes:
+      label: What did you already try?
+      description: Helps us see which explanations aren't landing.
+    validations:
+      required: false
+
+  - type: input
+    id: time
+    attributes:
+      label: Roughly how long were you on it before getting stuck?
+      description: >
+        Genuinely useful — we have no per-module effort data yet, and this is how
+        we'd get it.
+      placeholder: "about 3 hours over two evenings"
+    validations:
+      required: false

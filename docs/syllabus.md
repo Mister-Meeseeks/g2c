@@ -26,6 +26,18 @@ Each week has the same structure:
 
 A "week" is one week of effort at the level of a rigorous elite-college course. Real calendar time will vary.
 
+### How long a module actually takes
+
+Three different clocks matter, and only two of them are predictable.
+
+**Reading** is short. Lesson pages run 8–28 minutes of reading; the longest are Modules 16 and 19. Run `python scripts/module_word_counts.py --reading-time` for the current per-module numbers.
+
+**Machine time** is documented. Most modules cost nothing beyond a few seconds of compute. The exceptions are worth planning around: Module 10 trains a model (minutes for the small artifacts, multi-hour or overnight for the largest), and Module 12 compares several trained checkpoints, so it inherits whatever you did in Module 10. One-time downloads land at Modules 04, 05, 13, and 16. [Course Tracks and Artifacts](tracks.md) has the full table, and every long run checkpoints so you can interrupt, sample, and resume.
+
+**Your time on the implementation and exercises is the big one, and we deliberately don't publish a number for it.** It varies enormously by background, and the honest signals we have measure volume rather than difficulty — Module 07 asks you to implement only two functions, but self-attention is one of the hardest ideas in the course, so any estimate derived from counting scaffolds would tell you the opposite of the truth. We would rather say nothing than publish a figure that makes you feel slow for taking the time the material actually deserves.
+
+If you want to help fix that: the [stuck report](https://github.com/Mister-Meeseeks/g2c/issues/new?template=01-stuck.yml) form asks roughly how long you'd been working before you got stuck. Enough of those and this section can be replaced with real data instead of a disclaimer.
+
 Module 0 is the exception: it is a fast review, not a full course week. Use it to put the necessary math, ML, PyTorch, and repo mechanics back in working memory before starting Module 1.
 
 ## Prerequisites

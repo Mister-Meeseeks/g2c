@@ -73,6 +73,11 @@ Dependencies and build config live in `pyproject.toml`.
   - `data/cache/` — reproducible caches (safe to wipe; rebuilt by setup/build scripts). Includes the HF hub cache `data/cache/baselm/` backing the `BaseLM` artifact's weights and tokenized-corpus caches like `data/cache/token-corpus/StoryLM-tinystories-full-v4096/`.
   - `data/work/moduleNN/` — module-specific working files (see entry above).
 - `tests/test_<topic>.py` — tests for each module's public API
+- `.github/ISSUE_TEMPLATE/` — issue forms for students. `01-stuck.yml` is the important one: it captures **which module** someone stalled on as a structured dropdown, plus how long they'd been working. The repo has no telemetry by design, so these reports are the only signal about where the course loses people. Keep the module dropdown in sync when modules change.
+- `CONTRIBUTING.md` — student-facing contribution guide. Leads with "tell us where you got stuck" rather than with patches, and warns that a red `pytest` on a fresh clone is expected.
+- `scripts/module_word_counts.py` — lesson word counts by section; `--reading-time` converts them to per-module reading estimates. Reading time is *derived on demand*, never pasted into a doc as a static table — that is how the old phase names rotted.
+
+**Do not publish per-module effort-hour estimates.** The measurable signals (scaffold count, exercise count, word count) track volume, not difficulty, and they invert on the hardest modules — Module 07 has two scaffolded functions and is among the toughest weeks in the course. The syllabus says plainly that this number is deliberately absent and explains why; replace it only with real data from stuck reports, not with a derived guess.
 
 ## When working on a module
 

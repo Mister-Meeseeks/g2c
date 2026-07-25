@@ -1,0 +1,41 @@
+name: Lesson feedback
+description: A wrong claim, an unclear explanation, a typo, a bad link, or a suggestion.
+title: "[docs] Module NN — "
+labels: ["docs"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Corrections are welcome and wanted, including small ones. If a sentence made you
+        re-read it three times, that's worth reporting even if it turned out to be
+        correct — hard-to-parse and wrong are both defects.
+
+  - type: input
+    id: where
+    attributes:
+      label: Where?
+      description: Module number and section heading, or a URL on the course site.
+      placeholder: "Module 14 — 'The big idea', third paragraph"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What kind?
+      options:
+        - "The claim is wrong or misleading"
+        - "It's correct but hard to follow"
+        - "It assumes something it never taught"
+        - "Typo, formatting, or broken link"
+        - "Suggestion / something you'd want added"
+    validations:
+      required: true
+
+  - type: textarea
+    id: detail
+    attributes:
+      label: Details
+      description: Quote the passage if you can, and say what you'd expect instead.
+    validations:
+      required: true

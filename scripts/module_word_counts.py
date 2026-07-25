@@ -196,6 +196,17 @@ def _section_starts(lines: list[str]) -> dict[str, int]:
     return starts
 
 
+# Technical prose with math and code reads slower than general text; 180 wpm is a
+# deliberately conservative planning figure. This covers *reading the lesson only* —
+# it says nothing about how long the implementation or exercises take, which depends
+# far more on the reader than on the page.
+WORDS_PER_MINUTE = 180
+
+
+def reading_minutes(words: int) -> int:
+    return max(1, round(words / WORDS_PER_MINUTE))
+
+
 def render_table(rows: list[dict], fmt: str, *, relative: str = "none") -> str:
     numeric_keys = ["lecture", "post", "total"]
     averages = column_averages(rows, numeric_keys)
@@ -362,6 +373,14 @@ def main() -> int:
         action="store_true",
         help="Break counts down by canonical module sections instead of lecture/post.",
     )
+    parser.add_argument(
+        "--reading-time",
+        action="store_true",
+        help=(
+            "Report estimated lesson reading time per module instead of word counts. "
+            "Covers reading only — not implementation or exercises."
+        ),
+    )
     relative_group = parser.add_mutually_exclusive_group()
     relative_group.add_argument(
         "--diff",
@@ -380,6 +399,47 @@ def main() -> int:
     if not paths:
         print(f"No module .md files in {args.modules_dir}", file=sys.stderr)
         return 1
+
+    if args.reading_time:
+        rows = []
+        for path in paths:
+            lecture, post, _ = split_lecture_post(path.read_text())
+            rows.append({
+                "module": path.stem,
+                "lecture": reading_minutes(wc_words(lecture)),
+                "post": reading_minutes(wc_words(post)) if post.strip() else 0,
+            })
+        width = max(len(r["module"]) for r in rows)
+        if args.format == "csv":
+            buffer = io.StringIO()
+            writer = csv.DictWriter(
+                buffer,
+                fieldnames=["module", "lecture_min", "homework_min", "total_min"],
+                lineterminator="\n",
+            )
+            writer.writeheader()
+            for r in rows:
+                writer.writerow({
+                    "module": r["module"],
+                    "lecture_min": r["lecture"],
+                    "homework_min": r["post"],
+                    "total_min": r["lecture"] + r["post"],
+                })
+            print(buffer.getvalue().rstrip("\n"))
+        else:
+            print(f"{'Module'.ljust(width)}  Lecture  Homework  Total")
+            print(f"{'-' * width}  -------  --------  -----")
+            for r in rows:
+                total = r["lecture"] + r["post"]
+                post = f"{r['post']}m" if r["post"] else "—"
+                print(
+                    f"{r['module'].ljust(width)}  {r['lecture']:>6}m  {post:>8}  {total:>4}m"
+                )
+            print(
+                f"\nReading only, at {WORDS_PER_MINUTE} wpm. Implementation and exercise "
+                "time is not\nestimated here — it varies far more by reader than by module."
+            )
+        return 0
 
     if args.breakdown:
         rows = []

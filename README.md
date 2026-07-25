@@ -163,3 +163,11 @@ tests/                  # tests across modules
 ```
 
 The split is intentional: `docs/` is what a student reads, `g2c/` is what the student builds. They evolve together.
+
+## Feedback
+
+If the course loses you somewhere, please [say where](https://github.com/Mister-Meeseeks/g2c/issues/new?template=01-stuck.yml). You don't need to have solved it first, and "I lost the thread somewhere in the backward pass" is a perfectly good report.
+
+Nothing in this repo phones home — it all runs locally, and it always will. The consequence is that a module which quietly loses half the people who reach it looks exactly like a module nobody struggled with. Stuck reports are the only way that difference becomes visible.
+
+Bug reports, corrections, and pull requests are all welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).

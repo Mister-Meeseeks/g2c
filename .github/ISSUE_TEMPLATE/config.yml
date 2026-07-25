@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Ask a coding agent first
+    url: https://github.com/Mister-Meeseeks/g2c/blob/main/AGENTS.md
+    about: >
+      The repo is set up so a coding agent launched inside it acts as a teaching
+      assistant — it will hint, grade your notebook, or explain a failing test.
+      For "how does this work?" questions that is usually faster than an issue.
+  - name: Course site
+    url: https://mister-meeseeks.github.io/g2c/
+    about: All lesson pages, the syllabus, and the tracks/artifacts guide.

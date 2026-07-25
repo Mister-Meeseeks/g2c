@@ -1,0 +1,80 @@
+name: Something is broken
+description: Setup fails, a script errors, a download 404s, or a test fails in a way that looks like our bug.
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this when the repo itself misbehaves — as opposed to being stuck on the
+        material, which has its own template.
+
+        **Note:** many tests fail on a fresh clone *by design*. `g2c/` ships as
+        scaffolds for you to implement, so `pytest` reporting hundreds of
+        `NotImplementedError` failures is expected, not a bug. To see what the suite
+        looks like when everything is implemented:
+
+        ```bash
+        G2C_APPLY_SOLUTIONS=1 pytest
+        ```
+
+        If that run is green, the scaffolding is fine and the failures are just work
+        you haven't done yet.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: What broke?
+      options:
+        - "./setup.sh"
+        - "./datasets.sh (a download or corpus build)"
+        - "./baselm.sh or ./prodlm.sh"
+        - "./notebook.sh (launching a notebook)"
+        - "A test that fails even with G2C_APPLY_SOLUTIONS=1"
+        - "A notebook cell errors"
+        - "Something else"
+    validations:
+      required: true
+
+  - type: input
+    id: module
+    attributes:
+      label: Module (if it's module-specific)
+      placeholder: "09B"
+    validations:
+      required: false
+
+  - type: textarea
+    id: command
+    attributes:
+      label: What did you run?
+      render: shell
+      placeholder: ./datasets.sh glove
+    validations:
+      required: true
+
+  - type: textarea
+    id: output
+    attributes:
+      label: What happened?
+      description: Paste the error. Trim it if it's enormous, but keep the actual failure.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: |
+        Paste the output of the smoke test — it's instant and tells us Python, PyTorch,
+        and MPS status:
+
+        ```bash
+        source .venv/bin/activate && python scripts/smoke_test.py
+        ```
+
+        Please also note your Mac (e.g. "M2 Air, 16GB") and macOS version.
+      render: shell
+    validations:
+      required: true

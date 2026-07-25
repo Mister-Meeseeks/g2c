@@ -78,3 +78,15 @@ Each week, students will read the module lesson page. They'll then implement a n
 - Read the [syllabus](syllabus.md) for the full arc across both parts.
 - Clone the [repository](https://github.com/Mister-Meeseeks/g2c) and follow the README quickstart to set up on your machine.
 - Start with [Module 0: Prerequisite review](modules/00-prerequisite-review.md), or jump straight into [Module 1: Scalar autodiff](modules/01-autodiff.md).
+
+## If you get stuck
+
+Two things, in this order.
+
+**Keep moving.** You don't have to debug backwards through five modules to make progress. Hand back the reference implementations for the modules you aren't working on and carry on with your own code everywhere else:
+
+```bash
+./notebook.sh 12 --solutions=01-07
+```
+
+**Then tell us where it happened.** Open a [stuck report](https://github.com/Mister-Meeseeks/g2c/issues/new?template=01-stuck.yml) naming the module. Nothing in the course phones home, so a module that quietly loses people is invisible to us unless someone says so. It genuinely helps, and it takes a minute.
