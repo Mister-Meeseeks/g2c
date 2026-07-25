@@ -4,7 +4,7 @@
 
 ![The tiny-GPT pretraining loop from token windows through logits, cross-entropy, clipping, scheduled learning rate, and optimizer step, with a side panel of sample text improving from random characters to coherent sentences.](10-tinyllm/Module10-Hero.png)
 
-This is the payoff week for Phase III. Module 09 built the architecture. Module 09B turned a token stream into a supervised objective. Module 03B made the training controls legible. Module 10 wires those pieces together and produces the first trained checkpoint.
+This is the payoff week for the transformer stretch. Module 09 built the architecture. Module 09B turned a token stream into a supervised objective. Module 03B made the training controls legible. Module 10 wires those pieces together and produces the first trained checkpoint. Module 11 then teaches it to speak, closing out Part I.
 
 ---
 ## Before you start

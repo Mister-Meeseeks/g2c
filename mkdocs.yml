@@ -1,5 +1,5 @@
 site_name: From Gradients to ChatGPT
-site_description: A 20-week self-study course building a tiny LLM stack from scalar autograd up through a working chat assistant.
+site_description: A two-part self-study course building a tiny LLM stack from scalar autograd up through a working chat assistant.
 site_url: https://mister-meeseeks.github.io/g2c/
 repo_url: https://github.com/Mister-Meeseeks/g2c
 repo_name: g2c
@@ -72,7 +72,7 @@ nav:
   - Syllabus: syllabus.md
   - Tracks & artifacts: tracks.md
   - Repo: https://github.com/Mister-Meeseeks/g2c
-  - Modules:
+  - Part I — Building a language model:
       - "00 — Prerequisite review": modules/00-prerequisite-review.md
       - "01 — Gradients": modules/01-autodiff.md
       - "02 — Tensors and matmul": modules/02-tensors.md
@@ -87,6 +87,7 @@ nav:
       - "09B — Pretraining": modules/09b-pretraining.md
       - "10 — Milestone: TinyLLM": modules/10-tinyllm.md
       - "11 — Sampling and decoding": modules/11-sampling.md
+  - Part II — Building an assistant:
       - "12 — Scaling": modules/12-scaling.md
       - "13 — Instruction tuning (SFT)": modules/13-sft.md
       - "14 — Preference tuning (DPO)": modules/14-dpo.md

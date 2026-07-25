@@ -6,6 +6,29 @@
 
 Scaling laws tell us how model quality varies with model size. We frame scaling and model size through the lens of parameter count, total compute, and training data size. The rest of this lesson explores that relationship quantitatively and behaviorally. This is a lab week: no new package code, just careful comparisons.
 
+This module also opens **Part II — From a language model to ChatGPT**. Part I built the model; Part II builds the system around it. The work shifts from derivation to systems engineering: from here on the course ships more plumbing and asks you to write the decisions.
+
+---
+## Entering at Part II
+
+Most students arrive here from Module 11 with their own language model in hand. You don't have to.
+
+Part II is close to self-contained. Its packages depend on only a thin slice of Part I — `g2c/nn/` and `g2c/training/` (Modules 03 and 03B) for the SFT and DPO optimizers, and `g2c/sampling/` (Module 11) for generation. Nothing in Part II imports your attention, transformer, or pretraining code. Modules 13–15 can fine-tune the pretrained `BaseLM` instead of a model you trained, and Modules 16–20 run on `ProdLM`, a local pretrained instruct model, by design.
+
+So if you already know the fundamentals and came for the systems material, start here and hand back Part I's implementations:
+
+```bash
+G2C_APPLY_SOLUTIONS=01-11 ./notebook.sh 12
+```
+
+That binds the reference implementations for Modules 01–11 and leaves everything from 12 on as your work. The same selector works for tests:
+
+```bash
+G2C_APPLY_SOLUTIONS=01-11 pytest
+```
+
+Two honest caveats. First, this module's exercises compare *your own* trained checkpoints at several sizes — without them you can still follow the analysis, but you'll be reading someone else's curve rather than plotting yours. Second, the course's whole argument is that the layers below are not magic. Skipping Part I means taking that on faith. If you have the time, it is worth earning.
+
 ---
 ## Before you start
 

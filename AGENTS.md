@@ -11,6 +11,30 @@ Guidance for AI coding agents working in this repo.
 
 Users of the repo may either be students working on the course, or project maintainers developing or updating the course.  Unit indicated otherwise, assume you're interacting with a course student.
 
+## Course structure
+
+The course is presented in **two parts**, split at the Module 11/12 boundary. The parts are a presentation layer only — module numbers are load-bearing in `notebook.sh`, `data/work/moduleNN/`, test names, and doc cross-links, so **never renumber modules**.
+
+| Part | Group | Modules |
+| ---- | ----- | ------- |
+| I — From gradients to a language model | Prerequisite review | 00 |
+| I | Foundations | 01, 02, 03, 03B |
+| I | Language | 04, 05, 06 |
+| I | The transformer | 07, 08, 09, 09B, 10, 11 |
+| II — From a language model to ChatGPT | Behavior shaping | 12, 13, 14, 15 |
+| II | Assistant systems | 16, 17, 18, 19, 20 |
+
+Part I ends at Module 11 rather than Module 10 because a model without decoding loops on greedy sampling; Module 11 is what makes the artifact something a student can show someone. Part I is framed as a genuine finish line.
+
+Two lesson pages carry **deliberate exceptions to the lesson-page template** below, both marking the part boundary. Don't "fix" them back:
+
+- `11-sampling.md` ends with a `## You've finished Part I` section *after* `## Deliverable checklist` — the last thing on the page, where a reader lands when the module is done.
+- `12-scaling.md` has an `## Entering at Part II` section between the intro and `## Before you start`, documenting direct entry.
+
+Part II is close to self-contained: it imports only `g2c/nn/`, `g2c/training/` (Modules 03/03B) and `g2c/sampling/` (Module 11), and its BaseLM/ProdLM paths don't need a student-trained model. Module 12 documents direct entry via `G2C_APPLY_SOLUTIONS=01-11`. If you change what Part II imports from Part I, update that section.
+
+The groups are descriptive labels, not a numbered taxonomy — there is no "Phase I/II/III" scheme any more. **The part/group tables in `README.md`, `docs/index.md`, and `docs/syllabus.md` must stay identical**; the previous phase names silently drifted apart across those three files, which is how they became vestigial.
+
 ## Hard constraints
 
 - **Runs on an M-series MacBook.** No cloud GPUs, no paid compute. Code, datasets, and model sizes must stay within what an M1/M2/M3/M4 with 16–64GB unified memory can execute.

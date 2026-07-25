@@ -409,3 +409,22 @@ Optional:
 - [ ] You can explain — out loud, without notes — the diversity-vs-quality tradeoff and where each warper sits along that axis.
 - [ ] You can explain — out loud, without notes — why the argmax always survives both top-k and top-p, and what bug each pattern catches.
 - [ ] You can explain — out loud, without notes — the eight-step decode loop, with cropping, and what breaks if you reorder it.
+
+---
+## You've finished Part I
+
+This is the end of *From gradients to a language model*. Look at what is now behind you.
+
+You started with a scalar derivative. You wrote the autodiff engine that computes gradients over an arbitrary expression graph. You moved it to tensors and learned why matmul is the workload that matters. You built a neural net — linear layers, activations, loss, optimizer — with no `torch.nn` in sight. You wrote a BPE tokenizer, embedding tables, and three ways to encode position. You built self-attention from the scaled dot-product up, stacked it into multiple heads, wrapped it in a transformer block, and pretrained the result on a real corpus. Then you made it speak: temperature, top-k, top-p, repetition penalty, and the decode loop that turns logits back into text.
+
+There is no black box anywhere in that path. Every layer between a derivative and a sentence is something you wrote and can explain. That is an unusual thing to be able to say, and it is worth pausing on before you move.
+
+**If you stop here, you finished something real.** Part I is a complete arc, not a checkpoint you abandoned.
+
+### What Part II adds
+
+[Part II — *From a language model to ChatGPT*](12-scaling.md) is a different subject rather than a harder one. Part I asked *how does a language model work?* Part II asks *how do you build a useful system around one?* — scaling behavior, instruction tuning, preference tuning, honest evaluation, fast inference, retrieval, tools, agent loops, and a chat assistant that ties them together.
+
+The character of the work changes. Part I was derivation-heavy: small packages where you wrote nearly every line. Part II is systems-heavy: larger packages where the course ships the plumbing — HTTP clients, dataclasses, CLIs — and you write the decisions. You will implement fewer lines per module, and the lines you implement are the ones carrying the idea.
+
+Your TinyLLM comes with you into Module 12, and Modules 13–15 will fine-tune it. From Module 16 on, the course swaps in a stronger local pretrained model so the assistant you build is genuinely usable.

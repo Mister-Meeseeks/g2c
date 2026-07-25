@@ -34,33 +34,48 @@ Then open the first module's notebook:
 
 ## Contents
 
-Start with the [syllabus](docs/syllabus.md) for the full 20-week arc.
+Start with the [syllabus](docs/syllabus.md) for the full arc across both parts.
 
-| #  | Module                                                          | Phase                |
+### Part I — From gradients to a language model
+
+Build the model itself. You end with a language model whose every layer you wrote, generating readable text on your laptop.
+
+| #  | Module                                                          | Group                |
 | -- | --------------------------------------------------------------- | -------------------- |
-| 00 | [Prerequisite review](docs/modules/00-prerequisite-review.md)   | 0 — Review           |
-| 01 | [Scalar autodiff](docs/modules/01-autodiff.md)                  | I — Foundations      |
-| 02 | [Tensors and matmul](docs/modules/02-tensors.md)                | I — Foundations      |
-| 03 | [A first neural network](docs/modules/03-nn.md)                 | I — Foundations      |
-| 03B | [Training](docs/modules/03b-training.md) | I — Foundations |
-| 04 | [Tokenization](docs/modules/04-tokenizer.md)                    | II — Language        |
-| 05 | [Embeddings and positions](docs/modules/05-embeddings.md)       | II — Language        |
-| 06 | [Next-token prediction](docs/modules/06-language-models.md)     | II — Language        |
-| 07 | [Self-attention](docs/modules/07-attention.md)                  | III — The transformer |
-| 08 | [Multi-head attention](docs/modules/08-multi-head-attention.md) | III — The transformer |
-| 09 | [The transformer block](docs/modules/09-transformer-block.md)   | III — The transformer |
-| 09B | [Pretraining](docs/modules/09b-pretraining.md)              | III — The transformer |
-| 10 | [Milestone: TinyLLM](docs/modules/10-tinyllm.md) | III — The transformer |
-| 11 | [Sampling and decoding](docs/modules/11-sampling.md)            | IV — Behavior shaping |
-| 12 | [Scaling experiments](docs/modules/12-scaling.md)               | IV — Behavior shaping |
-| 13 | [Instruction tuning (SFT)](docs/modules/13-sft.md)              | IV — Behavior shaping |
-| 14 | [Preference tuning (DPO)](docs/modules/14-dpo.md)               | IV — Behavior shaping |
-| 15 | [Hallucination and evaluation](docs/modules/15-evaluation.md)   | IV — Behavior shaping |
-| 16 | [Local pretrained models and inference](docs/modules/16-inference.md) | V — Assistant systems |
-| 17 | [Retrieval-augmented generation](docs/modules/17-rag.md)         | V — Assistant systems |
-| 18 | [Tool use](docs/modules/18-tools.md)                            | V — Assistant systems |
-| 19 | [Agent loops](docs/modules/19-agent.md)                         | V — Assistant systems |
-| 20 | [Capstone: a tiny ChatGPT](docs/modules/20-capstone.md)         | V — Assistant systems |
+| 00 | [Prerequisite review](docs/modules/00-prerequisite-review.md)   | Prerequisite review  |
+| 01 | [Scalar autodiff](docs/modules/01-autodiff.md)                  | Foundations          |
+| 02 | [Tensors and matmul](docs/modules/02-tensors.md)                | Foundations          |
+| 03 | [A first neural network](docs/modules/03-nn.md)                 | Foundations          |
+| 03B | [Training](docs/modules/03b-training.md)                       | Foundations          |
+| 04 | [Tokenization](docs/modules/04-tokenizer.md)                    | Language             |
+| 05 | [Embeddings and positions](docs/modules/05-embeddings.md)       | Language             |
+| 06 | [Next-token prediction](docs/modules/06-language-models.md)     | Language             |
+| 07 | [Self-attention](docs/modules/07-attention.md)                  | The transformer      |
+| 08 | [Multi-head attention](docs/modules/08-multi-head-attention.md) | The transformer      |
+| 09 | [The transformer block](docs/modules/09-transformer-block.md)   | The transformer      |
+| 09B | [Pretraining](docs/modules/09b-pretraining.md)                 | The transformer      |
+| 10 | [Milestone: TinyLLM](docs/modules/10-tinyllm.md)                | The transformer      |
+| 11 | [Sampling and decoding](docs/modules/11-sampling.md)            | The transformer      |
+
+**Part I ends here, and finishing it is a real accomplishment.** You will have built a working language model from scalar derivatives up, with no black boxes in the path.
+
+### Part II — From a language model to ChatGPT
+
+Build the system around a model. A different subject from Part I, not a harder one: less derivation, more systems engineering.
+
+| #  | Module                                                          | Group                |
+| -- | --------------------------------------------------------------- | -------------------- |
+| 12 | [Scaling experiments](docs/modules/12-scaling.md)               | Behavior shaping     |
+| 13 | [Instruction tuning (SFT)](docs/modules/13-sft.md)              | Behavior shaping     |
+| 14 | [Preference tuning (DPO)](docs/modules/14-dpo.md)               | Behavior shaping     |
+| 15 | [Hallucination and evaluation](docs/modules/15-evaluation.md)   | Behavior shaping     |
+| 16 | [Local pretrained models and inference](docs/modules/16-inference.md) | Assistant systems |
+| 17 | [Retrieval-augmented generation](docs/modules/17-rag.md)         | Assistant systems   |
+| 18 | [Tool use](docs/modules/18-tools.md)                            | Assistant systems    |
+| 19 | [Agent loops](docs/modules/19-agent.md)                         | Assistant systems    |
+| 20 | [Capstone: a tiny ChatGPT](docs/modules/20-capstone.md)         | Assistant systems    |
+
+Part II can also be entered directly if you already know the fundamentals and want the systems material — see [Module 12](docs/modules/12-scaling.md).
 
 ## Course structure
 

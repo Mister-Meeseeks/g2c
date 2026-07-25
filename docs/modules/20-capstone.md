@@ -465,7 +465,7 @@ The capstone has fewer required readings — most of the conceptual ground was c
 
 Primary:
 
-- **Re-read the original course brainstorm/syllabus.** Walk through the 20-week arc end-to-end. Each module's "Question it answers" should now have a concrete answer from your own implementation. Where do your answers diverge from the syllabus's framing? Those are the most interesting parts of your post-mortem.
+- **Re-read the original course brainstorm/syllabus.** Walk through both parts end-to-end. Each module's "Question it answers" should now have a concrete answer from your own implementation. Where do your answers diverge from the syllabus's framing? Those are the most interesting parts of your post-mortem.
 
 - **Anthropic, "Building effective agents" (Dec 2024).** A practical taxonomy of agentic patterns: prompt chains, routing, parallelization, orchestrator-workers, evaluator-optimizer, ReAct. You read this for Module 19; re-read it now to assess where your assistant sits and which patterns are worth investing in next.
 

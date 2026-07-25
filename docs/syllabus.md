@@ -2,7 +2,14 @@
 
 ![Cover illustration: a circus-themed map of the course. Numbered booths under a big top represent each of the twenty modules — pretraining, tokenization, embeddings, gradient descent, self-attention, multi-head attention, the transformer (a central tower of "Add & Norm / Feed Forward / Multi-Head Attention" floors), sampling, SFT, DPO, RAG, tools, the agent, the eval inspector, and an "inference booth" robot at the bottom. Banners read "A tiny LLM stack from first principles," "Data. Compute. Curiosity. That's all you need," and "Built step by step under the big top."](CourseCover.png)
 
-A 20-week self-study course, preceded by a fast prerequisite review, building a tiny LLM stack from scalar autograd up through a working chat assistant. Each week builds on the previous one. The codebase grows in `g2c/` as a single Python package; later modules import earlier ones. 
+A self-study course, preceded by a fast prerequisite review, building a tiny LLM stack from scalar autograd up through a working chat assistant. Each week builds on the previous one. The codebase grows in `g2c/` as a single Python package; later modules import earlier ones.
+
+The course comes in two parts, and the first one is a finish line, not a checkpoint:
+
+* **Part I — From gradients to a language model (Modules 00–11).** Build the thing itself: autodiff, tensors, a neural net, a tokenizer, embeddings, attention, the transformer, pretraining, and decoding. You end with a language model you wrote every layer of, generating readable text.
+* **Part II — From a language model to ChatGPT (Modules 12–20).** Build the system around a model: scaling, instruction tuning, preference tuning, evaluation, fast inference, retrieval, tools, agent loops, and a chat assistant.
+
+Finishing Part I is a real accomplishment on its own — you will have built a working language model from scalar derivatives up. Part II is a different subject, not a harder one: it is about the machinery that turns a model into something people can use.
 
 ## How to read this syllabus
 
@@ -40,27 +47,36 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 
 ## Ground rules
 
-- **From-scratch through the architecture (weeks 1–12).** When the topic of the week is the thing — autograd, attention, the transformer block — build it. Don't import a high-level abstraction that does the work for you.
-- **Use a pretrained base model through behavior shaping (weeks 13–15).** Scaling experiments, SFT, DPO, and eval should support your self-trained TinyLLM. If those artifacts are too weak for the post-training lesson, use the default small pretrained BaseLM path.
-- **Pivot to a pretrained open model for the assistant phase (weeks 16–20).** RAG, tools, agents, and the capstone use a local pretrained instruct model, called ProdLM in the course, so the system is actually usable.
+- **From-scratch through the architecture (Part I, weeks 1–11).** When the topic of the week is the thing — autograd, attention, the transformer block — build it. Don't import a high-level abstraction that does the work for you.
+- **Use a pretrained base model through behavior shaping (weeks 12–15).** Scaling experiments, SFT, DPO, and eval should support your self-trained TinyLLM. If those artifacts are too weak for the post-training lesson, use the default small pretrained BaseLM path.
+- **Pivot to a pretrained open model for the assistant stretch (weeks 16–20).** RAG, tools, agents, and the capstone use a local pretrained instruct model, called ProdLM in the course, so the system is actually usable.
 - **Pedagogy beats performance.** Code should be legible. Optimization is a separate concern.
 - **Tiny everything.** Tiny corpora, tiny models. The whole course thesis is that the tiny version teaches the idea.
 - **Tracks are artifact choices, not separate courses.** Use the default models and datasets. Or experiment with larger or smaller artifacts to see the difference. The conceptual path is the same regardless. See [Course Tracks and Artifacts](tracks.md).
 
-## Phase overview
+## Course overview
 
-| Phase              | Weeks           | Theme                                                            |
-| ------------------ | --------------- | ---------------------------------------------------------------- |
-| 0 — Review         | 0               | Fast prerequisite refresh                                        |
-| I — Learning       | 1–3 + 03B       | Scalar autograd → tensors → first neural net → training dynamics |
-| II — Language      | 4–6             | Tokenization → embeddings/positions → next-token prediction      |
-| III — Transformers | 7–10 + 09B       | Attention → multi-head → block → pretraining → first LLM milestone |
-| IV — Behavior      | 11–15           | Sampling → scaling → SFT → DPO → eval                            |
-| V — Assistants     | 16–20           | Pretrained inference → RAG → tools → agents → capstone           |
+| Part | Group | Modules | Theme |
+| ---- | ----- | ------- | ----- |
+| I | Prerequisite review | 00 | Fast prerequisite refresh |
+| I | Foundations | 01–03B | Scalar autograd → tensors → first neural net → training dynamics |
+| I | Language | 04–06 | Tokenization → embeddings/positions → next-token prediction |
+| I | The transformer | 07–11 | Attention → multi-head → block → pretraining → first LLM → decoding |
+| II | Behavior shaping | 12–15 | Scaling → SFT → DPO → eval |
+| II | Assistant systems | 16–20 | Pretrained inference → RAG → tools → agents → capstone |
 
 ---
 
-## Module 0 — Prerequisite review — [module ↗](modules/00-prerequisite-review.md)
+## Part I — From gradients to a language model
+
+Build the model itself. By the end of Module 11 you have a language model whose
+every layer you wrote — autodiff, tensors, a neural net, a tokenizer,
+embeddings, attention, the transformer, pretraining, and decoding — generating
+readable text on your own laptop. That is a finish line, not a checkpoint.
+
+### Prerequisite review
+
+#### Module 0 — Prerequisite review — [module ↗](modules/00-prerequisite-review.md)
 
 - **Question.** What do I need back in cache before building the stack?
 - **Goal.** Refresh the exact prerequisite surface the course depends on: shapes, matmul, derivatives, chain rule, logits, softmax, cross-entropy, train/validation workflow, PyTorch tensors, and repo mechanics.
@@ -76,9 +92,9 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 - **Reading.** 3Blue1Brown linear algebra and backprop refreshers; PyTorch "Tensors" tutorial; Karpathy's micrograd lecture as the bridge into Module 1.
 - **M-series notes.** Environment setup only. MPS becomes operationally relevant in Module 2.
 
-## Phase I — Learning
+### Foundations
 
-### Week 1 — Scalar autodiff — [module ↗](modules/01-autodiff.md)
+#### Week 1 — Scalar autodiff — [module ↗](modules/01-autodiff.md)
 
 - **Question.** How does the model learn?
 - **Goal.** Build a scalar-valued automatic differentiation engine from first principles.
@@ -92,7 +108,7 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 - **Reading.** Karpathy, *micrograd* repo and "The spelled-out intro to neural networks and backpropagation: building micrograd" (YouTube).
 - **M-series notes.** Pure CPU; runs in seconds.
 
-### Week 2 — Tensors and matmul — [module ↗](modules/02-tensors.md)
+#### Week 2 — Tensors and matmul — [module ↗](modules/02-tensors.md)
 
 - **Question.** How do we scale computation from single numbers to whole layers?
 - **Goal.** Move from scalar autograd to vectorized tensor operations and develop intuition for why GPU/MPS-class hardware matters.
@@ -106,7 +122,7 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 - **Reading.** PyTorch broadcasting docs; Karpathy "Neural Networks: Zero to Hero" lectures 2–3; Parr & Howard, "The Matrix Calculus You Need For Deep Learning."
 - **M-series notes.** First MPS use of the course. Verify the backend works; expect occasional ops to fall back to CPU.
 
-### Week 3 — First neural net — [module ↗](modules/03-nn.md)
+#### Week 3 — First neural net — [module ↗](modules/03-nn.md)
 
 - **Question.** How do numbers approximate functions?
 - **Goal.** Train a small MLP from scratch with a clean training loop.
@@ -120,7 +136,7 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 - **Reading.** 3Blue1Brown "Neural Networks" series; Goodfellow ch. 6; Karpathy lecture 4.
 - **M-series notes.** MNIST trains in minutes on MPS.
 
-### Week 3B — Training — [module ↗](modules/03b-training.md)
+#### Week 3B — Training — [module ↗](modules/03b-training.md)
 
 - **Question.** Why does the same network sometimes learn, stall, or explode?
 - **Goal.** Make learning rate, optimizer choice, gradient clipping, schedules, and train/validation diagnostics feel like understandable tools rather than magic knobs.
@@ -139,9 +155,9 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 
 ---
 
-## Phase II — Language
+### Language
 
-### Week 4 — Tokenization — [module ↗](modules/04-tokenizer.md)
+#### Week 4 — Tokenization — [module ↗](modules/04-tokenizer.md)
 
 - **Question.** How does text become model input?
 - **Goal.** Implement byte-pair encoding from scratch.
@@ -155,7 +171,7 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 - **Reading.** Karpathy, "Let's build the GPT Tokenizer"; Sennrich et al., "Neural Machine Translation of Rare Words with Subword Units" (BPE); GPT-2 paper §2.2.
 - **M-series notes.** CPU-bound; trains in seconds to minutes.
 
-### Week 5 — Embeddings and positions — [module ↗](modules/05-embeddings.md)
+#### Week 5 — Embeddings and positions — [module ↗](modules/05-embeddings.md)
 
 - **Question.** How do discrete symbols become meaning-like vectors, and how does order get in?
 - **Goal.** Implement learned token embeddings and several positional encoding schemes.
@@ -169,7 +185,7 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 - **Reading.** Mikolov et al. "Efficient Estimation of Word Representations" (word2vec); Vaswani et al. §3.5; Su et al. "RoFormer" (RoPE — skim).
 - **M-series notes.** Embedding tables of 8k × 256 are tiny.
 
-### Week 6 — Next-token prediction — [module ↗](modules/06-language-models.md)
+#### Week 6 — Next-token prediction — [module ↗](modules/06-language-models.md)
 
 - **Question.** What is the actual training objective of a language model?
 - **Goal.** Train the simplest possible language models on next-token prediction, before introducing transformers.
@@ -185,9 +201,9 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 
 ---
 
-## Phase III — Transformers
+### The transformer
 
-### Week 7 — Self-attention — [module ↗](modules/07-attention.md)
+#### Week 7 — Self-attention — [module ↗](modules/07-attention.md)
 
 - **Question.** How do tokens communicate?
 - **Goal.** Build single-head self-attention from scratch.
@@ -201,7 +217,7 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 - **Reading.** Vaswani et al. §3.2; Karpathy, "Let's build GPT: from scratch" (attention section); Alammar, "The Illustrated Transformer."
 - **M-series notes.** Tiny.
 
-### Week 8 — Multi-head attention — [module ↗](modules/08-multi-head-attention.md)
+#### Week 8 — Multi-head attention — [module ↗](modules/08-multi-head-attention.md)
 
 - **Question.** Why split attention into multiple heads?
 - **Goal.** Implement multi-head attention efficiently (via reshaping, not N independent linear layers).
@@ -214,7 +230,7 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 - **Reading.** Vaswani §3.2.2; Elhage et al., "A Mathematical Framework for Transformer Circuits" (introductory sections); Olsson et al., "In-context Learning and Induction Heads."
 - **M-series notes.** Still tiny.
 
-### Week 9 — The transformer block — [module ↗](modules/09-transformer-block.md)
+#### Week 9 — The transformer block — [module ↗](modules/09-transformer-block.md)
 
 - **Question.** How do we compose attention and per-token computation into a reusable unit?
 - **Goal.** Assemble the canonical transformer block: pre-norm, MHA, residual, MLP, residual.
@@ -228,7 +244,7 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 - **Reading.** Vaswani §3; Xiong et al., "On Layer Normalization in the Transformer Architecture"; Anthropic Transformer Circuits Thread (intro post).
 - **M-series notes.** Still tiny.
 
-### Week 9B — Pretraining — [module ↗](modules/09b-pretraining.md)
+#### Week 9B — Pretraining — [module ↗](modules/09b-pretraining.md)
 
 - **Question.** How do we turn a text corpus and a TransformerLM into supervised training data?
 - **Goal.** Make corpus splitting, `(B, T)` language-model batches, multi-position targets, LM cross-entropy, and the `log(V)` baseline explicit before the first full pretraining run.
@@ -243,7 +259,7 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 - **Reading.** Karpathy nanoGPT data loader and loss computation; "Let's reproduce GPT-2" data-loading sections.
 - **M-series notes.** CPU-light. This is setup, not a serious training run.
 
-### Milestone Week 10 — TinyLLM — [module ↗](modules/10-tinyllm.md)
+#### Milestone Week 10 — TinyLLM — [module ↗](modules/10-tinyllm.md)
 
 - **Question.** What changes when the transformer block becomes a trained language model?
 - **Goal.** Pretrain a small transformer LM on a real corpus.
@@ -260,9 +276,7 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 
 ---
 
-## Phase IV — Behavior
-
-### Week 11 — Sampling and decoding — [module ↗](modules/11-sampling.md)
+#### Week 11 — Sampling and decoding — [module ↗](modules/11-sampling.md)
 
 - **Question.** How does a probability distribution over tokens become actual text?
 - **Goal.** Implement and compare decoding strategies on your trained model.
@@ -276,7 +290,33 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 - **Reading.** Holtzman et al., "The Curious Case of Neural Text Degeneration" (top-p paper); Fan et al., "Hierarchical Neural Story Generation" (top-k).
 - **M-series notes.** Inference-only — fast.
 
-### Week 12 — Scaling experiments — [module ↗](modules/12-scaling.md)
+### What you should be able to say after Part I
+
+> I built a language model. Not configured one — built one, starting from a
+> derivative. I wrote the autodiff engine that computes the gradients, the
+> tensor ops the layers are made of, the tokenizer that turns text into
+> symbols, the attention that moves information between positions, the
+> transformer block that stacks it, the loop that trains it, and the decoding
+> that turns logits back into words. It runs on my laptop and it writes
+> sentences. Nothing in that path is a black box to me.
+
+If you stop here, you have finished something real. Part II is a different
+subject — the systems engineering that turns a model into an assistant.
+
+---
+
+## Part II — From a language model to ChatGPT
+
+Build the system around a model. Scaling, instruction tuning, preference
+tuning, evaluation, fast inference, retrieval, tools, agent loops, and the chat
+assistant that ties them together. A different subject from Part I, not a
+harder one: less derivation, more systems engineering.
+
+Starting here is supported — see "Entering at Part II" in Module 12.
+
+### Behavior shaping
+
+#### Week 12 — Scaling experiments — [module ↗](modules/12-scaling.md)
 
 - **Question.** What gets better with size, and how cleanly does it scale?
 - **Goal.** Empirically measure how a few capabilities scale within MacBook range.
@@ -290,7 +330,7 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 - **Reading.** Kaplan et al. 2020; Hoffmann et al. "Chinchilla"; Wei et al. "Emergent Abilities of Large Language Models" (and the BIG-bench debate paper that followed).
 - **M-series notes.** Reuse `StoryLM-5M` and `StoryLM-30M` from Module 10; Module 12 should usually train only the small `StoryLM-1M` anchor.
 
-### Week 13 — Instruction tuning (SFT) — [module ↗](modules/13-sft.md)
+#### Week 13 — Instruction tuning (SFT) — [module ↗](modules/13-sft.md)
 
 - **Question.** Why does the model follow requests rather than just continuing text?
 - **Goal.** Convert your base LM into an instruction-following one via supervised fine-tuning.
@@ -304,7 +344,7 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 - **Reading.** Ouyang et al., "InstructGPT"; the Stanford Alpaca blog post; the LIMA paper ("Less Is More for Alignment").
 - **M-series notes.** Tiny SFT trains in minutes. Output quality will be visibly toy — that's the point.
 
-### Week 14 — Preference tuning (DPO) — [module ↗](modules/14-dpo.md)
+#### Week 14 — Preference tuning (DPO) — [module ↗](modules/14-dpo.md)
 
 - **Question.** Why is the model helpful, polite, or stylistically consistent?
 - **Goal.** Improve the SFT model with a preference-based objective.
@@ -318,7 +358,7 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 - **Reading.** Rafailov et al., "Direct Preference Optimization"; Ouyang et al. (RLHF, for context); Christiano et al., "Deep RL from Human Preferences" (skim).
 - **M-series notes.** DPO is more memory-hungry than SFT (two model copies in memory). 32GB+ helps materially.
 
-### Week 15 — Hallucination and evaluation — [module ↗](modules/15-evaluation.md)
+#### Week 15 — Hallucination and evaluation — [module ↗](modules/15-evaluation.md)
 
 - **Question.** Why does the model confidently invent things, and how do we measure it?
 - **Goal.** Build a small eval harness; characterize your model's failure modes precisely.
@@ -334,9 +374,9 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 
 ---
 
-## Phase V — Assistants
+### Assistant systems
 
-### Week 16 — Local pretrained models and inference — [module ↗](modules/16-inference.md)
+#### Week 16 — Local pretrained models and inference — [module ↗](modules/16-inference.md)
 
 - **Question.** How do we get from "I built it" to "I can use it"?
 - **Goal.** Set up a stronger pretrained open model running locally and understand the inference stack.
@@ -350,7 +390,7 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 - **Reading.** GGUF / llama.cpp docs; MLX examples repo; Ollama docs; Dettmers, "LLM.int8()" (skim).
 - **M-series notes.** Unified-memory size really starts to matter. 16GB → comfortable up to 7B at 4-bit; 32GB+ → easier headroom; 64GB → comfortable with 13B-class.
 
-### Week 17 — Retrieval-augmented generation — [module ↗](modules/17-rag.md)
+#### Week 17 — Retrieval-augmented generation — [module ↗](modules/17-rag.md)
 
 - **Question.** How does the model use external knowledge it doesn't have memorized?
 - **Goal.** Build a working RAG pipeline.
@@ -364,7 +404,7 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 - **Reading.** Lewis et al., "Retrieval-Augmented Generation"; Karpukhin et al., "Dense Passage Retrieval"; Anthropic / Llamaindex blog posts on retrieval evaluation.
 - **M-series notes.** Comfortable. Embedding generation can be MLX-accelerated.
 
-### Week 18 — Tool use — [module ↗](modules/18-tools.md)
+#### Week 18 — Tool use — [module ↗](modules/18-tools.md)
 
 - **Question.** How does the model act outside itself?
 - **Goal.** Give the model a registry of structured tools and a dispatch loop.
@@ -378,7 +418,7 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 - **Reading.** Schick et al., "Toolformer"; Anthropic tool use docs; OpenAI function-calling docs; Patil et al., "Gorilla" (skim).
 - **M-series notes.** All local; quality depends on the inference model's instruction-following.
 
-### Week 19 — Agent loops — [module ↗](modules/19-agent.md)
+#### Week 19 — Agent loops — [module ↗](modules/19-agent.md)
 
 - **Question.** How does the model pursue multi-step goals?
 - **Goal.** Build a minimal agent loop with state, planning, tool use, and stopping criteria.
@@ -392,7 +432,7 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 - **Reading.** Yao et al., "ReAct"; Anthropic, "Building Effective Agents"; Park et al., "Generative Agents" (skim); SWE-bench / GAIA papers (skim).
 - **M-series notes.** Loop length × per-step inference cost — keep contexts tight.
 
-### Week 20 — Capstone: a tiny ChatGPT — [module ↗](modules/20-capstone.md)
+#### Week 20 — Capstone: a tiny ChatGPT — [module ↗](modules/20-capstone.md)
 
 - **Question.** Can I integrate everything?
 - **Goal.** Ship a working assistant that you understand end-to-end.
