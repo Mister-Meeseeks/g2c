@@ -283,7 +283,12 @@ You do not need to know all of PyTorch. You do need:
 - `torch.no_grad()` for inference
 - enough autograd familiarity to know that `loss.backward()` fills `.grad`
 
-This course includes a [PyTorch Primer](../primers/pytorch.md) that can be used both as an in-depth review focused on the PyTorch features used in this course and as a general reference. 
+This course includes a set of primers — focused refreshers scoped to exactly what the course uses, linked from the modules where they matter:
+
+- [PyTorch Primer](../primers/pytorch.md) — the ~50 operations the course touches; works as a first read or a back reference.
+- [Topological sort](../primers/topo-sort.md) — the one CS algorithm Module 01's `backward()` needs.
+- [Matrix calculus](../primers/matrix-calculus.md) — gradients through tensor ops, centered on the matmul gradient (Modules 02–03).
+- [Probability & cross-entropy](../primers/probability-cross-entropy.md) — why the loss is −log p, the log(V) baseline, and how to read a loss curve (Modules 03–10).
 
 ---
 ## Setup

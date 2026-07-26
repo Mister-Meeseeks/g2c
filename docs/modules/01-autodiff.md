@@ -10,6 +10,7 @@ Module 01 builds the **backward pass** — the autodiff machinery that converts 
 ## Before you start
 
 - *Review* [00-prerequisite-review](00-prerequisite-review.md) to load the underlying math, computer science, and programming topics back into cache.
+- *Review* the [Topological sort primer](../primers/topo-sort.md) before implementing `backward()` — it derives the post-order DFS this module's hardest step depends on.
 - *Run* `setup.sh` if you haven't already set up the course environment. We'll use it in this module's exercises.
 - Set up your favorite code editor for Python — you'll be writing, reading, and running a lot of code in `g2c`.
 

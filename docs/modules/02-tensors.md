@@ -11,6 +11,7 @@ In Module 01, every number was its own Python object; one operation at a time, h
 
 * **Review** [00-prerequisite-review](00-prerequisite-review.md) for matrix basics, and [01-autodiff](01-autodiff.md) for autodiff mechanics
 * **Review** [PyTorch Primer](../primers/pytorch.md) if any of the PyTorch code feels unfamiliar or confusing
+* **Review** the [Matrix calculus primer](../primers/matrix-calculus.md) to see what autograd computes when you call `backward()` on tensor ops — including the matmul gradient, derived
 
 ---
 ## Where this fits in

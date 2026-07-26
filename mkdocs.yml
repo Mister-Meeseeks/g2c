@@ -99,3 +99,6 @@ nav:
       - "20 — Capstone: TinyGPT": modules/20-capstone.md
   - Primers:
       - PyTorch: primers/pytorch.md
+      - Topological sort: primers/topo-sort.md
+      - Matrix calculus: primers/matrix-calculus.md
+      - "Probability & cross-entropy": primers/probability-cross-entropy.md
