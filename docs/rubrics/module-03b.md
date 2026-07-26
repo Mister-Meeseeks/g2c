@@ -109,3 +109,30 @@ Common issues:
 - Calling every bad curve overfitting.
 - Ignoring validation loss.
 - Changing model, data, optimizer, LR, and schedule simultaneously.
+
+## Exercise 03B.08 — Initialization sweep
+
+A correct answer should include:
+
+Question 1 (starting losses):
+
+- Near-zero logits make softmax ≈ uniform, so both `gain=0.01` and `gain=1.0` start at `−log(1/2) ≈ 0.693`.
+- `gain=100` saturates the softmax: near-certain predictions, wrong for roughly half the examples, make `−log p` enormous — the loss starts orders of magnitude above the baseline (hundreds in this configuration).
+- Stronger answers note the diagnostic: a fresh model should start *at* the baseline, so a start far above it is itself evidence of an oversized init.
+
+Question 2 (the √6 gain):
+
+- `Uniform(−a, a)` has variance `a²/3` — a factor of √3 below unit variance at the same bound.
+- ReLU zeroes half its inputs, so the surviving activations carry half the second moment — another √2.
+- `√3 · √2 = √6 ≈ 2.449`, the Kaiming/He ReLU correction; the level line on the log plot is that constant, found empirically.
+
+Question 3 (forward links):
+
+- At step 0, the `1/√fan_in` initialization is what makes projection outputs roughly unit-variance, so Module 07's `√D` divides by the right number.
+- Once blocks stack, LayerNorm (Module 09) re-standardizes every block input, continuously re-imposing unit scale after training moves the weights.
+
+Common issues:
+
+- Claiming `gain=0.01` "can never learn" — in this 2-layer model it escapes after a visible crawl; the correct claim is that escape time compounds with depth (the depth plot is the evidence).
+- Attributing `gain=100`'s high starting loss to randomness rather than softmax saturation.
+- Quoting √6 as memorized trivia without decomposing it into the √3 (uniform) and √2 (ReLU) factors.

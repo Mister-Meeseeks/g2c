@@ -74,6 +74,8 @@ The scores `Q @ K.T` are dot products of `D`-dimensional vectors. If `Q` and `K`
 
 Dividing by `sqrt(D)` re-normalizes the scores to unit variance so the softmax stays in a non-saturated regime regardless of `D`. It's a one-character change with an outsized effect on training stability — forgetting it is the most common bug in from-scratch attention code.
 
+One quiet premise deserves daylight: "unit-variance entries" is engineered, not assumed. At step 0 it is exactly what Module 03's weight initialization buys ("[Where weights start](03-nn.md#where-weights-start)"); at depth, Module 09's LayerNorm re-imposes it at every block input. If either piece were missing, `√D` would be normalizing by the wrong number — and the failure would look like mysterious training instability, not like a bug in your attention code.
+
 ### The causal mask
 
 In a language model, position `t`'s prediction must depend only on positions `0..t`. If position `t` could attend to position `t+1`, the training objective collapses: the model's "prediction" at position `t` can just copy the value at position `t+1` and get next-token cross-entropy of zero. This is a famously catastrophic bug that silently looks like training success.

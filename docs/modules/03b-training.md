@@ -278,6 +278,7 @@ The notebook contains the runnable sweeps, plots, and answer cells.
 5. **Gradient clipping.** Demonstrate global-norm clipping on a tiny example.
 6. **Warmup/cosine schedule.** Plot the learning-rate schedule and explain its phases.
 7. **Curve diagnosis.** Match train/validation curve shapes to likely next actions.
+8. **Initialization sweep.** Same model, same LR — vary only the starting weight scale, then watch a deeper stack compound it. Ends with you rediscovering Kaiming's √6 constant off a plot.
 
 ## Pitfalls to expect
 
@@ -288,6 +289,7 @@ The notebook contains the runnable sweeps, plots, and answer cells.
 - **Clipping each parameter independently.** Clipping is global. Preserve the direction of the full gradient vector.
 - **Treating clipping as a tuning substitute.** If clipping fires constantly, the learning rate is probably too high.
 - **Reading only training loss.** A model can improve train loss while getting worse on validation data.
+- **Blaming the optimizer for an init problem.** A loss that starts far above the uniform baseline `−log(1/C)`, or sits pinned to it, is telling you about weight scale, not about AdamW. Read the curve's *starting value* before touching optimizer knobs (Module 03, "[Where weights start](03-nn.md#where-weights-start)").
 
 ## M-series notes
 

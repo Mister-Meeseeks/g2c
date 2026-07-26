@@ -343,6 +343,8 @@ The notebook contains the ablations and plotting scaffolds.
 
 - **Forgetting the final LayerNorm in `TransformerLM`.** A common oversight; the original 2017 transformer didn't have one, but every modern transformer does. Without it, the head's logits can drift arbitrarily large or small as training progresses.
 
+- **A deep stack that won't train can be an init problem, not an architecture bug.** Depth compounds the starting weight scale geometrically — Module 03's "[Where weights start](03-nn.md#where-weights-start)" makes the argument, and Module 03B's initialization sweep shows it on a plot. LayerNorm is the in-architecture counterweight. Production GPTs add one more: residual-output projections scaled down by roughly `1/√(2L)` so `L` blocks' contributions don't pile up in the residual stream — a refinement this course's model doesn't need at its depth, but one you'll recognize in GPT-2's source.
+
 - **Wiring `pos_embed` outside the broadcast.** `pos = self.pos_embed(T)` has shape `(T, D)`. Adding it to `tok` of shape `(B, T, D)` works via broadcasting — but if you accidentally write `pos.unsqueeze(0)` you get `(1, T, D)` which also broadcasts but hints at a confused mental model. Both work; one is cleaner.
 
 - **`for block in self.blocks: x = block(x)` is sequential — do NOT parallelize it.** Block `i` reads block `i-1`'s output. Trying to run them concurrently misunderstands the architecture (this is a recurring beginner instinct; the transformer is parallel *within* a block, sequential *across* blocks).
