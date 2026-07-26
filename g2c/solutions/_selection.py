@@ -105,6 +105,7 @@ MODULE_TARGETS: dict[str, tuple[Target, ...]] = {
         _t("sampling.top_p"),
         _t("sampling.repetition_penalty"),
         _t("sampling.generate"),
+        _t("sampling.best_of_n"),
     ),
     "12": (),
     "13": (

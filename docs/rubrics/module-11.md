@@ -139,3 +139,63 @@ Common issues:
 
 - Using a large-negative-constant framing ("very unlikely") instead of exactly zero probability — `-inf` is a hard constraint, not a soft nudge.
 - Forbidding tokens that never appeared in the top candidates and concluding biasing "does nothing."
+
+## Exercise 11.13 — Best-of-N: likelihood vs repetition
+
+A correct answer should include:
+
+- The high-scoring end of the pool is the *more repetitive* end (lower type-token ratio); the lowest-scoring candidates are the most varied and often the least coherent.
+- The mechanism: log-probability is maximized by predictable continuations, and the most predictable thing a small LM can do is repeat established patterns — the same degeneration that motivated top-p, now expressed through the ranking rather than the sampling.
+
+Common issues:
+
+- Reporting the correlation without a mechanism ("the model just liked it more").
+- Assuming higher likelihood means higher quality — the point of the exercise is that it doesn't.
+
+## Exercise 11.14 — What `sequence_log_prob` really computes
+
+A correct answer should include:
+
+- It is the language-model training loss from Modules 09B/10, unaveraged and with the opposite sign (cross-entropy = −log p of the true next token, summed here rather than meaned).
+- Therefore "the model finds this likely" means "this text resembles the training distribution," not "this text is good" — likelihood measures fit to the corpus, and the corpus contains repetition.
+
+Common issues:
+
+- Naming perplexity without connecting it to the training objective (it's the exponential of the same quantity).
+- Describing the score as a quality or confidence judgment.
+
+## Exercise 11.15 — Why length normalization did nothing here
+
+A correct answer should include:
+
+- Every candidate ran to the same `max_new_tokens` budget (the printed set of distinct lengths has one element), so dividing every score by the same constant preserves the ordering exactly — normalization is a no-op in this configuration.
+- For it to matter, candidates must differ in length — which requires generation to stop at different points, i.e. an EOS token the model actually emits (or per-candidate stopping criteria).
+
+Common issues:
+
+- Reporting "the winner didn't change" as evidence that length bias isn't real; the bias is real but invisible when lengths are constant.
+- Not checking the tokens column before answering.
+
+## Exercise 11.16 — Ranking by quality, not likelihood
+
+A correct answer should include:
+
+- Recognition that quality needs a signal outside the model's own likelihood — human preference, a task-specific check (does the code run, does the answer match), or a model trained on preference data.
+- Reward models are trained precisely because likelihood is a poor proxy for preference; the student may connect this forward to Module 14's DPO, which learns from preference pairs instead of raw likelihood.
+
+Common issues:
+
+- Proposing a different likelihood-based statistic (e.g. lower perplexity) as a quality fix — it inherits the same bias.
+- Missing that "checkable" tasks admit a cheap non-model verifier.
+
+## Exercise 11.17 — Why self-consistency needs extractable answers
+
+A correct answer should include:
+
+- Majority voting requires candidates to be *comparable* — a normalizable answer that can be tested for equality across samples (a number, a label, a final line). Open-ended stories have no two samples that agree, so votes never accumulate.
+- A story model produces no such extractable field; an instruction-following model (Part II's `ProdLM`) can be asked to end with a final answer, which is what makes the vote possible.
+
+Common issues:
+
+- Saying the model is "too small" — the blocker is output format, not capacity alone.
+- Proposing to vote on the text itself without any normalization step.

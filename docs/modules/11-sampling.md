@@ -261,6 +261,24 @@ There is no globally-correct knob position. The canonical "balanced" setting in 
 
 The exercise set will sweep these knobs against your trained models so you can develop intuition by reading the output.
 
+### Best-of-N: spending compute at inference time
+
+Every warper above shapes one decode pass. Best-of-N does something categorically different: generate `n` complete continuations, score each, keep the winner. You are buying quality with *inference* compute rather than with training compute — the simplest member of the "test-time compute" family that now includes self-consistency voting, reward-model reranking, and tree search.
+
+It needs one new idea, and it's a good one: **a language model can score text, not just produce it.** Feed a finished sequence back through the model, read off the log-probability it assigned to each token that actually came next, and sum:
+
+```
+   score(sequence) = Σ_t  log p(token_{t+1} | tokens_≤t)
+```
+
+That's it — one forward pass, no new machinery. You have already computed this quantity many times under a different name: it is the negative of the Module 09B/10 training loss, unaveraged. The technique is called *teacher forcing*, and being able to ask "how likely does the model find this text?" is the foundation under perplexity evaluation (Module 12), preference scoring (Module 14's DPO loss compares exactly these log-probs between two models), and every reranking method.
+
+The catch is where the exercise lives. Ranking by raw summed log-probability systematically prefers **safe, repetitive** text: the sequences a model finds most predictable are the ones stuck in a loop. In the exercise you will see the candidate pool sort almost monotonically from most repetitive (top score) to most varied (bottom score) — the degeneration failure that motivated top-p, returning as your *selection* criterion rather than your sampling one.
+
+`length_normalize=True` divides by token count, the standard first fix — and the exercise is set up so you discover its limits rather than being told them. Two of them. It is a **no-op whenever candidates share a length**, which is exactly what a fixed `max_new_tokens` budget with no EOS produces: dividing every score by 80 reorders nothing. And when lengths *do* differ, per-token mean log-prob still rewards predictability — it corrects for length, not for dullness. Neither version knows what "good" means; both are proxies, which is the honest reason production systems rerank with a separately-trained reward model instead.
+
+For open-ended text, "best" is a judgment call your scorer can only approximate. The technique gets much sharper on tasks with *checkable* answers — sample `n` solutions, take the majority answer, which is self-consistency. That needs a model that can produce extractable answers, so it's a Part II idea; your story model can't do it, and Modules 16–20's `ProdLM` can.
+
 ## Concepts to internalize
 
 - **Sampling is a loop around the model, not a property of the model.** The same `TransformerLM` can produce wildly different output styles depending on the warper settings. Architecture is not destiny.
@@ -270,12 +288,14 @@ The exercise set will sweep these knobs against your trained models so you can d
 - **Temperature reorders nothing.** It only changes the sharpness of the distribution. To actually *change* what the model is most likely to say, you need a different model, not a different temperature.
 - **The decode loop is `O(T²)` without KV cache.** Every step recomputes attention over the entire running context. The cost grows quadratically with context length. Later in the course, we'll introduce KV caching to address this.
 - **The diversity-quality tradeoff has no free lunch.** Lower temperature → more confident → more repetitive. Higher temperature → more creative → more derailed. Pick a setting per task and don't expect one knob to fit everything.
+- **The model is a scorer as well as a generator.** One forward pass over finished text gives its log-probability. That single fact underwrites best-of-N, perplexity, and DPO's preference comparison — and the score it returns is the training loss you already know, wearing a different sign.
+- **Likelihood is not quality.** The highest-probability continuation is often the most repetitive one. Any ranking built on raw log-prob inherits that bias; length normalization softens it without curing it.
 
 ### What we don't cover
 
 - **Beam search.** A breadth-first decode that keeps the top-`k` candidate sequences at every step. Important historically (machine translation), nearly absent from modern LLMs because the diversity-vs-quality tradeoff that beam search optimizes badly maps onto open-ended generation. Skim the Wikipedia entry once.
 - **Typical sampling, mirostat, η-sampling.** Variants on top-p with somewhat different cutoff rules. Marginal real-world differences; not worth implementing.
-- **Logit biasing / forced decoding.** Sometimes you want to *forbid* certain tokens (filtering profanity, requiring JSON), or *force* certain tokens (constrained decoding, JSON-mode). Both are simple extensions of the warper interface.
+- **Logit biasing / forced decoding.** Sometimes you want to *forbid* certain tokens (filtering profanity, requiring JSON), or *force* certain tokens (constrained decoding, JSON-mode). Both are simple extensions of the warper interface. The full JSON-mode build is on the [roadmap](../roadmap.md), staged for Module 18 — where your own tool-call grammar gives it a purpose.
 
 ---
 ## What you'll build
@@ -311,13 +331,30 @@ def generate(
     max_new_tokens: int,
 	...
 ) -> Tensor:                                                    # SCAFFOLDED
+
+def sequence_log_prob(
+    model,
+    token_ids: Tensor,
+    *,
+    prompt_len: int = 0,
+) -> float:                                                     # SCAFFOLDED
+
+def best_of_n(
+    model,
+    prompt_ids: Tensor,
+    max_new_tokens: int,
+    *,
+    n: int = 8,
+    length_normalize: bool = False,
+	...
+) -> tuple[Tensor, list[tuple[Tensor, float]]]:                 # SCAFFOLDED
 ```
 
-Total scaffolded code: roughly 30 lines across five functions. The math is light; the lesson is the order, the masking convention (`-inf`), and the composition.
+Total scaffolded code: roughly 45 lines across seven functions. The math is light; the lesson is the order, the masking convention (`-inf`), and the composition. `sequence_log_prob` and `best_of_n` come last — they reuse `generate` rather than extending it.
 
 ## How to run the tests
 
-Tests live in `tests/test_sampling.py`. Initial state: 1 passed, 47 failed.
+Tests live in `tests/test_sampling.py`. Initial state: 1 passed, 56 failed.
 
 ```bash
 source .venv/bin/activate
@@ -356,6 +393,7 @@ The notebook auto-loads the strongest available model artifact unless you overri
 6. **Logit biasing.** Forbid selected token IDs and observe the effect.
 7. **Forced first token.** Force an opening token and watch the continuation steer.
 8. **Held-out completion comparison.** Compare sampled completions against actual held-out text.
+9. **Best-of-N.** Score a candidate pool with your own model, then watch raw likelihood pick the most repetitive sample and length normalization change its mind.
 
 ## Pitfalls to expect
 

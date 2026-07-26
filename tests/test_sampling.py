@@ -7,11 +7,14 @@ Suggested order to implement & turn green:
   3. top_p_filter                   → test_top_p_filter_*
   4. apply_repetition_penalty       → test_apply_repetition_penalty_*
   5. generate                       → test_generate_*
-  6. Optional cached generation      → test_generate_cached_*
+  6. sequence_log_prob / best_of_n   → test_sequence_log_prob_*, test_best_of_n_*
+  7. Optional cached generation      → test_generate_cached_*
 
 Steps 1–4 are independent — you can do them in any order. Step 5
-composes all four warpers into the autoregressive loop. Step 6 is the
-optional KV-cache sibling introduced in Module 16. The remaining tests
+composes all four warpers into the autoregressive loop. Step 6 reuses
+that loop for test-time compute — scoring finished sequences and
+picking among candidates. Step 7 is the optional KV-cache sibling
+introduced in Module 16. The remaining tests
 exercise the pipeline end-to-end against a tiny pretrained-style transformer.
 
 The four warper-test groups all use small synthetic logit tensors —
@@ -32,8 +35,10 @@ import torch
 from g2c.sampling import (
     apply_repetition_penalty,
     apply_temperature,
+    best_of_n,
     generate,
     generate_cached,
+    sequence_log_prob,
     top_k_filter,
     top_p_filter,
 )
@@ -606,3 +611,125 @@ def test_generate_repetition_penalty_discourages_repeats():
     assert n_zero_pen <= n_zero_no_pen
     # And it should produce a different sequence than no-penalty.
     assert not torch.equal(out_no_pen, out_pen)
+
+
+# ----------------------------------------------------------------------
+# sequence_log_prob / best_of_n — scaffolded (test-time compute)
+# ----------------------------------------------------------------------
+
+
+def test_sequence_log_prob_matches_manual_gather():
+    """The score is the summed log-softmax of each actually-next token."""
+    m = _tiny_model()
+    ids = torch.tensor([1, 4, 7, 2, 9], dtype=torch.long)
+
+    with torch.no_grad():
+        logits = m(ids.unsqueeze(0))
+    log_probs = torch.log_softmax(logits[0], dim=-1)
+    expected = sum(
+        float(log_probs[t, ids[t + 1]]) for t in range(ids.numel() - 1)
+    )
+
+    assert math.isclose(
+        sequence_log_prob(m, ids), expected, rel_tol=1e-5, abs_tol=1e-6
+    )
+
+
+def test_sequence_log_prob_is_negative():
+    """Log of a probability is always <= 0."""
+    m = _tiny_model()
+    ids = torch.tensor([3, 1, 4, 1, 5], dtype=torch.long)
+    assert sequence_log_prob(m, ids) < 0.0
+
+
+def test_sequence_log_prob_prompt_len_scores_continuation_only():
+    """With prompt_len set, prompt positions drop out of the score."""
+    m = _tiny_model()
+    ids = torch.tensor([1, 4, 7, 2, 9], dtype=torch.long)
+
+    full = sequence_log_prob(m, ids)
+    cont = sequence_log_prob(m, ids, prompt_len=3)
+
+    with torch.no_grad():
+        logits = m(ids.unsqueeze(0))
+    log_probs = torch.log_softmax(logits[0], dim=-1)
+    expected_cont = sum(
+        float(log_probs[t, ids[t + 1]]) for t in range(2, ids.numel() - 1)
+    )
+
+    assert math.isclose(cont, expected_cont, rel_tol=1e-5, abs_tol=1e-6)
+    # Scoring fewer positions drops fewer negative terms, so it must be larger.
+    assert cont > full
+
+
+def test_sequence_log_prob_rejects_bad_input():
+    """1-D, at least two tokens, and prompt_len must leave something."""
+    m = _tiny_model()
+    with pytest.raises(ValueError):
+        sequence_log_prob(m, torch.tensor([[1, 2]], dtype=torch.long))
+    with pytest.raises(ValueError):
+        sequence_log_prob(m, torch.tensor([1], dtype=torch.long))
+    with pytest.raises(ValueError):
+        sequence_log_prob(m, torch.tensor([1, 2, 3], dtype=torch.long), prompt_len=3)
+
+
+def test_best_of_n_returns_candidate_pool():
+    """`scored` has one (ids, score) pair per candidate."""
+    m = _tiny_model()
+    prompt = torch.tensor([1, 2], dtype=torch.long)
+    g = torch.Generator().manual_seed(0)
+    best, scored = best_of_n(m, prompt, max_new_tokens=4, n=5, generator=g)
+    assert len(scored) == 5
+    assert all(ids.numel() >= prompt.numel() for ids, _ in scored)
+    assert best.numel() >= prompt.numel()
+
+
+def test_best_of_n_returns_the_argmax_candidate():
+    """The returned sequence is the highest-scoring one in the pool."""
+    m = _tiny_model()
+    prompt = torch.tensor([1, 2], dtype=torch.long)
+    g = torch.Generator().manual_seed(1)
+    best, scored = best_of_n(m, prompt, max_new_tokens=4, n=6, generator=g)
+    top_score = max(score for _, score in scored)
+    winners = [ids for ids, score in scored if score == top_score]
+    assert any(torch.equal(best, w) for w in winners)
+
+
+def test_best_of_n_candidates_differ():
+    """Stochastic sampling must not collapse to n identical candidates."""
+    m = _tiny_model()
+    prompt = torch.tensor([1, 2], dtype=torch.long)
+    g = torch.Generator().manual_seed(2)
+    _, scored = best_of_n(
+        m, prompt, max_new_tokens=6, n=8, temperature=1.5, generator=g
+    )
+    distinct = {tuple(ids.tolist()) for ids, _ in scored}
+    assert len(distinct) > 1
+
+
+def test_best_of_n_length_normalize_changes_ranking():
+    """Normalized scores are per-token means, not raw sums."""
+    m = _tiny_model()
+    prompt = torch.tensor([1, 2], dtype=torch.long)
+
+    g_raw = torch.Generator().manual_seed(3)
+    _, raw = best_of_n(m, prompt, max_new_tokens=6, n=6, generator=g_raw)
+    g_norm = torch.Generator().manual_seed(3)
+    _, norm = best_of_n(
+        m, prompt, max_new_tokens=6, n=6, length_normalize=True, generator=g_norm
+    )
+
+    # Same seed → same candidates; only the scores should differ in scale.
+    assert [tuple(i.tolist()) for i, _ in raw] == [tuple(i.tolist()) for i, _ in norm]
+    for (ids, raw_score), (_, norm_score) in zip(raw, norm):
+        new_tokens = max(ids.numel() - prompt.numel(), 1)
+        assert math.isclose(
+            norm_score, raw_score / new_tokens, rel_tol=1e-5, abs_tol=1e-6
+        )
+
+
+def test_best_of_n_rejects_bad_n():
+    m = _tiny_model()
+    prompt = torch.tensor([1, 2], dtype=torch.long)
+    with pytest.raises(ValueError):
+        best_of_n(m, prompt, max_new_tokens=3, n=0)
