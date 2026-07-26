@@ -188,4 +188,4 @@ If the course loses you somewhere, please [say where](https://github.com/Mister-
 
 Nothing in this repo phones home — it all runs locally, and it always will. The consequence is that a module which quietly loses half the people who reach it looks exactly like a module nobody struggled with. Stuck reports are the only way that difference becomes visible.
 
-For questions, "is this normal?" checks, and study-group organizing, use [GitHub Discussions](https://github.com/Mister-Meeseeks/g2c/discussions). Bug reports, corrections, and pull requests are all welcome — see [CONTRIBUTING.md](CONTRIBUTING.md), which also sets honest expectations about response times.
+For questions, "is this normal?" checks, and study-group organizing, use [GitHub Discussions](https://github.com/Mister-Meeseeks/g2c/discussions). Bug reports, corrections, and pull requests are all welcome — see [CONTRIBUTING.md](CONTRIBUTING.md), which also sets honest expectations about response times. Wondering why a topic isn't covered? The [roadmap](docs/roadmap.md) lists what's planned and what's deliberately out.

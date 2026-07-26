@@ -71,6 +71,7 @@ nav:
   - Home: index.md
   - Syllabus: syllabus.md
   - Tracks & artifacts: tracks.md
+  - Roadmap: roadmap.md
   - Repo: https://github.com/Mister-Meeseeks/g2c
   - Part I — Building a language model:
       - "00 — Prerequisite review": modules/00-prerequisite-review.md

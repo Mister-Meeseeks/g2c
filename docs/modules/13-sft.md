@@ -241,6 +241,7 @@ The first three are *training* problems — fixable by adjusting data or hyperpa
 
 - **System prompts.** A leading `<|system|>You are a helpful assistant.<|end|>` turn is the third role real systems support. We omit it at toy scale.
 - **PEFT prompt tuning, prefix tuning, P-tuning.** Pre-LoRA parameter-efficient methods that train a small set of "soft prompt" tokens. Largely superseded by LoRA. Skim once; don't implement.
+- **LoRA itself — for now.** The low-rank fine-tuning method that has become the laptop-native default. Planned as **Module 13B** (see the [roadmap](../roadmap.md)): same objective as this module, new parameterization.
 - **Continual / online SFT.** Updating the model as new examples arrive. Production concern with its own catastrophic-forgetting issues; out of scope.
 
 ---
