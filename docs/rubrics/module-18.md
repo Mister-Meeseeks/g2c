@@ -82,7 +82,69 @@ Common issues:
 - Not checking either answer against the true product.
 - Ignoring the cost side (extra steps and latency) entirely.
 
-## Exercise 18.07 — Where tool use broke
+## Exercise 18.07 — Prompt injection: did the agent comply?
+
+Run-dependent — grade against the student's reported leak counts.
+
+A correct answer should include:
+
+- Concrete numbers for all three conditions (undefended / hardened system prompt / hardened + fenced), not just a yes-no.
+- An observation about which phrasing was most effective on their model. Results vary by model; a capable instruct model usually complies at least once undefended, while a weak course-track model may fail to execute the attack at all — which is itself worth noting, since inability to follow instructions is not a security property.
+
+Common issues:
+
+- Reporting one run rather than the rate.
+- Concluding "my model is safe" from a zero-leak run under one condition.
+
+## Exercise 18.08 — Why stricter parsing cannot help
+
+A correct answer should include:
+
+- Every stage worked as designed: the model emitted valid JSON, the parser extracted it, validation passed, the tool executed. The failure was in the model's *reading* of the returned text, which happens after all validation.
+- The parser inspects the model's output; the injection lives in the tool's output. They are different directions of data flow, so no parser change touches it.
+
+Common issues:
+
+- Proposing schema or regex fixes that operate on tool calls rather than tool results.
+- Suggesting the tool should have refused — the tool did exactly its job; the content it returned was the problem.
+
+## Exercise 18.09 — Instruction and data in one stream
+
+A correct answer should include:
+
+- To the model, system prompt, user message, and tool results are all just tokens in the same context; the separation is a convention it learned statistically, not a structural boundary it can enforce.
+- The contrast with SQL: SQL has a grammar and a parser, so parameterized queries separate code from data *by construction*. A prompt has no such parser, so there is no equivalent of parameterization — only mitigations that shift probability.
+
+Common issues:
+
+- Claiming a better delimiter or special token would solve it structurally (it raises the bar; the model can still be persuaded).
+- Treating it as a model-quality bug rather than an architectural property of prompting.
+
+## Exercise 18.10 — Defending the system, not the prompt
+
+A correct answer should include:
+
+- System-level bounds rather than persuasion: remove `read_file` from registries that also fetch untrusted content, scope the sandbox root to exactly what the task needs, make tools read-only, require confirmation before side-effecting calls, or separate trusted and untrusted tool sets into different loops.
+- The connection to real agents: permission prompts before file writes or shell commands exist because the model's judgment is not a security boundary — the human is the boundary.
+
+Common issues:
+
+- More prompt engineering (a stronger warning) offered as the systemic fix.
+- Removing the attack surface entirely (drop web_search) without acknowledging the capability cost.
+
+## Exercise 18.11 — Injection risk in an agent loop
+
+A correct answer should include:
+
+- More dangerous: each additional step is another chance to ingest hostile text, injected instructions persist in context and influence later turns, and an unattended loop has no human checkpoint between the injection and the side effect.
+- Stronger answers note the compounding shape — one poisoned result can redirect the remaining budget of steps, and Module 19's loop is explicitly designed to keep going.
+
+Common issues:
+
+- Answering "the same" because the mechanism is unchanged; the exposure and blast radius are what change.
+- Missing that persistence in the context window is the mechanism for multi-step influence.
+
+## Exercise 18.12 — Where tool use broke
 
 A correct answer should include:
 
@@ -95,7 +157,7 @@ Common issues:
 - Misclassification — e.g., calling a validation rejection "malformed JSON".
 - Blaming the harness for a model-choice failure, or the model for a parser/format mismatch.
 
-## Exercise 18.08 — One change before Module 19
+## Exercise 18.13 — One change before Module 19
 
 A correct answer should include:
 
