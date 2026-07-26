@@ -31,11 +31,11 @@ The capstone is where you find out:
    │       - The from-scratch model (M10) generates fluent text but        │
    │         can't follow chat instructions reliably.                      │
    │       - SFT (M13) makes it follow prompts.                            │
-   │       - DPO (M14) makes it polite.                                    │
+   │       - DPO (M14) shifts its answers toward the preferred style.      │
    │       - The pretrained pivot (M16) brings real-world knowledge.       │
    │       - RAG (M17) brings YOUR-corpus knowledge.                       │
    │       - Tools (M18) bring computation and side effects.               │
-   │       - The agent loop (M19) brings multi-step reasoning.             │
+   │       - The agent loop (M19) lets it act, observe, and retry.         │
    │       - Conversation memory (M20) makes it usable.                    │
    │                                                                       │
    │   • Where does each layer BREAK?                                      │
