@@ -153,11 +153,16 @@ if [[ -d .venv/bin ]]; then
 fi
 
 # ---- 5. Project deps ---------------------------------------------------------
-info "Installing g2c (editable) + dev/BaseLM deps"
+# Pinned by uv.lock so every clone resolves the same versions. --inexact keeps
+# packages a student installed themselves (this script re-runs on every
+# ./notebook.sh launch and must not prune their additions). If this fails with
+# "lockfile is out of date", pyproject.toml changed without re-locking: run
+# `uv lock` and commit the result.
+info "Installing g2c (editable) + dev/BaseLM deps (pinned by uv.lock)"
 if [[ "$REINSTALL_DEV" == "1" ]]; then
-    uv pip install -e ".[dev,baselm]" --reinstall --quiet
+    uv sync --locked --inexact --reinstall --extra dev --extra baselm --quiet
 else
-    uv pip install -e ".[dev,baselm]" --quiet
+    uv sync --locked --inexact --extra dev --extra baselm --quiet
 fi
 ok "deps installed"
 

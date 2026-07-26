@@ -20,11 +20,8 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Install project
-        run: |
-          uv venv --python 3.11 .venv
-          source .venv/bin/activate
-          uv pip install -e ".[dev,baselm]"
+      - name: Install project (pinned by uv.lock)
+        run: uv sync --locked --python 3.11 --extra dev --extra baselm
 
       - name: Lint
         run: |
