@@ -298,7 +298,7 @@ A quality pin for any preference dataset: chosen and rejected should differ in t
 - **Reinforcement learning from human feedback (RLHF).** Largely supplanted by DPO. Still useful when post-training can't be reduced to pairwise comparisons. Worth reading about.
 - **Online preference collection.** Real DPO pipelines iterate: train, sample fresh, grade, append, retrain. This is where most of the engineering effort goes in production models. 
 - **KTO / IPO / SLIC / ORPO and the rest of the DPO-derivative zoo.** Each is a small refinement aimed at a specific failure mode (length bias, off-policy drift, the implicit-reward calibration problem). Skim the names; don't implement them.
-- **LoRA for policy.** At production scale, you train a low-rank update on top of the frozen reference. Saves the 2× memory cost. Out of scope here; LoRA itself is planned as Module 13B (see the [roadmap](../roadmap.md)).
+- **LoRA for policy.** At production scale, you train a low-rank update on top of the frozen reference. Saves the 2× memory cost. Out of scope here; LoRA itself is built in [Module 13B](13b-lora.md), and combining it with DPO is a natural experiment once you have both.
 - **Length normalization.** Some DPO variants normalize the log-prob by length. We don't — with similar-length chosen/rejected pairs, length bias is small.
 
 ---

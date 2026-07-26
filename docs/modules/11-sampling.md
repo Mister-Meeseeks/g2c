@@ -295,7 +295,7 @@ For open-ended text, "best" is a judgment call your scorer can only approximate.
 
 - **Beam search.** A breadth-first decode that keeps the top-`k` candidate sequences at every step. Important historically (machine translation), nearly absent from modern LLMs because the diversity-vs-quality tradeoff that beam search optimizes badly maps onto open-ended generation. Skim the Wikipedia entry once.
 - **Typical sampling, mirostat, η-sampling.** Variants on top-p with somewhat different cutoff rules. Marginal real-world differences; not worth implementing.
-- **Logit biasing / forced decoding.** Sometimes you want to *forbid* certain tokens (filtering profanity, requiring JSON), or *force* certain tokens (constrained decoding, JSON-mode). Both are simple extensions of the warper interface. The full JSON-mode build is on the [roadmap](../roadmap.md), staged for Module 18 — where your own tool-call grammar gives it a purpose.
+- **Logit biasing / forced decoding.** Sometimes you want to *forbid* certain tokens (filtering profanity, requiring JSON), or *force* certain tokens (constrained decoding, JSON-mode). Both are simple extensions of the warper interface. The full JSON-mode build lives in [Module 18](18-tools.md) (`g2c/sampling/constrained.py`) — where your own tool-call grammar gives it a purpose. The loop you build this week is the one it splices the grammar mask into.
 
 ---
 ## What you'll build

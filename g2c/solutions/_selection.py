@@ -114,6 +114,7 @@ MODULE_TARGETS: dict[str, tuple[Target, ...]] = {
         _t("sft.loss"),
         _t("sft.trainer"),
     ),
+    "13b": (_t("lora.layer"), _t("lora.inject")),
     "14": (_t("dpo.data"), _t("dpo.loss"), _t("dpo.trainer")),
     "15": (
         _t("eval.match"),
@@ -128,12 +129,17 @@ MODULE_TARGETS: dict[str, tuple[Target, ...]] = {
         _t("transformer.kv_cache"),
         _TRANSFORMER_LM_16,
     ),
+    "16b": (_t("synth.filter"),),
     "17": (_t("rag.chunk"), _t("rag.embed"), _t("rag.store"), _t("rag.prompt")),
     "18": (
         _t("tools.schema"),
         _t("tools.parser"),
         _t("tools.builtins"),
         _t("tools.loop"),
+        # Constrained decoding lives in g2c/sampling/ (you own the
+        # sampler) but is taught in Module 18, where the tool-call
+        # grammar gives it a purpose.
+        _t("sampling.constrained"),
     ),
     "19": (
         _t("agent.parser"),

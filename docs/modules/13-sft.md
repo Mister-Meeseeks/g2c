@@ -241,7 +241,7 @@ The first three are *training* problems — fixable by adjusting data or hyperpa
 
 - **System prompts.** A leading `<|system|>You are a helpful assistant.<|end|>` turn is the third role real systems support. We omit it at toy scale.
 - **PEFT prompt tuning, prefix tuning, P-tuning.** Pre-LoRA parameter-efficient methods that train a small set of "soft prompt" tokens. Largely superseded by LoRA. Skim once; don't implement.
-- **LoRA itself — for now.** The low-rank fine-tuning method that has become the laptop-native default. Planned as **Module 13B** (see the [roadmap](../roadmap.md)): same objective as this module, new parameterization.
+- **LoRA.** The low-rank fine-tuning method that has become the laptop-native default. It gets its own module — [13B](13b-lora.md): same objective as this one, new parameterization. Do it right after this module while your dataset and full-SFT baseline are fresh.
 - **Continual / online SFT.** Updating the model as new examples arrive. Production concern with its own catastrophic-forgetting issues; out of scope.
 
 ---
@@ -377,14 +377,14 @@ Primary:
 
 Secondary:
 
-- **Wang, Kordi, Mishra et al., "Self-Instruct" (2022).** The synthetic-data pipeline that produced Alpaca's 52K examples — generate instructions and responses with a stronger model, filter for quality, train on the result. Mostly relevant when you want to scale SFT data without hand-authoring.
+- **Wang, Kordi, Mishra et al., "Self-Instruct" (2022).** The synthetic-data pipeline that produced Alpaca's 52K examples — generate instructions and responses with a stronger model, filter for quality, train on the result. You'll run this recipe yourself in [Module 16B](16b-synthetic-data.md), seeded with the dataset you're authoring this week.
 - **Taori, Gulrajani, Zhang et al., "Stanford Alpaca: An Instruction-following LLaMA Model" (2023).** The Alpaca paper's longer technical writeup, with the prompt template, training hyperparameters, and an ablation on dataset size.
 - **Chung, Hou, Longpre et al., "Scaling Instruction-Finetuned Language Models" (Flan-T5, 2022).** The instruction-tuning scaling-laws paper. Relevant for "what happens at much larger scale than ours."
 - **OpenChat, Vicuna, WizardLM** technical reports. Each presents a slightly different take on the SFT recipe; the diversity of approaches at the 7B-class scale is itself instructive.
 
 Optional:
 
-- **Hu, Shen, Wallis et al., "LoRA: Low-Rank Adaptation of Large Language Models" (2021).** The most-used parameter-efficient alternative to full SFT. Out of scope for this module; relevant whenever full fine-tuning isn't feasible.
+- **Hu, Shen, Wallis et al., "LoRA: Low-Rank Adaptation of Large Language Models" (2021).** The most-used parameter-efficient alternative to full SFT. You'll implement it in [Module 13B](13b-lora.md); save the paper for then.
 - **Dettmers, Pagnoni, Holtzman, Zettlemoyer, "QLoRA" (2023).** LoRA on a 4-bit quantized base model — the recipe everyone uses for hobbyist-scale fine-tuning of 7B+ models in 2024–2025.
 - **The original ChatML spec** (OpenAI's tokenizer documentation). The exact byte sequences for `<|im_start|>`, `<|im_end|>`, etc., and the rationale for vocab-extension over text markers.
 

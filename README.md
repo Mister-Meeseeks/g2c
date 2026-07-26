@@ -69,9 +69,11 @@ Build the system around a model. A different subject from Part I, not a harder o
 | -- | --------------------------------------------------------------- | -------------------- |
 | 12 | [Scaling experiments](docs/modules/12-scaling.md)               | Behavior shaping     |
 | 13 | [Instruction tuning (SFT)](docs/modules/13-sft.md)              | Behavior shaping     |
+| 13B | [LoRA](docs/modules/13b-lora.md)                                | Behavior shaping     |
 | 14 | [Preference tuning (DPO)](docs/modules/14-dpo.md)               | Behavior shaping     |
 | 15 | [Hallucination and evaluation](docs/modules/15-evaluation.md)   | Behavior shaping     |
 | 16 | [Local pretrained models and inference](docs/modules/16-inference.md) | Assistant systems |
+| 16B | [Synthetic data](docs/modules/16b-synthetic-data.md)            | Assistant systems   |
 | 17 | [Retrieval-augmented generation](docs/modules/17-rag.md)         | Assistant systems   |
 | 18 | [Tool use](docs/modules/18-tools.md)                            | Assistant systems    |
 | 19 | [Agent loops](docs/modules/19-agent.md)                         | Assistant systems    |

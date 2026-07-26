@@ -74,8 +74,8 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 | I | Foundations | 01–03B | Scalar autograd → tensors → first neural net → training dynamics |
 | I | Language | 04–06 | Tokenization → embeddings/positions → next-token prediction |
 | I | The transformer | 07–11 | Attention → multi-head → block → pretraining → first LLM → decoding |
-| II | Behavior shaping | 12–15 | Scaling → SFT → DPO → eval |
-| II | Assistant systems | 16–20 | Pretrained inference → RAG → tools → agents → capstone |
+| II | Behavior shaping | 12–15 | Scaling → SFT → LoRA → DPO → eval |
+| II | Assistant systems | 16–20 | Pretrained inference → synthetic data → RAG → tools → agents → capstone |
 
 ---
 
@@ -356,6 +356,21 @@ Starting here is supported — see "Entering at Part II" in Module 12.
 - **Reading.** Ouyang et al., "InstructGPT"; the Stanford Alpaca blog post; the LIMA paper ("Less Is More for Alignment").
 - **M-series notes.** Tiny SFT trains in minutes. Output quality will be visibly toy — that's the point.
 
+#### Week 13B — LoRA — [module ↗](modules/13b-lora.md)
+
+- **Question.** How do you fine-tune a model whose optimizer won't fit on your machine?
+- **Goal.** Rerun Module 13's SFT with a low-rank parameterization: trainable adapters beside frozen weights, a fraction of a percent of the model.
+- **Concepts.** Low-rank deltas and intrinsic dimensionality; the zero-init asymmetry (an exact no-op start); `requires_grad` as the memory lever; merge/unmerge semantics; the adapter as a shippable file.
+- **Build.** `g2c/lora/` — `LoRALinear` (forward/merge/unmerge), injection and freezing utilities, adapter save/load, and the trainer-facing `LoRAModel` view.
+- **Exercises.**
+  - Derive the rank-8 trainable-parameter count on paper, then verify it after injection.
+  - Prove the injected, untrained model produces bit-identical logits to the base.
+  - Retrain your Module 13 dataset against ~0.2% of the parameters and compare against your full-SFT run.
+  - Merge for deployment, unmerge to recover the base, and transplant the saved adapter into a fresh BaseLM.
+- **Deliverable.** A trained adapter file ~1000× smaller than the model — with the base artifact untouched.
+- **Reading.** Hu et al., "LoRA"; Aghajanyan et al. on intrinsic dimensionality; Dettmers et al., "QLoRA".
+- **M-series notes.** Per-step time lands near Module 13's — LoRA cuts memory, not FLOPs. The memory ledger *is* the lesson.
+
 #### Week 14 — Preference tuning (DPO) — [module ↗](modules/14-dpo.md)
 
 - **Question.** Why is the model helpful, polite, or stylistically consistent?
@@ -401,6 +416,22 @@ Starting here is supported — see "Entering at Part II" in Module 12.
 - **Deliverable.** Unified inference interface + benchmark notebook.
 - **Reading.** GGUF / llama.cpp docs; MLX examples repo; Ollama docs; Dettmers, "LLM.int8()" (skim).
 - **M-series notes.** Unified-memory size really starts to matter. 16GB → comfortable up to 7B at 4-bit; 32GB+ → easier headroom; 64GB → comfortable with 13B-class.
+
+#### Week 16B — Synthetic data — [module ↗](modules/16b-synthetic-data.md)
+
+- **Question.** Can a model write its own training data — and how would you know if it worked?
+- **Goal.** Run the modern data recipe end to end: ProdLM writes instruction pairs from your Module 13 seeds, your filters gate them, Module 13's trainer consumes them, and your held-out hand data judges the result.
+- **Concepts.** The Self-Instruct loop (propose → gate → dedup → answer → gate); mode collapse as a measured duplicate rate; the growing dedup pool; hand-authored data as the referee; temperature as a per-stage decision; sequence-level vs. soft-logit distillation.
+- **Build.** `g2c/synth/` — n-gram overlap and growing-pool dedup (scaffolded), shape gates and the generation orchestration (implemented).
+- **Exercises.**
+  - Read one raw proposal batch as an editor; measure the duplicate rate across batches.
+  - Run the factory to ~150 pairs and report the funnel.
+  - Hand-audit ten pairs; estimate the dataset's error rate.
+  - The three-way fine-tune: hand vs. synthetic vs. mixed, judged on held-out hand data.
+  - Find the teacher's style fingerprints in the synthetic-trained model.
+- **Deliverable.** The synthetic dataset with its funnel counts, plus the three-way comparison table.
+- **Reading.** Wang et al., "Self-Instruct"; the Stanford Alpaca post; Eldan & Li, "TinyStories" (the corpus you pretrained on was synthetic all along); Hinton et al. and Kim & Rush for the two senses of distillation.
+- **M-series notes.** Generation is ~10–25 minutes against a 3B Ollama model; the three fine-tunes run sequentially at Module 13 scale.
 
 #### Week 17 — Retrieval-augmented generation — [module ↗](modules/17-rag.md)
 

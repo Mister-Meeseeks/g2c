@@ -21,8 +21,8 @@ The course is presented in **two parts**, split at the Module 11/12 boundary. Th
 | I | Foundations | 01, 02, 03, 03B |
 | I | Language | 04, 05, 06 |
 | I | The transformer | 07, 08, 09, 09B, 10, 11 |
-| II — From a language model to ChatGPT | Behavior shaping | 12, 13, 14, 15 |
-| II | Assistant systems | 16, 17, 18, 19, 20 |
+| II — From a language model to ChatGPT | Behavior shaping | 12, 13, 13B, 14, 15 |
+| II | Assistant systems | 16, 16B, 17, 18, 19, 20 |
 
 Part I ends at Module 11 rather than Module 10 because a model without decoding loops on greedy sampling; Module 11 is what makes the artifact something a student can show someone. Part I is framed as a genuine finish line.
 
@@ -64,7 +64,7 @@ Dependencies and build config live in `pyproject.toml`.
 - `notebooks/solutions/NN-*.ipynb` — working or solved notebook copies; use `./notebook.sh NN` to create or resume, and `./notebook.sh NN --fresh` to archive the existing copy before resetting from clean
 - `docs/rubrics/module-NN.md` — course-owned grading rubric for written answers; use for review, not as a replacement for the student's work
 - `docs/design/model-artifacts-and-tracks.md` — durable model artifact, hardware track, and Modules 10-20 backend plan
-- `docs/roadmap.md` — the public ledger of planned additions (13B LoRA, sampler extensions, labs) and future arcs. When a planned item ships, remove its roadmap entry and its forward pointers (Modules 11/13/14 link here). Deliberate per-module scope cuts stay in each lesson's "What we don't cover" — the roadmap only lists things we intend to build.
+- `docs/roadmap.md` — the public ledger of planned additions (a broken-trainers debugging lab) and future arcs. When a planned item ships, remove its roadmap entry and its forward pointers. Deliberate per-module scope cuts stay in each lesson's "What we don't cover" — the roadmap only lists things we intend to build.
 - `mkdocs.yml` + `.github/workflows/docs.yml` — lesson pages build to <https://mister-meeseeks.github.io/g2c/> on every push to `main`. Edits under `docs/` are publicly visible within a few minutes; preview locally with `pip install -r docs/requirements.txt && mkdocs serve`.
 - `.github/workflows/bootstrap.yml` — runs `./setup.sh` on a clean checkout and asserts it produces the TinyShakespeare corpus, the `ShakespeareTokenizer` artifact, and the `.venv/.g2c-setup-complete` sentinel Module 00 checks, then executes notebooks 00–08 headlessly with `G2C_APPLY_SOLUTIONS=1`. `tests.yml` installs deps directly and so never exercises the setup path; this job is what proves the README quickstart still works for a new student, and the notebook step is the only CI that actually runs the artifact students touch first. Notebooks 09B+ do real training and are deliberately excluded — they're covered by pre-release dry runs, not per-push CI. Notebook cells must guard MPS use behind `torch.backends.mps.is_available()`; CI runners have no Metal GPU.
 - `.github/scaffold-freeze` + `scripts/check_scaffold_freeze.sh` + `.github/workflows/scaffold-freeze.yml` — post-release freeze of the **student edit surface**: `g2c/` minus `g2c/solutions/` and `g2c/notebook_extras/`. Students fill in scaffold bodies in place, so an upstream change to those files lands as a merge conflict inside somebody's homework; the freeze is what makes the README's "updates are always safe to pull" promise true. The config file holds the freeze ref (a release tag; empty until the first release, which keeps the check dormant) plus a ledger of intentional exceptions, each with a comment telling students how to patch an already-edited copy. Post-release fixes route to the solutions mirror, tests, docs, and rubrics; adding new files under `g2c/` is fine.

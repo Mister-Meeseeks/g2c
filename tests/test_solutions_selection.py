@@ -113,7 +113,7 @@ def test_reversed_range_is_accepted():
 
 def test_topic_selector_expands_to_all_its_files():
     resolved = resolve(["sampling"])
-    assert len(resolved) == 6
+    assert len(resolved) == 7
     assert all(".sampling." in name for name in resolved)
 
 

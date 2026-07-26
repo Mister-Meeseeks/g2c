@@ -160,6 +160,43 @@ Therefore, the tool harness has to handle multiple rounds of **tool-use steps** 
 1. Zero tool_calls in the last completion. It's an oddly minimal contract — the model decides when it's done by simply not emitting another `<tool_call>`. The alternative (an explicit "DONE" sentinel) is fragile; instruction-tuned models reliably stop calling tools.
 2. We reach a `max_steps` threshold. Without a cap, a confused model can loop forever, eventually overflowing the context. 
 
+### Unparseable by construction
+
+The parser's answer to a malformed tool call is to skip it and let the model retry. That's the right *recovery* policy — but it concedes that malformed calls happen. There is a stronger position available, and this course is one of the few places you can actually take it: **you own the sampler.** Module 11's `generate()` touches the full next-token distribution at every step. Nothing stops you from editing it.
+
+That's the whole mechanism. A grammar tells you which tokens would keep the output well-formed; set every other logit to `-inf` before sampling:
+
+```
+   ┌───────────────────────────────────────────────────────────────────┐
+   │   one constrained decoding step                                   │
+   ├───────────────────────────────────────────────────────────────────┤
+   │                                                                   │
+   │   logits (V,)                                                     │
+   │      │                                                            │
+   │      ▼                                                            │
+   │   GRAMMAR MASK: logits[~allowed] = -inf     ← the hard constraint │
+   │      │            "allowed" = tokens whose text keeps the         │
+   │      │            output a valid prefix of the JSON grammar       │
+   │      ▼                                                            │
+   │   temperature → top-k → top-p → softmax     ← Module 11, intact,  │
+   │      │                                        now *within* the    │
+   │      ▼                                        allowed set         │
+   │   sample → append → advance the grammar state                     │
+   │                                                                   │
+   └───────────────────────────────────────────────────────────────────┘
+```
+
+Invalid JSON doesn't become unlikely. It becomes **impossible** — the token that would break the grammar has probability zero, at every step, no matter how much the model wants it. `g2c/sampling/constrained.py` builds this for the tool-call grammar: a hand-rolled JSON-subset automaton answers "is this text a valid prefix?", a decode-and-check sweep asks it once per vocabulary entry, and `generate_json` is Module 11's loop with the mask spliced in.
+
+Four details carry most of the insight:
+
+- **The grammar rations whitespace, and it has to.** Unbounded whitespace between tokens is perfectly legal JSON — and a prose-trained model keeps much of its probability mass on spaces and newlines, so under the *legal* grammar it hides in whitespace forever and never commits to `{`. The course automaton allows at most three consecutive whitespace characters, forcing a structural token every few steps. A constraint grammar isn't just about validity; it also has to keep the model moving. (llama.cpp's JSON grammar bounds its `ws` rule for exactly this reason.)
+- **The mask goes *before* top-k and top-p, not after.** Top-k keeps the k highest logits wherever they are; run it first and all k survivors can be ungrammatical, leaving every logit at `-inf` and softmax at NaN. Constrain the set, then shape the distribution within it. Hard constraints and soft warpers are different kinds of thing, and the order encodes that.
+- **`repetition_penalty` is deliberately absent.** It penalizes tokens that already appeared — and well-formed JSON *requires* repeating `"`, `:`, and `}`. A warper designed to fight prose loops actively fights the grammar.
+- **The grammar carries the syntax; the model carries the semantics.** Constrain a weak base model and its parse rate goes to 100% while the *content* stays weak — invented tool names, vacuous arguments. That is not a failure of the method; it is the exact division of labor. The exercise makes you measure both halves.
+
+This also explains a production fact that otherwise looks arbitrary: `ProdLM`'s `format: "json"` is a *server-side* flag, and no client library can bolt the equivalent onto a text-only completion API. The mask needs the logits, and an API that returns text has already thrown them away. When you flip `format: "json"` on Ollama in the exercise, you now know exactly what the server is doing on your behalf — the same masking, compiled: production systems (Outlines, llguidance, Ollama's grammar support) precompile the grammar into a token-level automaton instead of paying our O(V) string sweep per step. Same idea, heavy engineering; we pay the sweep for legibility.
+
 ### Safe evaluation by construction
 
 ![Four-stage safe-calculator pipeline: parse the expression to an AST, validate every node against an arithmetic whitelist, reject calls, names, and attributes, and evaluate only after the whole tree passes; a side panel shows why restricted eval() is escapable.](18-tools/Module18-AST.png)
@@ -251,6 +288,8 @@ Exercise 12 runs the attack against your own agent and measures the compliance r
 - **`max_steps` is a safety net, not a feature.** It exists because "the model loops forever" is a real failure mode. 
 - **Fine-tuned tool calling is a free lunch.** Modern instruction-tuned open models emit `<tool_call>` blocks reliably given a tool-describing prompt. Pick a model with a known tool-calling format and use it.
 - **The parser is permissive; the validator is strict.** The parser tolerates malformed blocks (silent skip) so the model isn't punished for occasional weirdness. The validator rejects malformed arguments (loud error) so the tool gets clean inputs. Different layers, different policies.
+- **The grammar carries the syntax; the model carries the semantics.** Constrained decoding makes malformed output impossible without making the content any better. Parse rate and answer quality are different axes, and the mask moves exactly one of them.
+- **Hard constraints precede soft warpers.** The grammar mask is not a fifth warper — it goes before temperature/top-k/top-p, because a warper can only reshape the set the mask has already bounded.
 
 ### Two channels for model→tool-call communication
 
@@ -296,6 +335,7 @@ The pedagogically interesting point: **the rest of the harness is unchanged.** T
 - **Streaming.** Real production tool-calling streams token-by-token, parses partial JSON, and starts dispatching as soon as a complete `<tool_call>` block is seen. We do the synchronous version. Conceptually identical.
 - **Parallel tool execution.** Some agentic systems dispatch all tool calls in a turn concurrently with `asyncio.gather`. We dispatch sequentially. For tools whose `func` is fast (calculator, read_file), the difference is microseconds. For slow tools (HTTP search, run_python), parallelism matters in production but not for a teaching loop.
 - **Tool-result truncation by content.** A real read_file tool detects giant files and summarizes; a real run_python tool truncates large stdout. We truncate by char count only — a starting point.
+- **General grammars.** `constrained.py` builds the JSON corner the tool calls need — objects, strings, numbers. Regex constraints, full CFGs, and schema-aware masking ("this key's value must be an integer") are the same mechanism with a bigger automaton; Outlines and llguidance are the production implementations to read.
 
 ---
 ## What you'll build
@@ -379,6 +419,26 @@ def run_text_loop(                                                # <- your deli
 
 Total scaffolded code: four function bodies — `validate_arguments`, `parse_tool_calls`, `calculator_evaluate`, and `run_text_loop`. The feedback loop is the centerpiece; the boilerplate around it (input validation, native-vs-text channel routing, transcript formatting, and `ToolRunResult` assembly) is provided in and around the `run_with_tools` wrapper, so `run_text_loop` stays a tight ~40-line call → parse → dispatch → feed-back cycle. 
 
+Constrained decoding adds two more scaffolds — in `g2c/sampling/`, not here, because the mechanism belongs to the sampler you own:
+
+```python
+# g2c/sampling/constrained.py
+class JsonPrefixAutomaton:                                        # implemented
+    def initial(self) -> state: ...
+    def advance(self, state, text) -> state | None: ...
+    def is_complete(self, state) -> bool: ...
+
+def vocab_pieces(tokenizer, vocab_size) -> list[str]: ...         # implemented
+
+def allowed_token_mask(automaton, state, pieces) -> BoolTensor:   # SCAFFOLDED
+def generate_json(model, prompt_ids, pieces, *,                   # SCAFFOLDED
+                  max_new_tokens, temperature=1.0, top_k=None,
+                  top_p=None, generator=None,
+                  mask_cache=None) -> Tensor: ...
+```
+
+`mask_cache` is the loop's one optimization, and it earns its place by being a concept: the mask is a pure function of the automaton state, a generation only visits a few dozen distinct states, so memoizing turns almost every step's O(V) sweep into a dict lookup. Pass one shared dict across your whole experiment. Outlines takes the same idea to its limit — precompute the mask for *every* state offline — which is why production constrained decoding costs almost nothing per step.
+
 ## How to run the tests
 
 Tests live in `tests/test_tools.py`. Initial state: 84 passed, 105 failed.
@@ -394,6 +454,14 @@ pytest tests/test_tools.py -k Calculator            # calculator tests
 pytest tests/test_tools.py -k RunWithTools          # loop tests
 pytest tests/test_tools.py -k Integration           # full-pipeline smoke
 pytest tests/test_tools.py -v                       # verbose
+```
+
+The constrained-decoding scaffolds have their own file, `tests/test_constrained.py`. Initial state: 8 passed, 13 failed — the automaton is implemented boilerplate (its tests double as a readable spec of the grammar); the mask and the loop are yours. `generate_json` reuses your Module 11 warpers, so those must be done first.
+
+```bash
+pytest tests/test_constrained.py                    # constrained decoding
+pytest tests/test_constrained.py -k mask            # the decode-and-check sweep
+pytest tests/test_constrained.py -k "generation or greedy or warpers"   # the loop
 ```
 
 ## Exercises
@@ -421,7 +489,8 @@ The live section defaults to ProdLM because tool calling needs instruction-follo
 7. **Citation enforcement.** Check whether final answers are grounded in actual tool results.
 8. **Deliverable CLI.** Build a small tool-using chat loop.
 9. **Prompt injection.** Hand your agent a compromised `web_search`, watch it obey the attacker, then measure how far two standard defenses actually get you.
-10. **Tools post-mortem.** Document what worked, where it broke, and what to improve next.
+10. **Constrained decoding.** Measure a base model's tool-call parse rate, then make malformed output impossible with the sampler you built in Module 11 — and see what the grammar can and cannot carry. Flip Ollama's `format: "json"` and recognize it.
+11. **Tools post-mortem.** Document what worked, where it broke, and what to improve next.
 
 ## Pitfalls to expect
 
@@ -433,6 +502,8 @@ The live section defaults to ProdLM because tool calling needs instruction-follo
 - **Tool-call loops.** `max_steps` is a safety cap, not a reasoning strategy. Multi-step recovery becomes Module 19's agent loop.
 - **Final answer plus tool call.** Decide which wins. The course loop treats a parsed tool call as authoritative and continues.
 - **Trusting tool output because your own tool produced it.** The tool is yours; the *content* it returns often isn't. A search result, a fetched page, or a file someone else wrote is attacker-influenced text going straight into your prompt — see Exercise 12, and never let "my code called it" stand in for "this text is safe."
+- **Masking after top-k.** Top-k first can keep k tokens that are all ungrammatical — every logit lands at `-inf` and softmax returns NaN. The grammar mask is a constraint, not a warper: it goes first. (The tests use logits rigged to prefer ungrammatical tokens precisely to catch this.)
+- **Repetition penalty on JSON.** Valid JSON repeats `"`, `:`, and `}` constantly; a penalty tuned to fight prose loops suppresses exactly the delimiters the grammar requires. `generate_json` omits it on purpose — don't add it back.
 
 
 ## M-series notes
@@ -459,6 +530,7 @@ Secondary:
 - **Patil, Zhang, Wang, Gonzalez, "Gorilla: Large Language Model Connected with Massive APIs" (NeurIPS 2024).** Specialized fine-tuning for API selection at scale. Skim §3 — the construction of an API zoo and the bench against generalist models is the interesting bit. Useful as a "what does it look like when tool selection itself becomes the bottleneck" reference.
 - **Yao, Zhao, Yu et al., "ReAct: Synergizing Reasoning and Acting in Language Models" (ICLR 2023).** The "Thought / Action / Observation" interleaving that we'll build in Module 19. Read it now to see what's coming; the loop in this module is the substrate ReAct sits on.
 - **Anthropic, "Building effective agents" (Dec 2024).** A practical taxonomy of agentic patterns: prompt chains, routing, parallelization, orchestrator-workers, evaluator-optimizer, and the ReAct agent. Module 18's loop is the simplest agentic pattern; Module 19 builds toward the others.
+- **Willard & Louf, "Efficient Guided Generation for Large Language Models" (2023).** The Outlines paper — constrained decoding done properly: compile the grammar into a token-level finite-state machine once, then masking is an O(1) table lookup per step instead of our O(V) decode-and-check sweep. Read §3 after building `generate_json`; it is exactly your mask, made fast.
 
 Optional:
 
@@ -469,6 +541,7 @@ Optional:
 ## Deliverable checklist
 
 - [ ] All tests in `tests/test_tools.py` pass: 172 tests, all green.
+- [ ] All tests in `tests/test_constrained.py` pass.
 - [ ] Ollama running with a tool-calling-capable chat model. `ollama list` shows your chosen model.
 - [ ] Notebook: `notebooks/solutions/18-tools.ipynb`. 
 - [ ] **Tool-use post-mortem** (Exercise 9) in 3-4 paragraphs. The main deliverable.
@@ -476,3 +549,4 @@ Optional:
 - [ ] You can explain — out loud, without notes — why AST-walking is structurally safer than `eval()` with restricted globals.
 - [ ] You can explain — out loud, without notes — what the loop's stop condition is and why "no more tool calls" works as a signal.
 - [ ] You can explain — out loud, without notes — why the validator must reject `bool` when expecting `int` or `number`.
+- [ ] You can explain — out loud, without notes — why constrained decoding guarantees parseability but not correctness, and why `format: "json"` has to live on the server.

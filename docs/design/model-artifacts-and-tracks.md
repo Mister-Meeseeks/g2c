@@ -480,6 +480,23 @@ fallback is the common case: the notebook defaults to BaseLM because a 1M- or
 5M-class model rarely shows the behavioral shift clearly, so switch to your own
 artifact once it is 30M or larger.
 
+### Module 13B - LoRA
+
+Module 13B trains adapters on a frozen BaseLM; it must not change any base
+artifact's weights. Its durable output is deliberately **not** a model
+artifact: the trained adapter is saved to `data/work/module13b/lora-adapter.pt`
+(a working file), and the pristine base artifact plus that file *is* the
+deliverable pair. This is the module's own lesson — ship the adapter, not the
+model — encoded in the storage layout. No new artifact names are introduced;
+if a student wants a merged standalone checkpoint they can save one through
+the existing Module 13 `save_huggingface_model_artifact` path, but the course
+does not depend on it downstream.
+
+BaseLM-only by design: `g2c/lora` targets `torch.nn.Linear` trees. The course
+TransformerLM does not need LoRA (full fine-tuning is already cheap at 30M),
+and the 1–3B Hugging Face models the module opens the door to are the same
+torch tree shape as BaseLM.
+
 ### Module 14 - Preference Tuning
 
 Module 14 updates student-trained model weights with preference data.
@@ -537,6 +554,16 @@ runtime configuration. These modules should save system artifacts instead:
 Modules 16-18 (inference, RAG, tools) keep the runtime harness backend-agnostic:
 the same messages, tools, and evals can run against TinyLLM/StoryLM when useful,
 but ProdLM is the default backend for actually usable assistant behavior.
+
+Module 16B (synthetic data) uses ProdLM as a *teacher*, not a chat backend: it
+writes instruction pairs seeded from the student's Module 13 dataset. Its
+durable outputs are working files, not model artifacts —
+`data/work/module16b/synthetic-instructions.json` plus the generation funnel —
+and its three-way fine-tunes (hand / synthetic / mixed) are deliberately
+transient: the deliverable is the comparison table, judged on the held-out
+hand-authored split, and nothing downstream consumes those checkpoints. A
+student who wants to keep the winner saves it through the Module 13 artifact
+path.
 
 Modules 19 and 20 (agent loops, capstone) default to **ProdLM**. Self-trained
 models are exposed as a comparison backend via `MODEL_SELECTION` — the loader

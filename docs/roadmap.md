@@ -8,21 +8,9 @@ Two honesty notes, in the house style. There are no dates on anything below — 
 
 ## Planned additions
 
-### Module 13B — LoRA
-
-The headliner, and the omission we'd defend least. LoRA is the laptop-native fine-tuning method — for a course whose identity is "everything on your Mac," teaching only full fine-tuning is a gap, not a scope choice. It's also mechanically ideal for this course: two low-rank matrices, an adapter that starts as an exact no-op, merge/unmerge semantics, and a parameter count you can derive on paper (rank 8 on the 360M `BaseLM` trains roughly 0.1% of the weights). The plan is a full B-module in the 03B/09B pattern: new `g2c/lora/` package, scaffolds, tests, notebook, rubric — same SFT objective as Module 13, new parameterization, and a door opened to fine-tuning 1–3B local models that full fine-tuning can't touch on a 16GB machine.
-
-### Constrained decoding
-
-You own the sampler — that's the whole point of Module 11 — which makes this buildable here when every other course has to hand-wave it. The plan: a JSON-subset automaton that masks logits token by token, so your Module 18 tool calls become *unparseable-by-construction* rather than parsed-hopefully. The mechanism lands in `g2c/sampling/`; the teaching is staged in Module 18, where the malformed-JSON pain is fresh. The payoff is the contrast — a constrained weak model emits 100% parseable calls with weak content, because the grammar carries the syntax so the model only has to carry the semantics. `ProdLM`'s `format: json` flag then becomes recognizable as the production packaging of the same idea, and the reason it's a server-side feature: constraining needs the logits.
-
 ### A broken-trainers debugging lab
 
-The course teaches diagnosis (curve reading in 03B, the `log V` baseline in 09B/10, "Diagnose the run") but never adversarially: N trainers with planted bugs — missing √D, mask after softmax, step before clip, bad init — diagnosed from loss curves and samples alone. The NAND-to-Tetris-flavored version of debugging.
-
-### Synthetic SFT data
-
-Self-Instruct is in Module 13's reading list but never exercised. The plan: generate instruction data with ProdLM, fine-tune TinyLLM on it, and compare against your 50 hand-authored pairs — the modern data recipe, run entirely locally, with a pleasing symmetry: TinyStories, the corpus you pretrained on, is itself synthetic data. The largest item here, because the generator (ProdLM) doesn't arrive until Module 16 and the design has to respect the module order.
+The course teaches diagnosis (curve reading in 03B, the `log V` baseline in 09B/10, "Diagnose the run") but never adversarially: N trainers with planted bugs — missing √D, mask after softmax, step before clip, bad init — diagnosed from loss curves and samples alone. The NAND-to-Tetris-flavored version of debugging. The likely shape is a lab, not a module: sealed evidence packs (curves, samples, configs — everything except the bug) generated at maintainer time, plus an optional lever to reproduce any diagnosed bug in your own live trainer and confirm the fix.
 
 ---
 

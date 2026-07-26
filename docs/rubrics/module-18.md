@@ -144,7 +144,49 @@ Common issues:
 - Answering "the same" because the mechanism is unchanged; the exposure and blast radius are what change.
 - Missing that persistence in the context window is the mechanism for multi-step influence.
 
-## Exercise 18.12 — Where tool use broke
+## Exercise 18.12 — Constrained vs unconstrained parse rates
+
+A correct answer should include:
+
+- Both measured rates reported: unconstrained typically low (often 0–30% for a base model, even with the shape shown in the prompt), constrained at 100% — or explicitly noted truncations, which are valid prefixes rather than malformed output.
+- A content observation from their own constrained samples: parse-perfect JSON with weak semantics (invented tool names, vacuous or off-task arguments) is the expected and correct finding.
+- The division of labor stated: the grammar carries the syntax, the model carries the semantics — the mask moves parse rate and only parse rate.
+
+Common issues:
+
+- Reading 100% parse rate as the model having "learned" or "gotten better" — the model is unchanged; the sampler is.
+- Grading the constrained content as a failure of the method rather than the exact contract.
+- Not actually reading the constrained outputs as content (the second half of the question).
+
+## Exercise 18.13 — Why format: "json" is server-side
+
+A correct answer should include:
+
+- The exact thing named: the logits (the full next-token distribution) at sampling time. A text-only API returns sampled tokens; the distribution is gone by the time the client sees anything.
+- The connection to the exercise setup: BaseLM exposes logits through the course's own forward pass, ProdLM is behind an HTTP API that returns text — which is why the constrained run had to be on BaseLM.
+- (Stronger answers) The consequence: any constraint a client applies can only be *rejection* — generate, check, retry — which pays full generation cost per attempt and never guarantees termination.
+
+Common issues:
+
+- Vague "the server has the model" without naming the logits/distribution specifically.
+- Claiming a client could achieve the same thing by prompting harder or parsing more leniently.
+- Missing the BaseLM/ProdLM connection the question explicitly asks for.
+
+## Exercise 18.14 — Repetition penalty and mask order
+
+A correct answer should include:
+
+- Repetition penalty: valid JSON must repeat its delimiters (`"`, `:`, `}`, `,`) — a penalty on already-emitted tokens suppresses exactly the tokens the grammar requires, so the sampler fights the constraint.
+- Mask order: top-k first can keep k tokens that are all ungrammatical; the mask then sets all of them to `-inf` and softmax produces NaN. Mask first, and the warpers shape the distribution *within* the grammatical set.
+- (Implicitly or explicitly) The framing: the mask is a hard constraint, not a fifth warper — hard constraints bound the set, soft warpers reshape it.
+
+Common issues:
+
+- Answering only one of the two questions.
+- Saying mask-after-top-k gives "wrong tokens" rather than the actual failure (empty allowed set → NaN).
+- Proposing to fix the repetition-penalty conflict by exempting delimiters rather than recognizing the penalty is simply the wrong tool under a grammar.
+
+## Exercise 18.15 — Where tool use broke
 
 A correct answer should include:
 
@@ -157,7 +199,7 @@ Common issues:
 - Misclassification — e.g., calling a validation rejection "malformed JSON".
 - Blaming the harness for a model-choice failure, or the model for a parser/format mismatch.
 
-## Exercise 18.13 — One change before Module 19
+## Exercise 18.16 — One change before Module 19
 
 A correct answer should include:
 
