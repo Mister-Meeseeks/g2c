@@ -110,6 +110,17 @@ These must be **atomic**. If the text contains `<|assistant|>`, the tokenizer sh
 
 In this repo, `BPETokenizer()` is byte-only by default for the tiny BPE exercises. Use `BPETokenizer.with_course_special_tokens()` when creating reusable course tokenizer artifacts. Those reserved IDs live immediately after the 256 byte IDs, and learned BPE merges start after them. BPE training treats special tokens as barriers, so it does not learn a merge that consumes `<|endoftext|>` plus a neighboring word.
 
+### What the tokenizer breaks
+
+Everything downstream of this module — embeddings, attention, the whole transformer — sees only token IDs. **The model never sees letters.** That single fact explains a surprising share of the "LLMs are weirdly bad at X" folklore, and after this module you can explain it mechanically while most daily LLM users cannot.
+
+- **Spelling and letter-counting.** Ask your Shakespeare tokenizer about `strawberry` and it answers `['st', 'raw', 'ber', 'ry']` — four opaque symbols. A model consuming those IDs is being asked to count r's in a word it has never seen spelled. Character-level questions require the model to have *memorized* each token's spelling as a fact about the world.
+- **Case makes strangers.** `lord`, `Lord`, and `LORD` come out as three unrelated representations — two different single tokens and a byte-level split. Whatever the model learns about one, it relearns for the others. And the corpus, not the language, decides which variant is "real": in Shakespeare, `KING` is a single common token — stage directions shout — while `King` shatters into pieces. A web-trained tokenizer inverts that.
+- **Numbers are corpus accidents.** TinyShakespeare has so few numerals that `1601` encodes digit-by-digit — which happens to be the *good* behavior. Web-trained BPE instead learns arbitrary chunks (`1234` as one token while `1235` splits in two), handing arithmetic inconsistent building blocks. Modern production tokenizers force digit-splitting on purpose.
+- **Tokens that never fire.** Exercise 7B's frequency scan will show you hundreds of your 4,096 vocab entries that never appear once in the artifact's encoded sample. When a model pretrains on this corpus, those embedding rows barely move from initialization — and Module 03's "Where weights start" tells you exactly what that means. If one of those IDs arrives at inference, every downstream layer processes structured noise. That is the entire mechanism behind the famous "glitch tokens" (`SolidGoldMagikarp` and friends): strings common enough in the *tokenizer's* training data to earn a vocab slot, then scrubbed from the *model's* training data. After Module 10, you can hunt for undertrained embeddings in your own StoryLM.
+
+The punchline worth keeping: spelling failures, arithmetic slips, rhyming trouble, string-reversal weirdness — much of this is not an intelligence deficit but a *representation* handicap. The model plays every character-level game blindfolded, through an alphabet someone else chose by counting byte pairs.
+
 ## Concepts to internalize
 
 - **Tokens vs. token IDs.** A token is a byte sequence (e.g., `b'the'`). A token ID is the integer the tokenizer assigns to it (e.g., `258`). The vocab is the bidirectional map.
@@ -192,8 +203,9 @@ The notebook has the exact prompts, inspection tables, and artifact cells.
 4. **Special tokens.** Confirm course control tokens stay atomic.
 5. **Vocab size vs compression.** Compare token counts across vocab sizes.
 6. **Inspect learned tokens.** Look at early, late, frequent, and long learned tokens.
-7. **Pre-tokenization demo.** See how boundary choices shape possible merges.
-8. **Mini milestone.** Save reusable tokenizer artifacts for later modules.
+7. **What the tokenizer breaks.** Probe spelling, case, numbers, and never-fired tokens on your own tokenizer — the mechanics behind famous LLM weirdness.
+8. **Pre-tokenization demo.** See how boundary choices shape possible merges.
+9. **Mini milestone.** Save reusable tokenizer artifacts for later modules.
 
 ## Pitfalls to expect
 

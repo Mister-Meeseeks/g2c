@@ -246,3 +246,51 @@ Common issues:
 
 - Citing an early-style short token as "late."
 - Describing it as rare without tying rarity to its late mint order.
+
+## Exercise 04.22 — Why KING is one token but King is not
+
+A correct answer should include:
+
+- BPE mints tokens for whatever byte sequences are frequent in *this* corpus; Shakespeare's stage directions and speaker headers write names in capitals, so `KING` earns a merge chain while `King` stays fragmented.
+- A web-trained tokenizer sees title-case far more often than all-caps, so the relationship inverts — the corpus, not the language, decides which surface form becomes "one word."
+
+Common issues:
+
+- Explaining it as a property of English capitalization rather than corpus statistics.
+- Not noticing that the case variants get *unrelated* IDs — nothing links `lord` and `Lord` in the model's input representation.
+
+## Exercise 04.23 — Why letter-counting is hard
+
+A correct answer should include:
+
+- The model receives token IDs, not characters; `strawberry` arrives as opaque symbols like `st / raw / ber / ry`, and no letter-level structure is visible in the input.
+- Answering "how many r's" requires the model to have memorized each token's spelling as a fact, then aggregate across pieces — two error-prone steps for something trivial at character level.
+
+Common issues:
+
+- "The model is bad at counting" without the representation argument.
+- Claiming the tokenizer *could not* encode letters (it can — byte fallback — but frequent words never arrive that way).
+
+## Exercise 04.24 — Why production tokenizers force digit-splitting
+
+A correct answer should include:
+
+- Web-trained BPE learns merges for *frequent* numbers only, so `1234` might be one token while `1235` is two — arithmetic gets inconsistent building blocks and place-value structure is destroyed unpredictably.
+- Forced digit-splitting makes every number decompose the same way, giving the model a uniform representation to learn arithmetic over.
+
+Common issues:
+
+- Saying digit-splitting compresses better (it compresses *worse*; the tradeoff is bought for consistency).
+- Missing that TinyShakespeare digit-splits by accident (numerals are rare), not by design.
+
+## Exercise 04.25 — Never-fired tokens and the glitch mechanism
+
+A correct answer should include:
+
+- Embedding rows for tokens absent from training data receive (almost) no gradient updates, so they remain near their random initialization — Module 03's "Where weights start" describes exactly what such a row is: noise at the right scale.
+- At inference, that near-random vector is processed by layers trained on real distributions — the output is confidently structured nonsense, which is the mechanism behind glitch tokens like `SolidGoldMagikarp` (frequent in the tokenizer's training data, scrubbed from the model's).
+
+Common issues:
+
+- Treating glitch tokens as a bug in the tokenizer code rather than a tokenizer/model training-data mismatch.
+- Saying the model "doesn't know" the token — it's stronger than that: the embedding was never trained, so downstream computation is on noise, not on a poorly-learned meaning.
