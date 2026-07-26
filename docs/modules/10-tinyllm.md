@@ -99,6 +99,7 @@ The Module 03B curve-reading habits now apply to a real transformer.
 - **Validation loss is the primary health metric.** Samples are useful, but noisy.
 - **`log(V)` is a step-0 sanity check, not a goal.** The run needs to fall below it.
 - **Tiny models learn form before meaning.** Punctuation, word fragments, and local phrase shape appear before global coherence.
+- **Gradient accumulation is linearity, exploited.** `.grad` sums contributions — the same rule your Module 01 engine implements — so K micro-batches of `B/K`, each with its loss divided by K, reproduce one batch of `B` exactly, while activation memory only ever holds one micro-batch. Two rules carry all the bugs: divide each micro-loss by K (or you've multiplied the learning rate by K), and clip once after the last micro-batch (clipping is nonlinear; it doesn't commute with the sum). It's a memory lever, not a speed lever.
 
 ---
 ## What you'll build
@@ -175,8 +176,9 @@ Each exercise has `Question:` / `Answer:` cells inside the notebook. If you'd li
 2. **Prepare the first corpus.** Load tokenizer/data artifacts, split tokens, and inspect batch shapes.
 3. **Train ShakespeareLM.** Run the small transformer baseline and plot train/validation loss.
 4. **Sample from milestones.** Compare text before and after training.
-5. **Run StoryLM scale-ups.** Try the checkpointed TinyStories paths your machine can handle.
-6. **Diagnose the run.** Record loss, perplexity, sample quality, and the next experiment.
+5. **Prove gradient accumulation.** Verify that K accumulated micro-batches equal one big batch to float precision, then break it both ways on purpose.
+6. **Run StoryLM scale-ups.** Try the checkpointed TinyStories paths your machine can handle.
+7. **Diagnose the run.** Record loss, perplexity, sample quality, and the next experiment.
 
 ## Pitfalls to expect
 
@@ -186,6 +188,7 @@ Each exercise has `Question:` / `Answer:` cells inside the notebook. If you'd li
 - **Evaluation with grads enabled.** It wastes memory and can make long validation passes fail.
 - **Treating samples as the only metric.** Samples are high-variance. Use validation loss to judge training health.
 - **Scaling too many knobs at once.** If a larger run improves or regresses, you need to know which change caused it.
+- **Accumulating gradients without the `/K`, or clipping per micro-batch.** The first silently multiplies your learning rate by K; the second clips a different vector than the one big-batch training would clip. Exercise 5 plants both bugs so you see each signature once.
 
 ## M-series notes
 
@@ -197,7 +200,7 @@ Practical starting points:
 - **5M params on TinyStories:** hours depending on data slice, context length, and Mac.
 - **30M params on TinyStories:** a longer experiment; overnight to a couple of days for the full run. But the notebook lets you stop early, inspect performance, and save the model if it looks good enough.
 - **30M params on g2c:** same story as 30M TinyStories. The full run is longer, but tokens/s should be about the same. Stop early when performance is acceptable.
-- **If memory fails:** halve `batch_size` first, then `context_length`. The `(B, T, V)` logits tensor is often the largest activation.
+- **If memory fails:** halve `batch_size` — and double your gradient-accumulation steps to keep the effective batch, or you've quietly changed the experiment (Exercise 5 proves the equivalence). If that's not enough, reduce `context_length`. The `(B, T, V)` logits tensor is often the largest activation.
 - **macOS Activity Monitor.** GPU usage should stay close to 100% and memory pressure green or yellow.
 - **Avoid running on battery**. macOS heavily throttles long-running GPU processes on battery.
 - **If the scale-ups are out of reach.** Training your own ladder is this module's deliverable, but Modules 12+ don't have to wait on it: `./checkpoints.sh` fetches the course's reference StoryLM checkpoints (Module 12 explains the trade). Whatever your machine *can* train is still worth saving — the reference manifests record the course runs' final losses, so you can compare your run against them.
@@ -221,6 +224,7 @@ Secondary:
 - [ ] Notebook: `notebooks/solutions/10-tinyllm.ipynb`.
 - [ ] A tiny trained checkpoint is saved locally.
 - [ ] StoryLM scale-up checkpoints can be interrupted, sampled, and resumed.
+- [ ] The gradient-accumulation equivalence check passes, and you can state the two rules from memory.
 - [ ] Training history includes train loss, validation loss, learning rate, and gradient norm.
 - [ ] You can explain the full trainer step order without notes.
 - [ ] You can compare the initial sample and trained sample and identify what improved.

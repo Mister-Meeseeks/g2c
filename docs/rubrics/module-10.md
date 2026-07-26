@@ -61,7 +61,36 @@ Common issues:
 - Treating one bad sample as proof training failed despite falling validation loss.
 - Sampling with wildly different settings across checkpoints without noting it.
 
-## Exercise 10.05 — Run one controlled scale-up
+## Exercise 10.05 — Prove gradient accumulation
+
+A correct answer should include:
+
+Question 1 (why identical):
+
+- Gradients are linear: the gradient of a sum of losses is the sum of the gradients, and `.grad` accumulates across `backward()` calls — the same `+=` rule from the Module 01 engine.
+- Because each micro-loss is divided by K, the accumulated sum equals the mean-loss gradient of the full batch; no optimizer steps happen between micro-batches, so the weights are identical throughout.
+
+Question 2 (the missing /K):
+
+- Gradients come out exactly K× too big, which is indistinguishable from multiplying the learning rate by K.
+- On a real run this looks like instability or divergence, and the natural-but-wrong response is to blame and lower the LR (or blame clipping) rather than fix the scaling.
+
+Question 3 (clip ordering):
+
+- Clipping is a nonlinear operation (a conditional rescale by `max_norm / total_norm`), so it does not commute with summation — clipping micro-gradients and summing is not the same as summing then clipping.
+- Stronger answers note the in-loop clip also rescales the already-accumulated gradient each iteration, compounding the distortion.
+
+Question 4 (the practical config):
+
+- Halve `batch_size` to 4 **and** accumulate over 2 micro-batches per step (effective batch stays 8), dividing each micro-loss by 2 and clipping once before the step.
+
+Common issues:
+
+- Calling the equivalence "approximate" — it is exact up to float summation order (the check passes at `atol=1e-6`).
+- Saying accumulation saves time (it saves activation memory; wall clock is unchanged or slightly worse).
+- Fixing the /K bug by lowering the learning rate.
+
+## Exercise 10.06 — Run one controlled scale-up
 
 A correct answer should include:
 
@@ -74,7 +103,7 @@ Common issues:
 - Changing model size, data size, context length, LR, and steps all at once.
 - Comparing runs with different random seeds without noting the variance.
 
-## Exercise 10.06 — Diagnose the run
+## Exercise 10.07 — Diagnose the run
 
 A correct answer should include:
 
