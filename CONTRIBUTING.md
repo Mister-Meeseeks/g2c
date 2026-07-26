@@ -32,6 +32,21 @@ G2C_APPLY_SOLUTIONS=1 pytest    # green here means the scaffolding is fine
 pytest                          # red here is expected; it's the work you haven't done
 ```
 
+## Questions and study groups
+
+Anything conversational — "am I understanding attention right?", "is my loss
+curve normal?", "anyone else working through Part II?" — belongs in
+[GitHub Discussions](https://github.com/Mister-Meeseeks/g2c/discussions).
+Issues are for the templates above; Discussions is for everything else,
+including organizing a study group (the course works well with a small weekly
+cohort).
+
+One honest expectation: this course is a maintained side project, not a
+staffed product. Expect replies to issues and discussions within **days to a
+week**, not hours. For getting unstuck, a coding agent pointed at your
+notebook (the workflow every lesson's Exercises section describes) will almost
+always be faster than waiting on a human reply — that's by design.
+
 ## Pull requests
 
 Corrections to lessons — wrong math, stale claims, broken links, typos — are welcome

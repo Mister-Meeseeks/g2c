@@ -91,7 +91,7 @@ Each module is roughly one week of effort at the level of a rigorous elite-colle
 
 The focus of the course is on *building*. The lecture notes are generally short and oriented around the concepts the student needs to know to finish the module deliverables. Optional additional reading is included in each module for students who want to go deeper on any topic.
 
-The `g2c/` package grows through each week of the course. Every module's package is consumed by later modules in some way. To complete the course, students must implement all the module packages, until it comes together in the capstone project. Each module has a test suite to help students validate their implementation. Iterate until tests come back green. 
+The `g2c/` package grows through each week of the course. Every module's package is consumed by later modules in some way. Part I culminates in a language model you wrote every layer of; Part II carries the same codebase through to the capstone assistant. Each module has a test suite to help students validate their implementation. Iterate until tests come back green. 
 
 The course is agent friendly. Students should use their favorite coding agent (like Claude or Codex) to answer questions, give hints, grade problems, etc. The `AGENTS.md`/`CLAUDE.md` is set up so coding agents launched in the repo will naturally act like teacher assistants. 
 
@@ -188,4 +188,4 @@ If the course loses you somewhere, please [say where](https://github.com/Mister-
 
 Nothing in this repo phones home — it all runs locally, and it always will. The consequence is that a module which quietly loses half the people who reach it looks exactly like a module nobody struggled with. Stuck reports are the only way that difference becomes visible.
 
-Bug reports, corrections, and pull requests are all welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
+For questions, "is this normal?" checks, and study-group organizing, use [GitHub Discussions](https://github.com/Mister-Meeseeks/g2c/discussions). Bug reports, corrections, and pull requests are all welcome — see [CONTRIBUTING.md](CONTRIBUTING.md), which also sets honest expectations about response times.
