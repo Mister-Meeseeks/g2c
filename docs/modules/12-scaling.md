@@ -27,7 +27,7 @@ That binds the reference implementations for Modules 01–11 and leaves everythi
 G2C_APPLY_SOLUTIONS=01-11 pytest
 ```
 
-Two honest caveats. First, this module's exercises compare *your own* trained checkpoints at several sizes — without them you can still follow the analysis, but you'll be reading someone else's curve rather than plotting yours. Second, the course's whole argument is that the layers below are not magic. Skipping Part I means taking that on faith. If you have the time, it is worth earning.
+Two honest caveats. First, this module's exercises compare trained checkpoints at several sizes. The best version uses *your own* ladder from Module 10; entering here, run `./checkpoints.sh` to fetch the course's reference checkpoints so every cell still runs — you'll be plotting the reference runs' curve rather than one you trained. Second, the course's whole argument is that the layers below are not magic. Skipping Part I means taking that on faith. If you have the time, it is worth earning.
 
 ---
 ## Before you start
@@ -35,6 +35,7 @@ Two honest caveats. First, this module's exercises compare *your own* trained ch
 * *Review* power laws on log-log axes — `y = A · x^α` plots as a straight line with slope `α`
 * *Review* FLOPs as a unit of compute — used here to standardize comparisons across model sizes and training runs
 * *Finish* Modules 10–11 — especially the `StoryLM-5M-base` and `StoryLM-30M-base` artifacts from the Module 10 notebook
+* *Run* `./checkpoints.sh` instead if those Module 10 scale-ups aren't in reach — it fetches the course's reference ladder, and never overwrites artifacts you trained yourself
 * *Run* `.venv/bin/python scripts/artifact_status.py --module 12` to see which saved model artifacts are available
 * *Run* `./datasets.sh --tiny` or `./datasets.sh --small` if the TinyStories corpus or `StoryTokenizer` artifact is missing
 
@@ -248,7 +249,7 @@ Rough M-series budget:
    └────────────┴──────────────────────────────────────────────┘
 ```
 
-The `StoryLM-1M-base` run is deliberately small. On most M-series machines it should be a coffee-break run, not a monster training session. If you do not have the `StoryLM-5M-base` or `StoryLM-30M-base` artifacts yet, go back to Module 10 rather than trying to recreate the whole ladder here.
+The `StoryLM-1M-base` run is deliberately small. On most M-series machines it should be a coffee-break run, not a monster training session. If you do not have the `StoryLM-5M-base` or `StoryLM-30M-base` artifacts yet, go back to Module 10 rather than trying to recreate the whole ladder here — or, if those runs aren't in reach, fetch the course's reference ladder with `./checkpoints.sh`. Reference manifests record each run's training config and final train/val losses, so the comparisons below still work, and they double as calibration numbers for any run you do train yourself.
 
 ## Exercises
 

@@ -200,6 +200,7 @@ Practical starting points:
 - **If memory fails:** halve `batch_size` first, then `context_length`. The `(B, T, V)` logits tensor is often the largest activation.
 - **macOS Activity Monitor.** GPU usage should stay close to 100% and memory pressure green or yellow.
 - **Avoid running on battery**. macOS heavily throttles long-running GPU processes on battery.
+- **If the scale-ups are out of reach.** Training your own ladder is this module's deliverable, but Modules 12+ don't have to wait on it: `./checkpoints.sh` fetches the course's reference StoryLM checkpoints (Module 12 explains the trade). Whatever your machine *can* train is still worth saving — the reference manifests record the course runs' final losses, so you can compare your run against them.
 
 ---
 ## Reading

@@ -332,7 +332,56 @@ artifacts/evals/<eval-name>/
 - seed;
 - git commit if available;
 - creation date;
-- notes on intended use.
+- final train/val losses (the golden calibration numbers for that run);
+- notes on intended use;
+- a `distribution` block when the artifact was fetched from a published
+  release rather than trained locally (see below).
+
+## Published Reference Checkpoints
+
+Module 10's scale-up runs cost hours-to-overnight, and Module 12's scaling
+comparison is inert without them. The reference checkpoints exist so Modules
+12+ (and Part II direct entry) are never hostage to that wall-clock. Training
+your own ladder remains Module 10's deliverable; the download is the honest
+escape hatch, never the default path, and nothing in the course auto-fetches
+it.
+
+**What ships.** `StoryLM-1M-base`, `StoryLM-5M-base`, `StoryLM-30M-base`,
+`TinyLLM-30M-base`, plus the tokenizer artifacts they reference by name
+(`StoryTokenizer`, `G2CTokenizer`). Each asset is a tarball of the artifact
+directory, unpacking directly into `artifacts/models/` or
+`artifacts/tokenizers/`.
+
+**Hosting.** GitHub release assets on the `checkpoints-v1` tag, decoupled from
+course version tags so checkpoints can be re-published without cutting a
+course release. Retrains that keep the same tokenizer/corpus generation
+replace assets in place (URLs stay stable; checksums update); breaking changes
+bump the tag. The release URLs live as `*_URL` variables in `checkpoints.sh`,
+so the weekly dataset-urls canary covers them automatically.
+
+**Provenance.** Published checkpoints must be trained with the reference
+solutions at a recorded commit. `scripts/package_checkpoints.py` refuses to
+package a manifest missing `git_commit`, `seed`, or the final train/val
+losses, and injects a `distribution` block (release tag, asset name, packaging
+timestamp) into the packaged copy of the manifest — that block is how
+notebooks distinguish a downloaded reference artifact from a self-trained one.
+The packager also verifies each model's tokenizer covers its vocab: a
+tokenizer trained *larger* than the model is fine by design (consumers encode
+via `encode_with_vocab_size(text, model.vocab_size)`, truncating BPE merges to
+the model's prefix vocab), but a tokenizer smaller than the model's vocab is a
+broken pair and fails packaging.
+
+**Student contract.** `./checkpoints.sh` never overwrites an existing
+artifact — a student's own overnight run is unclobberable — and verifies
+sha256 checksums that `package_checkpoints.py --update-script` writes into the
+fetch script at packaging time.
+
+**Re-publish flow.**
+
+```
+.venv/bin/python scripts/package_checkpoints.py --update-script
+gh release upload checkpoints-v1 data/cache/checkpoint-dist/*.tar.gz --clobber
+```
 
 ## G2C Corpus v1
 

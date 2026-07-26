@@ -30,7 +30,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Shell scripts that download course data.
-SCRIPTS = ("setup.sh", "datasets.sh")
+SCRIPTS = ("setup.sh", "datasets.sh", "checkpoints.sh")
 
 # `FOO_URL="https://..."` or `local foo_url="https://..."`.
 URL_ASSIGNMENT = re.compile(
