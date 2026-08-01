@@ -9,6 +9,7 @@ checkpoint resume so a student can stop training, inspect, and continue.
 from __future__ import annotations
 
 import math
+import re
 import time
 from collections.abc import Callable
 from os import PathLike
@@ -20,7 +21,8 @@ import torch
 from IPython.display import Markdown, display
 
 from g2c.artifacts import load_run_state
-from g2c.pretraining import Trainer
+from g2c.artifacts.models import atomic_torch_save, checkpoint_backup_path
+from g2c.pretraining import Trainer, empty_training_history
 from g2c.transformer import TransformerLM
 
 __all__ = [
@@ -29,12 +31,40 @@ __all__ = [
     "load_run_state",
     "make_encode_progress",
     "make_tokenized_corpus_progress",
+    "milestone_checkpoints",
     "plot_training_history",
     "train_with_progress",
 ]
 
 
 _BAR_WIDTH = 28
+
+
+def _milestone_path(checkpoint_path: Path, step: int) -> Path:
+    """Path for the milestone snapshot taken at ``step``."""
+    return checkpoint_path.with_name(
+        f"{checkpoint_path.stem}.step{step}{checkpoint_path.suffix}"
+    )
+
+
+def milestone_checkpoints(checkpoint_path: str | PathLike[str]) -> list[tuple[int, Path]]:
+    """Return ``(step, path)`` for existing milestone snapshots, oldest first.
+
+    Milestones sit beside the rolling checkpoint as ``<stem>.step<N><suffix>``.
+    Unlike the rolling pair (``<path>`` and ``<path>.bak``, which are only ever
+    a few hundred steps apart) these are spaced by wall-clock time, so they
+    bound how much compute a single mishap can cost.
+    """
+    path = Path(checkpoint_path)
+    pattern = re.compile(
+        rf"^{re.escape(path.stem)}\.step(\d+){re.escape(path.suffix)}$"
+    )
+    found: list[tuple[int, Path]] = []
+    for entry in path.parent.glob(f"{path.stem}.step*{path.suffix}"):
+        match = pattern.match(entry.name)
+        if match is not None:
+            found.append((int(match.group(1)), entry))
+    return sorted(found)
 
 
 def _humanize_count(n: int) -> str:
@@ -250,16 +280,34 @@ def train_with_progress(
     checkpoint_path: str | PathLike[str] | None = None,
     checkpoint_every: int = 100,
     checkpoint_extra: dict[str, Any] | None = None,
+    milestone_minutes: float | None = 30.0,
+    milestone_keep: int = 2,
     **trainer_kwargs,
 ) -> dict:
     """Run ``Trainer.train`` with a live IPython progress bar.
 
-    If ``checkpoint_path`` points to an existing file, the trainer state is
-    loaded from it (model params, optimizer state, RNG, step, history) and
-    training continues from where it left off. Otherwise training starts fresh.
-    During training the trainer saves a rolling checkpoint to that path every
+    If a checkpoint exists at ``checkpoint_path``, the trainer state is loaded
+    from it (model params, optimizer state, RNG, step, history) and training
+    continues from where it left off. Otherwise training starts fresh. During
+    training the trainer saves a rolling checkpoint to that path every
     ``checkpoint_every`` steps -- and once more on KeyboardInterrupt before
     re-raising, so Ctrl+C is a safe inspection point.
+
+    Resume looks past the rolling checkpoint when it has to. The search order
+    is ``<path>``, then ``<path>.bak``, then the newest milestone snapshot.
+    Starting over from scratch is the last resort, and the chosen source is
+    always printed -- a silent restart discards however many hours the previous
+    run had accumulated.
+
+    Every ``milestone_minutes`` of training a snapshot is written beside the
+    rolling checkpoint as ``<stem>.step<N><suffix>``, retaining the newest
+    ``milestone_keep``. The rolling pair is only ever ``checkpoint_every``
+    steps apart, so on its own it bounds loss to minutes of *steps* but nothing
+    at all in wall-clock terms on a long run; milestones are what make the
+    exposure a fixed number of hours regardless of model size. Pass
+    ``milestone_minutes=None`` to disable. Each snapshot costs roughly three
+    times the model's parameter bytes (weights plus AdamW ``m``/``v``), so
+    ``milestone_keep`` is the knob to turn down when disk is tight.
 
     Pass ``checkpoint_extra`` (e.g. ``{"model_config": ..., "vocab_size": ...,
     "tokenizer_artifact": ...}``) so ``load_run_state`` can reconstruct the
@@ -277,11 +325,33 @@ def train_with_progress(
 
     history: dict | None = None
     ckpt_path = Path(checkpoint_path) if checkpoint_path is not None else None
-    did_resume = ckpt_path is not None and ckpt_path.exists()
+
+    resume_path: Path | None = None
+    resume_label = ""
+    if ckpt_path is not None:
+        backup_path = checkpoint_backup_path(ckpt_path)
+        milestones = milestone_checkpoints(ckpt_path)
+        if ckpt_path.exists():
+            resume_path, resume_label = ckpt_path, ckpt_path.name
+        elif backup_path.exists():
+            # The rolling checkpoint is gone but its backup survived. Loading
+            # the backup is always better than silently discarding the run.
+            resume_path, resume_label = ckpt_path, f"{backup_path.name} (rolling checkpoint missing)"
+        elif milestones:
+            step, path = milestones[-1]
+            resume_path = path
+            resume_label = f"{path.name} (rolling checkpoint and backup both missing)"
+
+    did_resume = resume_path is not None
     if did_resume:
-        loaded = trainer.load_checkpoint(ckpt_path)
+        loaded = trainer.load_checkpoint(resume_path)
         history = loaded.get("history")
-        print(f"{name}: resuming from step {trainer.step:,}/{trainer.max_steps:,}")
+        print(
+            f"{name}: resuming from step {trainer.step:,}/{trainer.max_steps:,} "
+            f"[{resume_label}]"
+        )
+    elif ckpt_path is not None:
+        print(f"{name}: starting fresh -- no checkpoint or milestone at {ckpt_path}")
     else:
         print(f"{name}: starting fresh")
 
@@ -309,6 +379,36 @@ def train_with_progress(
         display_id=True,
     )
 
+    # `Trainer.train` appends to this dict in place, so the milestone hook below
+    # must close over the same object. Build it here rather than letting
+    # `train` create one internally, where the closure could not reach it.
+    if history is None:
+        history = empty_training_history()
+
+    milestones_on = (
+        ckpt_path is not None
+        and milestone_minutes is not None
+        and milestone_minutes > 0
+        and milestone_keep > 0
+    )
+    last_milestone_at = time.perf_counter()
+
+    def maybe_save_milestone() -> None:
+        nonlocal last_milestone_at
+        if not milestones_on:
+            return
+        now = time.perf_counter()
+        if now - last_milestone_at < milestone_minutes * 60.0:
+            return
+        last_milestone_at = now
+        atomic_torch_save(
+            trainer.checkpoint_state(history=history, extra=checkpoint_extra),
+            _milestone_path(ckpt_path, trainer.step),
+            keep_backup=False,
+        )
+        for _, stale in milestone_checkpoints(ckpt_path)[:-milestone_keep]:
+            stale.unlink(missing_ok=True)
+
     def on_log(metrics: dict) -> None:
         nonlocal last_val_loss
         if metrics.get("val_loss") is not None:
@@ -320,6 +420,7 @@ def train_with_progress(
         )
         if progress is not None:
             progress.update(message)
+        maybe_save_milestone()
 
     history = trainer.train(
         train_ids,

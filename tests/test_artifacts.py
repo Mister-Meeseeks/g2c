@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import gzip
 import json
+import os
 from pathlib import Path
+from unittest import mock
 
 import numpy as np
+import pytest
 import torch
 
 from g2c.artifacts import (
@@ -138,6 +141,76 @@ def test_atomic_torch_save_keeps_previous_checkpoint_backup(tmp_path):
 
     assert checkpoint_backup_path(checkpoint_path).exists()
     assert torch.equal(loaded["step"], torch.tensor([1]))
+
+
+def test_atomic_torch_save_never_leaves_final_path_absent(tmp_path):
+    """The final path must be loadable at every instant of the swap.
+
+    Regression test for a rolling checkpoint that vanished mid-run: the backup
+    used to be created by *moving* the final file aside, so an interrupt landing
+    between that move and the rename of the temporary destroyed the only
+    complete checkpoint. Hard-linking the backup closes the window.
+    """
+    checkpoint_path = tmp_path / "run.ckpt"
+    atomic_torch_save({"step": torch.tensor([1])}, checkpoint_path)
+
+    seen: list[bool] = []
+    real_replace = os.replace
+
+    def spy_replace(src, dst, *args, **kwargs):
+        # Sample whether the final path exists around every rename in the save.
+        seen.append(checkpoint_path.exists())
+        result = real_replace(src, dst, *args, **kwargs)
+        seen.append(checkpoint_path.exists())
+        return result
+
+    with mock.patch.object(os, "replace", spy_replace):
+        atomic_torch_save({"step": torch.tensor([2])}, checkpoint_path)
+
+    assert seen, "expected at least one rename during the save"
+    assert all(seen), "final path was absent partway through the save"
+    assert torch.equal(load_torch_checkpoint(checkpoint_path)["step"], torch.tensor([2]))
+    assert torch.equal(
+        load_torch_checkpoint(checkpoint_backup_path(checkpoint_path))["step"],
+        torch.tensor([1]),
+    )
+
+
+def test_atomic_torch_save_keeps_completed_temp_when_interrupted(tmp_path):
+    """An interrupt after the payload is written must not destroy it.
+
+    The previous cleanup unlinked the temporary unconditionally, so a
+    KeyboardInterrupt arriving after `torch.save` completed threw away a
+    perfectly good checkpoint on the way out.
+    """
+    checkpoint_path = tmp_path / "run.ckpt"
+    atomic_torch_save({"step": torch.tensor([1])}, checkpoint_path)
+
+    with mock.patch.object(os, "link", side_effect=KeyboardInterrupt):
+        with pytest.raises(KeyboardInterrupt):
+            atomic_torch_save({"step": torch.tensor([2])}, checkpoint_path)
+
+    # The interrupt landed before the swap, so the previous checkpoint stands.
+    assert torch.equal(load_torch_checkpoint(checkpoint_path)["step"], torch.tensor([1]))
+    leftovers = list(tmp_path.glob(".run.ckpt.*.tmp"))
+    assert len(leftovers) == 1, "completed temporary should survive the interrupt"
+
+    # The next save sweeps its own orphaned temporaries rather than leaking them.
+    atomic_torch_save({"step": torch.tensor([3])}, checkpoint_path)
+    assert list(tmp_path.glob(".run.ckpt.*.tmp")) == []
+
+
+def test_atomic_torch_save_drops_incomplete_temp(tmp_path):
+    """A failure *during* the write leaves nothing behind and preserves the old file."""
+    checkpoint_path = tmp_path / "run.ckpt"
+    atomic_torch_save({"step": torch.tensor([1])}, checkpoint_path)
+
+    with mock.patch.object(torch, "save", side_effect=OSError("no space left")):
+        with pytest.raises(OSError):
+            atomic_torch_save({"step": torch.tensor([2])}, checkpoint_path)
+
+    assert torch.equal(load_torch_checkpoint(checkpoint_path)["step"], torch.tensor([1]))
+    assert list(tmp_path.glob(".run.ckpt.*.tmp")) == []
 
 
 def test_load_run_state_reconstructs_model_and_history(tmp_path):

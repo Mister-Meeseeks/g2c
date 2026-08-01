@@ -548,35 +548,85 @@ def checkpoint_backup_path(path: str | PathLike[str]) -> Path:
     return checkpoint_path.with_name(checkpoint_path.name + CHECKPOINT_BACKUP_SUFFIX)
 
 
+def _fsync_dir(directory: Path) -> None:
+    """Force a directory entry change (rename, unlink) out to disk.
+
+    Renaming is atomic with respect to ordering, but the rename itself lives
+    in the directory's metadata and is not durable until the directory is
+    synced. Best-effort: filesystems that reject `fsync` on a directory
+    handle simply skip it.
+    """
+    try:
+        dir_fd = os.open(directory, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(dir_fd)
+    except OSError:
+        pass
+    finally:
+        os.close(dir_fd)
+
+
 def atomic_torch_save(
     state: Any,
     path: str | PathLike[str],
     *,
     keep_backup: bool = True,
 ) -> Path:
-    """Save a PyTorch payload without exposing a partially-written final file.
+    """Save a PyTorch payload without ever leaving `path` absent or partial.
 
     `torch.save` writes zip archives. If a notebook is interrupted while that
     archive is being written directly to the final path, later `torch.load`
     can fail with missing internal `data/N` records. This helper writes to a
-    same-directory temporary file first. Only after `torch.save` succeeds does
-    it move the completed file into place. The previous final file is kept as
+    same-directory temporary file first, fsyncs it, and only then swaps it into
+    place with a single atomic rename. The previous final file is kept as
     `<path>.bak`, so loaders have a previous-good checkpoint to fall back to.
+
+    The backup is created by *hard-linking* the current final file rather than
+    moving it. Moving would leave a window in which `path` does not exist at
+    all -- and an interrupt landing in that window destroys the only complete
+    checkpoint, since the temporary file has not been renamed into place yet.
+    Adding a second name for the same inode closes that window: `path` is a
+    loadable checkpoint at every instant. `os.replace` below repoints the
+    directory entry rather than writing through the inode, so the linked
+    backup is unaffected by the swap.
     """
     final_path = Path(path)
     final_path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = final_path.with_name(
-        f".{final_path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
-    )
+    tmp_prefix = f".{final_path.name}.{os.getpid()}."
+    tmp_path = final_path.with_name(f"{tmp_prefix}{uuid.uuid4().hex}.tmp")
     backup_path = checkpoint_backup_path(final_path)
+
+    # Sweep temporaries this process orphaned in an earlier interrupted save.
+    # Scoped to our own pid so a concurrent writer's tmp is never touched.
+    for stale in final_path.parent.glob(f"{tmp_prefix}*.tmp"):
+        stale.unlink(missing_ok=True)
+
+    # Write the new payload and force it to disk. Only an *incomplete* write is
+    # cleaned up here -- once `torch.save` returns, `tmp_path` holds a complete
+    # checkpoint and is never deleted on the way out, even on KeyboardInterrupt.
     try:
-        torch.save(state, tmp_path)
-        if keep_backup and final_path.exists():
+        with open(tmp_path, "wb") as handle:
+            torch.save(state, handle)
+            handle.flush()
+            os.fsync(handle.fileno())
+    except BaseException:
+        tmp_path.unlink(missing_ok=True)
+        raise
+
+    if keep_backup and final_path.exists():
+        backup_path.unlink(missing_ok=True)
+        try:
+            os.link(final_path, backup_path)
+        except OSError:
+            # Filesystem without hard-link support. Fall back to a move, which
+            # reopens the absent-file window -- which is why both
+            # `load_torch_checkpoint` and the resume gate consult the backup.
             os.replace(final_path, backup_path)
-        os.replace(tmp_path, final_path)
-    finally:
-        if tmp_path.exists():
-            tmp_path.unlink()
+
+    os.replace(tmp_path, final_path)
+    _fsync_dir(final_path.parent)
     return final_path
 
 
