@@ -98,6 +98,14 @@ Module → extras mapping:
   17-20         ./prodlm.sh
   (others)      no extras
 
+Beyond modules use named slugs instead of numbers:
+  ./notebook.sh moe               (./datasets.sh --tiny)
+  ./notebook.sh linear-attention  (./datasets.sh --tiny)
+  ./notebook.sh rl                (./baselm.sh)
+  ./notebook.sh multimodal        (MNIST, downloaded on first use)
+  ./notebook.sh harness           (scripted backend; ProdLM optional)
+  ./notebook.sh midtraining       (G2C small corpus + TinyLLM-30M checkpoint)
+
 Modules 10/12 stage the Standard-track datasets only when no TinyStories
 tier is on disk yet — a tier you already prepared (e.g. --tiny) is
 respected. For the full track, run ./datasets.sh (no args) yourself
@@ -220,6 +228,21 @@ case "$MODULE_NORM" in
          TEST_FILES=("tests/test_agent.py") ;;
     20)  EXTRAS+=("./prodlm.sh")
          TEST_FILES=("tests/test_assistant.py") ;;
+    # Beyond modules — named slugs, outside the numbered chain.
+    moe) EXTRAS+=("./datasets.sh --tiny")
+         TEST_FILES=("tests/test_moe.py") ;;
+    linear-attention)
+         EXTRAS+=("./datasets.sh --tiny")
+         TEST_FILES=("tests/test_linear_attention.py") ;;
+    rl)  EXTRAS+=("./baselm.sh")
+         TEST_FILES=("tests/test_rl.py") ;;
+    multimodal)
+         TEST_FILES=("tests/test_multimodal.py") ;;
+    harness)
+         TEST_FILES=("tests/test_harness.py") ;;
+    midtraining)
+         EXTRAS+=("./datasets.sh --small" "./checkpoints.sh tinyllm-30m")
+         TEST_FILES=("tests/test_midtraining.py") ;;
     *)
         warn "Module '$MODULE' not recognized; running ./setup.sh only and skipping test verification."
         ;;

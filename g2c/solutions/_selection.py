@@ -148,6 +148,23 @@ MODULE_TARGETS: dict[str, tuple[Target, ...]] = {
         _t("agent.agent"),
     ),
     "20": (_t("assistant.conversation"), _t("assistant.assistant")),
+    # Beyond modules — outside the numbered chain, selected by slug.
+    # `normalize_module` maps hyphens to underscores, so the launcher
+    # spelling (`linear-attention`) and the package spelling both work.
+    "moe": (_t("moe.router"), _t("moe.layer")),
+    "linear_attention": (_t("linear_attention.attention"),),
+    "rl": (_t("rl.grpo"), _t("rl.trainer")),
+    "multimodal": (_t("multimodal.patches"), _t("multimodal.model")),
+    "harness": (
+        _t("harness.context"),
+        _t("harness.runner"),
+        _t("harness.failures"),
+        _t("harness.agent"),
+    ),
+    "midtraining": (
+        _t("midtraining.mixture"),
+        _t("midtraining.evaluation"),
+    ),
 }
 
 MODULE_ORDER: tuple[str, ...] = tuple(MODULE_TARGETS)
@@ -183,7 +200,7 @@ def normalize_module(token: str) -> str | None:
 
     Accepts the same shapes the notebook launcher does: `7`, `07`, `3b`, `03B`.
     """
-    candidate = token.strip().lower()
+    candidate = token.strip().lower().replace("-", "_")
     if not candidate:
         return None
     # Zero-pad a leading single digit: "7" -> "07", "3b" -> "03b".

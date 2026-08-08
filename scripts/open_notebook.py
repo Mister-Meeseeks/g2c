@@ -27,11 +27,28 @@ JUPYTER_CONFIG_DIR = JUPYTER_DIR / "config"
 IPYTHON_DIR = JUPYTER_DIR / "ipython"
 
 
+# Beyond modules are addressed by slug, not number (see docs/beyond/).
+BEYOND_SLUGS = {
+    "moe",
+    "linear-attention",
+    "rl",
+    "multimodal",
+    "harness",
+    "midtraining",
+}
+
+
 def module_prefix(raw: str) -> str:
-    """Normalize module ids like '1', '01', and '03b'."""
+    """Normalize module ids like '1', '01', '03b' — or a Beyond slug."""
+    lowered = raw.lower()
+    if lowered in BEYOND_SLUGS:
+        return lowered
     match = re.fullmatch(r"(\d+)([a-zA-Z]?)", raw)
     if not match:
-        raise argparse.ArgumentTypeError("module must look like 1, 01, or 03b")
+        raise argparse.ArgumentTypeError(
+            "module must look like 1, 01, or 03b — or a Beyond slug: "
+            + ", ".join(sorted(BEYOND_SLUGS))
+        )
     number, suffix = match.groups()
     return f"{int(number):02d}{suffix.lower()}"
 
