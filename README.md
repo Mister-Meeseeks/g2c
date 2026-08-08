@@ -12,13 +12,15 @@ The hard constraint: **all tasks are runnable locally on an M-series MacBook**, 
 
 This repo contains everything needed for the course exercises and student projects. Lecture notes are both in repo docs and hosted on the web at [the course site](https://mister-meeseeks.github.io/g2c/). 
 
-Start by [forking this repo](https://github.com/Mister-Meeseeks/g2c/fork). The course is months of your own work, and a fork gives that work a home on GitHub — backup, history, and one-click course updates. (A plain `git clone` of this repo works too; you just won't have anywhere to push.)
+This repo has everything you need. To get started just clone and run the setup script:
 
 ```bash
-git clone https://github.com/<your-username>/g2c
+git clone https://github.com/mister-meeseeks/g2c
 cd g2c/
 ./setup.sh
 ```
+
+(Consider [forking this repo](https://github.com/Mister-Meeseeks/g2c/fork) to create your own Github repository for your specific work, then cloning from that. A course gives you a place to backup and push your specific course work.)
 
 **Prerequisites.** `setup.sh` checks for (but does not install) three system tools:
 
@@ -80,6 +82,10 @@ Build the system around a model. A different subject from Part I, not a harder o
 | 20 | [Capstone: a tiny ChatGPT](docs/modules/20-capstone.md)         | Assistant systems    |
 
 Part II can also be entered directly if you already know the fundamentals and want the systems material — see [Module 12](docs/modules/12-scaling.md).
+
+**Beyond the numbered course:** standalone modules on the mechanisms behind current model cards — [mixture of experts](docs/beyond/moe.md), [linear attention](docs/beyond/linear-attention.md), [RL for LLMs](docs/beyond/rl.md), [multimodal models](docs/beyond/multimodal.md), [agent harness engineering](docs/beyond/harness.md), and [midtraining](docs/beyond/midtraining.md). Take them in any order; nothing in Modules 00–20 depends on them.
+
+**G2C Briefs:** dated field guides that use the course to decode current releases without turning each release into another module. Start with [DeepSeek V4](docs/briefs/deepseek-v4.md), or read [the Brief contract](docs/briefs/index.md).
 
 ## Course structure
 

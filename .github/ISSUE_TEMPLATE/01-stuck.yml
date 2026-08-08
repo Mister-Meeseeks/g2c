@@ -50,6 +50,12 @@ body:
         - "18 — Tool use"
         - "19 — Agent loops"
         - "20 — Capstone: a tiny ChatGPT"
+        - "Beyond — Mixture of experts"
+        - "Beyond — Linear attention"
+        - "Beyond — RL for LLMs"
+        - "Beyond — Multimodal models"
+        - "Beyond — Agent harness engineering"
+        - "Beyond — Midtraining"
     validations:
       required: true
 

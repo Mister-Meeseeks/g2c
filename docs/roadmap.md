@@ -14,14 +14,47 @@ The course teaches diagnosis (curve reading in 03B, the `log V` baseline in 09B/
 
 ---
 
+## Beyond modules
+
+Standalone modules outside the numbered course, for the mechanisms behind the model cards you read. The contract: nothing in Modules 00–20 depends on them, they never renumber anything, and a topic earns one only after it shows up centrally across multiple independent model families *and* admits a laptop-scale build — not because one release made it famous.
+
+Shipped:
+
+- [Mixture of experts](beyond/moe.md)
+- [Linear attention and efficient sequence models](beyond/linear-attention.md)
+- [Reinforcement learning for LLMs](beyond/rl.md)
+- [Multimodal language models](beyond/multimodal.md)
+- [Agent harness engineering](beyond/harness.md)
+- [Midtraining](beyond/midtraining.md)
+
+Watchlist — evidence accumulating, listed as observations rather than promises: alternative and parallel generation; low-precision training; alternative optimizers.
+
+---
+
+## G2C Briefs
+
+Briefs are dated field guides to individual releases. They map a current
+technical report onto the durable course and Beyond mechanisms, label reported
+claims separately from derived arithmetic and course interpretation, and state
+what the available sources do not disclose. They carry no notebook, scaffold,
+test suite, or downstream dependency.
+
+Shipped:
+
+- [DeepSeek V4 — Reading a frontier model stack](briefs/deepseek-v4.md)
+
+An uncovered mechanism in a Brief does not automatically become roadmap work.
+It still has to recur across independent model families and admit a useful
+laptop-scale build before it earns a Beyond module.
+
+---
+
 ## Future arcs
 
 Bigger than additions — candidate themes for a second course, listed as directions rather than promises:
 
 - **Interpretability: you built it — now open it up.** Logit lens, activation patching, ablations, an induction-head hunt — on the model *you trained*. Module 08 already concedes its attention visualizations underwhelm at tiny scale; a dedicated arc is where that debt pays off, because tiny models aren't a limitation for interpretability — they're the superpower. Fully inspectable, fully yours.
-- **Reasoning and RL post-training.** Reward models, PPO→GRPO, RL on verifiable toy tasks. Fills the biggest modern-relevance gap (Module 14 stops at DPO by design).
 - **Performance and serving.** Quantization internals, attention tiling, batching, speculative decoding — the "make it fast" half that this course explicitly trades away for legibility.
-- **Architecture extensions.** MoE, linear attention, multimodality — the mechanisms behind the model cards you read.
 
 ---
 

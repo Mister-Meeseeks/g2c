@@ -124,6 +124,38 @@ Prefer inline chat practice over creating files. When the student asks for more 
 8. If the user directly asks for practice without first answering anything in the notebook, generate inline problems immediately.
 9. Create practice files only if the user explicitly asks to save a drill set.
 
+## When authoring a G2C Brief
+
+G2C Briefs (`docs/briefs/`) are dated field guides that use the course to
+decode one current model release. They are neither lesson pages nor complete
+paper summaries. The Brief index at `docs/briefs/index.md` owns the public
+contract and list of published Briefs.
+
+- Pin the release, primary-source version, and last-verification date. Current
+  release facts must be checked against primary sources rather than recalled.
+- Label the epistemic status of important statements: **Reported** for a
+  releasing organization's claim, **Derived** for shown arithmetic from
+  disclosed values, **G2C interpretation** for the course's inference, and
+  **Not disclosed** where the source cannot support a stronger conclusion.
+- Map mechanisms as **Built in g2c**, **Conceptual bridge**, or **Not yet
+  covered**. Do not flatten a production variant into a toy implementation
+  merely because they share an ancestor.
+- Trace the whole release stack when relevant: architecture, data/training,
+  post-training, inference, and agent infrastructure. Keep production systems
+  high-level unless their mechanics are necessary to understand a capability
+  or efficiency claim.
+- State the laptop-scale boundary plainly. A Brief may explain a model too
+  large to run locally; it must not add cloud, paid-API, checkpoint, or
+  reproduction requirements.
+- Do not add a notebook, scaffold, tests, rubric, exercise deliverable, hero
+  image requirement, or downstream course dependency. Worked arithmetic,
+  compact diagrams, reading routes, and ungraded comprehension goals are fine.
+- Prefer links from the Brief to durable modules. Modules 00–20 must never
+  depend on a Brief, and should not need edits when a dated Brief ages.
+- An uncovered mechanism in one release is evidence, not an automatic roadmap
+  commitment. The Beyond-module threshold still requires recurrence across
+  independent model families and a useful laptop-scale build.
+
 ## When authoring a new module
 
 When building scaffolding for any module that has a coding exercise, the goal is for the student to focus on the conceptual core, not on Python plumbing. Always provide:
@@ -310,4 +342,3 @@ Student-facing notebooks should foreground the conceptual flow, not the plumbing
 - Don't preemptively scale up. Tiny corpora, tiny models. The course's whole point is that the tiny version teaches the idea.
 - Don't write speculative scaffolding for modules that haven't been started yet.
 - Don't modify scaffold files under `g2c/` (outside `solutions/` and `notebook_extras/`) once the freeze ref in `.github/scaffold-freeze` is set — that surface is edited in place by students, and changing it breaks their `git pull`. Route the fix to the solutions mirror, tests, docs, or rubrics; if the scaffold change is truly unavoidable, add a ledger entry to `.github/scaffold-freeze`.
-

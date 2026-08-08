@@ -100,6 +100,16 @@ nav:
       - "18 — Tool use": modules/18-tools.md
       - "19 — Agent loops": modules/19-agent.md
       - "20 — Capstone: TinyGPT": modules/20-capstone.md
+  - G2C Briefs:
+      - "About the Briefs": briefs/index.md
+      - "DeepSeek V4": briefs/deepseek-v4.md
+  - Beyond:
+      - "Mixture of experts": beyond/moe.md
+      - "Linear attention": beyond/linear-attention.md
+      - "RL for LLMs": beyond/rl.md
+      - "Multimodal models": beyond/multimodal.md
+      - "Agent harness engineering": beyond/harness.md
+      - "Midtraining": beyond/midtraining.md
   - Primers:
       - PyTorch: primers/pytorch.md
       - Topological sort: primers/topo-sort.md

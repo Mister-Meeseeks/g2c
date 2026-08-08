@@ -63,6 +63,10 @@ Part II can also be entered directly if you already know the fundamentals and wa
 
 The [syllabus](syllabus.md) lays out each module in detail and gives the full motivation for the ordering.
 
+**Beyond the numbered course:** standalone modules on the mechanisms behind current model cards — [mixture of experts](beyond/moe.md), [linear attention](beyond/linear-attention.md), [RL for LLMs](beyond/rl.md), [multimodal models](beyond/multimodal.md), [agent harness engineering](beyond/harness.md), and [midtraining](beyond/midtraining.md). Take them in any order; nothing in Modules 00–20 depends on them.
+
+**G2C Briefs:** dated field guides that use the course to decode current releases without turning each release into another module. Start with [DeepSeek V4](briefs/deepseek-v4.md), or read [the Brief contract](briefs/index.md).
+
 ## Who it's for
 
 You'll get the most out of this if you're comfortable with Python, undergraduate calculus (chain rule, gradients), and basic linear algebra. You don't need prior deep learning experience — Module 0 covers the prerequisites and Modules 1–3 build the math substrate from scratch. You should be willing to read a paper now and then, and be willing to debug your own code without a framework hiding the failure mode.
