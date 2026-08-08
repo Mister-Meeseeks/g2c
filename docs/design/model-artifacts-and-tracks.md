@@ -144,7 +144,7 @@ Every model artifact name is built from up to three components:
 
 family ∈ {ShakespeareLM, StoryLM, TinyLLM, BaseLM, ProdLM}
 size   = approximate parameter count, written as <N>M or <N>B (e.g. -1M, -5M, -10M, -30M, -100M, -1B)
-stage  ∈ {base, SFT, DPO}
+stage  ∈ {base, mid-<recipe>, SFT, DPO}
 ```
 
 Component rules by family:
@@ -158,9 +158,11 @@ Component rules by family:
 The size is the trained parameter count, bucketed onto the family's known
 size tiers (`-1M`, `-5M`, `-10M`, `-30M`, `-100M`) rather than reported
 precisely. It follows industry convention (Qwen-9B, Llama-3-8B) of putting a
-parameter count in the name rather than counting training tokens. SFT/DPO
-derivatives keep the base's size since fine-tuning does not change parameter
-count.
+parameter count in the name rather than counting training tokens.
+Midtraining/SFT/DPO derivatives keep the base's size since continued training
+does not change parameter count. Midtraining recipes are explicit because two
+branches from the same base may coexist, for example
+`TinyLLM-30M-mid-python` and `TinyLLM-30M-mid-python-replay`.
 
 **On-disk artifact names always include every applicable component.** The base
 stage is explicit: `StoryLM-30M-base`, `TinyLLM-30M-base`, `BaseLM-base`.
@@ -190,8 +192,8 @@ orchestration layer.
 
 ### Derived-artifact lineage
 
-Derived artifacts (`-SFT`, `-DPO`) record their parent in the manifest's
-`base_artifact` field. The chain is followable: `BaseLM-DPO` →
+Derived artifacts (`-mid-<recipe>`, `-SFT`, `-DPO`) record their parent in the
+manifest's `base_artifact` field. The chain is followable: `BaseLM-DPO` →
 `BaseLM-SFT` → `BaseLM-base`; `TinyLLM-30M-DPO` → `TinyLLM-30M-SFT` →
 `TinyLLM-30M-base`. A reader can walk back to the source by following that
 field rather than parsing the name.
@@ -212,6 +214,12 @@ External base model:
 
 - `BaseLM-base`: small pretrained base used as a fallback for Modules 13-16 when
   self-trained models are too weak.
+
+Derived (midtraining):
+
+- `TinyLLM-30M-mid-python`: TinyLLM after Python-only continued pretraining.
+- `TinyLLM-30M-mid-python-replay`: the equal-token branch with 80% Python and
+  20% non-code replay.
 
 Backend role (no checkpoint):
 

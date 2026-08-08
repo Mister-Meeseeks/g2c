@@ -945,12 +945,46 @@ def test_parse_artifact_name_extracts_family_size_stage():
     assert parse_artifact_name("ShakespeareLM-1M") == ("ShakespeareLM", "1M", None)
     assert parse_artifact_name("StoryLM-30M-SFT") == ("StoryLM", "30M", "SFT")
     assert parse_artifact_name("TinyLLM-100M-DPO") == ("TinyLLM", "100M", "DPO")
+    assert parse_artifact_name("TinyLLM-30M-mid-python") == (
+        "TinyLLM", "30M", "mid-python"
+    )
+    assert parse_artifact_name("TinyLLM-30M-mid-python-replay") == (
+        "TinyLLM", "30M", "mid-python-replay"
+    )
     assert parse_artifact_name("StoryLM") == ("StoryLM", None, None)
     assert parse_artifact_name("StoryLM-SFT") == ("StoryLM", None, "SFT")
     assert parse_artifact_name("BaseLM") == ("BaseLM", None, None)
     assert parse_artifact_name("BaseLM-SFT") == ("BaseLM", None, "SFT")
     # Legacy qualifiers don't parse as size or stage.
     assert parse_artifact_name("StoryLM-Small") == ("StoryLM", None, None)
+
+
+def test_save_midtraining_artifact_preserves_name_and_parent(tmp_path):
+    repo = make_repo(tmp_path)
+    _save_tiny_tokenizer_artifact(repo, "TinyTok")
+    model_config = {
+        "embedding_dim": 8,
+        "num_layers": 1,
+        "num_heads": 2,
+        "max_seq_len": 16,
+        "hidden_dim": 32,
+    }
+    model = TransformerLM(vocab_size=256, **model_config)
+
+    artifact_dir = save_model_artifact(
+        "TinyLLM-30M-mid-python-replay",
+        model=model,
+        model_config=model_config,
+        training_config={"max_steps": 1},
+        tokenizer_artifact_name="TinyTok",
+        source="unit mixture",
+        base_artifact_name="TinyLLM-30M-base",
+        repo_root=repo,
+    )
+
+    assert artifact_dir.name == "TinyLLM-30M-mid-python-replay"
+    manifest = json.loads((artifact_dir / "manifest.json").read_text())
+    assert manifest["base_artifact"] == "TinyLLM-30M-base"
 
 
 def test_resolve_artifact_name_returns_literal_when_on_disk(tmp_path):

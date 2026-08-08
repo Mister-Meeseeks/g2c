@@ -35,6 +35,7 @@ _SIZE_TOKEN_RE = re.compile(r"^(\d+(?:\.\d+)?)([KMB])$")
 BASE_STAGE = "base"
 BASE_STAGE_SUFFIX = f"-{BASE_STAGE}"
 _STAGE_NAMES = frozenset({BASE_STAGE, "SFT", "DPO"})
+MID_STAGE_PREFIX = "mid-"
 _SIZED_FAMILIES = frozenset({"ShakespeareLM", "StoryLM", "TinyLLM"})
 
 
@@ -54,7 +55,7 @@ class ModelArtifactSpec:
 
     @property
     def stage_root_names(self) -> tuple[str, ...]:
-        """Return names used as roots for SFT/DPO artifacts."""
+        """Return names used as roots for derived-stage artifacts."""
         return (self.canonical_name, *self.aliases)
 
     @property
@@ -282,17 +283,20 @@ def parse_artifact_name(name: str) -> tuple[str, str | None, str | None]:
     """Split an artifact name into ``(family, size, stage)``.
 
     ``size`` is the size token (e.g. ``"5M"``, ``"30M"``) if present, else
-    ``None``. ``stage`` is ``"base"``, ``"SFT"``, or ``"DPO"`` if present,
-    else ``None``. Unrecognized components (legacy qualifiers like ``"Small"``)
-    are ignored.
+    ``None``. ``stage`` is ``"base"`, ``"SFT"`, ``"DPO"`, or a
+    recipe-qualified midtraining stage such as ``"mid-python-replay"``.
+    Unrecognized components (legacy qualifiers like ``"Small"``) are ignored.
     """
     parts = name.split("-")
     family = parts[0]
     size: str | None = None
     stage: str | None = None
-    for part in parts[1:]:
+    for index, part in enumerate(parts[1:], start=1):
         if part in _STAGE_NAMES:
             stage = part
+        elif part == "mid" and index < len(parts) - 1:
+            stage = "-".join(parts[index:])
+            break
         elif _SIZE_TOKEN_RE.match(part):
             size = part
     return family, size, stage
@@ -313,13 +317,16 @@ def is_base_stage_artifact_name(name: str) -> bool:
 
 
 def stage_root_name(name: str) -> str:
-    """Return the stage root used before ``-base``, ``-SFT``, or ``-DPO``."""
+    """Return the family/size root before a recognized training stage."""
     if name.endswith(BASE_STAGE_SUFFIX):
         return name[: -len(BASE_STAGE_SUFFIX)]
     for stage in ("SFT", "DPO"):
         suffix = f"-{stage}"
         if name.endswith(suffix):
             return name[: -len(suffix)]
+    marker = f"-{MID_STAGE_PREFIX}"
+    if marker in name:
+        return name.split(marker, 1)[0]
     return name
 
 
@@ -330,7 +337,7 @@ def canonical_base_artifact_name(
 ) -> str:
     """Return the canonical save name for a base-stage artifact.
 
-    SFT/DPO names and already-explicit ``*-base`` names are returned unchanged.
+    Derived-stage names and explicit ``*-base`` names are returned unchanged.
     Known course tiers are normalized to ``<tier>-base``. Unknown unsuffixed
     names also get ``-base`` so new base artifacts follow the same convention.
     """
@@ -722,6 +729,7 @@ def save_model_artifact(
     seed: int | None = None,
     module: str = "module-10",
     notes: str = "",
+    base_artifact_name: str | None = None,
     repo_root: str | Path | None = None,
 ) -> Path:
     """Save a TransformerLM as a durable course artifact.
@@ -745,6 +753,7 @@ def save_model_artifact(
         seed: optional seed used for the run.
         module: which course module produced this artifact.
         notes: free-form text for intended use, caveats, etc.
+        base_artifact_name: optional parent artifact for a derived checkpoint.
         repo_root: override the detected repo root.
 
     Returns:
@@ -790,6 +799,8 @@ def save_model_artifact(
         "final_val_loss": final_val,
         "notes": notes,
     }
+    if base_artifact_name is not None:
+        manifest["base_artifact"] = base_artifact_name
     atomic_json_save(manifest, root / "manifest.json")
 
     return root
