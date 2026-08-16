@@ -110,16 +110,16 @@ These must be **atomic**. If the text contains `<|assistant|>`, the tokenizer sh
 
 In this repo, `BPETokenizer()` is byte-only by default for the tiny BPE exercises. Use `BPETokenizer.with_course_special_tokens()` when creating reusable course tokenizer artifacts. Those reserved IDs live immediately after the 256 byte IDs, and learned BPE merges start after them. BPE training treats special tokens as barriers, so it does not learn a merge that consumes `<|endoftext|>` plus a neighboring word.
 
-### What the tokenizer breaks
+### Tokenizer pitfalls
 
-Everything downstream of this module — embeddings, attention, the whole transformer — sees only token IDs. **The model never sees letters.** That single fact explains a surprising share of the "LLMs are weirdly bad at X" folklore, and after this module you can explain it mechanically while most daily LLM users cannot.
+Everything downstream of this module (embeddings, transformers, etc.) consume token IDs. **The model never sees letters.** This single fact explains a surprising share of the "LLMs are bad at X" folklore:
 
-- **Spelling and letter-counting.** Ask your Shakespeare tokenizer about `strawberry` and it answers `['st', 'raw', 'ber', 'ry']` — four opaque symbols. A model consuming those IDs is being asked to count r's in a word it has never seen spelled. Character-level questions require the model to have *memorized* each token's spelling as a fact about the world.
-- **Case makes strangers.** `lord`, `Lord`, and `LORD` come out as three unrelated representations — two different single tokens and a byte-level split. Whatever the model learns about one, it relearns for the others. And the corpus, not the language, decides which variant is "real": in Shakespeare, `KING` is a single common token — stage directions shout — while `King` shatters into pieces. A web-trained tokenizer inverts that.
-- **Numbers are corpus accidents.** TinyShakespeare has so few numerals that `1601` encodes digit-by-digit — which happens to be the *good* behavior. Web-trained BPE instead learns arbitrary chunks (`1234` as one token while `1235` splits in two), handing arithmetic inconsistent building blocks. Modern production tokenizers force digit-splitting on purpose.
-- **Tokens that never fire.** Exercise 7B's frequency scan will show you hundreds of your 4,096 vocab entries that never appear once in the artifact's encoded sample. When a model pretrains on this corpus, those embedding rows barely move from initialization — and Module 03's "Where weights start" tells you exactly what that means. If one of those IDs arrives at inference, every downstream layer processes structured noise. That is the entire mechanism behind the famous "glitch tokens" (`SolidGoldMagikarp` and friends): strings common enough in the *tokenizer's* training data to earn a vocab slot, then scrubbed from the *model's* training data. After Module 10, you can hunt for undertrained embeddings in your own StoryLM.
+- **Spelling and letter-counting.** Ask your tokenizer about `strawberry` and it answers `['st', 'raw', 'ber', 'ry']` . A model consuming those IDs is being asked to count r's in a word it has never seen spelled. 
+- **Case makes strangers.** `lord`, `Lord`, and `LORD` come out as three unrelated representations. Whatever the model learns about one, it must relearns for the others. 
+- **Numbers are corpus accidents.** Web-trained BPE will naively learn arbitrary chunks of digits (`1234` as one token, `1235` splits in two). This leads to weird behavior around numbers and arithmetic. Modern tokenizers force digit-splitting on purpose.
+- **Tokens that never fire.** Exercise 7B will show you hundreds of vocab entries that never in the encoded sample. Their embeddings, randomly set at initialization, barely move during training. If one of those "zero-frequency tokens" appear during inference, every layer processes structural noise. This is the famous "glitch tokens" (e.g. `SolidGoldMagikarp`).
 
-The punchline worth keeping: spelling failures, arithmetic slips, rhyming trouble, string-reversal weirdness — much of this is not an intelligence deficit but a *representation* handicap. The model plays every character-level game blindfolded, through an alphabet someone else chose by counting byte pairs.
+Spelling failures, arithmetic slips, rhyming trouble, string-reversal weirdness. Much of this is not an intelligence deficit but a *representation handicap*. The model plays every character-level game blindfolded.
 
 ## Concepts to internalize
 
@@ -131,6 +131,7 @@ The punchline worth keeping: spelling failures, arithmetic slips, rhyming troubl
 - **Lossless round-trip is structural.** As long as every byte ends up in the vocab and merges are concatenations of their parents, `decode(encode(text)) == text` for any UTF-8 string. This is not a property you have to test for at every input — it's guaranteed by the construction.
 - **Vocab size is a tunable knob.** Bigger vocab → more compression on the training distribution → shorter sequences but more parameters in the embedding table. Real LLMs use 32k–200k range.
 - **Special tokens are reserved interface markers.** They encode atomically and are not ordinary BPE merges. Use them for document boundaries, chat roles, and tool-call events.
+- **The model only sees token IDs not characters.** Be aware of capability failures related to tokenization representation. 
 
 ### What we don't cover
 
