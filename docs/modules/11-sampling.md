@@ -263,21 +263,23 @@ The exercise set will sweep these knobs against your trained models so you can d
 
 ### Best-of-N: spending compute at inference time
 
-Every warper above shapes one decode pass. Best-of-N does something categorically different: generate `n` complete continuations, score each, keep the winner. You are buying quality with *inference* compute rather than with training compute — the simplest member of the "test-time compute" family that now includes self-consistency voting, reward-model reranking, and tree search.
+All of the previous warpers work by shaping one decode pass. Best-of-N is categorically different. The formula:
 
-It needs one new idea, and it's a good one: **a language model can score text, not just produce it.** Feed a finished sequence back through the model, read off the log-probability it assigned to each token that actually came next, and sum:
+1. Generate `n` complete continuations for the same prompt,.
+2. Score each
+3. Keep the winner. 
+
+You are buying quality with *test time compute* rather than training compute. This is the simplest form of "test-time compute", which now includes self-consistency voting, reward-model reranking, and tree search.
+
+It introduces one new idea: **a language model can score text** (as well as generate it).  Feed a finished sequence back through the model, read off the log-probability it assigned to each token that actually came next, and sum:
 
 ```
-   score(sequence) = Σ_t  log p(token_{t+1} | tokens_≤t)
+   score(sequence) = Σ_t log p(token_{t+1} | tokens_≤t) / length
 ```
 
-That's it — one forward pass, no new machinery. You have already computed this quantity many times under a different name: it is the negative of the Module 09B/10 training loss, unaveraged. The technique is called *teacher forcing*, and being able to ask "how likely does the model find this text?" is the foundation under perplexity evaluation (Module 12), preference scoring (Module 14's DPO loss compares exactly these log-probs between two models), and every reranking method.
+The technique is called *teacher forcing*. It basically is asking the model to evaluate the probability of the full completion. The same approach is the foundation for perplexity evaluation (Module 12), preference scoring (Module 14), and every reranking method.
 
-The catch is where the exercise lives. Ranking by raw summed log-probability systematically prefers **safe, repetitive** text: the sequences a model finds most predictable are the ones stuck in a loop. In the exercise you will see the candidate pool sort almost monotonically from most repetitive (top score) to most varied (bottom score) — the degeneration failure that motivated top-p, returning as your *selection* criterion rather than your sampling one.
-
-`length_normalize=True` divides by token count, the standard first fix — and the exercise is set up so you discover its limits rather than being told them. Two of them. It is a **no-op whenever candidates share a length**, which is exactly what a fixed `max_new_tokens` budget with no EOS produces: dividing every score by 80 reorders nothing. And when lengths *do* differ, per-token mean log-prob still rewards predictability — it corrects for length, not for dullness. Neither version knows what "good" means; both are proxies, which is the honest reason production systems rerank with a separately-trained reward model instead.
-
-For open-ended text, "best" is a judgment call your scorer can only approximate. The technique gets much sharper on tasks with *checkable* answers — sample `n` solutions, take the majority answer, which is self-consistency. That needs a model that can produce extractable answers, so it's a Part II idea; your story model can't do it, and Modules 16–20's `ProdLM` can.
+The catch is ranking by summed log-probability prefers **safe, repetitive** text. The most predictable sequences are the ones stuck in a loop. In the exercise you will see the candidate pool sort heavily on repetition, the same degeneration failure that motivated top-p. For this reason production systems tend to score with a separately-trained reward model. 
 
 ## Concepts to internalize
 
