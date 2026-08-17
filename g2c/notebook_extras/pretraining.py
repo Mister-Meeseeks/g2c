@@ -336,7 +336,10 @@ def train_with_progress(
         elif backup_path.exists():
             # The rolling checkpoint is gone but its backup survived. Loading
             # the backup is always better than silently discarding the run.
-            resume_path, resume_label = ckpt_path, f"{backup_path.name} (rolling checkpoint missing)"
+            resume_path, resume_label = (
+                ckpt_path,
+                f"{backup_path.name} (rolling checkpoint missing)",
+            )
         elif milestones:
             step, path = milestones[-1]
             resume_path = path

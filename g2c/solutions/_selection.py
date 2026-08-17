@@ -165,6 +165,12 @@ MODULE_TARGETS: dict[str, tuple[Target, ...]] = {
         _t("midtraining.mixture"),
         _t("midtraining.evaluation"),
     ),
+    "muon": (_t("muon.optimizer"),),
+    "specdec": (
+        _t("specdec.verify"),
+        _t("specdec.generate"),
+        _t("specdec.mtp"),
+    ),
 }
 
 MODULE_ORDER: tuple[str, ...] = tuple(MODULE_TARGETS)
