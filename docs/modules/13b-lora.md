@@ -6,14 +6,14 @@
      thin trainable A/B bypass path, and an adapter file being carried away.
      Add the image reference + alt text here when the asset lands. -->
 
-Module 13 fine-tuned every one of BaseLM's 362 million parameters, and it worked, because 362M in float32 is a size an M-series laptop shrugs at. This module is about the wall directly behind it — and the trick that moves the wall. You'll rerun Module 13's SFT recipe exactly: same dataset, same masked loss, same trainer. The only thing that changes is *which parameters are allowed to move*: two thin matrices bolted beside each attention projection, a fraction of a percent of the model, trained while everything else stays bit-for-bit frozen.
+LoRA stands for *low ranked adapation*. Behaviorally it is almost identical to the full SFT approach we learned last week. However it uses linear algebra to reduce the effective training parameter set to be substantially smaller. This is possible because of the empirical properties of fine-tuning. All that means is we get the same results at much lower hardware requirements. A must for any practitioner working with local models
 
 ---
 ## Before you start
 
 * *Review*
 	* [13-sft](13-sft.md) — this module reruns its pipeline with a different parameterization
-	* The "Where weights start" section of [03-nn](03-nn.md) — the initialization argument returns here with a twist
+	* [03-nn](03-nn.md) — the initialization argument returns here with a twist
 * *Finish*
 	* Module 13 end to end: `tests/test_sft.py` passing and your hand-authored dataset saved at `data/work/module13/instructions.json` — Module 13B reuses it byte for byte
 * *Run*
@@ -22,7 +22,9 @@ Module 13 fine-tuned every one of BaseLM's 362 million parameters, and it worked
 ---
 ## Where this fits in
 
-Do the memory arithmetic for full fine-tuning with AdamW, in float32:
+In Module 13 we learned how to finetune a model's behavior using SFT, a small high quality dataset, and the same gradient descent machinery we used for pre-training. It was effective, but despite what's effectively a "small nudge" to the model, it was as memory intensive as full pretraining.
+
+Do the memory arithmetic for full fine-tuning:
 
 ```
    weights          1 float per parameter
@@ -32,13 +34,19 @@ Do the memory arithmetic for full fine-tuning with AdamW, in float32:
                     4 floats per parameter — before a single activation
 ```
 
-At 362M parameters that's about 5.8 GB: fine. At 3B parameters it's 48 GB: not on your Mac, and this is *the* reason "fine-tune a small local model" tutorials never mean full fine-tuning. Three of those four tenants — gradients, `m`, `v` — only exist for parameters the optimizer is allowed to move. Shrink the trainable set a thousandfold and they shrink with it.
+At 362M parameters that's about 5.8 GB. At 3B parameters it grows to 48 GB. The upshot is that the memory requirement to train a model is orders of magnitude higher than to use a model, and that includes full SFT. Which also means that for a given hardware constraint (like our local Macbook), models that you'll regularly run will be out of reach for local finetuning.
 
-That's the whole pitch. LoRA is not a new objective, a new loss, or a new trainer — Module 13's `SFTTrainer` runs unmodified here. It is a surgical answer to one question: *what is the smallest set of parameters that can carry a fine-tune?* The empirical answer (surprisingly small) is why LoRA became the laptop-native default, and why this course — whose identity is "everything on your Mac" — owes you this module. It's also the door out: the same `g2c/lora` machinery that adapts BaseLM's 362M applies to any Hugging Face causal LM in the 1–3B class, where full fine-tuning genuinely cannot follow.
+It should be noted that this module is optional. Nothing later in the course depends on the lesson developed here. But this course, whose identity is "everything on your Mac", owes you this module.
 
 ## The big idea
 
-Freeze the pretrained weight `W`. Train a low-rank correction beside it:
+Take a look back at the memory arithmetic. Three of those four tenants — gradients, `m`, `v` — only exist for parameters under optimization. Shrink the trainable set a thousandfold, and they shrink along with it. 
+
+That's the whole pitch. *Low rank adaptation* (LoRA) is not a new objective, a new loss, or a new trainer. It is a surgical answer to one question: *what is the smallest set of parameters that can carry a fine-tune?* The empirical answer is surprisingly small. It's why LoRA became the default for fine-tuning especially when resources are constrained.
+
+How do we actually shrink the trainable parameter set while still building on top of the full base model? We use basic linear algebra to take a *low dimensional projection* of the full parameter set. Because of the nature of high-dimensional geometry, almost any randomly initialized projection matrix will still be trainable. 
+
+The actual matrix mechanics: Freeze the pretrained weight `W`. Then train a low-rank correction on top of it:
 
 ```
                 x ──────────────► W (frozen) ──────► + ──► y
@@ -48,28 +56,38 @@ Freeze the pretrained weight `W`. Train a low-rank correction beside it:
                      trainable     trainable
 ```
 
-The delta `A @ B` has the same shape as `W` (transposed), but it is built from two skinny matrices: `r * (in + out)` parameters instead of `in * out`. At rank 8 on a 960-wide projection, that is 15,360 parameters standing in for 921,600 — and the rank knob makes the trade explicit.
+The delta `A @ B` has the same shape as `W`, but is built from two skinny low-dimensional matrices. That reduces the effective dimensionality of the training set to `r * (in + out)` instead of `in * out` . At rank 8 on a 960-wide projection, that reduces 921,600 parameters down to 15,360. The rank knob makes the trade explicit.
 
-### Why a low rank is enough
+### Why low rank is enough
 
-The bet underneath LoRA has a name: the *intrinsic dimensionality* hypothesis (Aghajanyan et al., 2020). Pretraining does the hard, high-dimensional work; a fine-tune is a small course correction, and small corrections empirically live in low-dimensional subspaces. Hu et al. measured it directly: fine-tuning deltas on large transformers are approximately low-rank, and constraining them to rank 4–16 barely costs quality. Module 13 gave you the course's version of the same fact from the data side — SFT teaches a *format*, and 50 examples suffice because a format is a small thing to learn. LoRA is the same claim made about weights instead of data. Your rank sweep in the notebook tests it firsthand.
+The observation underpinning LoRA has a name: *intrinsic dimensionality* (Aghajanyan et al., 2020). Pretraining does the hard, high-dimensional work. Fine-tuning is just a small course correction. And small corrections empirically live in low-dimensional subspaces. Hu et al. measured it directly: fine-tuning deltas on large transformers are approximately low-rank, and constraining them to a rank of 4-16 barely cost any behavioral quality. Module 13 gave you the same fact from the data side. SFT teaches a *format*, and 50 examples suffice because a format is a small thing to learn. LoRA is the same lesson applied to weights instead of data. 
 
 ### The initialization asymmetry
 
-`A` starts random — the same `Uniform(-1/√fan_in, ·)` family as every layer you've initialized since Module 03. `B` starts at exactly zero. Two consequences, one per matrix:
+The only new parameters that need to be initialized with LoRA are the `A` and `B` projection matrices. The weights of the network remain fixed at their pretrained values. For the two matrices we initialize with:
 
-- **Because `B` is zero, the adapter is a perfect no-op at step 0.** `A @ B` is exactly zero, so the injected model produces *bit-identical* logits to the pristine one. Fine-tuning starts from the pretrained function, not near it. The notebook makes you verify `max |diff| == 0.0` — a rare chance to assert exact equality on floats and mean it.
-- **Because `A` is random (not zero), gradient can flow.** Here's the twist the exercises probe: with `B = 0`, the chain rule sends *zero* gradient to `A` on the very first backward pass — `∂L/∂A` routes through `B`. But `B`'s gradient routes through `A`, which is nonzero. So `B` moves first, and from step 2 onward both matrices learn. Start *both* at zero and neither ever moves: a self-inflicted dead network, Module 03's symmetry problem in two-matrix form.
+* `A` — Random using the same `Uniform(-1/√fan_in, 1/√fan_in)` used for neural network weights in Module 03.
+* `B` — starts at exactly zero.
+
+Two consequences to this initialization. First, at step zero the adapter has exactly zero impact on the neural network weights, and therefore the injected model starts bit-identical to the base model. Fine-runing starts from exactly the pretrained model,  not near it. 
+
+Second, `A` starts with zero gradient at step one. Its backprop flows through `B` and `B` starts at zero. However after step one `B` moves from zero, and now `A` has a nonzero gradient. Both matrices learn after step two. But this is why at least one the matrices has to start non-zero. 
 
 ### Merge, unmerge, and the adapter as a file
 
-Because the delta is just a matrix, it can be *folded in*: `W += (A @ B) · α/r` makes the adapted layer cost exactly one matmul — identical inference cost to the base model. That's `merge()`, the deployment trick. `unmerge()` subtracts it back out. And since the base never trains, the durable output of a LoRA run is the A/B matrices alone: a few megabytes riding on gigabytes. Ship the adapter, not the model — one base, many adapters, swap per task.
+Because the delta is just a matrix, it can be *folded in*: 
 
-The un-merged workflow also buys something Module 13 couldn't offer at any hyperparameter setting: **zero forgetting by construction**. Format forgetting, catastrophic forgetting — Module 13's failure zoo happens *inside* the weights. Keep the base pristine and the whole fine-tune in a removable attachment, and "undo" is `unmerge()` (or just deleting a file), not a prayer.
+```
+W += (A @ B) · α/r
+```
+
+This `merge()` operation makes the adapted layer cost exactly one matmul. `unmerge()` subtracts it back out. Since the base never trains, the durable output of a LoRA run is just the low rank A/B matrices, a few megabytes riding on top of gigabytes. Ship the adapter, not the full model — one base, many adapters, swap per task. This substantially reduces the storage and I/O costs of having many individualized adapters on a single machine.  
+
+The un-merged workflow also buys something full rank SFT couldn't offer at any setting: **zero forgetting by construction**. Format forgetting, catastrophic forgetting, and the rest of Module 13's failure zoo happens *inside* the weights. Low rank adaptation leaves the vast majority of the weight entropy undisturbed, and therefore 
 
 ### What LoRA does *not* save
 
-Be precise about the ledger, because the misconception is near-universal: LoRA saves **memory**, not (much) **time**. The forward pass still runs the full frozen model; the backward pass still propagates through every layer to reach the adapters. What disappears is the gradient storage, the optimizer state, and the weight-gradient work for frozen layers — not the FLOPs of the network itself. Your wall-clock per step in the notebook will land near Module 13's, and that is correct behavior, not a bug.
+To be precise, because the misconception is near-universal: LoRA saves **memory**, not (much) **time**. The forward pass still runs the full frozen model; the backward pass still propagates through every layer to reach the adapters. What scales down is the gradient storage, the optimizer state, and the weight-gradient work for frozen layers — not the FLOPs of the network itself. Your wall-clock per step in the notebook will land near Module 13's. That is correct behavior, not a bug.
 
 ## Concepts to internalize
 
@@ -169,15 +187,15 @@ Write your answers in the `Question:` / `Answer:` cells and ask a coding agent f
 Wall-clock per SFT step lands near Module 13's — LoRA cuts memory, not FLOPs (see "What LoRA does *not* save"). What changes is the memory ledger, float32 on the 362M BaseLM:
 
 ```
-   ┌─────────────────────┬──────────────┬──────────────┐
-   │ tenant              │ full SFT     │ LoRA r=8     │
-   ├─────────────────────┼──────────────┼──────────────┤
-   │ weights             │   ~1.45 GB   │   ~1.45 GB   │
-   │ gradients           │   ~1.45 GB   │    ~3 MB     │
-   │ AdamW m + v         │   ~2.90 GB   │    ~7 MB     │
-   ├─────────────────────┼──────────────┼──────────────┤
-   │ total (pre-activations) │ ~5.8 GB  │   ~1.5 GB    │
-   └─────────────────────┴──────────────┴──────────────┘
+   ┌─────────────────────────┬──────────────┬──────────────┐
+   │ tenant                  │ full SFT     │ LoRA r=8     │
+   ├─────────────────────────┼──────────────┼──────────────┤
+   │ weights                 │   ~1.45 GB   │   ~1.45 GB   │
+   │ gradients               │   ~1.45 GB   │    ~3 MB     │
+   │ AdamW m + v             │   ~2.90 GB   │    ~7 MB     │
+   ├─────────────────────────┼──────────────┼──────────────┤
+   │ total (pre-activations) │ ~5.8 GB      │   ~1.5 GB    │
+   └─────────────────────────┴──────────────┴──────────────┘
 ```
 
 - On 8–16 GB machines this is the difference between "swapping" and "comfortable" — and at 1–3B it is the difference between impossible and routine.
