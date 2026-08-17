@@ -35,6 +35,8 @@ BEYOND_SLUGS = {
     "multimodal",
     "harness",
     "midtraining",
+    "muon",
+    "specdec",
 }
 
 

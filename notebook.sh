@@ -105,6 +105,8 @@ Beyond modules use named slugs instead of numbers:
   ./notebook.sh multimodal        (MNIST, downloaded on first use)
   ./notebook.sh harness           (scripted backend; ProdLM optional)
   ./notebook.sh midtraining       (G2C small corpus + TinyLLM-30M checkpoint)
+  ./notebook.sh muon              (no extras)
+  ./notebook.sh specdec           (StoryLM checkpoint ladder)
 
 Modules 10/12 stage the Standard-track datasets only when no TinyStories
 tier is on disk yet — a tier you already prepared (e.g. --tiny) is
@@ -243,6 +245,11 @@ case "$MODULE_NORM" in
     midtraining)
          EXTRAS+=("./datasets.sh --small" "./checkpoints.sh tinyllm-30m")
          TEST_FILES=("tests/test_midtraining.py") ;;
+    muon)
+         TEST_FILES=("tests/test_muon.py") ;;
+    specdec)
+         EXTRAS+=("./checkpoints.sh" "./datasets.sh --tiny")
+         TEST_FILES=("tests/test_specdec.py") ;;
     *)
         warn "Module '$MODULE' not recognized; running ./setup.sh only and skipping test verification."
         ;;

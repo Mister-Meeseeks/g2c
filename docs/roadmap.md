@@ -26,8 +26,10 @@ Shipped:
 - [Multimodal language models](beyond/multimodal.md)
 - [Agent harness engineering](beyond/harness.md)
 - [Midtraining](beyond/midtraining.md)
+- [Speculative decoding and multi-token prediction](beyond/specdec.md)
+- [Muon and orthogonalized updates](beyond/muon.md)
 
-Watchlist — evidence accumulating, listed as observations rather than promises: alternative and parallel generation; low-precision training; alternative optimizers.
+Watchlist — evidence accumulating, listed as observations rather than promises: diffusion and other non-autoregressive generation; low-precision training.
 
 ---
 

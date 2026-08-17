@@ -110,6 +110,8 @@ nav:
       - "Multimodal models": beyond/multimodal.md
       - "Agent harness engineering": beyond/harness.md
       - "Midtraining": beyond/midtraining.md
+      - "Speculative decoding": beyond/specdec.md
+      - "Muon": beyond/muon.md
   - Primers:
       - PyTorch: primers/pytorch.md
       - Topological sort: primers/topo-sort.md
