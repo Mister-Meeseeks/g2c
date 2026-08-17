@@ -2,9 +2,7 @@
 
 > **Question this module answers:** *How do you fine-tune a model whose optimizer won't fit on your machine?*
 
-<!-- TODO(hero): docs/modules/13b-lora/Module13B-Hero.png — frozen weight matrix with a
-     thin trainable A/B bypass path, and an adapter file being carried away.
-     Add the image reference + alt text here when the asset lands. -->
+![A frozen base weight beside a low-rank trainable adapter, with the memory and deployment benefits of LoRA summarized around them](13b-lora/Module13B-Hero.png)
 
 LoRA stands for *low ranked adapation*. Behaviorally it is almost identical to the full SFT approach we learned last week. However it uses linear algebra to reduce the effective training parameter set to be substantially smaller. This is possible because of the empirical properties of fine-tuning. All that means is we get the same results at much lower hardware requirements. A must for any practitioner working with local models
 
@@ -14,6 +12,7 @@ LoRA stands for *low ranked adapation*. Behaviorally it is almost identical to t
 * *Review*
 	* [13-sft](13-sft.md) — this module reruns its pipeline with a different parameterization
 	* [03-nn](03-nn.md) — the initialization argument returns here with a twist
+	* [[matrix-calculus]] — we'll be revisiting the math of gradient descent over matrix algebra
 * *Finish*
 	* Module 13 end to end: `tests/test_sft.py` passing and your hand-authored dataset saved at `data/work/module13/instructions.json` — Module 13B reuses it byte for byte
 * *Run*
@@ -44,7 +43,10 @@ Take a look back at the memory arithmetic. Three of those four tenants — gradi
 
 That's the whole pitch. *Low rank adaptation* (LoRA) is not a new objective, a new loss, or a new trainer. It is a surgical answer to one question: *what is the smallest set of parameters that can carry a fine-tune?* The empirical answer is surprisingly small. It's why LoRA became the default for fine-tuning especially when resources are constrained.
 
-How do we actually shrink the trainable parameter set while still building on top of the full base model? We use basic linear algebra to take a *low dimensional projection* of the full parameter set. Because of the nature of high-dimensional geometry, almost any randomly initialized projection matrix will still be trainable. 
+How do we actually shrink the trainable parameter set while still building on top of the full base model? We use basic linear algebra to take a *low dimensional projection* of the full parameter set. Because of the nature of high-dimensional geometry, almost any randomly initialized projection matrix will still be trainable.
+
+![A full 960 by 960 update matrix compared with two rank-8 factors whose product has the same output shape](13b-lora/Module13B-FullVsLowRankUpdate.png)
+*The rank-8 bottleneck preserves the 960 × 960 update shape while replacing 921,600 directly trained values with 15,360 adapter parameters; this is the parameter-count tradeoff you derive in Exercise 1.*
 
 The actual matrix mechanics: Freeze the pretrained weight `W`. Then train a low-rank correction on top of it:
 
@@ -62,6 +64,9 @@ The delta `A @ B` has the same shape as `W`, but is built from two skinny low-di
 
 The observation underpinning LoRA has a name: *intrinsic dimensionality* (Aghajanyan et al., 2020). Pretraining does the hard, high-dimensional work. Fine-tuning is just a small course correction. And small corrections empirically live in low-dimensional subspaces. Hu et al. measured it directly: fine-tuning deltas on large transformers are approximately low-rank, and constraining them to a rank of 4-16 barely cost any behavioral quality. Module 13 gave you the same fact from the data side. SFT teaches a *format*, and 50 examples suffice because a format is a small thing to learn. LoRA is the same lesson applied to weights instead of data. 
 
+![A pretrained model in a high-dimensional weight landscape, a nearby adapted model reached through a low-dimensional subspace, and LoRA factors encoding that update](13b-lora/Module13B-LowRankGeometry.png)
+*Pretraining discovers the broad high-dimensional structure; fine-tuning usually moves within a much smaller local subspace, so two low-rank factors can carry the useful update without implying low model capability.*
+
 ### The initialization asymmetry
 
 The only new parameters that need to be initialized with LoRA are the `A` and `B` projection matrices. The weights of the network remain fixed at their pretrained values. For the two matrices we initialize with:
@@ -73,6 +78,9 @@ Two consequences to this initialization. First, at step zero the adapter has exa
 
 Second, `A` starts with zero gradient at step one. Its backprop flows through `B` and `B` starts at zero. However after step one `B` moves from zero, and now `A` has a nonzero gradient. Both matrices learn after step two. But this is why at least one the matrices has to start non-zero. 
 
+![A four-stage timeline showing random A and zero B at initialization, B receiving the first gradient, and both matrices learning after the first optimizer step](13b-lora/Module13B-InitializationTimeline.png)
+*The asymmetric initialization gives an exact no-op at step zero without killing learning: `B` moves first, opening the gradient path to `A` from the next backward pass onward—the chain-rule behavior examined in Exercise 2.*
+
 ### Merge, unmerge, and the adapter as a file
 
 Because the delta is just a matrix, it can be *folded in*: 
@@ -82,6 +90,9 @@ W += (A @ B) · α/r
 ```
 
 This `merge()` operation makes the adapted layer cost exactly one matmul. `unmerge()` subtracts it back out. Since the base never trains, the durable output of a LoRA run is just the low rank A/B matrices, a few megabytes riding on top of gigabytes. Ship the adapter, not the full model — one base, many adapters, swap per task. This substantially reduces the storage and I/O costs of having many individualized adapters on a single machine.  
+
+![The unmerged two-path LoRA computation being folded into the base weight for deployment and subtracted again to restore the base](13b-lora/Module13B-MergeUnmerge.png)
+*Merging folds the adapter delta into `W` so inference uses one path; unmerging reverses that fold, which is the functional equivalence and round trip you verify in Exercises 4 and 5.*
 
 The un-merged workflow also buys something full rank SFT couldn't offer at any setting: **zero forgetting by construction**. Format forgetting, catastrophic forgetting, and the rest of Module 13's failure zoo happens *inside* the weights. Low rank adaptation leaves the vast majority of the weight entropy undisturbed, and therefore 
 
