@@ -56,6 +56,8 @@ body:
         - "Beyond — Multimodal models"
         - "Beyond — Agent harness engineering"
         - "Beyond — Midtraining"
+        - "Beyond — Speculative decoding and MTP"
+        - "Beyond — Muon"
     validations:
       required: true
 
