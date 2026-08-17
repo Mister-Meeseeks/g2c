@@ -6,6 +6,8 @@
 
 LoRA stands for *low ranked adapation*. Behaviorally it is almost identical to the full SFT approach we learned last week. However it uses linear algebra to reduce the effective training parameter set to be substantially smaller. This is possible because of the empirical properties of fine-tuning. All that means is we get the same results at much lower hardware requirements. A must for any practitioner working with local models
 
+> It should be noted that this module is optional. Nothing later in the course depends on the lesson developed here. But this course, whose identity is "everything on your Mac", owes you this module.
+
 ---
 ## Before you start
 
@@ -34,8 +36,6 @@ Do the memory arithmetic for full fine-tuning:
 ```
 
 At 362M parameters that's about 5.8 GB. At 3B parameters it grows to 48 GB. The upshot is that the memory requirement to train a model is orders of magnitude higher than to use a model, and that includes full SFT. Which also means that for a given hardware constraint (like our local Macbook), models that you'll regularly run will be out of reach for local finetuning.
-
-It should be noted that this module is optional. Nothing later in the course depends on the lesson developed here. But this course, whose identity is "everything on your Mac", owes you this module.
 
 ## The big idea
 

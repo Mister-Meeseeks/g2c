@@ -6,6 +6,8 @@
 
 In previous weeks you felt the pain of hand authoring high-quality training data. Synthetic data is the modern solution. Point a stronger model at your hand authored examples, have it generate a few hundred more training examples, then filter ruthlessly. By the end you'll learned what the industry means when it calls this *distillation*.
 
+> It should be noted that this module is optional. Nothing later in the course depends on the lesson developed here. But synthetic data is an increasingly essential component of the modern post-training pipeline, so understanding it is important.
+
 ---
 ## Before you start
 
@@ -26,8 +28,6 @@ There's a pleasing symmetry here: **you have already been training on synthetic 
 This recipe won out because of the economics. The dozens of high quality pairs you produced in Modules 13 and 14 took you an evening. Alpaca's 52,000 synthetic training pairs cost $500 of API,  and was the moment everyone realized instruction-tuning could work outside the lab. Since then "fine-tuned on teacher outputs" has become the default provenance for small open models. The recipe is not exotic; it is the water everyone swims in. Which is exactly why you should run it once with your own hands on your own machine.
 
 This is also the course's first *convergence* module: nothing new is trained-from-scratch. Five earlier modules do the work — 13's SFT pipeline, 15's evaluation posture, 16's backend interface, 11's sampling knobs, and your own dataset as both seed and judge.
-
-It should be noted that this module is optional. Nothing later in the course depends on the lesson developed here. But synthetic data is an increasingly essential component of the modern post-training pipeline, so understanding it is important.
 
 ## The big idea
 
