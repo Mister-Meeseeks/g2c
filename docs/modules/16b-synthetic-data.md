@@ -2,10 +2,7 @@
 
 > **Question this module answers:** *Can a model write its own training data — and how would you know if it worked?*
 
-<!-- TODO(hero): docs/modules/16b-synthetic-data/Module16B-Hero.png — a teacher
-     model at a desk writing flashcards that feed a conveyor of filters (some
-     cards falling into reject bins) into a small student model.
-     Add the image reference + alt text here when the asset lands. -->
+![A synthetic-data factory carrying seed examples through teacher generation, filtering, deduplication, answering, validation, and distillation into a student model](16b-synthetic-data/Module16B-Hero.png)
 
 In previous weeks you felt the pain of hand authoring high-quality training data. Synthetic data is the modern solution. Point a stronger model at your hand authored examples, have it generate a few hundred more training examples, then filter ruthlessly. By the end you'll learned what the industry means when it calls this *distillation*.
 
@@ -71,7 +68,13 @@ The modern synthetic training template is the *self-instruct loop* (Wang et al.,
 
 One thing to notice is that, in practice, instructions and answers are generated separately. The primary reason is because instructions run hot (i.e. high sampling temperature) and answers run cold. For our training set, we want as much diversity as possible and to avoid the common problem of excess repetition in the examples. For answers, accuracy and reliability are much more important. If instruction prompts are already sufficiently varied, then answers don't need high temperature sampling for diversity. 
 
+![Hot sampling spreading across diverse instruction types while cold sampling concentrates on one reliable answer](16b-synthetic-data/Module16B-HotColdSampling.png)
+*The two generation stages want opposite sampling behavior: high temperature expands the proposal space, while low temperature concentrates probability on reliable answers for the accepted prompts.*
+
 The next to notice is how each loop uses a fresh randomly sampled subset of the full seed pool. It's better to use few-shot examples to allow each generation loop to explore a neighborhood. Using the same seeds every loop would result in excess repetitiveness, which can lead to *mode collapse*. Rotation keeps the proposal distribution moving.
+
+![Repeatedly sampling the same few-shot seeds concentrates proposals in one semantic neighborhood, while rotating subsets explores different instruction neighborhoods](16b-synthetic-data/Module16B-RotatingSeedSets.png)
+*Fresh few-shot subsets steer each proposal round toward a different semantic neighborhood, increasing diversity upstream before the acceptance filters have to intervene.*
 
 ### Filtration
 
@@ -82,6 +85,9 @@ Even with the strongest teacher model, effective filters are necessary to preven
 - **Drifts off-format.** Preambles, commentary between list items, answers where instructions were requested. The parser takes a permissive posture — drop what doesn't parse, count what survived.
 
 - **Occasionally degenerates.** Stuttered words, echoed instructions, blank answers. Cheap gates, real failures.
+
+![A teacher producing increasingly repetitive proposals across successive batches, followed by fixed-seed and cumulative-pool deduplication outcomes](16b-synthetic-data/Module16B-ModeCollapse.png)
+*As generation continues, novel neighborhoods become scarce and repetition accumulates; comparing against everything accepted so far gives the dedup gate the memory needed to keep the pool diverse.*
 
 ### Validation
 
@@ -94,6 +100,9 @@ The most important rule is **the validation set must always be hand-authored**. 
 Validation acts as a fair referee for the the three-way experiment. 50 pairs vs. 1000 synthetic pairs vs. the mix. All fine-tuned identically, all judged on the same held-out human data. That's the core tension: is more, noisier data better than smaller, cleaner data? And like with anything important we measure it rigorously.
 
 ### Distillation
+
+![Classic distillation transferring a teacher's softened probability distribution through KL loss compared with sequence-level distillation training on teacher-generated text using cross-entropy](16b-synthetic-data/Module16B-DistillationMethods.png)
+*Classic distillation transfers probabilities and uncertainty; this module performs sequence-level distillation, where teacher-written text becomes ordinary token targets for the student.*
 
 The process you learned in this module has a name you'll hear constantly. And it's worth being the person in the room who uses it precisely. *Distillation* means two things:
 
