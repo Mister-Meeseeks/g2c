@@ -29,13 +29,15 @@ submitted `Question:` / `Answer:` independently; skip blank answers.
   student's measured Module 03 result, or scores the true digit slot with the
   caption prefix supplied and calls it generation.
 
-## Q3 — The shuffled-patch result
+## Q3 — The fixed scan-order result
 
 - **Correct**: reports both generated-caption accuracies and the observed
   change without assuming its direction or size. Explains that one fixed
-  permutation preserves patch content and stable slot identity while changing
-  the row-major adjacency prior; distinguishes this from a fresh permutation
-  per example, which would remove stable positional meaning.
+  permutation preserves every pixel and stable patch-to-slot identity. Treats
+  the result as sensitivity to scan order and optimization—not a clean measure
+  of a built-in 2D spatial prior—while noting that the causal mask makes patch
+  order asymmetric. Distinguishes this from a fresh permutation per example,
+  which would remove stable positional meaning.
 - **Partially correct**: reports the result without explaining what the fixed
   permutation preserved, or claims attention is inherently order-invariant
   despite learned position embeddings.

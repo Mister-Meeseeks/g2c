@@ -181,8 +181,24 @@ def test_splice_count_mismatch_raises():
         mm(x, torch.rand(2, 14, 14))
 
 
-def test_splice_two_images_one_sequence():
+def test_splice_per_row_mismatch_raises_when_batch_total_matches():
+    """One row cannot borrow another row's placeholder capacity."""
     torch.manual_seed(6)
+    mm = _tiny_mm()
+    x, imgs, _, _ = build_caption_batch(
+        torch.rand(2, 28, 28), torch.tensor([1, 2]), patch_size=7
+    )
+    # Keep the batch-wide count at 32 while changing the per-row counts
+    # from [16, 16] to [15, 17]. A global-only validation misses this.
+    x = x.clone()
+    x[0, 0] = 3
+    x[1, -1] = IMG_ID
+    with pytest.raises(ValueError):
+        mm(x, imgs)
+
+
+def test_splice_two_images_one_sequence():
+    torch.manual_seed(7)
     mm = _tiny_mm(num_layers=1)
     # Hand-built interleaved row: two images' placeholders + a caption.
     n_patches = 16
@@ -194,7 +210,7 @@ def test_splice_two_images_one_sequence():
 
 
 def test_splice_gradient_reaches_patch_projection():
-    torch.manual_seed(7)
+    torch.manual_seed(8)
     mm = _tiny_mm(num_layers=1)
     x, imgs, y, mask = build_caption_batch(
         torch.rand(2, 28, 28), torch.tensor([3, 5]), patch_size=7

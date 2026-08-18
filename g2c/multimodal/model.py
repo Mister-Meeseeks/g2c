@@ -97,8 +97,14 @@ class MultimodalLM(Module):
                # row-major, matching the placeholder order.
             3. tok = self.lm.token_embed(token_ids)          # (B, T, D)
                mask = token_ids == self.image_token_id       # (B, T)
-               if int(mask.sum()) != patches.shape[0] * patches.shape[1]:
+               counts = mask.sum(dim=1)                      # (B,)
+               expected = patches.shape[1]                   # per example
+               if not torch.all(counts == expected):
                    raise ValueError(...)
+
+               Validate per example, not only across the whole batch. A
+               batch-wide total would let one row's missing placeholder be
+               silently filled by another row's extra placeholder.
             4. tok = tok.clone()
                tok[mask] = patches.reshape(-1, self.lm.embedding_dim)
                # The splice. Boolean assignment fills mask positions in

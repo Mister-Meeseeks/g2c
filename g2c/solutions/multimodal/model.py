@@ -21,11 +21,14 @@ class _MultimodalLMImpl:  # patched onto MultimodalLM by apply()
 
         tok = self.lm.token_embed(token_ids)
         mask = token_ids == self.image_token_id
-        expected = patches.shape[0] * patches.shape[1]
-        if int(mask.sum()) != expected:
+        counts = mask.sum(dim=1)
+        expected = patches.shape[1]
+        if not torch.all(counts == expected):
+            counts_list = counts.detach().cpu().tolist()
             raise ValueError(
-                f"token_ids contain {int(mask.sum())} image placeholders "
-                f"but the images supply {expected} patch vectors"
+                f"token_ids contain per-row image-placeholder counts "
+                f"{counts_list}, but each example's images supply "
+                f"{expected} patch vectors"
             )
 
         tok = tok.clone()

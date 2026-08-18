@@ -28,17 +28,17 @@ We've spent the entire course learning how to model text. This week we discover 
 ---
 ## Where this fits in
 
-In Module 04 we turned raw text into discrete tokens. In Module 05 we turned those tokens into vectors, establishing the move that makes language models possible. From that point on the architecture is geometry, not text processing. In Module 09 we built transformers to work with text, but it never explicilty "knew" it was working with text. Transformers remix vectors with no opinion about what they represent. (Remember how LLMs can't count the r's in strawberry because they're blind to letters.)
+In Module 04 we turned raw text into discrete tokens. In Module 05 we turned those tokens into vectors, establishing the move that makes language models possible. From that point on, the architecture operates on geometry rather than raw text. Module 09's transformer blocks mix vectors without containing text-specific attention or FFN machinery.
 
-That indifference is the secret to *multimodal models*. Transformers will work with *any* input — an image, an audio clip, a video frame — that you can turn into a sequence of vectors. Embed those vectors into the same dimension as language vectors, and the transformer will attend to them the way it attends to text. Distinctions between modalities get left at the door of the embedding layer.
+That architectural indifference is the opening for *multimodal models*. A transformer can process an image, audio clip, or video frame once a modality-specific frontend converts it into a sequence of vectors with the model's width. The operations after that interface are shared, but modality information does not disappear: the vectors still encode where they came from, and the model must learn how visual and textual representations differ and interact.
 
 ## The big idea
 
-The *visual frontend* is a pipeline that converts images (or other media) into a sequence of vectors with matched embedding dimension `D`. From the transformer's perspective, the specific implementation of the visual frontend does not matter. 
+The *visual frontend* is a pipeline that converts images (or other media) into a sequence of vectors with matched embedding dimension `D`. The transformer-facing shape contract is simple, but the frontend's implementation matters enormously to what visual information those vectors contain.
 
-For images, input typically starts as small patches or pixels. The visual frontend uses a *vision tower* to encode each patch element into a *visual vector*. Depending on the tower, these can encode features ranging from edge detection to "this is an eye on a face" to OCR info. The stream of visual vectors then feeds into a *projector*, which is responsible for converting to a sequence of embedding vectors that compatible with the transformer. 
+For images, input typically starts as pixels divided into patches. A *vision tower* contextualizes those patches into visual features that may encode edges, shapes, objects, or text. A *projector* then maps the vision feature width and representation space into vectors compatible with the language model.
 
-If the dimensionality already matches, a projector can be as trivial as "pass the visual vectors one for one to the transformer". But projectors might be significantly more complex and sample, shuffle, compress or mix information across the sequence. 
+If the dimensions and representation spaces already align, the projector can be an identity mapping; more often it is a learned linear layer or MLP. A separate *resampler* or more general connector may mix or compress the visual sequence to control how many tokens enter the language model. Papers sometimes use these names loosely, so inspect both the width mapping and the token-count transformation.
 
 The visual frontend may be pretrained separately, or it may be trained jointly with the transformer using multimodal data from the corpus. This module chooses the simplest approach — raw MNIST patches, one projector, joint training from scratch — because it isolates the interface using parts you already built.
 
@@ -69,22 +69,22 @@ Three things to notice, because they carry the whole module:
 
 1. **The transformer is unchanged.** Same blocks, same attention, same residual stream. The only new learned component in this toy is one linear projection (`49 → D`); the existing position table covers patch slots too.
 2. **The objective in this module is unchanged.** Caption training is next-token prediction over the mixed sequence. Production pretraining may add contrastive or other auxiliary objectives, but the decoder can still learn from ordinary token loss.
-3. **The loss mask does the modal bookkeeping.** Image positions are inputs, never targets — the model attends *to* patches but is never asked to *predict* them.
+3. **The loss mask does the modal bookkeeping.** The image span is input-only — the model attends *to* patch vectors but receives supervision only on caption targets.
 
 ### Patches are the tokenizer for images
 
-Module 04 solved "text is continuous, models need discrete chunks" with BPE. Images pose the reverse problem — they're a dense grid with no natural vocabulary — and the field's answer (from ViT) is almost embarrassingly simple: cut the grid into fixed-size squares, flatten each square into a vector, and apply a learned linear projection.
+Module 04 turned a variable-length symbol stream into a manageable discrete vocabulary with BPE. Images pose a different problem: they are dense grids with no natural patch vocabulary. ViT's answer is almost embarrassingly simple: cut the grid into fixed-size squares, flatten each square into a vector, and apply a learned linear projection.
 
 ```
    BPE (Module 04):    characters → merge rules → token ids → embedding table lookup
    Patchify (here):    pixels     → fixed grid  → patch vecs → linear projection
 ```
 
-The projection plays the embedding table's role, with one structural difference: there's no discrete vocabulary. A patch doesn't get looked up; it gets *transformed*. Two nearly-identical patches land at nearly-identical vectors — image "tokens" live on a continuum. This is also why the loss mask isn't optional: cross-entropy needs a discrete target, and patches aren't discrete. (Models that *generate* images have to solve exactly this — see "What we don't cover.")
+The projection plays the embedding table's role, with one structural difference: there is no discrete patch vocabulary. A patch does not get looked up; it gets *transformed*. Two nearly identical patches can land at nearby vectors — image "tokens" live on a continuum. The batch still uses discrete `<img>` ids as placeholder targets during shifting, so cross-entropy could mechanically train the model to predict those repeated ids. The loss mask excludes that meaningless surrogate objective: patches provide conditioning inputs, while caption tokens provide supervised targets. Models that *generate* images need an actual image-output representation — see "What we don't cover."
 
-### Position has two dimensions now
+### A 2D grid becomes a 1D sequence
 
-A flattened patch sequence has row-major order: patch 5 is "row 1, column 1," but the model only sees "position 5." Module 09's learned position embeddings extend without modification — patches get position slots like any other token. Exercise 4 compares row-major order with one fixed random permutation. Consistency preserves the identity of each slot; the experiment measures how much the row-major spatial prior helped this model rather than promising a particular accuracy drop.
+A flattened patch sequence has row-major order: patch 5 is "row 1, column 1," but the model only sees "position 5." Module 09's learned one-dimensional position embeddings extend without modification — patches get sequence slots like any other token, not explicit row and column coordinates. Exercise 4 compares row-major order with one fixed random permutation. The permutation preserves every pixel and a stable patch-to-slot mapping, so it does not remove spatial information in the way a fresh permutation per example would. It is an exploratory test of sensitivity to scan order and optimization, not a clean measurement of a built-in two-dimensional spatial prior. The causal mask also makes sequence order asymmetric because later patch states can incorporate earlier patches, but not vice versa.
 
 ### The production-system gap
 
@@ -106,7 +106,7 @@ The vision tower supplies features already sensitive to shapes, objects, text, a
 
 ## Concepts to internalize
 
-- **Modality dies at the embedding layer.** Past the projection, patches and words are citizens of the same residual stream, mixed by the same attention.
+- **Modality-specific processing ends at a shared interface.** Past the projection, patches and words occupy the same residual stream and are mixed by the same attention, while their vectors still retain modality information the model can use.
 - **Captioning can use the same objective.** This module trains with next-token prediction over a mixed sequence; other multimodal stages may add auxiliary objectives.
 - **Image tokens are inputs, not targets.** The loss mask carries the asymmetry — Module 13's mechanism, new rationale.
 - **Patchify is tokenization for grids.** Fixed squares plus a linear projection; the "vocabulary" is continuous.
@@ -158,7 +158,7 @@ Total scaffolded code: roughly 35 lines across three functions. The splice in `M
 
 ## How to run the tests
 
-Tests live in `tests/test_multimodal.py`. Initial state: 2 passed (the provided caption vocab and batch builder), 11 failed.
+Tests live in `tests/test_multimodal.py`. Initial state: 2 passed (the provided caption vocab and batch builder), 12 failed.
 
 ```bash
 source .venv/bin/activate
@@ -191,14 +191,14 @@ If at any point you want to archive the work in your current notebook and restar
 1. **Patchify and look.** Slice digits at `patch_size ∈ {4, 7, 14}`, visualize the grids, verify the round trip. Note the sequence-length cost of each choice — this is the "an image costs N tokens" line item, held in your hand.
 2. **Train the caption model.** Train a four-layer, `D=128`, four-head, `hidden=512` backbone from scratch on `"<img>×16 This is a 7 . <end>"`. Watch masked train/validation loss and generate captions for held-out digits autoregressively.
 3. **Score generated captions.** Parse the first digit token from each generated caption and compute MNIST test accuracy, then compare it with the result you recorded for Module 03's MLP. Both numbers must be measured; neither direction is guaranteed by the exercise.
-4. **Shuffle the patches.** Retrain from the same initialization and batch order with one fixed random patch order. Compare generated-caption accuracy and explain the measured effect.
+4. **Permute the scan order.** Retrain from the same initialization and batch order with one fixed random patch order. Compare generated-caption accuracy, then explain what the permutation preserved and why a single run measures sensitivity to sequence order and optimization rather than isolating a two-dimensional spatial prior.
 5. **Bridge the toy to production.** Identify what the shared-vector interface teaches and what production vision towers, projectors/resamplers, resolution pipelines, and large-scale multimodal training add. Explain why “native multimodal” does not imply “no vision encoder.”
 6. **Two images, one sequence (optional).** Verify that two image-placeholder spans splice into one context. Treat this as an interface smoke test; training and evaluating genuine two-image binding is an extension.
 
 ## Pitfalls to expect
 
 - **Splice misalignment.** Off-by-one between the patch span and the text that follows it shifts every downstream position — loss falls anyway (the model adapts to the garbled layout), accuracy craters. The splice tests exist because this failure is silent in the loss curve.
-- **Loss computed over patch positions.** Cross-entropy against a continuous input isn't meaningful; depending on your indexing this either crashes or quietly trains the model to "predict" placeholder ids. The mask must zero the whole image span.
+- **Loss computed over the image span.** In this implementation, shifted targets there are discrete `<img>` placeholder ids, so cross-entropy does not crash—it quietly rewards predicting placeholders instead of reconstructing image content. The mask must zero the whole image span so patches are conditioning inputs rather than supervised targets.
 - **Normalizing pixels twice — or not at all.** Raw 0–255 patches into a `Linear` produce giant activations and an ugly first hundred steps. Normalize once, in `build_caption_batch`, and nowhere else.
 - **`max_seq_len` too small.** Sixteen patches plus a caption fits; two images plus a longer caption may not. Check before Exercise 6, not during.
 - **Position table too small for the patch count.** At `patch_size=4` an image is 49 patches, not 16 — the position embedding table must cover the longest mixed sequence you build.
@@ -207,7 +207,7 @@ If at any point you want to archive the work in your current notebook and restar
 
 ## M-series notes
 
-- **The required path trains two StoryLM-1M-class models from scratch.** The ordered captioner and shuffled-patch ablation are both short-context MNIST runs, but generated-caption evaluation also performs several autoregressive passes over the full test set. MPS is recommended.
+- **The required path trains two StoryLM-1M-class models from scratch.** The row-major captioner and fixed scan-order permutation are both short-context MNIST runs, but generated-caption evaluation also performs several autoregressive passes over the full test set. MPS is recommended.
 - **Patchify on CPU is fine.** It's pure indexing; don't reach for the GPU until training starts.
 - **Memory is a non-issue** — the largest object in the module is the MNIST tensor itself.
 
@@ -234,7 +234,7 @@ Optional:
 
 - [ ] All tests in `tests/test_multimodal.py` pass — the patchify round trip and splice-alignment tests especially.
 - [ ] Notebook: from-scratch StoryLM-1M-class caption model trained, with held-out generated captions and generated-caption digit accuracy compared against your measured Module 03 MLP result.
-- [ ] Shuffled-patch ablation run, with a written sentence on what it showed.
-- [ ] You can explain — out loud, without notes — why the transformer needs no architectural change to accept images, and where in the pipeline modality actually disappears.
+- [ ] Fixed scan-order permutation run, with a written sentence on what it preserved and what the observed difference can and cannot establish.
+- [ ] You can explain — out loud, without notes — why the transformer blocks need no modality-specific architectural change to accept images, where modality-specific preprocessing ends, and why modality information itself does not disappear.
 - [ ] You can explain — out loud, without notes — why image positions are masked out of the loss, and what a model that *generates* images has to add.
 - [ ] You can explain — out loud, without notes — what this raw-patch projector teaches, what a production vision tower/projector/resampler adds, and why “native multimodal” does not settle that architecture by itself.
