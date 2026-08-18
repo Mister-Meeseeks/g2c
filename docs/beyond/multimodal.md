@@ -28,9 +28,9 @@ The transformer you built in Module 09 never knew it was processing *text* — i
 ---
 ## Where this fits in
 
-Module 05 established the move that makes language models possible: discrete tokens become vectors, and from that point on the architecture is geometry, not text processing. Module 09's blocks mix and transform vectors with no opinion about where they came from.
+In Module 04 we turned raw text into discrete tokens. In Module 05 we turned those tokens into vectors, establishing the move that makes language models possible. From that point on the architecture is geometry, not text processing. In Module 09 we built transformers to work with text, but it never explicilty "knew" it was working with text. Transformers remix vectors with no opinion about what they represent. (Remember how LLMs can't count the r's in strawberry because they're blind to letters.)
 
-That indifference is the entire secret of multimodal models. If you can turn *any* input — an image, an audio clip, a video frame — into a sequence of vectors of width `D`, the transformer will attend across them exactly as it attends across words. The embedding layer is where modality goes to die.
+That indifference is the secret to multimodal models. Transformers will work with *any* input — an image, an audio clip, a video frame — that you can turn into a sequence of vectors. Embed those vectors into the same dimension as language vectors, and the transformer will attend to them the way it attends to text. Distinctions between modalities get left at the door of the embedding layer.
 
 Model cards often blur two separate design choices:
 
@@ -41,7 +41,15 @@ Model cards often blur two separate design choices:
 
 ## The big idea
 
-The pipeline, end to end:
+The *visual frontend* is a pipeline that converts images (or other media) into a sequence of vectors with matched embedding dimension `D`. From the transformer's perspective, the specific implementation of the visual frontend does not matter. 
+
+For images, input typically starts as small patches or pixels. The visual frontend uses a *vision tower* to encode each patch element into a *visual vector*. Depending on the tower, these can encode features ranging from edge detection to "this is an eye on a face" to OCR info. The stream of visual vectors then feeds into a *projector*, which is responsible for converting to a sequence of embedding vectors that compatible with the transformer. 
+
+If the dimensionality already matches, a projector can be as trivial as "pass the visual vectors one for one to the transformer". But projectors might be significantly more complex and sample, shuffle, compress or mix information across the sequence. 
+
+The visual frontend may be pretrained separately, or it may be trained jointly with the transformer using multimodal data from the corpus. This module chooses the simplest approach — raw MNIST patches, one projector, joint training from scratch — because it isolates the interface using parts you already built.
+
+The whole pipeline, end to end:
 
 ```
    28×28 MNIST digit
