@@ -123,7 +123,11 @@ class Budgets:
     max_steps: int = 12
     max_retries: int = 2
     max_repeats: int = 2
+    # Ceiling for rendered trajectory segments alone. The agent also
+    # enforces model_context_tokens across the system prompt, trajectory,
+    # separators, and reserved completion space.
     context_tokens: int = 2000
+    model_context_tokens: int = 4096
 
 
 @dataclass(frozen=True)

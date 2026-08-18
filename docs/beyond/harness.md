@@ -71,6 +71,23 @@ If a context buffer grows until it overflows and then drops the oldest text, the
 
 It keeps the task, keeps recent events, shortens old tool output, then drops the oldest remaining middle events if needed. It does **not** claim to discover every constraint, commitment, or open item. Production systems usually represent those separately or use a summarizer with its own evaluation. Exercise 3 runs both policies through a live prompt-sensitive backend, so drift is observed as behavior rather than inferred from two rendered strings.
 
+The trajectory is only one part of the prompt budget. `HarnessAgent` also counts the system prompt and rendered tool schemas and reserves space for the completion. Otherwise adding one verbose tool can overflow a context that the history policy declared safe. This module uses a cheap token estimate; a production harness uses the backend's tokenizer and model-window metadata.
+
+### Rules are resolved instructions, not trajectory history
+
+A coding harness usually assembles instructions from more than the task: system policy, repository rules such as `AGENTS.md`, narrower directory rules, current user constraints, and permissions may all apply. Discovery, scope, and precedence must be deterministic. Once resolved, this instruction layer stays separate from compactable history:
+
+```
+   retain as resolved instructions       compact as trajectory
+   ───────────────────────────────       ─────────────────────
+   system and harness policy             old narration
+   applicable repository rules           old actions
+   task and durable constraints           bulky tool observations
+   current permissions
+```
+
+The event log should record the resolved rule paths and content hashes—or a safe snapshot—so resume can detect that its operating instructions changed. This module does not implement an `AGENTS.md` filesystem resolver because file naming and precedence are product conventions. The invariant is general: compaction must not silently discard applicable instructions.
+
 ### An unresolved tool call has an unknown outcome
 
 The dangerous interval is between executing a side effect and logging its result:
@@ -84,45 +101,61 @@ The dangerous interval is between executing a side effect and logging its result
    after restart, both worlds look identical: call without result
 ```
 
-A call id solves one important case: if `tool_result(c3)` exists, replay returns that result without executing the tool again. It cannot tell whether a call with no result ran. This runner therefore takes a conservative posture: it records `unknown_outcome_after_crash`, refuses a blind re-execution, and asks the agent to reconcile workspace state.
+A call id solves one important case: if `tool_result(c3)` exists, replay returns that result without executing the tool again. The id must remain bound to the same tool and arguments; reusing it for a different operation is an invariant violation, not a cache hit. It cannot tell whether a call with no result ran. This runner therefore takes a conservative posture: it records `unknown_outcome_after_crash`, refuses a blind re-execution, and asks the agent to reconcile workspace state.
 
 That is not exactly-once execution. Exactly-once effects require cooperation below the harness: a tool-level idempotency key, a transaction coupling effect and record, or operation-specific reconciliation. The crash drill constructs both possible worlds behind the same unresolved log so the ambiguity is impossible to wave away.
 
 ### Permissions are policy, not containment
 
-The runner's `ALLOW` / `ASK` / `DENY` table makes authorization explicit and auditable. `ASK` means a matching approval was already written to the log; this module does not build an interactive approval UI.
+The runner's `ALLOW` / `ASK` / `DENY` table makes authorization explicit and auditable. `ASK` means a matching approval was already written to the log; this module does not build an interactive approval UI. The teaching runner defaults unlisted tools to `ALLOW` so the early drills stay small. A consequential production harness normally fails closed, grants the least capability needed, and binds approval to the exact operation, actor, and lifetime.
 
 The table is **not a sandbox**. A Python tool still has the process's filesystem, network, and credential access. A malicious or buggy tool can bypass a harness convention. Real containment requires an OS, container, or VM boundary plus explicit network and secret controls.
+
+### Tool output is untrusted data
+
+A webpage, file, issue, or tool response can contain text that tells the model to ignore its task or take a consequential action. Rendering that text as an `Observation` does not give it authority. A robust harness preserves provenance, separates instructions from external content, limits tool capabilities, validates consequential actions against deterministic policy, and evaluates adversarial observations. These are layered defenses, not a claim that prompt injection has been solved.
 
 ### Classify failures before retrying
 
 Transient failures can change when the world changes: a timeout or busy resource may succeed on a bounded retry. Deterministic failures require the request to change: retrying the same missing path or malformed arguments only makes the failure slower. `classify_failure` is a small visible substring policy for this lesson, not a production error taxonomy.
 
-Repeat and step budgets complete the safety story. They do not make a task succeed; they turn runaway behavior into a named stop reason that can be inspected and resumed deliberately.
+Repeat and step budgets complete the implemented safety story. They are properties of the run, so resume reconstructs consumed steps and repeat history from the log rather than granting a fresh allowance. They do not make a task succeed; they turn runaway behavior into a named stop reason that can be inspected and, with an explicitly enlarged budget, resumed deliberately.
+
+Production resource bounds also include wall-clock deadlines, cancellation propagation, tool timeouts, token or cost ceilings, and sometimes per-tool call limits. Those controls are named here but not added to the exercise API.
 
 ### Resume and replay
 
-For the process-crash case in scope, resume replays complete events, turns unresolved calls into explicit unknown-outcome results, and re-enters the loop. It never replays tool side effects. Hidden service state, torn JSONL records, storage loss, or concurrent writers are outside this implementation's durability boundary.
+For the process-crash case in scope, resume replays complete events, turns unresolved calls into explicit unknown-outcome results, reconstructs remaining budgets, and re-enters the loop. It never replays tool side effects. Hidden service state, torn JSONL records, storage loss, or concurrent writers are outside this implementation's durability boundary.
+
+### State records and telemetry answer different questions
+
+The event log reconstructs what the run did. Operational telemetry helps explain how it behaved across runs: run and correlation ids, timestamps and latency, backend/model/tool versions, configuration, token use, retries, and stop reasons. Prompts, tool arguments, and results may contain secrets or personal data, so observability also needs redaction, access control, and retention rules. This lesson keeps the causal log small and does not implement a telemetry backend.
 
 ### The controlled comparison
 
-Exercise 5 compares Module 19's loop with `HarnessAgent` while holding the scripted backend, task, tools, step budget, and injected fault schedule fixed. Scenarios cover a clean run, transient failure, backend crash, context pressure, repetition, and permission denial. Exact workspace verifiers—not the mere presence of `Final Answer`—score success. The table reports success, model calls, tool executions, recoveries, duplicate effects, and stop reason.
+Exercise 5 compares Module 19's loop with `HarnessAgent` while holding the scripted backend, task, tools, step budget, and injected fault schedule fixed. Scenarios cover a clean run, transient failure, backend crash, context pressure, repetition, and permission denial. Exact workspace verifiers—not the mere presence of `Final Answer`—score success. The table reports success, model calls, tool executions, process resumes, tool retries, duplicate effects, and stop reason.
 
 The clean row may show no difference; that is a useful control. Faulted rows reveal which guarantees each harness actually supplies. Exercise 6 optionally repeats a small subset with one ProdLM. A production-strength model is the useful transfer check because a much weaker local model can fail basic tool formatting so often that model incapability swamps any harness effect. A second ProdLM is stretch work, not a requirement.
 
 ## Concepts to internalize
 
 - **The event log is the reconstruction source.** Context, resume state, and audit output are views.
-- **Context is a policy.** Preserve explicit invariants; make compaction deterministic enough to test.
+- **Context is a policy over the whole prompt.** Preserve resolved instructions, budget system and tool text, and make trajectory compaction deterministic enough to test.
 - **An unresolved call has an unknown outcome.** Call ids dedupe recorded results, not ambiguous effects.
 - **Permissions and sandboxing are different layers.** Policy does not contain tool code.
+- **Observations are data, not instructions.** Preserve provenance and constrain authority around untrusted content.
 - **Failures are classified before retrying.** Transient errors may merit retries; deterministic errors need a changed request.
+- **Budgets survive resume.** A process restart must not reset the run's safety limits.
+- **Audit state and operational telemetry differ.** Both may contain sensitive data requiring lifecycle controls.
 - **Harness claims need controlled evaluation.** Hold the backend and fault schedule fixed, then verify exact external state.
 
 ### What we don't cover
 
 - **Exactly-once distributed effects.** They require transactional or idempotent services, not a JSONL convention.
 - **Security isolation.** VM/container boundaries, egress control, and secret handling are systems-security topics.
+- **A product-specific rules-file resolver.** We cover deterministic discovery, scope, precedence, and resume consistency conceptually, not one tool's file convention.
+- **A complete prompt-injection defense.** We establish the trust boundary and layered mitigations; robust defense remains an active systems problem.
+- **A telemetry backend.** We identify useful provenance and privacy controls without adding an observability stack.
 - **Power-loss durability and concurrent writers.** The event log is intentionally single-process teaching code.
 - **Multi-agent orchestration.** Delegation multiplies every state, permission, and recovery problem here.
 - **Training inside the harness.** Forkable rollout sandboxes and trajectory training exceed this laptop-scale module.
@@ -139,6 +172,9 @@ class EventLog:                                      # provided
 
 def compact_context(events, budget_tokens) -> list[str]:  # scaffolded
     # preserve task + newest event; compact older material
+
+Budgets(context_tokens=2000, model_context_tokens=4096)
+    # trajectory allocation plus whole-window ceiling
 
 class ToolRunner:
     def execute(self, call: ToolCall) -> ToolResult: ...   # scaffolded
@@ -166,7 +202,7 @@ pytest tests/test_harness.py -k runner
 pytest tests/test_harness.py -k resume
 ```
 
-Initial scaffold state: **1 passed, 21 failed**. The provided event-log round trip starts green; each implementation step turns a coherent group of failures green.
+Initial scaffold state: **1 passed, 26 failed**. The provided event-log round trip starts green; each implementation step turns a coherent group of failures green.
 
 The tests use a scripted backend and deliberately misbehaving tools. No ProdLM or network is required. The crash-window tests construct both possible worlds behind the same unresolved log: no side effect yet and a side effect that already landed. The runner must not pretend it can distinguish them.
 
@@ -176,7 +212,7 @@ Open the working notebook with `./notebook.sh harness` (or `./notebook.sh harnes
 
 1. **Read a trajectory.** Open `events.jsonl` and trace call ids, intent-before-outcome ordering, result statuses, and the stop record.
 2. **Crash and confront ambiguity.** Resume after a backend crash, then construct an unresolved call whose side effect may already have landed. Verify the runner reports an unknown outcome without re-executing it.
-3. **Make context drift live.** Run the same prompt-sensitive backend through naive drop-oldest and invariant-preserving policies. Observe the naive run drift after losing the task.
+3. **Make context drift live.** Run the same prompt-sensitive backend through naive drop-oldest and invariant-preserving policies. Observe the naive run drift after losing the task, then identify which resolved instructions belong outside compactable trajectory history.
 4. **Break policy and tools.** Exercise a transient failure, deterministic failure, denied call, and repetition trap. Identify which layer responds.
 5. **Run the controlled matrix.** Compare Module 19's loop with `HarnessAgent` under fixed scripted scenarios and exact verifiers.
 6. **Optional: transfer to ProdLM.** Repeat a small clean/faulted subset with one ProdLM. A second model is stretch work.
@@ -186,8 +222,13 @@ Open the working notebook with `./notebook.sh harness` (or `./notebook.sh harnes
 - **Persisting rendered context instead of events.** Compaction then destroys the information needed for audit and resume.
 - **Logging only after execution.** Intent-before-action is what exposes the unknown-outcome window.
 - **Calling call-id dedupe exactly-once.** It only suppresses re-execution when a result is present.
+- **Reusing a call id for different arguments.** An idempotency key names one immutable operation.
+- **Budgeting only the trajectory.** System instructions, rules, tool schemas, separators, and reserved output also occupy the model window.
+- **Compacting instructions with old history.** Applicable rules and durable constraints are a separate retained layer.
 - **Retrying deterministic failures.** The request, not elapsed time, must change.
 - **Calling permissions a sandbox.** In-process checks do not contain tool implementations.
+- **Treating observations as instructions.** External content has no authority merely because the model can read it.
+- **Resetting budgets on resume.** Limits belong to the logical run, not one process lifetime.
 - **Claiming durable recovery from JSONL alone.** This module covers ordinary process crashes with one writer and an intact filesystem.
 - **Scoring `Final Answer` as success.** Verify exact workspace state.
 
@@ -209,6 +250,8 @@ Primary:
 Secondary:
 
 - **Anthropic, “Building Effective Agents” (2024).** A practitioner's case for simple, inspectable loops.
+- **[OWASP, “LLM01: Prompt Injection.”](https://genai.owasp.org/llmrisk/llm01-prompt-injection/)** Indirect injection, least privilege, approval, content separation, and adversarial testing.
+- **[OpenTelemetry, “Generative AI semantic conventions.”](https://opentelemetry.io/docs/specs/semconv/registry/attributes/gen-ai/)** A shared vocabulary for model, agent, tool, latency, and token telemetry—with explicit sensitivity warnings.
 - **Terminal-Bench / Harbor.** Reproducible terminal environments with test-based verification.
 - **METR, “Measuring AI Ability to Complete Long Tasks.”** Reliability over duration as a capability axis.
 
@@ -219,4 +262,6 @@ Secondary:
 - [ ] Exercise 4 demonstrates transient, deterministic, permission, and repetition handling.
 - [ ] Exercise 5 contains the controlled comparison table and an evidence-based interpretation.
 - [ ] You can explain why call-id dedupe handles recorded results but cannot close the unknown-outcome window by itself.
+- [ ] You can explain why applicable rules stay outside compactable trajectory history and how resume can detect that rules changed.
+- [ ] You can distinguish trusted instructions, untrusted observations, audit state, and operational telemetry.
 - [ ] You can explain why the permission table is not a sandbox and where this event log's durability boundary lies.

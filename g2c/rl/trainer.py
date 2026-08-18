@@ -48,7 +48,9 @@ class GRPOTrainer:
         lr: AdamW learning rate. Start at roughly a third of your SFT
             rate — RL compounds differently (see the lesson page).
         kl_coef: leash strength β.
-        max_new_tokens, temperature: sampling controls per step.
+        max_new_tokens, temperature: sampling controls per step. This
+            simplified on-policy trainer requires `temperature == 1.0`
+            because it rescores the model's untempered probabilities.
         eos_id: forwarded to the sampler.
         seed: seeds task order and sampling.
     """
@@ -71,6 +73,11 @@ class GRPOTrainer:
     ) -> None:
         if not tasks:
             raise ValueError("tasks must be non-empty")
+        if temperature != 1.0:
+            raise ValueError(
+                "this simplified on-policy trainer requires temperature=1.0 "
+                "so rollout and rescoring distributions match"
+            )
         self.model = model
         self.ref_model = ref_model
         self.tokenizer = tokenizer
@@ -91,7 +98,7 @@ class GRPOTrainer:
         return self._rng.choice(self.tasks)
 
     def train_step(self) -> dict[str, float]:
-        """One GRPO update: sample, verify, advantage, leash, step.
+        """One GRPO rollout step: sample, verify, and update if informative.
 
         Returns:
             Metrics dict with keys `"loss"`, `"mean_reward"`, `"kl"`,
@@ -175,7 +182,7 @@ class GRPOTrainer:
         group containing any empty completion as degenerate for this
         step and return the skip metrics; the tests accept either.
         Non-empty completions are the overwhelmingly common case at
-        temperature > 0 unless `eos_id` fires immediately.
+        stochastic sampling unless `eos_id` fires immediately.
         """
         # TODO
         raise NotImplementedError
@@ -183,7 +190,11 @@ class GRPOTrainer:
     def train(
         self, max_steps: int, *, log_every: int = 10
     ) -> dict[str, list[float]]:
-        """Run `max_steps` updates, collecting metric histories."""
+        """Run `max_steps` rollout attempts, collecting metric histories.
+
+        Degenerate groups count as attempts but do not run optimizer updates;
+        `step_count` records the number of updates that actually occurred.
+        """
         history: dict[str, list[float]] = {
             "loss": [],
             "mean_reward": [],
@@ -218,7 +229,7 @@ class GRPOTrainer:
         1." Compare against the pre-RL number from the same call on
         the reference model. `verifier` defaults to the trainer's
         training verifier; passing another scorer is useful for
-        auditing a deliberately flawed reward against the honest one.
+        auditing a deliberately flawed reward against the intended one.
         """
         from g2c.sampling import generate
 

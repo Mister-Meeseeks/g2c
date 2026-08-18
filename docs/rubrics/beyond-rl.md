@@ -6,8 +6,8 @@ to `notebooks/clean/rl-grpo.ipynb`). Grade each submitted `Question:` /
 
 ## Q1 — Reading the format smoke test
 
-- **Correct**: reports the measured held-out generated pass rates before and
-  after training, then describes the actual reward and skip curves without
+- **Correct**: reports the measured held-out generated pass rates and actual
+  optimizer-update count, then describes the reward and skip curves without
   assuming their direction. Explains that an all-failure and an all-success
   group are both degenerate, so a skip must be interpreted alongside held-out
   generations and pass rate.
@@ -20,7 +20,7 @@ to `notebooks/clean/rl-grpo.ipynb`). Grade each submitted `Question:` /
 ## Q2 — The held-out arithmetic-choice result
 
 - **Correct**: reports the measured pre/post greedy pass rates on prompts not
-  used for training and cites generated answers. Uses training reward, KL,
+  used for training and cites greedy held-out answers. Uses training reward, KL,
   sampled-token entropy, and skip rate to qualify—not replace—the held-out
   result. Distinguishes evidence of task learning from policy drift and is
   willing to conclude that the finite run showed no clear improvement.
@@ -33,10 +33,10 @@ to `notebooks/clean/rl-grpo.ipynb`). Grade each submitted `Question:` /
 ## Q3 — Auditing the sloppy verifier
 
 - **Correct**: reports both the sloppy verifier's claimed held-out pass rate
-  and the honest verifier's pass rate, then cites the student's own generated
-  samples. Explains that the sloppy verifier rewards membership anywhere in
-  the completion rather than the final answer. If an exploit appeared,
-  identifies it from evidence; if none appeared, says so and distinguishes
+  and the final-answer verifier's pass rate, then cites the student's own
+  greedy held-out generations. Explains that the sloppy verifier rewards
+  membership anywhere in the completion rather than the final answer. If an
+  exploit appeared, identifies it from evidence; if none appeared, says so and distinguishes
   an exploitable specification from successful discovery in this finite run.
   Patches the gap by scoring only the last integer or a delimited answer slot.
 - **Mostly correct**: identifies the gap and proposes a sound patch but does

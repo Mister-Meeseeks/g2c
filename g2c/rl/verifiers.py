@@ -58,7 +58,7 @@ def format_task(rng: random.Random) -> Task:
 
     BaseLM is not instruction-tuned, so asking it to emit a complete JSON
     object from a bare instruction makes the binary reward almost always
-    zero. Supplying the opening prefix keeps the verifier strict while
+    zero. Supplying the opening prefix keeps the format-only check narrow while
     making both successful and failed completions likely enough for a small
     group to carry contrast.
     """
@@ -104,9 +104,10 @@ def verify_arithmetic_sloppy(task: Task, completion: str) -> float:
 def verify_format(task: Task, completion: str) -> float:
     """1.0 iff prompt prefix + completion contains an ``answer`` object.
 
-    Format-only: the VALUE is not checked against the true answer. This
-    is the smoke-test reward. `format_task` supplies an opening JSON prefix
-    in the prompt so a small sampled group has a realistic chance of
+    Format-only: the VALUE and any text after the first complete object
+    are not checked. This is the smoke-test reward. `format_task` supplies
+    an opening JSON prefix in the prompt so a small sampled group has a
+    realistic chance of
     containing both valid and invalid completions. Hand-written tasks without
     `completion_prefix` retain the old whole-completion behavior.
     """

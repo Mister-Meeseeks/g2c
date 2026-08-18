@@ -102,12 +102,12 @@ def grpo_loss(
     advantages: torch.Tensor,
     kl_coef: float,
 ) -> torch.Tensor:
-    """The GRPO objective: policy-gradient term plus the KL leash.
+    """The teaching objective: policy-gradient term plus a KL leash.
 
     Args:
-        logp: `(K,)` completion log-probs under the CURRENT model —
+        logp: `(K,)` summed completion log-probs under the CURRENT model —
             attached to the graph (gradients flow through this).
-        ref_logp: `(K,)` completion log-probs under the FROZEN
+        ref_logp: `(K,)` summed completion log-probs under the FROZEN
             reference model. Must be detached / computed under
             `torch.no_grad()` — the leash anchors to a fixed point.
         advantages: `(K,)` from `group_advantages`. Treated as
@@ -122,12 +122,16 @@ def grpo_loss(
 
     Recipe:
         1. pg = -(advantages.detach() * logp).mean()
-        2. # The k3 KL estimator (Schulman): with d = ref_logp - logp,
+        2. # A trajectory-level k3 KL estimate: with
+           # d = ref_logp - logp,
            #     KL ≈ mean( exp(d) - d - 1 )
            # Per-sample it is >= 0, exactly 0 iff logp == ref_logp,
            # and unlike the naive (logp - ref_logp) estimator its
            # gradient doesn't push all sampled sequences down
-           # uniformly.
+           # uniformly. Because logp is summed over the completion,
+           # this estimate is length-sensitive. Production GRPO more
+           # commonly computes and aggregates the estimate per token;
+           # the lesson calls out that deliberate simplification.
            d = ref_logp.detach() - logp
            kl = (d.exp() - d - 1.0).mean()
         3. return pg + kl_coef * kl

@@ -77,8 +77,10 @@ def compact_context(events: list[Event], budget_tokens: int) -> list[str]:
            EXEMPTING the newest line (guarantee 2) — and truncate each
            `tool_result` render to `COMPACT_KEEP_CHARS` chars +
            `COMPACT_SUFFIX`, re-checking the budget after each
-           truncation. Old tool output is the safe fat: the workspace
-           still holds the ground truth.
+           truncation. For this module's filesystem tools, old output is
+           the safe fat because the workspace still holds the ground truth.
+           Ephemeral external observations may instead need durable,
+           structured state before their raw text can be discarded.
         4. Still over budget? Drop non-task lines entirely, oldest
            first, until it fits or only the task plus the most recent
            line remain.

@@ -94,6 +94,7 @@ def test_format_task_primes_a_discoverable_json_completion():
     assert task["prompt"].endswith('{"answer":')
     assert verify_format(task, '123}') == 1.0
     assert verify_format(task, '123, "extra": true}') == 1.0
+    assert verify_format(task, '123} trailing text') == 1.0
     assert verify_format(task, 'not JSON') == 0.0
 
 
@@ -270,4 +271,16 @@ def test_trainer_requires_tasks():
     with pytest.raises(ValueError):
         GRPOTrainer(
             None, None, _CharTokenizer(), tasks=[], verifier=verify_arithmetic
+        )
+
+
+def test_trainer_requires_unit_sampling_temperature():
+    with pytest.raises(ValueError, match="temperature=1.0"):
+        GRPOTrainer(
+            _tiny_policy(),
+            _tiny_policy(),
+            _CharTokenizer(),
+            tasks=[{"prompt": "12+34=", "answer": 46}],
+            verifier=verify_arithmetic,
+            temperature=0.8,
         )

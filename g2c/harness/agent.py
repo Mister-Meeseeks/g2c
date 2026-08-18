@@ -13,6 +13,7 @@ from its log after a crash — is the scaffold.
 """
 from __future__ import annotations
 
+import json
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -23,7 +24,7 @@ from g2c.agent.prompts import render_system_prompt
 from g2c.inference import Backend
 from g2c.tools import ToolCall, ToolRegistry
 
-from .events import Budgets, Event, EventLog, Permission
+from .events import Budgets, Event, EventLog, Permission, estimate_tokens
 from .failures import classify_failure
 from .runner import ToolRunner
 
@@ -83,6 +84,11 @@ class HarnessAgent:
             context_policy = context_module.compact_context
         self.context_policy = context_policy
         self.retry_wait = retry_wait
+        if max_new_tokens >= budgets.model_context_tokens:
+            raise ValueError(
+                "max_new_tokens must leave room in model_context_tokens "
+                "for instructions and trajectory context"
+            )
         self.max_new_tokens = max_new_tokens
         self.temperature = temperature
 
@@ -103,9 +109,36 @@ class HarnessAgent:
         return self._loop()
 
     def _build_prompt(self, events: list[Event]) -> str:
-        segments = self.context_policy(events, self.budgets.context_tokens)
         system = render_system_prompt(self.registry.tools)
-        return "\n\n".join([system, *segments]) + "\n\nThought:"
+        fixed = system + "\n\nThought:"
+        # Reserve completion space and account for the system/tool-schema
+        # layer before giving trajectory history its allocation. The
+        # explicit context_tokens ceiling remains useful for experiments
+        # that intentionally force compaction in a larger model window.
+        trajectory_budget = min(
+            self.budgets.context_tokens,
+            max(
+                1,
+                self.budgets.model_context_tokens
+                - self.max_new_tokens
+                - estimate_tokens(fixed),
+            ),
+        )
+        segments = self.context_policy(events, trajectory_budget)
+        prompt = "\n\n".join([system, *segments]) + "\n\nThought:"
+
+        # Separators make the whole slightly larger than the sum of its
+        # parts. Give a compliant policy one deterministic tightening pass.
+        excess = (
+            estimate_tokens(prompt)
+            + self.max_new_tokens
+            - self.budgets.model_context_tokens
+        )
+        if excess > 0 and trajectory_budget > 1:
+            trajectory_budget = max(1, trajectory_budget - excess)
+            segments = self.context_policy(events, trajectory_budget)
+            prompt = "\n\n".join([system, *segments]) + "\n\nThought:"
+        return prompt
 
     def _next_call_id(self, events: list[Event]) -> str:
         n = sum(1 for e in events if e.type == "tool_call")
@@ -130,10 +163,30 @@ class HarnessAgent:
         turn → parse → act. Repeat-detection and budgets are enforced
         here; failure classification decides retries.
         """
-        last_action_key: tuple[str, str] | None = None
-        repeats = 0
+        events = self.log.replay()
+        used_steps = sum(1 for e in events if e.type == "model_turn")
 
-        for _ in range(self.budgets.max_steps):
+        # Reconstruct repeat state from model-issued calls. Harness-created
+        # retry ids are excluded: retrying a transient tool failure is not
+        # the model choosing the same action again.
+        action_keys = [
+            (
+                e.payload["tool"],
+                json.dumps(e.payload["arguments"], sort_keys=True),
+            )
+            for e in events
+            if e.type == "tool_call" and "_retry" not in (e.call_id or "")
+        ]
+        last_action_key = action_keys[-1] if action_keys else None
+        repeats = 0
+        if last_action_key is not None:
+            for key in reversed(action_keys[:-1]):
+                if key != last_action_key:
+                    break
+                repeats += 1
+
+        remaining_steps = max(0, self.budgets.max_steps - used_steps)
+        for _ in range(remaining_steps):
             events = self.log.replay()
             prompt = self._build_prompt(events)
             inference = self.backend.complete(
@@ -157,7 +210,7 @@ class HarnessAgent:
 
             action_key = (
                 parsed.action.tool,
-                repr(sorted(parsed.action.arguments.items())),
+                json.dumps(parsed.action.arguments, sort_keys=True),
             )
             if action_key == last_action_key:
                 repeats += 1

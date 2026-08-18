@@ -5,14 +5,17 @@ Suggested order to implement & turn green:
 1. `classify_failure` — unblocks `test_classify_*`.
 2. `compact_context` — unblocks `test_compact_*`. The three pinned
    guarantees: the task statement always survives, the newest events
-   stay verbatim, the budget is respected.
+   stay verbatim, the trajectory budget is respected. The provided
+   agent also budgets the system/tool layer and reserved output.
 3. `ToolRunner.execute` — unblocks `test_runner_*`. The decision
-   ladder in order: dedupe, crash window, permissions, execute (with
-   the tool_call event logged BEFORE execution).
+   ladder in order: validate call-id identity, dedupe, crash window,
+   permissions, execute (with the tool_call event logged BEFORE
+   execution).
 4. `HarnessAgent.resume` — unblocks the crash drill
    (`test_crash_drill_*`), the module in miniature: kill the agent
    mid-task, resume from the log, finish the task, and leave the
-   sandbox byte-identical to an uncrashed run.
+   sandbox byte-identical to an uncrashed run. Resume must preserve
+   the logical run's step and repetition budgets.
 
 Everything runs against a scripted fake backend and deliberately
 misbehaving fake tools — no ProdLM, no network. (The loop-level tests
@@ -227,6 +230,19 @@ def test_runner_dedupes_by_call_id(tmp_path):
     assert (tmp_path / "notes.txt").read_text() == "alpha\n"
 
 
+def test_runner_rejects_call_id_reuse_for_a_different_operation(tmp_path):
+    counters: dict = {}
+    log = EventLog(tmp_path / "log.jsonl")
+    runner = ToolRunner(_sandbox_registry(tmp_path, counters), log)
+    runner.execute(_call("c1", "alpha"))
+
+    with pytest.raises(ValueError, match="already bound"):
+        runner.execute(_call("c1", "beta"))
+
+    assert counters["append_calls"] == 1
+    assert (tmp_path / "notes.txt").read_text() == "alpha\n"
+
+
 def test_runner_never_reruns_a_crash_window_call(tmp_path):
     """Intent logged, outcome missing → unknown result, no execution."""
     counters: dict = {}
@@ -297,6 +313,19 @@ def test_runner_ask_requires_a_logged_approval(tmp_path):
     assert counters["append_calls"] == 1
 
 
+def test_runner_records_error_status_for_failed_dispatch(tmp_path):
+    counters: dict = {"flaky_fail_first": 1}
+    log = EventLog(tmp_path / "log.jsonl")
+    runner = ToolRunner(_sandbox_registry(tmp_path, counters), log)
+    result = runner.execute(
+        ToolCall(name="flaky", arguments={"text": "x"}, call_id="c1")
+    )
+
+    assert result.is_error
+    recorded = [e for e in log.replay() if e.type == "tool_result"]
+    assert recorded[-1].payload["status"] == "error"
+
+
 # ---------------------------------------------------------------------------
 # HarnessAgent end to end
 # ---------------------------------------------------------------------------
@@ -349,6 +378,30 @@ def test_agent_uses_the_injected_context_policy(tmp_path):
     assert any(e.type == "task" for e in seen[0][0])
     assert "Task: policy-controlled prompt" in backend.prompts[0]
     assert "original task" not in backend.prompts[0]
+
+
+def test_agent_budgets_the_whole_prompt_and_reserves_output(tmp_path):
+    counters: dict = {}
+    backend = _ScriptedBackend([_FINAL])
+    budgets = Budgets(context_tokens=10_000, model_context_tokens=1000)
+    agent = HarnessAgent(
+        backend,
+        _sandbox_registry(tmp_path, counters),
+        EventLog(tmp_path / "events.jsonl"),
+        budgets=budgets,
+        max_new_tokens=128,
+    )
+    agent.log.append("task", {"content": "keep the important instruction"})
+    for i in range(12):
+        agent.log.append("model_turn", {"completion": f"thinking {i}"})
+        agent.log.append(
+            "tool_result",
+            {"output": "x" * 300, "is_error": False, "status": "ok"},
+            call_id=f"c{i}",
+        )
+
+    prompt = agent._build_prompt(agent.log.replay())
+    assert estimate_tokens(prompt) + 128 <= budgets.model_context_tokens
 
 
 def test_agent_retries_transient_failures(tmp_path):
@@ -420,6 +473,53 @@ def test_crash_drill_no_duplicate_side_effects(tmp_path):
         (crash_dir / "notes.txt").read_text()
         == (reference_dir / "notes.txt").read_text()
     )
+
+
+def test_resume_does_not_reset_the_step_budget(tmp_path):
+    counters: dict = {}
+    budgets = Budgets(max_steps=3)
+    crashed = _agent(
+        tmp_path,
+        [_ACT.format(text="alpha"), _ACT.format(text="beta")],
+        counters,
+        crash_after=2,
+        budgets=budgets,
+    )
+    with pytest.raises(_Crash):
+        crashed.run("keep writing")
+
+    revived = _agent(
+        tmp_path,
+        [_ACT.format(text="gamma"), _FINAL],
+        counters,
+        budgets=budgets,
+    )
+    result = revived.resume()
+
+    assert result.stopped_reason == "max_steps"
+    assert result.n_steps == 3
+    assert revived.backend.calls == 1
+
+
+def test_resume_does_not_reset_repeat_history(tmp_path):
+    counters: dict = {}
+    same = _ACT.format(text="alpha")
+    budgets = Budgets(max_steps=8, max_repeats=2)
+    crashed = _agent(
+        tmp_path,
+        [same, same],
+        counters,
+        crash_after=2,
+        budgets=budgets,
+    )
+    with pytest.raises(_Crash):
+        crashed.run("repeat forever")
+
+    revived = _agent(tmp_path, [same], counters, budgets=budgets)
+    result = revived.resume()
+
+    assert result.stopped_reason == "repeat_budget"
+    assert counters["append_calls"] == 2
 
 
 def test_resume_refuses_a_fresh_or_finished_log(tmp_path):

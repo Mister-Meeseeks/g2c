@@ -83,7 +83,9 @@ class ToolRunner:
         The decision ladder, in order:
 
         1. **Dedupe.** If the log already holds a `tool_result` for
-           `call.call_id`, reconstruct and return it. The tool function
+           `call.call_id`, first verify that the id is bound to this exact
+           tool and argument object, then reconstruct and return it. A
+           mismatched reuse is a caller error, not a cache hit. The function
            must NOT run again — this is what makes retries after a
            crash safe when the result did get recorded.
         2. **Crash window.** If the log holds a `tool_call` for this
@@ -107,10 +109,17 @@ class ToolRunner:
         Event payload shapes (the tests read these):
             tool_call:   {"tool": call.name, "arguments": call.arguments}
             tool_result: {"output": ..., "is_error": ...,
-                          "status": "ok" | UNKNOWN_OUTCOME_STATUS | "refused"}
+                          "status": "ok" | "error" |
+                                    UNKNOWN_OUTCOME_STATUS | "refused"}
 
         Recipe sketch:
             events = self.log.replay()
+            issued = [e for e in events if e.type == "tool_call"
+                      and e.call_id == call.call_id]
+            if any(e.payload["tool"] != call.name
+                   or e.payload["arguments"] != call.arguments
+                   for e in issued):
+                raise ValueError(...)  # call id collision
             for e in events:  # 1. dedupe
                 if e.type == "tool_result" and e.call_id == call.call_id:
                     return ToolResult(call.call_id, call.name,
@@ -126,7 +135,7 @@ class ToolRunner:
             self.log.append("tool_result",
                             {"output": result.output,
                              "is_error": result.is_error,
-                             "status": "ok"},
+                             "status": "error" if result.is_error else "ok"},
                             call_id=call.call_id)
             return result
         """

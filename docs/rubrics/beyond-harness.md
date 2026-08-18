@@ -34,7 +34,10 @@ submitted `Question:` / `Answer:` independently; skip blank answers.
   action; the extractive policy preserves the task and reaches the
   expected state. Distinguishes the narrow implemented invariants
   (task and recent event) from richer production commitments that
-  would need structured state or tested summarization.
+  would need structured state or tested summarization. Places resolved
+  instructions such as applicable `AGENTS.md` rules in a retained
+  instruction layer rather than compactable trajectory history, and
+  notes that discovery, scope, and precedence must be deterministic.
 - **Partially correct**: describes only the rendered context rather
   than the resulting behavior.
 - **Needs revision**: treats context loss as a process crash.
@@ -54,7 +57,8 @@ submitted `Question:` / `Answer:` independently; skip blank answers.
 - **Correct**: reports exact-verifier outcomes and operational metrics
   for both harnesses under the same scripted scenarios. Separates
   clean-run parity from faulted differences, identifies which harness
-  behavior caused each difference, and reports null rows honestly.
+  behavior caused each difference, distinguishes process resumes from
+  tool retries, and reports null rows honestly.
 - **Partially correct**: reports only final-answer presence or success
   without operational evidence.
 - **Needs revision**: changes the backend, task, or fault schedule
