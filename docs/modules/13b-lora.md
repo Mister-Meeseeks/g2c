@@ -4,7 +4,7 @@
 
 ![A frozen base weight beside a low-rank trainable adapter, with the memory and deployment benefits of LoRA summarized around them](13b-lora/Module13B-Hero.png)
 
-LoRA stands for *low ranked adapation*. Behaviorally it is almost identical to the full SFT approach we learned last week. However it uses linear algebra to reduce the effective training parameter set to be substantially smaller. This is possible because of the empirical properties of fine-tuning. All that means is we get the same results at much lower hardware requirements. A must for any practitioner working with local models
+Last week we learned how to shape the behavior of a model, using the same machinery we used to pretrain it in the first place. This week we learn how the effective geometry of behavior means we can achieve the same results with substantially lower hardware requirements. 
 
 > It should be noted that this module is optional. Nothing later in the course depends on the lesson developed here. But this course, whose identity is "everything on your Mac", owes you this module.
 
