@@ -19,7 +19,7 @@ submitted `Question:` / `Answer:` independently; skip blank answers.
 
 - **Correct**: reports both measured accuracies and discusses actual sample
   captions. Explains that the caption model learns image features, the
-  placeholder/splice convention, caption syntax, and autoregressive routing,
+  boundary/patch-slot splice convention, caption syntax, and autoregressive routing,
   while the MLP directly optimizes a ten-class decision. Treats the result as
   a comparison of these models and objectives at this scale—not a general law
   about transformers or image classifiers.

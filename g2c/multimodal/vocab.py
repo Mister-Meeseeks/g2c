@@ -3,9 +3,9 @@
 This Beyond module deliberately does NOT depend on the Module 04
 tokenizer: the point under study is how images enter the token stream,
 not how text gets tokenized. Sixteen word-level tokens cover every
-caption the exercises use ("This is a 7 .") plus the three structural
-ids: padding, the image-patch placeholder, and the end-of-caption
-marker.
+caption the exercises use ("This is a 7 .") plus five structural ids:
+padding, retained image-start and image-end boundaries, the image-patch
+placeholder, and the end-of-caption marker.
 
 All provided plumbing — nothing here is scaffolded.
 """
@@ -14,6 +14,8 @@ from __future__ import annotations
 CAPTION_TOKENS: list[str] = [
     "<pad>",
     "<img>",
+    "<image_patch>",
+    "</img>",
     "<end>",
     "This",
     "is",
@@ -34,7 +36,9 @@ CAPTION_TOKENS: list[str] = [
 _TOKEN_TO_ID = {tok: i for i, tok in enumerate(CAPTION_TOKENS)}
 
 PAD_ID: int = _TOKEN_TO_ID["<pad>"]
-IMG_ID: int = _TOKEN_TO_ID["<img>"]
+IMAGE_START_ID: int = _TOKEN_TO_ID["<img>"]
+IMAGE_PATCH_ID: int = _TOKEN_TO_ID["<image_patch>"]
+IMAGE_END_ID: int = _TOKEN_TO_ID["</img>"]
 END_ID: int = _TOKEN_TO_ID["<end>"]
 
 VOCAB_SIZE: int = len(CAPTION_TOKENS)

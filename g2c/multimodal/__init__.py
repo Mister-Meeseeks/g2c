@@ -2,7 +2,9 @@ from .model import MultimodalLM, build_caption_batch
 from .patches import PatchEmbedding, patchify
 from .vocab import (
     CAPTION_TOKENS,
-    IMG_ID,
+    IMAGE_END_ID,
+    IMAGE_PATCH_ID,
+    IMAGE_START_ID,
     PAD_ID,
     caption_ids,
     decode_ids,
@@ -10,7 +12,9 @@ from .vocab import (
 
 __all__ = [
     "CAPTION_TOKENS",
-    "IMG_ID",
+    "IMAGE_END_ID",
+    "IMAGE_PATCH_ID",
+    "IMAGE_START_ID",
     "MultimodalLM",
     "PAD_ID",
     "PatchEmbedding",

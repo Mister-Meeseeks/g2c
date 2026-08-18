@@ -4,8 +4,9 @@ The design fact this file demonstrates: the transformer needs NO
 architectural change to accept images. `MultimodalLM` wraps a Module 09
 `TransformerLM` and a `PatchEmbedding`; its forward pass runs the same
 embed → blocks → norm → unembed pipeline, with exactly one twist — the
-embedding rows at `<img>` placeholder positions are overwritten with
-patch vectors before the blocks run.
+embedding rows at `<image_patch>` placeholder positions are overwritten
+with patch vectors before the blocks run. Retained `<img>` and `</img>`
+tokens mark the image boundaries.
 
 The placeholder convention keeps every shape static: the token sequence
 contains `num_patches` copies of the placeholder id per image, so the
@@ -26,7 +27,13 @@ from g2c.nn import Module
 from g2c.transformer import TransformerLM
 
 from .patches import PatchEmbedding
-from .vocab import IMG_ID, PAD_ID, caption_ids
+from .vocab import (
+    IMAGE_END_ID,
+    IMAGE_PATCH_ID,
+    IMAGE_START_ID,
+    PAD_ID,
+    caption_ids,
+)
 
 
 class MultimodalLM(Module):
@@ -34,10 +41,10 @@ class MultimodalLM(Module):
 
     Args:
         lm: a Module 09 `TransformerLM`, unmodified. Its vocab must
-            include the placeholder id (`image_token_id`).
+            include the placeholder id (`patch_token_id`).
         patch_size: side length of the square patches.
-        image_token_id: the vocab id whose embedding rows get replaced
-            by patch vectors. Defaults to the caption vocab's `<img>`.
+        patch_token_id: the vocab id whose embedding rows get replaced
+            by patch vectors. Defaults to `<image_patch>`.
 
     Attributes:
         patch_embed: the `PatchEmbedding` producing splice-ready
@@ -46,19 +53,19 @@ class MultimodalLM(Module):
 
     lm: TransformerLM
     patch_embed: PatchEmbedding
-    image_token_id: int
+    patch_token_id: int
 
     def __init__(
         self,
         lm: TransformerLM,
         patch_size: int,
         *,
-        image_token_id: int = IMG_ID,
+        patch_token_id: int = IMAGE_PATCH_ID,
     ) -> None:
         super().__init__()
         self.lm = lm
         self.patch_embed = PatchEmbedding(patch_size, lm.embedding_dim)
-        self.image_token_id = image_token_id
+        self.patch_token_id = patch_token_id
 
     def parameters(self) -> Iterable[torch.Tensor]:
         return [*self.lm.parameters(), *self.patch_embed.parameters()]
@@ -96,7 +103,7 @@ class MultimodalLM(Module):
                # (B, N * num_patches, D) — images in order, patches
                # row-major, matching the placeholder order.
             3. tok = self.lm.token_embed(token_ids)          # (B, T, D)
-               mask = token_ids == self.image_token_id       # (B, T)
+               mask = token_ids == self.patch_token_id       # (B, T)
                counts = mask.sum(dim=1)                      # (B,)
                expected = patches.shape[1]                   # per example
                if not torch.all(counts == expected):
@@ -109,7 +116,7 @@ class MultimodalLM(Module):
                tok[mask] = patches.reshape(-1, self.lm.embedding_dim)
                # The splice. Boolean assignment fills mask positions in
                # row-major order — image order must match placeholder
-               # order, which build_caption_batch guarantees.
+               # order, which the sequence builder must guarantee.
             5. # The rest is TransformerLM.forward, verbatim — run it
                # here over the spliced embeddings:
                _, T = token_ids.shape
@@ -140,11 +147,13 @@ def build_caption_batch(
 
     Provided plumbing. Builds, per example, the id sequence
 
-        [<img>] * num_patches  +  caption_ids(label)
+        [<img>] + [<image_patch>] * num_patches + [</img>]
+        + caption_ids(label)
 
     then applies Module 13's shift-and-mask: `x = ids[:, :-1]`,
     `y = ids[:, 1:]`, with `loss_mask` zero on every position whose
-    target is a placeholder or padding and one on caption targets.
+    target is an image boundary, placeholder, or padding and one on
+    caption targets.
     Feed the result to `masked_cross_entropy(model(x, images), y, mask)`.
 
     Args:
@@ -158,7 +167,7 @@ def build_caption_batch(
             length, so padding only matters if you extend the format).
 
     Returns:
-        x:         `(B, T-1)` LongTensor input ids (placeholders kept).
+        x:         `(B, T-1)` LongTensor input ids (image structure kept).
         images:    `(B, H, W)` float tensor, normalized.
         y:         `(B, T-1)` LongTensor shifted targets.
         loss_mask: `(B, T-1)` LongTensor — 1 exactly where the target
@@ -175,8 +184,13 @@ def build_caption_batch(
     masks: list[list[int]] = []
     for label in labels.tolist():
         caption = caption_ids(int(label))
-        ids = [IMG_ID] * num_patches + caption
-        mask = [0] * num_patches + [1] * len(caption)
+        image_span = (
+            [IMAGE_START_ID]
+            + [IMAGE_PATCH_ID] * num_patches
+            + [IMAGE_END_ID]
+        )
+        ids = image_span + caption
+        mask = [0] * len(image_span) + [1] * len(caption)
         rows.append(ids)
         masks.append(mask)
 

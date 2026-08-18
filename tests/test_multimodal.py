@@ -21,7 +21,9 @@ import pytest
 import torch
 
 from g2c.multimodal import (
-    IMG_ID,
+    IMAGE_END_ID,
+    IMAGE_PATCH_ID,
+    IMAGE_START_ID,
     MultimodalLM,
     PatchEmbedding,
     build_caption_batch,
@@ -52,14 +54,18 @@ def test_build_caption_batch_shapes_and_mask():
     images = torch.randint(0, 256, (3, 28, 28), dtype=torch.uint8)
     labels = torch.tensor([0, 7, 9])
     x, imgs, y, mask = build_caption_batch(images, labels, patch_size=7)
-    T = 16 + 6  # patches + caption
+    T = 2 + 16 + 6  # image boundaries + patches + caption
     assert x.shape == (3, T - 1)
     assert y.shape == (3, T - 1)
     assert mask.shape == (3, T - 1)
     # loss fires exactly on the six caption targets per row
     assert (mask.sum(dim=-1) == 6).all()
-    # every placeholder survives the shift into x
-    assert ((x == IMG_ID).sum(dim=-1) == 16).all()
+    # Boundaries remain ordinary tokens; only patch slots are overwritten.
+    assert ((x == IMAGE_START_ID).sum(dim=-1) == 1).all()
+    assert ((x == IMAGE_PATCH_ID).sum(dim=-1) == 16).all()
+    assert ((x == IMAGE_END_ID).sum(dim=-1) == 1).all()
+    assert (mask[y == IMAGE_PATCH_ID] == 0).all()
+    assert (mask[y == IMAGE_END_ID] == 0).all()
     # normalization happened exactly once
     assert imgs.dtype == torch.float32
     assert imgs.max() <= 1.0
@@ -164,7 +170,7 @@ def test_splice_preserves_text_positions():
     _, imgs2, _, _ = build_caption_batch(torch.rand(2, 28, 28), labels, patch_size=7)
     logits1 = mm(x, imgs1)
     logits2 = mm(x, imgs2)
-    placeholder = x == IMG_ID
+    placeholder = x == IMAGE_PATCH_ID
     assert torch.allclose(logits1[~placeholder], logits2[~placeholder], atol=1e-5)
     assert not torch.allclose(logits1[placeholder], logits2[placeholder], atol=1e-3)
 
@@ -191,8 +197,9 @@ def test_splice_per_row_mismatch_raises_when_batch_total_matches():
     # Keep the batch-wide count at 32 while changing the per-row counts
     # from [16, 16] to [15, 17]. A global-only validation misses this.
     x = x.clone()
-    x[0, 0] = 3
-    x[1, -1] = IMG_ID
+    x[0, 1] = IMAGE_START_ID
+    x[1, -1] = IMAGE_PATCH_ID
+    assert (x == IMAGE_PATCH_ID).sum(dim=1).tolist() == [15, 17]
     with pytest.raises(ValueError):
         mm(x, imgs)
 
@@ -200,9 +207,14 @@ def test_splice_per_row_mismatch_raises_when_batch_total_matches():
 def test_splice_two_images_one_sequence():
     torch.manual_seed(7)
     mm = _tiny_mm(num_layers=1)
-    # Hand-built interleaved row: two images' placeholders + a caption.
+    # Hand-built row: two explicitly bounded images plus a caption.
     n_patches = 16
-    ids = [IMG_ID] * n_patches + [IMG_ID] * n_patches + caption_ids(4)
+    image_span = (
+        [IMAGE_START_ID]
+        + [IMAGE_PATCH_ID] * n_patches
+        + [IMAGE_END_ID]
+    )
+    ids = image_span + image_span + caption_ids(4)
     x = torch.tensor([ids], dtype=torch.long)
     images = torch.rand(1, 2, 28, 28)
     logits = mm(x, images)
