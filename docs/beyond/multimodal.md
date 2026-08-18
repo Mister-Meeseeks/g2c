@@ -5,7 +5,7 @@
 <!-- TODO(hero pipeline): asset not yet generated -->
 ![An MNIST digit sliced into sixteen patches that enter the transformer's token stream alongside word embeddings, with the loss mask lit only over the text positions.](multimodal/BeyondMultimodal-Hero.png)
 
-The transformer you built in Module 09 never knew it was processing *text* — it processes vectors. This module makes that concrete: you'll slice MNIST digits into patches, project them into the residual stream next to word embeddings, and train a StoryLM-1M-class backbone from scratch to generate captions with the same next-token loss it has always used. The result is deliberately tiny. It teaches the modality-to-residual-stream interface while making the gap to a production vision-language model explicit.
+We've spent the entire course learning how to model text. This week we discover that the same machinery can be used across images, audio, and video. The key insight is the LLMs natively work with vectors not words. If we have a way to turn media into semantically meaningful vectors, then we have a way to integrate it directly into an LLM.
 
 > **This is a Beyond module.** Beyond modules sit outside the numbered course: nothing in Modules 00–20 depends on them, and they are not part of finishing the course. Come here in any order, whenever a model card or paper names the idea and you want the load-bearing version — built, trained, and broken on your own machine.
 
@@ -30,14 +30,7 @@ The transformer you built in Module 09 never knew it was processing *text* — i
 
 In Module 04 we turned raw text into discrete tokens. In Module 05 we turned those tokens into vectors, establishing the move that makes language models possible. From that point on the architecture is geometry, not text processing. In Module 09 we built transformers to work with text, but it never explicilty "knew" it was working with text. Transformers remix vectors with no opinion about what they represent. (Remember how LLMs can't count the r's in strawberry because they're blind to letters.)
 
-That indifference is the secret to multimodal models. Transformers will work with *any* input — an image, an audio clip, a video frame — that you can turn into a sequence of vectors. Embed those vectors into the same dimension as language vectors, and the transformer will attend to them the way it attends to text. Distinctions between modalities get left at the door of the embedding layer.
-
-Model cards often blur two separate design choices:
-
-* **Visual frontend.** Raw patches can be projected directly, or a vision encoder can turn them into richer features before a projector or resampler maps them to width `D`.
-* **Training regime.** The visual frontend and language model may be pretrained separately and joined later, or trained jointly on multimodal data from early in training. Components can be frozen, partially tuned, or updated end to end.
-
-“Native multimodal” is not a precise promise that raw patches enter the decoder without a vision tower. Treat it as a cue to inspect both axes. This module chooses the simplest corner — raw MNIST patches, one projector, joint training from scratch — because it isolates the interface using parts you already built.
+That indifference is the secret to *multimodal models*. Transformers will work with *any* input — an image, an audio clip, a video frame — that you can turn into a sequence of vectors. Embed those vectors into the same dimension as language vectors, and the transformer will attend to them the way it attends to text. Distinctions between modalities get left at the door of the embedding layer.
 
 ## The big idea
 
