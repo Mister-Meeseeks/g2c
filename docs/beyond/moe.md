@@ -70,17 +70,30 @@ The router has a simple internal architecture: one linear layer followed by thre
 
 * **Softmax.** Softmax turns the raw logits into a categorical distribution over experts.
 * **Top-k.** The operation that keeps activation sparse. Without it, every expert would receive a non-zero weight.
-* **Renormalize.** The softmax weights were computed over all `E` experts. After discarding all but `k`, rescale the survivors to sum to 1. Otherwise, output magnitude depends on how much probability mass the router placed outside the selected set, creating an unwanted confidence-dependent scale change.
+* **Renormalize.** This module rescales the surviving weights to sum to 1 after discarding all but `k`. For `k>1`, this preserves their relative differentiable strength. `k=1` is an important edge case covered more in the next section.
 
 ```
    scores  = softmax(x_t @ W_router)        # (E,) — one score per expert
    top-k   = indices of the k largest       # e.g. k = 2
-   weights = renormalize(scores[top-k])     # so the selected weights sum to 1
+   weights = renormalize(scores[top-k])     # this module's mixing rule
 
    output  = Σ  weights[e] · FFN_e(x_t)     # over the k selected experts
 ```
 
-The selected top-k indices are not differentiable. This creates complications for gradient descent that must be managed carefully. If `k > 1`, each token has multiple surviving experts with differentiable relative weights, so the language-modeling loss can still send a learning signal to the router through those weights. With this module's renormalized `k = 1` rule, however, the sole surviving weight is always 1. The language-modeling loss therefore provides no useful router gradient; a supplemental objective is required to move the router.
+The selected top-k indices are not differentiable. This creates complications for gradient descent that must be managed carefully. If `k > 1`, each token has multiple surviving experts with differentiable relative weights, so the language-modeling loss can still send a learning signal to the router through those weights.
+
+#### Top-1 conventions
+
+Top-1 systems differ in what they do with the winning probability `p_e`. This one detail determines whether the task loss can train the router:
+
+| Convention | Output for selected expert `e` | Task gradient to router | Main tradeoff |
+|---|---|---|---|
+| **Course-normalized top-1** | `FFN_e(x)` | None through the mixture weight | Stable output scale and exact `E=1` dense equivalence |
+| **Switch-style top-1** | `p_e · FFN_e(x)` | Yes, through `p_e` | Output scale depends on router confidence |
+
+In both cases, the discrete winning index remains non-differentiable. Switch-style weighting retains a local surrogate signal through the selected probability; it still does not evaluate the unselected experts and directly reveal which counterfactual route would have been best.
+
+This distinction limits what the headline `k=1` experiment can demonstrate. Its auxiliary loss can move the router toward a more even input-dependent partition, ensuring that every expert receives training traffic. But it carries no task signal about which expert would have predicted a token best. 
 
 ### Load balancing
 
@@ -121,18 +134,19 @@ Scale the same arithmetic up and you can begin to decode a model card. V4-Flash'
 
 ### MoE refinements in practice
 
-There are two additional refinements (both from the DeepSeek lineage) that commonly accompany MoE models. They're worth recognizing by shape:
+Several refinements commonly accompany MoE models. They're worth recognizing by shape:
 
 * **Shared experts** — One or two universal experts that *every* token goes through, in addition to the specialized routed ones. They handle common computation, giving the routed experts more room to differentiate.
 * **Fine-grained experts** — Use a larger number of smaller experts for a similar parameter budget. Instead of 8 large experts, choose 64 smaller ones and route to more of them on each pass. This provides finer routing granularity. Kimi K3's "16 of 896" routing shape is a frontier-scale example, though its LatentMoE experts add machinery beyond the direct FFN swap built here.
+* **MoE placement** — Not every model replaces every FFN. Some keep the first few layers dense, alternate dense and MoE blocks, or route only selected layers. A model card's expert count therefore does not tell you how many routing decisions occur per token; you also need the number and placement of MoE layers.
 
-Both are straightforward to recognize once the base mechanism is built. This module leaves them out so the scaffold retains the simplest routed-FFN shape.
+All three are straightforward to recognize once the base mechanism is built. This module leaves them out so the scaffold retains the simplest routed-FFN shape.
 
 ## Concepts to internalize
 
 - **MoE decouples capacity from per-token compute.** Total parameters are a capacity and storage measure; active parameters are a closer proxy for what each token costs. In dense layers, all layer weights are active for every token.
 - **The FFN is swappable because it's per-position.** No cross-token machinery has to change. This is why MoE lives in the FFN and not (usually) in attention.
-- **The router learns through the combination weights when `k>1`.** Top-k selection is non-differentiable and doesn't need to be, but renormalized top-1 is a degenerate case: its sole combination weight is 1, so only the auxiliary loss trains the router.
+- **Router learning depends on the mixing convention.** With renormalized `k>1`, relative combination weights carry a task gradient. Course-normalized top-1 removes that signal by setting its sole weight to 1; Switch-style top-1 retains the winning probability and therefore retains a task gradient.
 - **Balanced routing is not the natural state.** With `k>1`, rich-get-richer collapse is possible; with this implementation's `k=1`, an unbalanced random partition can simply stay frozen. The auxiliary loss is a counterweight you tune, not a formality.
 - **Model-card literacy:** "X total / Y active" ⇒ per-token compute usually tracks Y much more closely, while storage follows X. Compare MoE and dense models at matched *active* parameters, not matched total.
 
@@ -141,6 +155,7 @@ Both are straightforward to recognize once the base mechanism is built. This mod
 - **Expert parallelism and communication.** At frontier scale the experts live on different devices and the routing becomes an all-to-all network problem. That's distributed-systems engineering the course explains but doesn't reproduce — our experts share one chip.
 - **Capacity factors and token dropping.** Large-batch training bounds how many tokens each expert may receive and drops the overflow. At our batch sizes it's machinery without payoff.
 - **Auxiliary-loss-free balancing.** DeepSeek-V3 balances with a per-expert bias adjusted outside the gradient instead of an aux loss. A neat variation; read it after building the standard form.
+- **Router noise and logit stabilization.** Some recipes add random jitter or noisy routing to improve exploration, and a router z-loss to discourage excessively large logits. These address exploration and numerical stability; they are distinct from the load-balancing objective implemented here.
 - **Latent-width and low-rank expert variants** (e.g. the LatentMoE line). Refinements of *where* the expert computation happens, not of the routing idea; they read easily once this module is done.
 
 ---
@@ -213,16 +228,16 @@ If at any point you want to archive the work in your current notebook and restar
 Written exercises live in the notebook as `Question:` / `Answer:` cells; ask a coding agent for hints or grading when you're ready, and partial submissions are fine — blank answers are skipped.
 
 1. **Collapse to dense.** Verify `E=1, k=1` reproduces the Module 09 block, then read the routing weights of an untrained `E=8` router.
-2. **Matched-active comparison.** Train dense and MoE versions of the StoryLM-1M architecture on the 100MB TinyStories tier, with `E=8, k=1`, iso-step, and identical batches. Compare validation loss, parameter counts, and generated stories. This is the module's headline experiment. The router is the only meaningful active-parameter difference.
+2. **Matched-active comparison.** Train dense and MoE versions of the StoryLM-1M architecture on the 100MB TinyStories tier, with `E=8, k=1`, iso-step, and identical batches. Compare validation loss, parameter counts, and generated stories. This is the module's headline capacity experiment: it isolates conditional computation at near-matched active size, but its course-normalized top-1 router is not task-trained. The router is the only meaningful active-parameter difference.
 3. **Top-1 utilization over training.** Plot the per-expert token fraction in the matched-active run. Because renormalization makes the selected `k=1` weight exactly 1, changes in its router come from the auxiliary loss rather than the language-modeling objective.
-4. **Ablate the balance loss with `k=2`.** Compare three otherwise-identical MoE runs: coefficient `0`, the calibrated default, and `100×` the default. Here the language-modeling loss can train the router through the relative weights of the two selected experts. The first permits task-driven concentration; the last can force routing so uniform that specialization has little room to emerge. Keep all three plots even if a short run produces a weaker effect than expected — the empirical result is the evidence.
+4. **Ablate the balance loss with `k=2`.** Compare three otherwise-identical MoE runs: coefficient `0`, the calibrated default, and `100×` the default. This is the module's task-trained routing experiment: the language-modeling loss can reach the router through the relative weights of the two selected experts. The first permits task-driven concentration; the last can force routing so uniform that specialization has little room to emerge. Keep all three plots even if a short run produces a weaker effect than expected — the empirical result is the evidence.
 5. **Sweep `k` (optional).** Compare `k ∈ {1, 2, 4}` at fixed `E`. More active experts per token means more compute per token — is it buying loss?
 6. **StoryLM-5M rerun (optional).** Repeat the matched-active comparison with the StoryLM-5M architecture. The model is still laptop-sized, but its eight-expert MoE holds roughly 28M total parameters and the extra runs take substantially longer.
 7. **Specialization probe (optional).** Bucket decoded TinyStories tokens by expert assignment and look for structure. At toy scale the buckets may be noisy; an honest null result is more useful than inventing a role for every expert.
 
 ## Pitfalls to expect
 
-- **Forgetting to renormalize the top-k weights.** Output scale then depends on router confidence; trains, but worse, and the `E=1,k=1` equivalence test catches it.
+- **Forgetting the course's renormalization rule.** With `k>1`, output scale then depends on how much probability mass survived selection. The dedicated router weight-sum test catches this; `E=1, k=1` cannot, because a one-class softmax already equals 1. Retaining the winning probability in a deliberately Switch-style top-1 router is a different valid design, not this bug.
 - **Comparing dense vs MoE at matched *total* parameters.** The MoE model looks bad because you've given each token less compute. The default `k=1` comparison keeps the expert width and active FFN compute equal; matched-total answers a different question.
 - **Assuming the task loss trains every router configuration.** With `k>1`, relative combination weights carry its gradient. With renormalized `k=1`, the sole weight is 1 and the task gradient to the router vanishes; only the auxiliary loss moves it in this implementation.
 - **Balance-loss coefficient at the wrong order of magnitude.** Both failure directions look like "MoE isn't helping." Check the utilization plot before blaming the architecture.
@@ -262,5 +277,5 @@ Optional:
 - [ ] Notebook: StoryLM-1M matched-active dense-vs-MoE comparison, with validation-loss plot and generated stories.
 - [ ] `k=2` utilization plots from all three balance settings: zero, calibrated default, and 100× default.
 - [ ] You can explain — out loud, without notes — the difference between total and active parameters, and why active count is a compute proxy rather than an exact latency or price formula.
-- [ ] You can explain — out loud, without notes — why the language-modeling loss trains a `k>1` router but not this implementation's renormalized `k=1` router, plus what the auxiliary loss trades away as its coefficient grows.
+- [ ] You can explain — out loud, without notes — why the language-modeling loss trains a renormalized `k>1` router but not this implementation's normalized `k=1` router, how Switch-style top-1 retains a task gradient, and what the auxiliary loss trades away as its coefficient grows.
 - [ ] You can explain — out loud, without notes — why MoE lives in the FFN and not in attention, in terms of Module 09's communication/compute split.
