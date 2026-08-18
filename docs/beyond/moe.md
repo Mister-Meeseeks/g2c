@@ -5,7 +5,7 @@
 <!-- TODO(hero pipeline): asset not yet generated -->
 ![A token arriving at a router that lights up one of eight expert FFNs while the other seven stay dark, with total parameters counted across all experts and active parameters counted only along the lit path.](moe/BeyondMoE-Hero.png)
 
-Many current MoE model cards lead with two parameter counts: DeepSeek V4-Flash is "284B total, 13B active"; Kimi K3 is "2.8T total, 104B active." This module is where that sentence stops being marketing and becomes arithmetic. You'll replace the Module 09 FFN with a routed panel of expert FFNs, train the result on TinyStories, and watch the router learn — and fail to learn — how to share the work.
+This week is about a new variant on the classic transformer architecture. Up until now we've only thought about models in terms of a single parameter count. Now we think about total parameters and active parameters. Done right, we can have our cake and eat it too. The power and knowledge of a large model, and the efficiency of a small model.
 
 > **This is a Beyond module.** Beyond modules sit outside the numbered course: nothing in Modules 00–20 depends on them, and they are not part of finishing the course. Come here in any order, whenever a model card or paper names the idea and you want the load-bearing version — built, trained, and broken on your own machine.
 
@@ -25,15 +25,17 @@ Many current MoE model cards lead with two parameter counts: DeepSeek V4-Flash i
 ---
 ## Where this fits in
 
-Module 09 taught you that the FFN is the "compute" half of the transformer block, and Module 12 taught you where the parameters live: roughly two-thirds of a transformer is FFN weights. Put those together and a dense transformer has an awkward property — **every token pays for every parameter**. If you want more capacity, every token's forward pass gets proportionally more expensive, forever.
+Module 09 taught you that the feed forward network (FFN) is the "compute" half of the transformer block. Module 12 taught you where the parameters live: roughly two-thirds of a transformer is FFN weights. Put those together and a dense transformer has an awkward property — **every token pays for every parameter**. If you want more capacity, every token's forward pass gets proportionally more expensive, forever. 
 
-Mixture of experts (MoE) breaks that link. Keep the block, keep the attention, keep the residual stream — but replace the single FFN with `E` independent FFNs ("experts") and a small learned **router** that sends each token through only `k` of them. Capacity now scales with `E`; per-token compute scales with `k`. Those are the two numbers on the model card: *total* parameters count every expert, *active* parameters count only the ones a token actually touches.
+The tension comes down to the scaling laws you discovered in Module 12. The single most powerful lever is a larger model. More parameters mean the model learns a richer world model and more comprehensive semantics. But you almost never need more than a fraction of that at a given time. If the prompt is generating python code, you probably don't need the weights that learned how to tell children's stories. A completion for a lasagna recipe is still spending computation on activating the neurons that learned physics. 
 
-This is not an exotic frontier trick anymore. Mixtral made it prominent in open-weight models in 2024; DeepSeek, Qwen, NVIDIA's Nemotron line, and Moonshot's Kimi series all adopted variants independently. When unrelated labs make the same move, the move is the durable idea and the branding is not — which is exactly why this module exists.
+*Mixture of experts (MoE)* is an architectural variant on the transformer block that attempts to reflect this observation. The key insight is that while it trains a large parameter set, on any given pass it's only activating a fraction of those parameters. The idea is each expert network learns to specialize in different areas, and that tokens are *routed* to the expert networks best suited for their context.
+
+One common misconception is that expert networks are explicitly trained on subject matter data. The expert networks aren't explicitly trained to be specialized. They are just architecturally neutral sub-networks in the block. MoE networks use the same pretraining formula we learned in Module 09B. But during training, the normal gradient descent process results in the emergence of specialization across experts (often in opaque ways).
 
 ## The big idea
 
-The FFN is the perfect place for conditional computation, for a reason Module 09 already gave you: **the FFN is per-position**. It never mixes information across tokens. So nothing breaks if token 3 and token 7 go through *different* FFNs — no mask to maintain, no cache to invalidate, no cross-token bookkeeping at all. Attention is the communication half and must see everyone; the compute half is free to specialize.
+Keep the block, keep the attention, keep the residual stream — but replace the single FFN component with `E` number of independent FFNs ("experts"). Put a small learned *router* in front of each expert layer. At each individual token pass, the router selects `k` experts to activate. Do this for each layer in the transformer. You now have an MoE.  
 
 ```
    Dense block (Module 09):            MoE block (this module):
@@ -43,17 +45,32 @@ The FFN is the perfect place for conditional computation, for a reason Module 09
    ┌────────────────────┘              ┌────────────────────┘
    │                                   │
    x ─► LN ─► FFN ─► + ─┐              x ─► LN ─► router ─┬─► FFN₁ ─┐
-                        │                        (top-k)  ├─► FFN₂ ─┼─► weighted ─► + ─┐
-                        ▼                                 ├─► ...   ─┤     sum         │
-                     (B, T, D)                            └─► FFN_E ─┘                 ▼
-                                                       (only k of E actually run)  (B, T, D)
+                        │                        (top-k)  ├─► FFN₂ ─┤
+                        ▼                                 ├─► ...  ─┤  
+                     (B, T, D)                            └─► FFN_E─┤
+                                                                    │
+	                                                            weighted +
+                                                                    ▼
+	                                                            (B, T, D)
 ```
 
 One dense FFN becomes `E` candidate FFNs plus a router. Per token: the router scores all `E` experts, keeps the top `k`, runs those `k` FFNs, and combines their outputs weighted by the router's (renormalized) scores. Everything else in the block is untouched.
 
+Capacity now scales with `E`. Per-token compute scales with `k`. Those are the two numbers on the model card: *total* parameters count every expert, *active* parameters count only the ones a token actually touches.
+
+Activation routing runs **per token** because the FFN operates per position. It never mixes information across tokens. Nothing breaks if token 3 and token 7 go through different experts — no mask to maintain, no cache to invalidate, no cross-token bookkeeping at all. Attention is the communication half that must see everyone. But the FFN is the compute half that is free to specialize.
+
+Another thing to keep in mind is that each layer in the transformer maintains its own independent expert network and router. Specialization will occur differently depending on the layer. That combined with per token activation illustrate that specilalization happen at a much more granular level than the full prompt. For example a 64 layer network on a 1000 token prompt will process 64,000 independent router activation decisions in the forward pass. 
+
 ### The router
 
-The router is deliberately boring: one linear layer from the residual stream to expert logits, a softmax, and a top-k selection.
+The router is deliberately boring. It takes the residual stream as input, and outputs a set of sparse weights across the experts in the block. Those weights determine which expert FFNs are activated, and how their output is mixed in the residual stream. During gradient descent the router learns to activate the best experts based on the context in the residual stream.
+
+The router has a simple internal architecture. It is a one layer linear network. The raw output of that network is passed through three layers to create the activation properties we want:
+
+* **Softmax.** Like with all neural network classifiers, softmax turns raw logits into a categorical distribution. (The category being which experts to activate.)
+* **Top-k**. The layer that actually keeps activations sparse. Without this, all experts (and therefore all parameters) would receive some non-zero activation weight.
+* **Renormalize.** The softmax weights were over all `E` experts. Truncating all but `k` means the weights need to be rescaled to sum back to 1. Without this output magnitude becomes dependent on router confidence, which is a slow subtle poisoning for training. 
 
 ```
    scores  = softmax(x_t @ W_router)        # (E,) — one score per expert
@@ -63,16 +80,15 @@ The router is deliberately boring: one linear layer from the residual stream to 
    output  = Σ  weights[e] · FFN_e(x_t)     # over the k selected experts
 ```
 
-Two details carry most of the implementation:
+One thing to keep in mind is that top-k itself is not differentiable. This can create complications for gradient descent that need to be carefully managed. If `k > 1` , this is much less of an issue. Every pass has multiple surviving experts, and each surviving expert has a non-zero weight. Those expert weights *are* still differentiable and backprop the learning signal to the router. However `k = 1` does not work without a supplemental loss function, because there is no gradient to learn. 
 
-* **Renormalize after selection.** The softmax was over all `E` experts; after keeping `k` of them, the surviving weights must be rescaled to sum to 1. Skip this and the output magnitude depends on how confident the router happened to be — a subtle, slow poison for training.
-* **Gradients flow through the weights, not the selection — when `k > 1`.** Top-k is not differentiable, and doesn't need to be. With multiple surviving experts, their renormalized weights remain differentiable: if expert 3 helped, the language-modeling loss can push its share up. But renormalized `k=1` is a special case: the only surviving weight is always exactly 1, so the language-modeling loss provides no useful router gradient. The auxiliary balance loss can still move that router. This is why the notebook uses `k=1` for clean active-parameter accounting but `k=2` when studying learned routing dynamics.
+### Load balancing 
 
-### Load balancing — the failure mode is the default
+For both `k=1` and `k>1`, router training is pathological under standard language model loss. As we saw above for `k=1` routing cannot learn at all and remains frozen near its initialization, because there is no gradient. For `k>1`, a gradient exists but the natural equilibrium is *router collapse*. 
 
-With `k>1`, routing left alone can collapse. The dynamic is rich-get-richer: whichever expert is slightly better gets more weight, therefore more task gradient and influence, which can make the router favor it further. The stable end state is one or two overworked experts and a panel of dead ones — you've paid for `E` FFNs and trained something much closer to a dense model. Under this module's renormalized `k=1` rule, the failure is different: without the auxiliary loss the router is effectively frozen near its random initial partition rather than learning a task-driven collapse.
+Router collapse is a classic rich-get-richer scenario. Whichever expert becomes slightly better during training, continues to get more weight. It then gets more gradient and learning, which favors its route even more. Without being addressed the natural end state is one or two overworked experts and a panel of dead ones.
 
-The standard counterweight is an **auxiliary load-balancing loss** added to the training objective (the Switch Transformer form):
+The solution is a supplemental loss function added to the standard training objective. *Auxilliary loss balancing* penalizes uneven distribution of experts across the token distribution:
 
 ```
    f_e  =  fraction of tokens routed to expert e        (hard counts)
@@ -81,11 +97,15 @@ The standard counterweight is an **auxiliary load-balancing loss** added to the 
    L_balance  =  E · Σ_e  f_e · P_e
 ```
 
-This is minimized when routing is uniform (`f_e = P_e = 1/E` for all `e`) and grows as routing concentrates. It's weighted by a small coefficient and added to the language-modeling loss. The coefficient is a genuine tension, not a nuisance parameter: in Exercise 4's `k=2` model, too low permits concentration while too high can force routing toward uniformity and crowd out useful specialization. Exercise 4 has you watch both ends.
+This is minimized when routing is uniform (`f_e = P_e = 1/E` for all `e`) and grows as routing concentrates. Critically, this penalty is differentiable, and therefore restores a gradient even for `k=1`.
+
+Auxiliary loss is weighted by a small coefficient and added to the language-modeling loss. The coefficient is a genuine tension, not a nuisance parameter. Too low permits concentration. Too high can force routing toward uniformity and crowd out useful specialization. Like all hyper parameter selections, the best approach is an active sweep based on empirical data.
 
 ### Counting total vs active
 
-Module 12's block accounting, extended one line. A dense block is `≈ 12·D²`: 4·D² of attention, 8·D² of FFN. In an MoE block, only the FFN part multiplies:
+Let's revisit the param accounting from the scaling lessons in Module 12. As you recall, for a transformer block, with `D` embedding dimension, in each layer you have `≈ 12·D²` parameters.  That breaks down to `4·D²` of attention, and `8·D²` of FFN. 
+
+In an MoE block, the attention component remains the same. But with `E` number of experts you now have `E` number of FFNs, each with `8·D²` parameters. (Add in a small number of parameters for the router, but it's usually de minims.) 
 
 ```
    dense block:    4·D² (attn)  +  8·D² (FFN)              ≈ 12·D²
@@ -95,14 +115,16 @@ Module 12's block accounting, extended one line. A dense block is `≈ 12·D²`:
         active ≈   4·D²  +  k·8·D²      ← what one token's forward pass costs
 ```
 
-With this module's default `E = 8, k = 1`, total block parameters grow ~5.7× while active block parameters remain approximately equal to the dense block: one dense FFN has simply become one selected expert of the same width. The routers add a small amount of active work, so the counts are near-matched rather than bit-identical. Scale the same arithmetic up and you can decode a model card: V4-Flash's 284B/13B says its experts are numerous and its `k` is small. Per-token FLOPs usually track the active count much more closely than the total count, while the total count describes the model's available parameter capacity. Routing overhead, memory movement, batching, and hardware still affect real latency and API price.
+With this module's default `E = 8, k = 1`, total block parameters grow ~5.7× while active block parameters remain approximately equal to the dense block. One dense FFN has simply become one selected expert of the same width. The routers add a small amount of active work, so the counts are near-matched rather than bit-identical. 
 
-### Shared experts and fine-grained slicing
+Scale the same arithmetic up and you can decode any model card. V4-Flash's card at 284B total, 13B active tells us its experts are numerous, and its active count is small. FLOPs track the active count much more closely than the total count. Total count conveys the model's parameter capacity. This is an approximate picture. Routing overhead, memory movement, batching, and hardware still affect real latency and API price.
 
-Two refinements from the DeepSeek lineage that recur across model families, worth recognizing by shape:
+### MoE refinements in practice
 
-* **Shared experts** — one or two experts that *every* token goes through, alongside the routed ones. They soak up the common-to-all-tokens computation so the routed experts can specialize harder.
-* **Fine-grained experts** — instead of 8 large experts choose 64 small ones (same total parameters) and route to more of them. Finer routing granularity, better specialization; this is how you get to Kimi K3's "16 of 896."
+There are two additional refinements (both from the DeepSeek lineage) that commonly accompany MoE models. They're worth recognizing by shape:
+
+* **Shared experts** — One or two universal experts that *every* token goes through, in addition to the specialized routed ones. They soak up the common token computation, which enables the routed experts to specialize harder.
+* **Fine-grained experts** — Basically just using a larger number of smaller experts for a constant param size. Instead of 8 large experts choose 64 small ones and route to more of them on each pass. Finer routing granularity, better specialization. This is how you get to Kimi K3's "16 of 896."
 
 Both are one-paragraph ideas once the base mechanism is built. Neither changes the scaffold's shape in this module.
 
