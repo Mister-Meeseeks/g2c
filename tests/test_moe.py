@@ -246,7 +246,8 @@ def test_moe_transformer_lm_forward_and_balance():
     assert logits.shape == (2, 10, 32)
     balance = model.load_balancing_loss()
     assert balance.dim() == 0
-    assert balance.detach().item() >= 1.0 - 1e-4
+    assert torch.isfinite(balance)
+    assert balance.detach().item() > 0
 
 
 def test_moe_block_forward_shape():

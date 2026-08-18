@@ -134,9 +134,10 @@ class MoEFeedForward(Module):
             where `f_e` is the fraction of top-k ASSIGNMENTS that went
             to expert `e` (hard counts, from `last_indices`) and `P_e`
             is the mean router probability for expert `e` (soft scores,
-            from `router.last_probs`). Minimized at exactly 1.0 when
-            both are uniform; grows toward `E` as routing concentrates
-            on one expert.
+            from `router.last_probs`). Uniform routing gives 1.0, while
+            aligned collapse approaches `E`. This surrogate is not
+            bounded below by 1.0 for every finite batch because `f` and
+            `P` can be imperfectly aligned.
 
         Raises:
             RuntimeError: if called before any forward has run.
