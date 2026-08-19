@@ -21,9 +21,9 @@ The required exercises use a deterministic scripted backend. No local model setu
 ---
 ## Where this fits in
 
-The course's agent arc built tools that execute (18), a loop that reasons and acts (19), and an assistant that assembles the system (20). Those short notebook runs can keep state in a Python list and treat failure as an exception. Longer-running systems need an answer to different questions: what reached durable-enough storage before the process died, what should the model see next, what may a tool do, and when must the run stop?
+The course's agent arc built tools that execute in Module 18, a loop that reasons and acts in Module 19, and an assistant that assembles the system in Module 20. Those short notebook runs keep state in a Python list and treat failure as an exception. Longer-running systems need an answer to different questions: What reached durable storage before dying? What should the model see next? What is a tool allowed to do? And when must the run stop?
 
-The evaluated unit is therefore more than model weights:
+The evaluated unit extends beyond just the model weights:
 
 ```
    model + prompt + tools + context policy + workspace
@@ -32,11 +32,11 @@ The evaluated unit is therefore more than model weights:
                          agent
 ```
 
-This module holds the backend fixed and changes the harness so you can see which differences genuinely come from the surrounding system.
+In this module we hold the model itself fixed, and instead focus on the surrounding system. This is so you can see how much . We call that surrounding system the *agent harness*. 
 
 ## The big idea
 
-One design decision organizes the module: **the trajectory is an append-only event log, while context, resume state, and audit output are views of that log.**
+One design decision organizes the module: the trajectory is an append-only event log, while context, resume state, and audit output are views of that log.**
 
 ```
    events.jsonl

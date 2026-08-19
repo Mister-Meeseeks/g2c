@@ -5,7 +5,8 @@
 <!-- TODO(hero pipeline): asset not yet generated -->
 ![The GRPO loop drawn as a circle: one prompt fans out to K sampled completions, a programmatic verifier scores each one, scores become group-relative advantages, and the policy update pushes up above-average completions while a KL leash anchors the model to its frozen reference.](rl/BeyondRL-Hero.png)
 
-Previous modules post-trained models from handwritten or synthetic answers and preference pairs. This module closes a different loop: the model samples its own attempts, a program checks their outcomes, and those rewards update the policy. You will build a small instance of **reinforcement learning with verifiable rewards (RLVR)**, using a simplified GRPO update over LoRA adapters on BaseLM.
+"*Nobody cares what color a cat is as long it catches mice"
+- Deng Xiaoping 
 
 > **This is a Beyond module.** Beyond modules sit outside the numbered course: nothing in Modules 00–20 depends on them, and they are not part of finishing the course. Come here in any order, whenever a model card or paper names the idea and you want the load-bearing version — built, trained, and broken on your own machine.
 
