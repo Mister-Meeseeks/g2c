@@ -23,7 +23,7 @@ The required exercises use a deterministic scripted backend. No local model setu
 
 The course's agent arc built tools that execute in Module 18, a loop that reasons and acts in Module 19, and an assistant that assembles the system in Module 20. Those short notebook runs keep state in a Python list and treat failure as an exception. Longer-running systems need an answer to different questions: What reached durable storage before dying? What should the model see next? What is a tool allowed to do? And when must the run stop?
 
-The evaluated unit extends beyond just the model weights:
+The evaluated unit extends beyond just the model weights. The *agent harness* is the software that wraps everything outside the model, and is built to maximize the effectiveness of the model in terms of agent capabilities, trust and usability. 
 
 ```
    model + prompt + tools + context policy + workspace
@@ -32,11 +32,14 @@ The evaluated unit extends beyond just the model weights:
                          agent
 ```
 
-In this module we hold the model itself fixed, and instead focus on the surrounding system. This is so you can see how much . We call that surrounding system the *agent harness*. 
+
+A guiding principal for agent harness engineering is that LLM inference is expensive, but deterministic software is cheap. At least at the size and scale of LLM input and output. An illustrative example is that a very fast model can generate maybe 500 tokens per second. A high performance JSON parser can process 500 *million* tokens per second. A consumer hard disk can easily store 500 *billion* tokens.
+
+The lesson is that when it comes to any input or output going to or from the LLM, the agent harness should treat logging and indexing it as essentially "free". The deterministic software bends over backwards to accomodate the LLM, because the LLM is almost always the bottleneck. 
 
 ## The big idea
 
-One design decision organizes the module: the trajectory is an append-only event log, while context, resume state, and audit output are views of that log.**
+Most agent harnesses have coalesced around a guiding design decision: the trajectory is represented as an append-only event log. The basic elements of the log are model turns and tool calls. All of the input, output and metadata related to these is generously preserved in the append log. Context, resume state, and audit output become materialized views over the log. 
 
 ```
    events.jsonl
@@ -52,15 +55,21 @@ One design decision organizes the module: the trajectory is an append-only event
           └── audit view: what the harness recorded in order
 ```
 
-Module 19's message list mixed these roles together. Separating “what happened” from “what the model sees” lets the view become lossy without deleting history and lets a new process reconstruct a run without re-executing completed effects.
+The critical principal here is to separate "what the model sees on the next turn" from "the full history of the run". A naive approach would simply be to keep durable state as whatever happens to be in model context. But remember that model context is significantly more expensive than disk storage. 
 
-This is a teaching log, not a database. Its recovery claims assume one writer, an ordinary process crash, and an intact filesystem. It does not fsync each event, recover torn records, coordinate concurrent writers, or survive filesystem loss.
+Long running context is inevitably lossy, but history should not be. Archived turns, completed and abandoned tool calls, metadata around calls, and more can all become essential to reconstruct or analyze a run without having to re-execute previously completed effects.
 
 ### Context is a deterministic policy
 
-If a context buffer grows until it overflows and then drops the oldest text, the task statement is the first important thing to disappear. An agent does not necessarily stop when that happens; it can keep acting on recent observations and drift.
+All models have a context window ceiling. For every single model in existence today, this window is comparatively small. On any serious long-running work stream the harness will have to deal with running out of context. Even outside of that, very long context can result in both expensive inference costs and degraded instruction following. The process agent harnesses use to manage overly long context is *compaction*.
 
-`compact_context` is deliberately modest and testable:
+The simplest compaction strategy is first-in first-out (FIFO). When you reach the buffer window, simply drop the oldest text first. This is often the worst approach because the start of the window contains the most critical information, like general harness context, core task statement, repository rules and similar "headlines".
+
+Compaction strategy should be aware of which content is likely to be persistently important (e.g. task instructions), and which is likely to be ephemerally important (e.g. intermediate tool call results). Recency is also an important factor. Even if it's likely only to be ephemerally important, the last tool call is much more likley to have relevant context for the next model turn than a tool call made 37 turns ago.
+
+Compaction can also involve using LLM intelligence to compress, consolidate or strip data. For example a model might generate a short natural language summary of the important parts of the last 20 turns. Or it might go through tool call outputs and remove purely system level diagnostic data,.
+
+The compaction function we'll build in this module is deliberately modest and testable:
 
 ```
    always preserve verbatim       compact or drop first
@@ -69,13 +78,13 @@ If a context buffer grows until it overflows and then drops the oldest text, the
    the newest event               old narration and actions
 ```
 
-It keeps the task, keeps recent events, shortens old tool output, then drops the oldest remaining middle events if needed. It does **not** claim to discover every constraint, commitment, or open item. Production systems usually represent those separately or use a summarizer with its own evaluation. Exercise 3 runs both policies through a live prompt-sensitive backend, so drift is observed as behavior rather than inferred from two rendered strings.
+It keeps the task, keeps recent events, shortens old tool output, then drops the oldest remaining middle events if needed. It does **not** claim to discover every constraint, commitment, or open item. Production systems usually represent those separately or use a summarizer with its own evaluation.
 
-The trajectory is only one part of the prompt budget. `HarnessAgent` also counts the system prompt and rendered tool schemas and reserves space for the completion. Otherwise adding one verbose tool can overflow a context that the history policy declared safe. This module uses a cheap token estimate; a production harness uses the backend's tokenizer and model-window metadata.
+The trajectory is only one part of the prompt budget. A harness also has to leave room for system prompt, rendered tool schemas and reserves space for the next completion. Without adequately buffered reserve space, one verbose tool can overflow a context. This module uses a cheap token estimate; a production harness uses the backend's tokenizer and model-window metadata.
 
 ### Rules are resolved instructions, not trajectory history
 
-A coding harness usually assembles instructions from more than the task: system policy, repository rules such as `AGENTS.md`, narrower directory rules, current user constraints, and permissions may all apply. Discovery, scope, and precedence must be deterministic. Once resolved, this instruction layer stays separate from compactable history:
+A coding harness assembles instructions from more than just the task prompt. System policy, repository rules such as `AGENTS.md`, narrower directory rules, current user constraints, and permissions may all apply. Discovery, scope, and precedence must be deterministic. Once resolved, this instruction layer stays separate from the compactable history:
 
 ```
    retain as resolved instructions       compact as trajectory
@@ -86,14 +95,14 @@ A coding harness usually assembles instructions from more than the task: system 
    current permissions
 ```
 
-The event log should record the resolved rule paths and content hashes—or a safe snapshot—so resume can detect that its operating instructions changed. This module does not implement an `AGENTS.md` filesystem resolver because file naming and precedence are product conventions. The invariant is general: compaction must not silently discard applicable instructions.
+The event log should always record resolved rule paths and content hashes so the harness can detect when the operating instructions have changed. This module does not implement an `AGENTS.md` filesystem resolver because file naming and precedence vary between product conventions. However the invariant is general: compaction must never silently discard core instructions.
 
-### An unresolved tool call has an unknown outcome
+### Unresolved tool calls
 
-The dangerous interval is between executing a side effect and logging its result:
+With agent tool calls, the most dangerous interval is between executing a side effect and logging its result:
 
 ```
-   log tool_call(c3) ──► execute ──► log tool_result(c3)
+   log tool_call(call_id) ──► execute ──► log tool_result(call_id)
                     ▲              ▲
                     │              └─ crash: effect may have landed
                     └─ crash: effect may not have begun
@@ -101,41 +110,54 @@ The dangerous interval is between executing a side effect and logging its result
    after restart, both worlds look identical: call without result
 ```
 
-A call id solves one important case: if `tool_result(c3)` exists, replay returns that result without executing the tool again. The id must remain bound to the same tool and arguments; reusing it for a different operation is an invariant violation, not a cache hit. It cannot tell whether a call with no result ran. This runner therefore takes a conservative posture: it records `unknown_outcome_after_crash`, refuses a blind re-execution, and asks the agent to reconcile workspace state.
+`call_id` solves one critical case: if `tool_result(call_id)` exists, replay returns that result without executing the tool again. The id must remain bound to the same tool and arguments; reusing it ever for a different operation is an invariant violation. It cannot tell whether a call with no result ran. This runner therefore takes a conservative posture: it records `unknown_outcome_after_crash`, refuses a blind re-execution, and asks the agent to reconcile workspace state.
 
 That is not exactly-once execution. Exactly-once effects require cooperation below the harness: a tool-level idempotency key, a transaction coupling effect and record, or operation-specific reconciliation. The crash drill constructs both possible worlds behind the same unresolved log so the ambiguity is impossible to wave away.
 
 ### Permissions are policy, not containment
 
-The runner's `ALLOW` / `ASK` / `DENY` table makes authorization explicit and auditable. `ASK` means a matching approval was already written to the log; this module does not build an interactive approval UI. The teaching runner defaults unlisted tools to `ALLOW` so the early drills stay small. A consequential production harness normally fails closed, grants the least capability needed, and binds approval to the exact operation, actor, and lifetime.
+The runner's `ALLOW` / `ASK` / `DENY` table makes authorization explicit and auditable. `ASK` means a matching approval was already written to the log (this module does not build an interactive approval UI). The teaching runner defaults unlisted tools to `ALLOW` so the early drills stay small. A consequential production harness normally fails on closed, grants the least capability needed, and binds approval to the exact operation, actor, and lifetime.
 
-The table is **not a sandbox**. A Python tool still has the process's filesystem, network, and credential access. A malicious or buggy tool can bypass a harness convention. Real containment requires an OS, container, or VM boundary plus explicit network and secret controls.
+A permission table is **not a sandbox**. A Python tool still has the process's filesystem, network, and credential access. A malicious or buggy tool can bypass a harness convention. Real containment requires an OS, container, or VM boundary plus explicit network and secret controls.
 
 ### Tool output is untrusted data
 
-A webpage, file, issue, or tool response can contain text that tells the model to ignore its task or take a consequential action. Rendering that text as an `Observation` does not give it authority. A robust harness preserves provenance, separates instructions from external content, limits tool capabilities, validates consequential actions against deterministic policy, and evaluates adversarial observations. These are layered defenses, not a claim that prompt injection has been solved.
+Any tool response, webpage, file, or query result may potentially contain text with malicious instructions. Rendering that text with an `Observation` tag does not make it automatically safe. A robust harness preserves provenance, separates instructions from external content, limits tool capabilities, validates consequential actions against deterministic policy, and evaluates adversarial observations. 
+
+These measures are about layered defense in depth. Think of stacking sliced swiss cheese. Enough slices and there's a low probability a hole passes through the whole stack.  There is no silver bullet that guarantees absolute safety. 
 
 ### Classify failures before retrying
 
-Transient failures can change when the world changes: a timeout or busy resource may succeed on a bounded retry. Deterministic failures require the request to change: retrying the same missing path or malformed arguments only makes the failure slower. `classify_failure` is a small visible substring policy for this lesson, not a production error taxonomy.
+*Transient failures* are failures that may change just because the external world changes. 
+A timeout or busy resource may succeed on a bounded retry even with the same request that previously failed. *Deterministic failures* require the request to change: retrying the same missing path or malformed arguments only makes the failure slower. In this lesson we use a small visible substring policy, not a production error taxonomy.
 
-Repeat and step budgets complete the implemented safety story. They are properties of the run, so resume reconstructs consumed steps and repeat history from the log rather than granting a fresh allowance. They do not make a task succeed; they turn runaway behavior into a named stop reason that can be inspected and, with an explicitly enlarged budget, resumed deliberately.
+*Repeat budgets* and *step budgets* close out the safety story. They are properties of the run, so resume always reconstructs steps and repeat history from the log (rather than granting a refreshed budget on resume). Repeat and step budgets do not work by helping a task to succeed. They mitigate blast radius by turning runaway behavior into a named stop reason. A stop reason that can be inspected and, with an explicitly enlarged budget, resumed deliberately.
 
-Production resource bounds also include wall-clock deadlines, cancellation propagation, tool timeouts, token or cost ceilings, and sometimes per-tool call limits. Those controls are named here but not added to the exercise API.
+Beyond step and repeat budgets, *resource bounds* in production include a menagerie of wall-clock deadlines, cancellation propagation, tool timeouts, token or cost ceilings, and per-tool call limits. Those controls are named here but not added to the exercise API. LLM behavior is unpredictable, and with any complex task failure, often in unexpected ways is inevitable. Be prepared to handle gracefully. 
 
 ### Resume and replay
 
-For the process-crash case in scope, resume replays complete events, turns unresolved calls into explicit unknown-outcome results, reconstructs remaining budgets, and re-enters the loop. It never replays tool side effects. Hidden service state, torn JSONL records, storage loss, or concurrent writers are outside this implementation's durability boundary.
+*Resume* is the process of continuing a previously interrupted run from something close to the state it was in when interrupted. Resume replays the complete event history, turns any pending calls into explicit unknown-outcome failures, reconstructs remaining budgets for the run, then re-enters the agent loop. Resume should **never** replay previous tool side effects, unless absolutely known to be idempotent. 
+
+Resume must also be prepared to handle lower level system issues around durability, including hidden service state, torn JSONL records, storage loss, and concurrent writers. These are easy to forget because they happen just infrequently enough. Like any system with durable state, a production system must have contingencies for handling corrupted storage. 
+
+The good news is because LLM input and output is smalll, slow and high latency. The durability layer has a lot of margin to afford generous repair, replication, staging, safety checks and concurrency handling. A harness has much lower performance SLAs than something like a database, and that means the durability solutions that fit in those SLAs are often simpler.
 
 ### State records and telemetry answer different questions
 
-The event log reconstructs what the run did. Operational telemetry helps explain how it behaved across runs: run and correlation ids, timestamps and latency, backend/model/tool versions, configuration, token use, retries, and stop reasons. Prompts, tool arguments, and results may contain secrets or personal data, so observability also needs redaction, access control, and retention rules. This lesson keeps the causal log small and does not implement a telemetry backend.
+The event log is what reconstructs what the run did. *Operational telemetry* explains its behavior across runs: run and correlation ids, timestamps and latency, backend/model/tool versions, configuration, token use, retries, and stop reasons. 
 
-### The controlled comparison
+One thing to keep in mind is that *secrets* and personal data have a way of leaking into prompts, tool calls, and retrieval queries. So observability in production also needs to consider redaction, access control, and retention rules.
 
-Exercise 5 compares Module 19's loop with `HarnessAgent` while holding the scripted backend, task, tools, step budget, and injected fault schedule fixed. Scenarios cover a clean run, transient failure, backend crash, context pressure, repetition, and permission denial. Exact workspace verifiers—not the mere presence of `Final Answer`—score success. The table reports success, model calls, tool executions, process resumes, tool retries, duplicate effects, and stop reason.
+### Harness evals
 
-The clean row may show no difference; that is a useful control. Faulted rows reveal which guarantees each harness actually supplies. Exercise 6 optionally repeats a small subset with one ProdLM. A production-strength model is the useful transfer check because a much weaker local model can fail basic tool formatting so often that model incapability swamps any harness effect. A second ProdLM is stretch work, not a requirement.
+In Module 15 we learned how to build evaluations to measure model behavior. This is necessary for comparing models in any objective way. Without this decisions in model training and selection reduce to low confidence vibes. The same principals apply to *harness evals*. Even with identical models, the decisions we make about context engineering, tool call policy, step budget and the like can have material impacts on agent performance. 
+
+Like model evals, harness evals should be of moderately sufficient difficulty relative to underlying capabilities. An eval that's so hard that nothing passes or an eval that fully saturates, gives us no information. Like model evals, harness evals should carefully consider objective metrics for measuring pass rate, but carefully consider ways the objective can be gated. Human review of solutions is always a necessity in eval design.
+
+Contrasted to model evals, harness evals lean much more heavy on long running, multi-turn agentic tasks. The best and worst harness are going to make very little difference if the prompt is a simple query response like "what's the third largest city in Norway?". But for tasks like "migrate this running database with no downtime or dataloss", harness engineering can have dramatic impact even on the same model. 
+
+One thing to be aware of, especially with modern models, is that models are increasingly post trained on agentic workflows, which by definition need to run in an agent harness. As these tasks get more complex models become increasingly optimized for harnesses that specifically look like their training environment. It's not surprising that Opus runs better in Claude Code than Codex. Be aware that it's often difficult to evaluate a model or a harness in isolation, because of synergies from agentic post trainng. 
 
 ## Concepts to internalize
 
