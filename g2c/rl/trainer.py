@@ -6,10 +6,11 @@ the four pieces together in the right order — fresh samples, group
 rewards, advantages, masked log-probs, the leash — IS the lesson.
 
 Compared to `SFTTrainer` (Module 13), one structural difference
-matters: there is no dataset. Each step MANUFACTURES its batch by
-sampling from the current model. Generation therefore dominates the
-wall-clock, and stale samples are not an optimization — they break the
-estimator. Sample fresh, every step.
+matters: there is no fixed dataset of target completions. Each step
+manufactures its rollout batch by sampling from the current model.
+Generation therefore dominates the wall-clock, and stale samples are
+not an optimization—they break this on-policy estimator. Sample fresh,
+every step.
 """
 from __future__ import annotations
 

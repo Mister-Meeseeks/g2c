@@ -77,7 +77,7 @@ If these are familiar but rusty, start with [Module 0: Prerequisite review](modu
 | II | Behavior shaping | 12–15 | Scaling → SFT → LoRA → DPO → eval |
 | II | Assistant systems | 16–20 | Pretrained inference → synthetic data → RAG → tools → agents → capstone |
 
-**Beyond the numbered course:** standalone modules on the mechanisms behind current model cards — [mixture of experts](beyond/moe.md), [linear attention](beyond/linear-attention.md), [RL for LLMs](beyond/rl.md), [multimodal models](beyond/multimodal.md), [agent harness engineering](beyond/harness.md), [midtraining](beyond/midtraining.md), [speculative decoding](beyond/specdec.md), and [Muon](beyond/muon.md). Take them in any order; nothing in Modules 00–20 depends on them.
+**Beyond the numbered course:** standalone modules on the mechanisms behind current model cards — [mixture of experts](beyond/moe.md), [linear attention](beyond/linear-attention.md), [RLVR with GRPO](beyond/rl.md), [multimodal models](beyond/multimodal.md), [agent harness engineering](beyond/harness.md), [midtraining](beyond/midtraining.md), [speculative decoding](beyond/specdec.md), and [Muon](beyond/muon.md). Take them in any order; nothing in Modules 00–20 depends on them.
 
 **G2C Briefs:** dated field guides that use the course to decode current releases without turning each release into another module. Start with [DeepSeek V4](briefs/deepseek-v4.md), or read [the Brief contract](briefs/index.md).
 

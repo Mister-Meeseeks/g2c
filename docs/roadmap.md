@@ -22,7 +22,7 @@ Shipped:
 
 - [Mixture of experts](beyond/moe.md)
 - [Linear attention and efficient sequence models](beyond/linear-attention.md)
-- [Reinforcement learning for LLMs](beyond/rl.md)
+- [RLVR with GRPO](beyond/rl.md)
 - [Multimodal language models](beyond/multimodal.md)
 - [Agent harness engineering](beyond/harness.md)
 - [Midtraining](beyond/midtraining.md)

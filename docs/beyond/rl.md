@@ -1,11 +1,11 @@
-# Beyond — Reinforcement learning
+# Beyond — RLVR with GRPO
 
-> **Question this module answers:** *How does a model get better at problems where you can check the answer but not write it?*
+> **Question this module answers:** *How can a model learn when checking an outcome is easier than writing the ideal trajectory?*
 
 <!-- TODO(hero pipeline): asset not yet generated -->
 ![The GRPO loop drawn as a circle: one prompt fans out to K sampled completions, a programmatic verifier scores each one, scores become group-relative advantages, and the policy update pushes up above-average completions while a KL leash anchors the model to its frozen reference.](rl/BeyondRL-Hero.png)
 
-In previous modules we learned how to post-train a model based on hand written or synthetic answers. But in many cases, especially with agents and tools, we don't care about specific answers as much as objective outcomes. 
+Previous modules post-trained models from handwritten or synthetic answers and preference pairs. This module closes a different loop: the model samples its own attempts, a program checks their outcomes, and those rewards update the policy. You will build a small instance of **reinforcement learning with verifiable rewards (RLVR)**, using a simplified GRPO update over LoRA adapters on BaseLM.
 
 > **This is a Beyond module.** Beyond modules sit outside the numbered course: nothing in Modules 00–20 depends on them, and they are not part of finishing the course. Come here in any order, whenever a model card or paper names the idea and you want the load-bearing version — built, trained, and broken on your own machine.
 
@@ -28,23 +28,27 @@ In previous modules we learned how to post-train a model based on hand written o
 ---
 ## Where this fits in
 
-Every training signal in the course so far has been *supervised*. The data already contained the right answer. The loss merely measured distance from token to token. That works exactly as far as someone can write the answers down. 
+Every training objective in the course so far has operated on fixed examples prepared before the update: target tokens for SFT or chosen/rejected pairs for DPO. That works when someone can provide the behavior to imitate or compare.
 
 It fails for the problems we most want models to solve — long derivations, working code, multi-step tool use — where checking an answer is easy but authoring the ideal token sequence is not. When we care more about function than form, this is also where the model's *own* best path to an answer may look nothing like a human demonstration.
 
-*Reinforcement learning (RL)* inverts this data flow. Instead of training against pre-formulated answers, the model outputs repeatedly samples its own attempt. An external *scorer* returns a numeric *reward* for each attempt. Training updates the weights to make high-scoring attempts more likely. 
+Online reinforcement learning changes the data flow. The current model repeatedly samples attempts, an external scorer returns a numeric *reward*, and training updates the policy to make higher-reward behavior more likely.
 
-In previous eras RL primarily referred to *reinforcement learning from human feedback (RLHF)*. Because of issues with reward hacking on subjecting judgement, RLHF was largely replaced with DPO, which we covered in Module 14. DPO is offline, no sampling loop, no explicit scorer. Explicitly avoiding reinforcement learning by design. 
+Keep three axes separate:
 
-In most LLM contexts today, and for the rest of the module, RL will refer to *reinfocement learning from verifiable rewards (RLVR)*. RLVR uses a *programmatic* verifier, which scores rewards based off deterministic logic rather than subjective judgement. With RLVR, the demo examples are gone and so is the human judge, only a grader function remains. 
+- **Feedback source:** human preferences, a learned reward model, a heuristic, or a verifiable outcome.
+- **Data collection:** fixed offline examples or fresh online rollouts.
+- **Optimization method:** DPO, PPO, GRPO, REINFORCE-style updates, and others.
+
+Module 14's DPO directly optimized a fixed preference dataset without an explicit reward model or online RL loop. RLHF pipelines may instead learn a reward model from human or AI preferences and optimize it with PPO or another RL method. RLVR names the reward source used here: an auditable verifier such as an answer checker, compiler, test suite, or environment-state check. These approaches coexist and can appear in different stages of the same post-training recipe.
 
 ## The big idea
 
-The core of reinforcement learning is a *policy* object which updates with training. In the case of LLMs, the policy is the model itself. Repeated *rollouts* generate *trajectories* of output completions from pre-specified prompts. The *verifier* is a deterministic program that returns a reward based off the trajectory.
+The core object in reinforcement learning is the *policy* being updated. For an LLM, the policy is the model's distribution over the next token. Repeated *rollouts* generate trajectories from task prompts, and a *verifier* derives a reward from each completed trajectory or its resulting environment state.
 
-The job of the *training algorithm* is to convert rewards into policy updates. For LLMs specifically, which always train based off gradient descent, the operative decision is how to convert rewards to *advantages* which are applied to gradient updates. 
+The training algorithm converts those rewards into gradient updates. A central intermediate quantity is the *advantage*: how much better or worse an attempt was than an appropriate baseline.
 
-The central way this is done today, and what we'll spend the rest of the module covering, is *group relative policy optimization (GRPO)*. Instead of trying to model or fit activations, GRPO simply asks "how did this rollout do compared to all previous attempts on the prompt?"
+This module uses *group relative policy optimization (GRPO)* as its concrete method. GRPO avoids a learned value model by asking: “how did this rollout score relative to the other rollouts sampled for the same prompt?” The implementation exposes that group-relative core; it is one important RLVR optimizer, not the definition of RLVR itself.
 
 The whole loop, which you'll implement piece by piece:
 
@@ -53,26 +57,22 @@ The whole loop, which you'll implement piece by piece:
           │
           ▼
    sample K completions          Module 11's sampler, temperature = 1
-          │                           (the model writes its own training data)
+          │                      (the model writes its own training data)
           ▼
-   verify each one               r_i = a 
-          |                           (a program's score — not a label,
-          │                            not a human, not another model)
+   verify each one               r_i = verifier(task, completion_i)
+          │                      (an auditable outcome score)
           ▼
    group-relative advantages     A_i = (r_i − mean(r)) / std(r)
-          │                        ("was this attempt better than my
-          |                          other attempts at the same prompt?")
-          ▼                     
-   policy update                 push log p(completion_i):  
-          |                        up   + KL leash   where A_i > 0
-          |                        down + KL leash   where A_i < 0
-          │                      
+          │                      ("was this attempt better than the
+          ▼                        other attempts for this prompt?")
+   policy update                 raise log p(completion_i) where A_i > 0,
+          │                      lower it where A_i < 0, plus a KL leash
           └───────────► repeat, always with FRESH samples
 ```
 
 Four ideas carry it: 1) rewards instead of labels; 2) the policy gradient; 3) the group as a baseline; and 4) the KL leash (the same regularizer we covered in Module 14). Each gets a section, but each is small and simple in isolation.
 
-This implementation is stripped down to the core of GRPO. Full GRPO recipes also tend to use old-policy likelihood ratios, clippings, and often multiple optimization passes across a rollout batch. Those stability mechanisms matter at scale, but complicate the core machinery behind RL. The notebook and code therefore call this a *simplified GRPO loop* rather than claiming to reproduce a production trainer.
+This implementation is stripped down to the group-relative REINFORCE core of GRPO. Full GRPO recipes use old-policy likelihood ratios, clipping, and often multiple optimization passes across a rollout batch. Those stability mechanisms matter at scale but would complicate the estimator this module is trying to expose. The notebook and code therefore call this a *simplified GRPO loop* rather than claiming to reproduce a production trainer.
 
 ### Rewards instead of labels
 
@@ -84,27 +84,27 @@ A supervised example specifies every token in the answer to each example. A rewa
                                         verifier returns 1.0 or 0.0
 ```
 
-Reinforcement learning relies on *verifiable rewards*. That means deterministic *scoring programs*. This scorer in this module's notebook is a simple program: check the output contains valid JSON, look for the the required key, parse the final answer, then compare to the true sum. No learned reward model and no human preference data. That restriction keeps the module's failures legible: when training goes weird, the reward function is twenty lines you can read.
+RLVR relies on *verifiable rewards*: scores derived by an auditable procedure from the attempt or resulting state. The notebook uses small deterministic programs—parse a final answer or check for valid JSON with a required key. Other verifiers may run compilers, test suites, proof checkers, or reproducible environment checks. No learned reward model or human preference data is used in this exercise, which keeps its failures legible: when training goes weird, the reward function is twenty lines you can read.
 
-The deeper point: **the verifier is a specification, and the model is a specification-gap-finding machine.** You are not scoring what you meant; you are scoring what you spec'd.
+The deeper point: **the verifier is a specification, and the model is a specification-gap-finding machine.** You are not scoring what you meant; you are scoring what you specified.
 
 The arithmetic verifier is an *outcome reward*: it scores the completed attempt but says nothing about how intermediate choices helped. A *process reward* by contrast scores selected intermediate reasoning steps, tool actions, or state transitions. This exposes denser credit on long trajectories. That can ease credit assignment and create a more recoverable learning signal, but only if those intermediate judgments are themselves reliable. A flawed process grader can create "traps" that optimize against the wrong specification. This module stays with outcome rewards.
 
 ### The policy gradient in one line
 
-How do you differentiate "make good attempts" when sampling isn't differentiable? That's The REINFORCE identity:
+How do you differentiate “make good attempts more likely” when sampling is not differentiable? The REINFORCE identity is:
 
 ```
    ∇ E[reward]  =  E[ reward · ∇ log p(completion) ]
 ```
 
-Read it right-to-left: take the gradient that would make this completion more likely (`∇ log p` — a quantity you already know how to compute from Module 13), and scale it by this completion's reward. Good attempt → pull toward it, exactly like an SFT step on self-generated data. Bad attempt → push away. No gradient ever flows through the sampler; the reward is a scalar multiplier on a supervised-shaped gradient.
+Read it right-to-left: take the gradient that would make this completion more likely (`∇ log p`—a quantity you already know how to compute from Module 13) and scale it by the completion's reward. A positive raw reward pulls toward the sampled completion; a zero reward contributes no raw policy-gradient update. No gradient flows through the sampler.
 
-Raw REINFORCE is valid but often high-variance. A positive reward on every attempt makes it hard to distinguish the behavior that unusually useful for this prompt. An action-independent **baseline** can reduce that variance without changing the expected policy gradient. GRPO turns that idea into a practical estimator by centering and scaling the sampled rewards together. The resulting sampled update reinforces better-than-group-average attempts while suppressing worse ones.
+Raw REINFORCE is valid but often high-variance. An action-independent **baseline** can reduce that variance without changing the expected policy gradient. GRPO builds a practical sampled estimator by centering and scaling rewards within the same-prompt group. Above-average attempts receive positive advantages and are reinforced; below-average attempts receive negative advantages and are pushed away. That is where a binary failure can produce a downward update even though its raw reward was zero.
 
 ### GRPO: the group is the baseline
 
-Prior to GRPO, the most common RL algorithm was PPO. This works by using a second neural network (a value model) to learn expected *baselines*. Policy advantages are calculated as realized rewards minus expected baselines. This rewards not just high scores, but high scores in places where low scores are the norm. GRPO replaces the value model with the just the average score for other samples on the same prompt:
+PPO-style LLM training commonly uses a second neural network—a value model—to estimate expected returns. Advantages compare realized returns with that learned baseline, and PPO clips policy updates for stability. GRPO removes the learned value model and estimates relative performance from the scores of other samples for the same prompt:
 
 ```
    rewards for one prompt's group:   r = [1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0]
@@ -118,7 +118,7 @@ The advantage `A_i` asks: *was this attempt better than other attempts on the sa
 
 One degenerate case is load-bearing. If all K rewards are equal (all failed, or all succeeded), the group carries no information. `std = 0`, the advantage is undefined, and no learning signal exists. The correct move is to skip that group.
 
-This exposes the *exploration boundary* of verifier-based RL. A verifier is only useful when the current policy actually sees different reward outcomes. RL cannot reinforce a solution that never appears in its rollouts. Prompting, task difficulty, curriculum, sampling, and group size therefore all factor into whether a verifier produces a learning signal at all. 
+This exposes the *exploration boundary* of verifier-based RL. A verifier is only useful when the current policy actually sees different reward outcomes. RL cannot reinforce a solution that never appears in its rollouts. Prompting, task difficulty, curriculum, sampling, and group size therefore all factor into whether a verifier produces a learning signal at all.
 
 To complete the training gradient, the policy activation has to be translated back into per-token loss. This is just `−A_i · log p(token)` summed **over completion tokens only**. The same loss mask we learned in Module 13.
 
@@ -130,7 +130,7 @@ Reward optimization can trade away useful behavior that's not explicitly scored.
    loss = − A_i · log p_θ(completion)  +  β · KL( p_θ ‖ p_ref )
 ```
 
-`β` sets the leash length. Too tight can suppress learning. Too loose permits drift. The reference model anchors the previously learned behavior. 
+`β` sets the leash length. Too tight can suppress learning. Too loose permits drift. The reference model anchors the previously learned behavior.
 
 Our implementation applies the nonnegative KL estimator to **summed** completion log-probabilities. That makes it a trajectory-level, length-sensitive teaching approximation. Production GRPO more commonly computes the estimate per token and then chooses how to aggregate across response tokens. That choice is part of the response-length story.
 
@@ -138,17 +138,17 @@ It's important to be aware that KL and entropy answer different diagnostic quest
 
 ### Reward hacking
 
-Reward hacking is not the model cheating — it is the model finding behavior that scores well under the objective you actually wrote. A flawed reward can rise while the intended behavior does not
+Reward hacking is not the model cheating—it is the model finding behavior that scores well under the objective you actually wrote. A flawed reward can rise while the intended behavior does not.
 
-If you test if the answer to an arithmetic question appears anywhere in the output, the model might learn to emit hundreds of numbers to maximize its chances. If you reward concise answers, the model might output empty strings. If you reward an answer that's known to exists, the model might break out of its sandbox to search the Internet. Sometimes reward hacking can become literal hacking. 
+If you test whether an arithmetic answer appears anywhere in the output, the model might learn to emit many numbers to maximize its chances. If you reward concision carelessly, it might emit an empty string. If the answer is available outside the intended environment, a capable agent might seek that shortcut instead of solving the task. In sufficiently permissive environments, reward hacking can become literal hacking.
 
 The lesson in RL is central: the reward curve is just a claim. The real evidence is always independent evaluation.
 
-### RLVR in Agent Environments
+### RLVR in agent environments
 
-In the modern period, the behavior we want from LLMs is increasingly agent based. As we learned in Module 19, models can be adapted to not only answer prompts, but to act as *agents* that with an external environment.
+Many useful LLM behaviors are agentic. As Module 19 showed, the model does not merely answer once: it selects actions, receives observations, and continues interacting with an environment.
 
-This is the same machinery as vanilla RLVR. The fundamental shift is *environment RL* is where the verifier cares scores the agent environment, rather than the correctness of a response. For example in vanilla RLVR, we might pose a math problem, generate 8 solutions, and grade responses for accuracy. But in environment RL, we might run an agent 8 times in a test environment, then check whether all the unit tests pass. 
+The same RLVR machinery applies when the verifiable outcome lives in that environment. A single-turn math rollout might be scored by its final answer; a coding-agent rollout might be scored by the repository state and test results after the interaction. The reward is still verifiable, but the trajectory now includes many model actions and environment transitions.
 
 The biggest practical challenge for agentic workloads is that the trajectories tend to be multi-turn, highly tool dependent and extremely long. For example a trajectory for a coding agent could look like:
 
@@ -176,22 +176,22 @@ ENV: all pass
 reward = 1
 ```
 
-The **entire interaction history** is now the rollout. That's why papers often distinguish agentic RL from ordinary single-turn RLVR even when the final reward is perfectly verifiable. Software-agent work, for example, uses unit tests as rewards but finds naive RLVR difficult because successful terminal rewards are extremely sparse over long multi-step trajectories. The interesting question is what counts as the trajectory whose log probability you're optimizing.
+The **entire interaction history** is now the rollout, but not every token in it is an action. Only tokens emitted by the policy—its messages, tool calls, or other actions—contribute log-probabilities to the policy-gradient loss. Tool results and environment observations condition later actions but must be masked out, just as prompt tokens are masked out in `completion_log_prob`.
 
-There might be 50 decisions over half an hour of simulated interaction. Perhaps action #7 was brilliant, action #19 was useless, action #31 nearly ruined the solution, and action #44 rescued it. Yet terminal reward gives you `R=1.0` for everything.
+An agentic rollout may contain 50 decisions. Perhaps action 7 was brilliant, action 19 was useless, action 31 nearly ruined the solution, and action 44 rescued it. A simple terminal-reward estimator nevertheless assigns the same final return to every policy action in that successful trajectory.
 
-That's why current agent RL research spends so much effort on denser rewards, process rewards, subgoal rewards, trajectory segmentation, search, curriculum/guidance, and improved credit assignment. Recent work explicitly describes sparse outcome rewards as a key obstacle for multi-turn agents.
+That long credit-assignment path motivates denser rewards, process or subgoal rewards, trajectory segmentation, search, curricula, and other guidance. This module establishes the connection but implements only short, single-turn outcome rewards.
 
 ### On-policy, and why DPO was the offline cousin
 
 The plain estimator above assumes samples from the **same current policy whose log-probabilities appear in the update**. Reusing older rollouts requires importance ratios and the controls that this simplified implementation omits. Changing sampling temperature also changes the behavior policy; this module fixes it at `1.0` so untempered generation and rescoring match. The notebook resamples every step, and generation therefore dominates its wall-clock.
 
-It also places Module 14 precisely: DPO learns offline from a *fixed* set of preference pairs, with no fresh rollout-and-verifier loop. It is cheaper and more stable, but bounded by the comparisons in that dataset. This module pays the sampling cost to generate new attempts under the current policy. DPO and online RL are different objectives, not algebraic versions of one another, but the online/offline contrast explains much of their practical tradeoff.
+This also places Module 14 precisely: DPO learns from a *fixed* set of preference pairs, with no fresh rollout-and-verifier loop during optimization. It avoids the generation cost and instability of an online policy-gradient loop but is bounded by the comparisons present in its dataset. DPO and online RL are different objectives, not algebraic versions of one another; the online/offline contrast explains much of their practical tradeoff.
 
 ## Concepts to internalize
 
-- **RL trains against a grader, not a corpus.** Checkable behavior is potentially trainable when exploration produces reward variation — that inversion is the capability unlock and the safety hazard in one move.
-- **The policy gradient is SFT on self-generated data, scaled by advantage.** `∇ log p` is a gradient you've computed since Module 13; the reward decides its sign and size.
+- **RLVR trains against an auditable outcome signal.** Checkable behavior is potentially trainable when exploration produces reward variation—that inversion is the capability unlock and the safety hazard in one move.
+- **The policy gradient resembles SFT on self-generated data, scaled by advantage.** `∇ log p` is a gradient you've computed since Module 13; the advantage decides its sign and size.
 - **The group baseline is the "relative to what?"** Centering rewards reduces variance and turns the sampled update into better-versus-worse contrast. Degenerate groups (all same reward) carry zero relative signal — skip them.
 - **Outcome rewards leave credit assignment to exploration.** Process rewards can make the signal denser, but require trustworthy intermediate judgments.
 - **The KL leash limits unscored drift.** The reference checkpoint anchors prior behavior while the reward pulls on the measured behavior.
@@ -207,8 +207,8 @@ It also places Module 14 precisely: DPO learns offline from a *fixed* set of pre
 - **Process supervision.** Step-level rewards can improve credit assignment on long solutions, but building a reliable process grader is a separate data and evaluation problem.
 - **Response-length corrections.** Summing versus averaging token objectives changes how response length affects an update, and GRPO variants make different normalization choices. The short capped completions here keep that issue visible in the trajectory-level KL without turning it into another implementation branch.
 - **Entropy regularization.** The trainer reports sampled entropy as a diagnostic but does not add an entropy bonus or adapt sampling pressure during training.
-- **Agentic / long-horizon RL.** The frontier version runs this same loop inside tool-using environments over thousands-of-token trajectories with checkpointed sandboxes. The loop you build is the same shape; the environment infrastructure is not laptop-shaped and is exactly what the frontier reports spend their pages on.
-- **Test-time reasoning budgets.** Effort levels, budget forcing, and "thinking" modes are a decoding-and-training co-design built on top of RL'd models; they need this module but don't fit in it.
+- **An agentic / long-horizon RL implementation.** We connect the action mask and credit-assignment problem conceptually, but do not build checkpointed environments or train over multi-turn tool trajectories.
+- **Test-time reasoning budgets.** Effort levels, budget forcing, and “thinking” modes are a decoding-and-training co-design built on top of RL-trained models; they need this module but do not fit in it.
 
 ---
 ## What you'll build
@@ -335,6 +335,7 @@ Optional:
 - [ ] All tests in `tests/test_rl.py` pass.
 - [ ] Notebook: LoRA trainable-parameter count; held-out generated pass rates for the format smoke test and main arithmetic run; reward, KL, sampled-entropy, and skip diagnostics; generated samples.
 - [ ] Sloppy-verifier experiment scored by both sloppy and final-answer held-out verifiers, with a written account of what the finite run found or failed to find and how to close the specification gap.
-- [ ] You can explain — out loud, without notes — why RL needs only a verifier where SFT needs an answer, and what that inversion unlocks.
+- [ ] You can separate feedback source, online/offline data collection, and optimization method—and explain why RLVR and GRPO are not synonyms.
+- [ ] You can explain why RLVR can learn from an outcome verifier where SFT needs a target sequence, and what that inversion unlocks.
 - [ ] You can explain — out loud, without notes — what the group baseline does to the REINFORCE estimator, and why a degenerate group teaches nothing.
 - [ ] You can explain — out loud, without notes — what the KL leash limits, what this simplified loop omits from full GRPO, and how Module 14's offline DPO differs from fresh on-policy sampling.

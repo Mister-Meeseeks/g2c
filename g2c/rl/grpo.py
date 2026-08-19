@@ -40,9 +40,9 @@ def group_advantages(rewards: torch.Tensor) -> torch.Tensor:
         3. return (rewards - mean) / std
 
     Use the POPULATION std (`unbiased=False`). The default unbiased
-    estimator divides by K-1 — not wrong, but every published GRPO
-    recipe normalizes by the group's own spread, and the tests pin
-    that convention.
+    estimator divides by K-1—not inherently wrong, but different from
+    the population normalization used by the GRPO formulation taught
+    here. The tests pin that convention.
     """
     # TODO
     raise NotImplementedError

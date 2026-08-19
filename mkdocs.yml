@@ -106,7 +106,7 @@ nav:
   - Beyond:
       - "Mixture of experts": beyond/moe.md
       - "Linear attention": beyond/linear-attention.md
-      - "RL for LLMs": beyond/rl.md
+      - "RLVR with GRPO": beyond/rl.md
       - "Multimodal models": beyond/multimodal.md
       - "Agent harness engineering": beyond/harness.md
       - "Midtraining": beyond/midtraining.md

@@ -7,8 +7,8 @@ goes weird, read the verifier before blaming the algorithm.
 
 `verify_arithmetic_sloppy` is included ON PURPOSE: it is the
 deliberately gap-ridden reward for the lesson's "break your own reward"
-exercise. Reward-hack it, watch the curve climb while the samples rot,
-then read the three lines that made the exploit possible.
+exercise. Audit its claimed score against the intended verifier and
+inspect what the finite run actually discovers.
 
 All provided plumbing — nothing here is scaffolded.
 """

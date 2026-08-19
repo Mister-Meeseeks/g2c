@@ -1,4 +1,4 @@
-# Rubric — Beyond: Reinforcement learning for LLMs
+# Rubric — Beyond: RLVR with GRPO
 
 Student answers live in `notebooks/solutions/rl-grpo.ipynb` (fall back
 to `notebooks/clean/rl-grpo.ipynb`). Grade each submitted `Question:` /

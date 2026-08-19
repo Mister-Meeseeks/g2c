@@ -1,4 +1,4 @@
-"""Tests for g2c/rl — Beyond module: reinforcement learning for LLMs.
+"""Tests for g2c/rl — Beyond module: RLVR with simplified GRPO.
 
 Suggested order to implement & turn green:
 
