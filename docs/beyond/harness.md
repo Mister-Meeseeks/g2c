@@ -35,6 +35,34 @@ A useful design principle is that model inference is generally expensive and hig
 
 ## The big idea
 
+An agent harness is not another intelligence inside the system. It is an ordinary program wrapped around a repeated model call: assemble the next context, ask the model what to do, mediate any requested action, record what happened, and repeat. The model proposes the next step; the harness controls what the model sees, what may happen, and what survives.
+
+```
+   task + rules + recorded events
+                 │
+                 ▼
+         select next context
+                 │
+                 ▼
+            call model
+                 │
+                 ▼
+          record response
+             /       \
+    final answer       proposed tool call
+         │                     │
+        stop            authorize action
+                               │
+                               ▼
+                         record intent
+                               │
+                               ▼
+                        execute and record
+                         outcome ──────────► repeat
+```
+
+The hard part is not inventing a more elaborate loop. It is making each ordinary systems decision—state, context, authority, recovery, and stopping—explicit enough to inspect and test.
+
 This module makes one organizing choice: represent the trajectory as an append-only event log. Model turns, tool calls, results, and relevant metadata enter the log in order. Context, resume state, and audit output then become views over that durable history.
 
 ```
@@ -89,6 +117,14 @@ A coding harness assembles instructions from more than just the task prompt. Sys
 
 When rules affect a run, the log should record their resolved paths and content hashes—or an appropriately redacted snapshot—so resume can detect changes. This module does not implement an `AGENTS.md` filesystem resolver because file naming and precedence vary between products. The general invariant remains: compaction must never silently discard core instructions.
 
+### Tool selection shapes model behavior
+
+A tool is an interface the model must learn to operate from its name, description, schema, and observed results. Tool selection therefore affects capability even when the underlying model does not change. A good tool makes useful actions easy to express, mistakes easy to detect, and consequential authority easy to constrain.
+
+Unix-style command-line tools are often a strong baseline for coding agents. A shell plus commands such as `grep`, `sed`, and `git` are widely documented, compose well, act directly on the workspace, and appear throughout code examples that models may have encountered during training. That familiarity can matter. It is a reason to evaluate familiar interfaces, not a guarantee that shell tools are always best.
+
+Shell commands can expose broad authority, accept ambiguous syntax, and return large unstructured outputs. A purpose-built tool may instead validate arguments, narrow permissions, return typed results, and make failures clearer. Choose the smallest tool surface that covers the task, then compare interfaces under the same model and tasks. Favor legible inputs, bounded outputs, deterministic errors, and effects the harness can verify.
+
 ### Unresolved tool calls
 
 With agent tool calls, the most dangerous interval is between executing a side effect and logging its result:
@@ -136,6 +172,14 @@ The event log reconstructs what one run did. *Operational telemetry* compares be
 
 Both can contain secrets or personal data from prompts, tool calls, and retrieval queries. Production observability therefore needs redaction, access control, and retention rules.
 
+### A subagent is another bounded harness run
+
+A subagent is usually not a new kind of intelligence. It is another agent loop invoked by a parent with a delegated task, selected context, scoped tools, and its own budget. The child returns a result and supporting evidence; the parent remains responsible for deciding how to use and verify them.
+
+Delegation works best when work can be isolated: parallel searches over independent questions, specialist analysis, implementation followed by review, or a noisy investigation kept out of the parent's active context. It works poorly when subtasks are tightly coupled or several agents edit the same state without coordination. Parallelism may reduce elapsed time, but it usually increases total inference and introduces duplicated work, inconsistent assumptions, and merge conflicts.
+
+The same harness invariants apply recursively. Record parent–child lineage, scope permissions and budgets per child, propagate cancellation, isolate or coordinate workspace effects, and treat a child report as a claim to verify rather than proof of success. Full orchestration adds scheduling, communication, and conflict resolution; delegation does not make those systems problems disappear.
+
 ### Harness evals
 
 Module 15 evaluated model behavior. Here the same discipline applies to the surrounding system: context policy, tool interfaces, permissions, retries, and stopping rules can materially change the behavior of a fixed model.
@@ -148,12 +192,14 @@ Models may also be post-trained against particular tool schemas and transcript f
 
 - **The event log is the reconstruction source.** Context, resume state, and audit output are views.
 - **Context is a policy over the whole prompt.** Preserve resolved instructions, budget system and tool text, and make trajectory compaction deterministic enough to test.
+- **The tool surface is part of the system.** Familiarity, composability, authority, output shape, and failure clarity all affect model performance.
 - **An unresolved call has an unknown outcome.** Call ids dedupe recorded results, not ambiguous effects.
 - **Permissions and sandboxing are different layers.** Policy does not contain tool code.
 - **Observations are data, not instructions.** Preserve provenance and constrain authority around untrusted content.
 - **Failures are classified before retrying.** Transient errors may merit retries; deterministic errors need a changed request.
 - **Budgets survive resume.** A process restart must not reset the run's safety limits.
 - **Audit state and operational telemetry differ.** Both may contain sensitive data requiring lifecycle controls.
+- **A subagent is a scoped child run.** Delegation adds parallelism and context isolation, but also lineage, coordination, and verification obligations.
 - **Harness claims need controlled evaluation.** Hold the backend and fault schedule fixed, then verify exact external state.
 
 ### What we don't cover
@@ -164,7 +210,7 @@ Models may also be post-trained against particular tool schemas and transcript f
 - **A complete prompt-injection defense.** We establish the trust boundary and layered mitigations; robust defense remains an active systems problem.
 - **A telemetry backend.** We identify useful provenance and privacy controls without adding an observability stack.
 - **Power-loss durability and concurrent writers.** The event log is intentionally single-process teaching code.
-- **Multi-agent orchestration.** Delegation multiplies every state, permission, and recovery problem here.
+- **A multi-agent orchestrator.** We cover delegation patterns and invariants, not scheduling, inter-agent protocols, shared-memory design, or conflict resolution.
 - **Training inside the harness.** Forkable rollout sandboxes and trajectory training exceed this laptop-scale module.
 
 ---
