@@ -56,18 +56,25 @@ submitted `Question:` / `Answer:` independently; skip blank answers.
 - **Partially correct**: identifies geometric forgetting but calls the fixed
   scalar content-selective.
 
-## Q5 — The one-million-token bill
+## Q5 — Four versions of the one-million-token bill
 
 - **Correct**: at `T=1,000,000`, `D=4096`, `H=32`, fp16:
-  - full KV per layer is `2·T·D·2 bytes = 16.384 GB` (about `15.26 GiB`);
+  - MHA KV per layer is `2·T·H·d_h·2 bytes = 16.384 GB`
+    (about `15.26 GiB`);
+  - GQA with `H_kv=8` is `2·T·H_kv·d_h·2 bytes = 4.096 GB`
+    (about `3.81 GiB`);
+  - MHA with a fixed live window `W=4096` is
+    `2·W·H·d_h·2 bytes = 67,108,864 bytes` (`64 MiB`);
   - linear `(S,z)` per layer is
     `(H·(D/H)^2 + D)·2 = 1,056,768 bytes` (about `1.01 MiB`);
-  - four full layers are about `65.5 GB`, `[L,L,L,F]` about `16.4 GB`
-    plus roughly `3.2 MB`, and four linear layers about `4.2 MB`.
-  Concludes only that recurrent layers remove sequence-length growth from
-  their inference state; the arithmetic alone proves neither quality nor
+  - four MHA layers are about `65.5 GB`, while `[L,L,L,F]` is about
+    `16.4 GB` plus roughly `3.2 MB` of recurrent state.
+  Identifies MHA and GQA as linear in `T`, the fixed-window cache as bounded
+  by `W`, and recurrent state as independent of `T` but quadratic in head
+  dimension. Concludes that the arithmetic alone proves neither quality nor
   wall-clock speed.
 - **Mostly correct**: right formulas and order of magnitude with a minor
   decimal-GB/GiB slip.
-- **Partially correct**: omits `z` or the stack totals, or turns memory
-  arithmetic into an unsupported quality/latency claim.
+- **Partially correct**: treats GQA as fixed-size, lets a fixed window grow
+  with full history, omits `z` or the stack totals, or turns memory arithmetic
+  into an unsupported quality/latency claim.

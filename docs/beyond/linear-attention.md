@@ -1,11 +1,11 @@
 # Beyond — Linear attention and efficient sequence models
 
-> **Question this module answers:** *Must attention remember every token it has ever seen?*
+> **Question this module answers:** *What makes long-context attention expensive—and which of those costs can we remove?*
 
 <!-- TODO(hero pipeline): asset not yet generated -->
-![Full attention drawn as a key-value cache growing with every token beside linear attention's fixed-size state matrix, feeding a hybrid stack where many recurrent layers alternate with an occasional global attention layer.](linear-attention/BeyondLinearAttention-Hero.png)
+![Dense attention branching into exact tiled kernels, compressed caches, sparse token access, and fixed recurrent state, with the recurrent branch feeding a hybrid stack.](linear-attention/BeyondLinearAttention-Hero.png)
 
-Module 07's attention consults every past token, and Module 16's KV cache is the bill for that: memory that grows with every token generated. Several current long-context families avoid paying it in every layer — Qwen3.5 mixes recurrent and full attention, Kimi K3 reports 69 KDA layers and 24 global-attention layers, and Nemotron mixes Mamba and attention blocks. This module builds the smallest inspectable version of that fixed-state/full-attention trade. It is an ancestor of those production mechanisms, not a reproduction of their token-dependent gates, delta rules, or fused kernels.
+Module 07's attention consults every past token, and Module 16's KV cache showed one bill for that promise. Modern systems attack several different bills: some compute exact attention with less memory traffic, some store fewer key/value channels, some visit fewer tokens, and some replace token-addressable history with fixed recurrent state. This module maps those families, then builds the smallest inspectable version of the fixed-state/full-attention trade.
 
 > **This is a Beyond module.** Beyond modules sit outside the numbered course: nothing in Modules 00–20 depends on them, and they are not part of finishing the course. Come here in any order, whenever a model card or paper names the idea and you want the load-bearing version — built, trained, and broken on your own machine.
 
@@ -26,18 +26,61 @@ Module 07's attention consults every past token, and Module 16's KV cache is the
 ---
 ## Where this fits in
 
-Module 07 made a specific promise: every position can consult every other position, exactly. Module 16 showed what that promise costs at inference — a KV cache holding two vectors per token per layer, growing without bound. At million-token context lengths, that cache can become a dominant memory object.
+Module 07 made a specific promise: every position can consult every other position. Module 16 showed the inference state needed to keep that promise during generation. At long context lengths, both the token-pair computation and the stored key/value history can dominate the system.
 
-There are two escape routes, and reading a 2026 model card requires recognizing both:
+“Efficient attention” is therefore an umbrella, not one mechanism. FlashAttention changes how dense attention is executed. MQA, GQA, and MLA shrink what is stored for each token. Sparse attention changes which token pairs interact. Linear attention and state-space models replace individually addressable history with fixed-size state. Production architectures often combine several of these ideas, so reading a model card requires asking which cost each name actually changes.
 
-* **Sparse attention** keeps exact attention but only over a *subset* of past tokens — a learned or structured selection (DeepSeek's DSA is this family). The cache survives; fewer entries are touched.
-* **Linear / recurrent attention** — this module — replaces the growing cache with a **fixed-size state** that is updated as each token arrives. Constant memory, constant per-token compute, at the price of storing a *summary* of the past instead of the past itself.
-
-Pure recurrent stacks trade exact token access for a compressed state. A common practical response is the **hybrid**: mostly-recurrent stacks with periodic full-attention layers that restore exact access at selected depths. The ratios differ (3:1, 69:24); this module builds one small `[linear, linear, linear, full]` instance and measures what it does rather than assuming the hybrid always wins.
+This module gives that map but builds one branch deeply: recurrent linear attention, followed by a small `[linear, linear, linear, full]` hybrid. Recent Qwen, Kimi, and Nemotron families use more sophisticated recurrent/full-attention hybrids; the course version is an ancestor of those patterns, not a reproduction of their gates, delta rules, SSM updates, or fused kernels.
 
 ## The big idea
 
-Start from Module 07's attention for a single query position `t`, and delete the softmax for a moment:
+Attention does not send one bill. For sequence length `T`, ordinary multi-head attention pays in several places:
+
+```
+   dense training / prefill     compare T queries with T keys
+                                └── O(T²) arithmetic and naive score storage
+
+   autoregressive decoding      keep K and V for every previous token
+                                └── O(T) state and O(T) work per new token
+
+   hardware execution           move projections, scores, and values
+                                between memory levels
+                                └── wall-clock cost can be dominated by I/O
+```
+
+The major efficiency families make different lines of that bill smaller:
+
+| Family | What changes | What remains |
+| --- | --- | --- |
+| **Exact tiled kernels** — FlashAttention | Avoid materializing the full score matrix and reduce memory traffic | Exact dense attention, quadratic pairwise work, and a growing decode cache |
+| **Smaller per-token cache** — MQA, GQA, MLA | Share or compress stored key/value representations | All tokens remain available and cache size still grows with `T` |
+| **Sparse or local attention** | Compute softmax over a structured or selected subset of tokens | Access is restricted or selection itself has a cost |
+| **Linear attention / recurrent models / SSMs** | Replace token rows with fixed-size running state | The past is compressed rather than exactly addressable |
+| **Hybrids** | Pay different costs in different layers or branches | The costs of every retained mechanism still apply where it is used |
+
+The useful question is not “Is this attention efficient?” but **“Which object stopped growing, and what did the model give up?”** This module situates the whole map, then implements the fixed-state row and a hybrid.
+
+### Exact attention without the score matrix
+
+FlashAttention computes ordinary softmax attention in tiles and carries the normalization statistics needed to combine those tiles. The output is mathematically exact, but the implementation avoids writing the entire `T × T` score matrix to high-bandwidth memory. That can dramatically reduce activation memory and memory traffic.
+
+Nothing about the connectivity changes: every query still interacts with every key. The pairwise arithmetic remains quadratic, and autoregressive decoding still needs a KV cache. FlashAttention makes dense attention execute better; it does not turn dense attention into a fixed-state model.
+
+### Store less for each token
+
+Module 08's multi-head attention gives every query head its own K and V head, so its cache stores `2 · T · H · d_h = 2 · T · D` values per layer. **Multi-query attention (MQA)** shares one K/V head across all query heads; **grouped-query attention (GQA)** uses an intermediate number of K/V heads. With `H_kv` K/V heads, the cache becomes `2 · T · H_kv · d_h` values.
+
+**Multi-head latent attention (MLA)** goes further by caching a lower-dimensional latent representation from which the needed key/value information is recovered. These methods preserve token-addressable history while reducing its width and bandwidth. Their caches are much smaller than the course's MHA baseline, but still grow linearly with `T`.
+
+### Attend to fewer tokens
+
+Sparse attention keeps softmax attention over a subset of the history. **Structured sparsity** fixes the pattern: a sliding window, blocks, global tokens, or combinations of them. A fixed sliding window can bound each layer's live KV cache and changes dense `T²` pairwise work to roughly `T · W` for window size `W`, but it removes direct access to tokens outside the window.
+
+**Content-selected sparsity** uses the current query or a learned indexer to choose relevant tokens. It can preserve long-range retrieval better than a fixed window, but the system may still retain or index the full history, and finding the subset has its own cost. Native Sparse Attention combines local, compressed, and selected branches; DeepSeek Sparse Attention is a later learned-indexing design. “Sparse” therefore does not imply one cache policy or one complexity bound.
+
+### Replace token history with recurrent state
+
+Now zoom into the branch this module builds. Start from Module 07's attention for a single query position `t`, and delete the softmax for a moment:
 
 ```
    with softmax:      out_t = Σ_i  softmax(q_t·k_i) · v_i      ← must visit every i ≤ t
@@ -50,12 +93,12 @@ Start from Module 07's attention for a single query position `t`, and delete the
 That reassociation is the entire trick. `Σ k_i v_iᵀ` doesn't depend on the query — it's a running sum you can maintain **incrementally**, one rank-one update per token:
 
 ```
-   S_t = S_{t-1} + k_t v_tᵀ         # (D, D) state — the "memory"
-   z_t = z_{t-1} + k_t              # (D,)   normalizer
+   S_t = S_{t-1} + φ(k_t) v_tᵀ      # (D, D) state — the "memory"
+   z_t = z_{t-1} + φ(k_t)           # (D,)   normalizer
    out_t = (φ(q_t) · S_t) / (φ(q_t) · z_t)
 ```
 
-`φ` is a small positive feature map (we use `elu(x) + 1`) standing in for what the softmax's exponential was doing — keeping scores positive so the normalizer behaves. The result is attention as an RNN: the whole past is compressed into `S`, a matrix whose size never changes.
+`φ` is a small positive feature map (we use `elu(x) + 1`) that provides a factorizable positive similarity in place of softmax's exponentiated dot products. The result is attention as an RNN: the whole past is compressed into `S`, a matrix whose size never changes.
 
 The equations above describe one head and use `D` for readability. In the multi-head implementation, each head uses `d_h = D/H`, so the complete state is `H` matrices of shape `(d_h, d_h)` plus `H` normalizer vectors — `D²/H + D` values, not `D²`.
 
@@ -86,10 +129,10 @@ There is an important implementation honesty line here. The course's `forward` c
 
 ### Fixed decay versus an input-dependent gate
 
-The raw accumulator `S_t = S_{t-1} + k_t v_tᵀ` never forgets — the state's magnitude can grow and early tokens never fade. This module adds the smallest useful forgetting mechanism:
+The raw accumulator `S_t = S_{t-1} + φ(k_t) v_tᵀ` never forgets — the state's magnitude can grow and early tokens never fade. This module adds the smallest useful forgetting mechanism:
 
 ```
-   S_t = γ_h · S_{t-1} + k_t v_tᵀ      # one learned γ per head
+   S_t = γ_h · S_{t-1} + φ(k_t) v_tᵀ   # one learned γ per head
 ```
 
 With `γ_h` below 1, every token handled by head `h` decays that head's old state by the same amount. This is a **fixed learned decay**, not a content-dependent gate: it cannot decide that punctuation should be forgotten quickly while a name should persist. Modern gated recurrent layers compute a decay or write strength from the current token, and delta-rule variants also subtract what the state already predicts before writing. Those mechanisms are more selective; this module keeps one scalar per head so the recurrence and its parallel reference remain inspectable.
@@ -107,11 +150,14 @@ Linear attention compresses history; full attention everywhere pays the full cac
    ...                    ┘
 ```
 
-The full layer can re-ground the residual stream in exactly addressable token identities; whether one such layer repairs a given task is empirical. The cache bill scales with the number of full layers. Exercise 5 computes the contrast: at `D=4096`, one fp16 full-attention layer needs about 16.4 GB of KV cache at one million tokens, while one linear layer's `(S, z)` state is about 1.1 MB. A 3:1 hybrid pays the growing cache in one quarter of its layers.
+The full layer can re-ground the residual stream in exactly addressable token identities; whether one such layer repairs a given task is empirical. The cache bill scales with the number and cache geometry of the full layers. Exercise 5 computes the contrast: at `D=4096`, one fp16 **MHA** layer needs about 16.4 GB of KV cache at one million tokens, GQA with eight KV heads needs about 4.1 GB, and one linear layer's `(S, z)` state is about 1.1 MB. A 3:1 hybrid pays a growing cache in one quarter of its layers, but the size of that cache still depends on whether those layers use MHA, GQA, or another compression scheme.
 
 ## Concepts to internalize
 
-- **Linear attention is attention reassociated.** Drop the softmax, regroup `(qKᵀ)V` as `q(KᵀV)`, and each head's past collapses into a running `(d_h, d_h)` state.
+- **There is more than one attention bill.** Pairwise arithmetic, activation memory, KV-cache capacity, bandwidth, and wall-clock execution are related but not interchangeable targets.
+- **Every efficiency claim needs a denominator.** Ask which object stopped growing, during which phase, and whether the method changed exact token access.
+- **Exact kernels, compressed caches, sparsity, and recurrence solve different problems.** FlashAttention executes dense attention better; MQA/GQA/MLA store less per token; sparse methods visit fewer tokens; recurrent methods replace token rows with fixed state.
+- **Linear attention uses a factorizable similarity.** Replace softmax with a positive feature kernel, regroup the computation, and each head's past collapses into a running `(d_h, d_h)` state.
 - **One computation, two forms.** The readable parallel reference and recurrent inference form are equal to floating-point tolerance. The equivalence test is the module's anchor; the reference is not an efficient training kernel.
 - **The state is a compressed summary.** Average loss and targeted recall measure different things; neither experiment's outcome should be assumed in advance.
 - **A fixed decay is not a selective gate.** This module learns one forgetting rate per head. Token-dependent gates can choose what to retain based on content.
@@ -121,7 +167,9 @@ The full layer can re-ground the residual stream in exactly addressable token id
 ### What we don't cover
 
 - **State-space model derivations.** Mamba's selective-scan formulation arrives at a similar place from control theory. The convergence is the interesting fact; the HiPPO math is its own course.
-- **The sparse-attention family in depth.** DSA-style learned token selection is the *other* escape route; it deserves its own treatment if the brief evidence keeps accumulating, and this module only positions it.
+- **Efficient dense-attention kernels.** We explain FlashAttention's I/O idea but do not build a tiled softmax kernel.
+- **MQA, GQA, and MLA implementations.** We include their cache geometry in the survey and memory exercise, not new projection or latent-cache scaffolds.
+- **Sparse-attention implementations.** We distinguish local, structured, and learned selection conceptually without building indexing or block-sparse kernels.
 - **Hardware-aware scan and chunked kernels.** Real implementations balance within-chunk parallelism against recurrent state passing. Our readable parallel reference materializes `T × T` scores, so it proves equivalence but does not realize efficient training.
 - **Input-dependent gates and delta-rule writes.** They let the model choose what to forget and correct an existing association before writing. We keep a fixed per-head decay to isolate the recurrent-state idea.
 - **Position embeddings under recurrence.** How RoPE-style rotations interact with state-based attention is a genuinely fiddly topic we sidestep by keeping Module 09's learned positions.
@@ -170,7 +218,7 @@ pytest tests/test_linear_attention.py -k causal    # causality tests
 pytest tests/test_linear_attention.py -v           # verbose
 ```
 
-The anchor test: `test_parallel_matches_recurrent` runs the same sequence through `forward` and through repeated `step` calls and asserts the outputs agree. Nearly every implementation bug — normalizer dropped, state updated in the wrong order, decay applied twice — fails this one test with a large, readable error.
+The anchor test: `test_parallel_matches_recurrent` runs the same sequence through `forward` and through repeated `step` calls and asserts the outputs agree. Mismatched normalization, state updated in the wrong order, or decay applied in only one form fails this test with a large, readable error. `test_forward_matches_undecayed_reference_at_gamma_one` separately prevents both forms from agreeing on the same unnormalized computation.
 
 ## Exercises
 
@@ -192,13 +240,13 @@ Written exercises live in the notebook as `Question:` / `Answer:` cells; ask a c
 2. **Train the three-way comparison.** Train StoryLM-1M full attention, pure linear, and `[linear, linear, linear, full]` models on the 100MB TinyStories tier with near-identical parameter counts, batches, and step budgets. Compare validation loss and generated stories.
 3. **The recall probe.** Train the same three architectural patterns on a synthetic key-value task and measure answer accuracy by retrieval distance. Treat every curve as data: explain what occurred rather than repairing it into the expected narrative.
 4. **Inspect decay.** Compare state norms under fixed decay values, then inspect the per-head decays learned by the TinyStories models. Explain what a fixed per-head decay cannot do that an input-dependent gate can.
-5. **Written: the 1M-token bill.** Compute fp16 state per layer at `T=1M`, `D=4096`, `H=32`: full KV cache, linear `(S, z)`, and the four-layer 3:1 pattern.
+5. **Written: four versions of the 1M-token bill.** At `T=1M`, `D=4096`, `H=32`, compare the course's MHA cache, GQA with eight KV heads, an MHA layer retaining a 4096-token sliding window, and linear `(S, z)` state. Then total the four-layer all-MHA and `[L,L,L,F]` toy stacks and identify which states still grow with `T`.
 6. **StoryLM-5M rerun (optional).** Repeat the TinyStories comparison at the StoryLM-5M architecture. It remains laptop-sized but makes the three-run block substantially longer.
 
 ## Pitfalls to expect
 
-- **Dropping the normalizer `z`.** Outputs drift in scale with sequence length; training limps. The equivalence test won't catch it (both forms drift identically) — the state-norm plot in Exercise 4 will.
-- **State update order.** Whether you update `(S, z)` before or after computing the current token's output is the causality seam: update-first lets a token attend to itself (correct, matches the masked parallel form); output-first silently shifts everything by one. `test_causality` pins the convention.
+- **Dropping the normalizer `z`.** Outputs drift in scale with sequence length; training limps. Parallel/recurrent equivalence alone cannot catch an omission made in both forms, but `test_forward_matches_undecayed_reference_at_gamma_one` pins the normalized result explicitly.
+- **State update order.** Whether you update `(S, z)` before or after computing the current token's output is the alignment seam: update-first lets a token attend to itself (correct, matching the parallel form); output-first silently shifts everything by one. The equivalence test pins this convention. Causality alone only proves that the future cannot affect the past.
 - **Applying decay in one form but not the other.** The parallel form must implement the *same* geometric decay as `step` — via distance-dependent weights `γ^(t-i)` — or the equivalence test fails only for `γ < 1`, which reads as a mystery.
 - **Timing asynchronous MPS work without synchronization.** The Python timer stops before Metal finishes and produces fiction. The notebook synchronizes before and after every measured region.
 - **Comparing training and decoding timings.** A full teacher-forced pass and one recurrent token answer different questions. Exercise 1 compares one-token decode paths; the lesson separately explains why this module's training reference remains quadratic.
@@ -215,21 +263,28 @@ Written exercises live in the notebook as `Question:` / `Answer:` cells; ask a c
 ---
 ## Reading
 
-Primary:
+Efficient-attention map:
 
-- **Katharopoulos, Vyas, Pappas, Fleuret, "Transformers are RNNs" (2020).** The reassociation trick, the feature map, and the parallel/recurrent duality — this module is §3 of this paper, built. Read it first.
+- **Dao, Fu, Ermon, Rudra, Ré, ["FlashAttention: Fast and Memory-Efficient Exact Attention with IO-Awareness"](https://arxiv.org/abs/2205.14135) (2022).** Exact dense attention with tiled, I/O-aware execution; the clearest example of improving the kernel without changing the attention graph.
+- **Ainslie et al., ["GQA: Training Generalized Multi-Query Transformer Models from Multi-Head Checkpoints"](https://arxiv.org/abs/2305.13245) (2023).** The continuum from one K/V head to one per query head.
+- **DeepSeek-AI, ["DeepSeek-V2"](https://arxiv.org/abs/2405.04434) (2024).** Multi-head latent attention as learned KV-cache compression.
+- **Yuan et al., ["Native Sparse Attention"](https://arxiv.org/abs/2502.11089) (2025).** A hardware-aware combination of compressed, selected, and sliding-window branches.
+
+Linear and recurrent core:
+
+- **Katharopoulos, Vyas, Pappas, Fleuret, "Transformers are RNNs" (2020).** The reassociation trick, the feature map, and the parallel/recurrent duality — this module is §3 of this paper, built. Read it first for the implementation branch.
 - **Schlag, Irie, Schmidhuber, "Linear Transformers Are Secretly Fast Weight Programmers" (2021).** Reframes the state as a fast-weight memory and introduces the delta-rule update — the error-correcting write behind the DeltaNet/KDA lineage.
 - **Gu, Dao, "Mamba: Linear-Time Sequence Modeling with Selective State Spaces" (2023).** The state-space route to the same destination. Read for the convergence, skim the derivations.
 
-Secondary:
+Further bridges:
 
 - **Yang, Kautz, Hatamizadeh, "Gated DeltaNet" (2024).** Decay gating plus the delta rule, in the form Qwen3.5 adopted; the cleanest bridge from this module's code to a current model card.
 - **Sun, Dong, Huang et al., "Retentive Network" (2023).** An independent derivation of decay-gated linear attention; useful second angle on why the decay is load-bearing.
-- **Yuan, Gao, Dai et al., "Native Sparse Attention" (2025).** The other escape route — learned sparse selection with the cache intact. Read to position DSA-family model cards against this module's family.
+- **DeepSeek-AI, ["DeepSeek-V3.2"](https://arxiv.org/abs/2512.02556) (2025).** DeepSeek Sparse Attention's learned indexer and selected-token attention, distinct from Native Sparse Attention above.
 
 Optional:
 
-- **The current release lineage.** The Kimi K3 (69:24 KDA hybrid) and Qwen3.5 (3:1 DeltaNet hybrid) technical reports (2026) are where the ratios in the lecture notes come from. After this module, their architecture sections read as configuration, not invention.
+- **2026 release examples.** The Kimi K3 (69:24 KDA/Gated-MLA hybrid) and Qwen3.5 (3:1 DeltaNet/gated-attention hybrid) technical reports show how production systems combine the fixed-state branch with compressed full-attention layers.
 - **Gu, Goel, Ré, "Efficiently Modeling Long Sequences with Structured State Spaces" (S4, 2021).** Where the SSM lineage began, if the control-theory route appeals.
 
 ## Deliverable checklist
@@ -237,6 +292,7 @@ Optional:
 - [ ] All tests in `tests/test_linear_attention.py` pass — the parallel/recurrent equivalence especially.
 - [ ] Notebook: honest cached-decoding benchmark (Exercise 1), StoryLM-1M three-way comparison with generated stories (Exercise 2), and empirical recall-vs-distance probe (Exercise 3).
 - [ ] Written answer for the 1M-token memory bill (Exercise 5).
+- [ ] You can identify whether an efficiency claim reduces dense-attention I/O, pairwise work, per-token KV width, sequence-length cache growth, or some combination.
 - [ ] You can explain — out loud, without notes — what reassociating `(qKᵀ)V` into `q(KᵀV)` buys, and what the softmax's removal costs.
 - [ ] You can explain — out loud, without notes — why hybrid stacks exist, in terms of what the recurrent state cannot do.
 - [ ] You can explain — out loud, without notes — why this module's recurrent inference state is fixed-size while its readable parallel training reference is still quadratic.
