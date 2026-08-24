@@ -7,6 +7,12 @@ edit_uri: edit/main/docs/
 
 docs_dir: docs
 
+# Under construction: drafts live in version control but are not published.
+# Remove entries here when the corresponding section ships to the site.
+exclude_docs: |
+  beyond/
+  briefs/
+
 theme:
   name: material
   features:
@@ -100,18 +106,6 @@ nav:
       - "18 — Tool use": modules/18-tools.md
       - "19 — Agent loops": modules/19-agent.md
       - "20 — Capstone: TinyGPT": modules/20-capstone.md
-  - G2C Briefs:
-      - "About the Briefs": briefs/index.md
-      - "DeepSeek V4": briefs/deepseek-v4.md
-  - Beyond:
-      - "Mixture of experts": beyond/moe.md
-      - "Linear attention": beyond/linear-attention.md
-      - "RLVR with GRPO": beyond/rl.md
-      - "Multimodal models": beyond/multimodal.md
-      - "Agent harness engineering": beyond/harness.md
-      - "Midtraining": beyond/midtraining.md
-      - "Speculative decoding": beyond/specdec.md
-      - "Muon": beyond/muon.md
   - Primers:
       - PyTorch: primers/pytorch.md
       - Topological sort: primers/topo-sort.md

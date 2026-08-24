@@ -83,10 +83,6 @@ Build the system around a model. A different subject from Part I, not a harder o
 
 Part II can also be entered directly if you already know the fundamentals and want the systems material — see [Module 12](docs/modules/12-scaling.md).
 
-**Beyond the numbered course:** standalone modules on the mechanisms behind current model cards — [mixture of experts](docs/beyond/moe.md), [linear attention](docs/beyond/linear-attention.md), [RLVR with GRPO](docs/beyond/rl.md), [multimodal models](docs/beyond/multimodal.md), [agent harness engineering](docs/beyond/harness.md), [midtraining](docs/beyond/midtraining.md), [speculative decoding](docs/beyond/specdec.md), and [Muon](docs/beyond/muon.md). Take them in any order; nothing in Modules 00–20 depends on them.
-
-**G2C Briefs:** dated field guides that use the course to decode current releases without turning each release into another module. Start with [DeepSeek V4](docs/briefs/deepseek-v4.md), or read [the Brief contract](docs/briefs/index.md).
-
 ## Course structure
 
 Each module is roughly one week of effort at the level of a rigorous elite-college course. Calendar pace is whatever it ends up being. Every module follows the same format:

@@ -18,16 +18,16 @@ The course teaches diagnosis (curve reading in 03B, the `log V` baseline in 09B/
 
 Standalone modules outside the numbered course, for the mechanisms behind the model cards you read. The contract: nothing in Modules 00–20 depends on them, they never renumber anything, and a topic earns one only after it shows up centrally across multiple independent model families *and* admits a laptop-scale build — not because one release made it famous.
 
-Shipped:
+In progress — drafts live in the repo, not yet on the site:
 
-- [Mixture of experts](beyond/moe.md)
-- [Linear attention and efficient sequence models](beyond/linear-attention.md)
-- [RLVR with GRPO](beyond/rl.md)
-- [Multimodal language models](beyond/multimodal.md)
-- [Agent harness engineering](beyond/harness.md)
-- [Midtraining](beyond/midtraining.md)
-- [Speculative decoding and multi-token prediction](beyond/specdec.md)
-- [Muon and orthogonalized updates](beyond/muon.md)
+- Mixture of experts
+- Linear attention
+- RLVR with GRPO
+- Multimodal language models
+- Agent harness engineering
+- Midtraining
+- Speculative decoding and multi-token prediction
+- Muon and orthogonalized updates
 
 Watchlist — evidence accumulating, listed as observations rather than promises: diffusion and other non-autoregressive generation; low-precision training.
 
@@ -41,9 +41,9 @@ claims separately from derived arithmetic and course interpretation, and state
 what the available sources do not disclose. They carry no notebook, scaffold,
 test suite, or downstream dependency.
 
-Shipped:
+In progress — drafts live in the repo, not yet on the site:
 
-- [DeepSeek V4 — Reading a frontier model stack](briefs/deepseek-v4.md)
+- DeepSeek V4 — reading a frontier model stack
 
 An uncovered mechanism in a Brief does not automatically become roadmap work.
 It still has to recur across independent model families and admit a useful
