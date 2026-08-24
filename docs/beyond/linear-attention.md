@@ -1,4 +1,4 @@
-# Beyond — Linear attention and efficient sequence models
+# Beyond — Linear attention
 
 > **Question this module answers:** *What makes long-context attention expensive—and which of those costs can we remove?*
 
@@ -26,9 +26,19 @@ Module 07's attention consults every past token, and Module 16's KV cache showed
 ---
 ## Where this fits in
 
-Module 07 made a specific promise: every position can consult every other position. Module 16 showed the inference state needed to keep that promise during generation. At long context lengths, both the token-pair computation and the stored key/value history can dominate the system.
+In Module 07 we learned attention is all you need. And then we built the contract that entails: every token attends to every previous token in the sequence. In Module 16 we saw the bill that comes due with that. As context length grows, inference must choose between quadratic computation costs, or a huge memory footprint in the form of a KV cache (almost always the latter). 
 
-“Efficient attention” is therefore an umbrella, not one mechanism. FlashAttention changes how dense attention is executed. MQA, GQA, and MLA shrink what is stored for each token. Sparse attention changes which token pairs interact. Linear attention and state-space models replace individually addressable history with fixed-size state. Production architectures often combine several of these ideas, so reading a model card requires asking which cost each name actually changes.
+Modern LLM workloads are increasingly loaded on complex tasks and persistent agents that require long-running trajectories. That necessitates long context windows. On today's frontier models, context windows of 1 million tokens or longer is common. That has leads to a situation where the bottleneck has largely shifted from compute to memory (in the form of KV cache). Against that backdrop, there's been tremendous efforts to build "efficient attention". 
+
+Keep in mind that there is no free lunch. The success of LLMs was built on all-to-all token attention. Relaxing that contract can lead to significant efficiency gains, but also significantly degraded and fragile intelligence if done wrong, fragile intelligence. Modern alternative attention mechanisms have experimented with many different approaches around this tradeoff. 
+
+Therefore “efficient attention” is more of an umbrella than a single mechanism. The most prominent (and what we'll primarily focus on in this module) is *linear attention*. It replaces token to token attention, with attention intermediated through an intermediate running state of fixed size. Along similar lines is *sparse attention*, which maintains direct token-to-token attention, but relaxes the *all-to-all* part of token attention.
+
+
+
+Beyond that are a variety of 
+
+. FlashAttention changes how dense attention is executed. MQA, GQA, and MLA shrink what is stored for each token. Sparse attention changes which token pairs interact.  Production architectures often combine several of these ideas, so reading a model card requires asking which cost each name actually changes.
 
 This module gives that map but builds one branch deeply: recurrent linear attention, followed by a small `[linear, linear, linear, full]` hybrid. Recent Qwen, Kimi, and Nemotron families use more sophisticated recurrent/full-attention hybrids; the course version is an ancestor of those patterns, not a reproduction of their gates, delta rules, SSM updates, or fused kernels.
 
@@ -50,13 +60,13 @@ Attention does not send one bill. For sequence length `T`, ordinary multi-head a
 
 The major efficiency families make different lines of that bill smaller:
 
-| Family | What changes | What remains |
-| --- | --- | --- |
-| **Exact tiled kernels** — FlashAttention | Avoid materializing the full score matrix and reduce memory traffic | Exact dense attention, quadratic pairwise work, and a growing decode cache |
-| **Smaller per-token cache** — MQA, GQA, MLA | Share or compress stored key/value representations | All tokens remain available and cache size still grows with `T` |
-| **Sparse or local attention** | Compute softmax over a structured or selected subset of tokens | Access is restricted or selection itself has a cost |
-| **Linear attention / recurrent models / SSMs** | Replace token rows with fixed-size running state | The past is compressed rather than exactly addressable |
-| **Hybrids** | Pay different costs in different layers or branches | The costs of every retained mechanism still apply where it is used |
+| Family                                         | What changes                                                        | What remains                                                               |
+| ---------------------------------------------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| **Exact tiled kernels** — FlashAttention       | Avoid materializing the full score matrix and reduce memory traffic | Exact dense attention, quadratic pairwise work, and a growing decode cache |
+| **Smaller per-token cache** — MQA, GQA, MLA    | Share or compress stored key/value representations                  | All tokens remain available and cache size still grows with `T`            |
+| **Sparse or local attention**                  | Compute softmax over a structured or selected subset of tokens      | Access is restricted or selection itself has a cost                        |
+| **Linear attention / recurrent models / SSMs** | Replace token rows with fixed-size running state                    | The past is compressed rather than exactly addressable                     |
+| **Hybrids**                                    | Pay different costs in different layers or branches                 | The costs of every retained mechanism still apply where it is used         |
 
 The useful question is not “Is this attention efficient?” but **“Which object stopped growing, and what did the model give up?”** This module situates the whole map, then implements the fixed-state row and a hybrid.
 
