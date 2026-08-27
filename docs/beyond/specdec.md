@@ -26,25 +26,44 @@ Module 11's generation loop pays one full forward pass per token, and no amount 
 ---
 ## Where this fits in
 
-Module 06 established something that looked like a training convenience: a causal LM's forward pass produces a prediction at *every* position simultaneously. Teacher forcing used it to score `T` positions per pass during training. Module 11 then built generation and quietly gave the parallelism back — each new token requires a fresh pass, because position `t+1`'s input is position `t`'s output.
+In Module 06 we learned an interesting property of autoregression. For an already extant sequence, a single forward pass gives us prediction logits for every token in the sequence. This was exploited during training to allow us to get log loss for every token in a single pass over a document. 
 
-Speculative decoding notices that the parallelism was never actually lost; it just needs *candidate* tokens to score. If something cheap guesses the next `k` tokens, the expensive model can check all `k` guesses in one forward pass — the same teacher forcing, applied at decode time to a guessed future instead of a recorded past. Wherever the guesses match what the target would have said, serial passes were skipped. Where they diverge, the target's own prediction is sitting right there in the verification pass, free.
+Unfortunately Module 11 taught us this efficiency doesn't apply for forward completion. If we have `n` tokens in the prompt, we can't generate token `n+2` (or later) until we know token `n+1`. Which means every token in the completion requires its own full forward pass. The paradox is completion is fast but only if you already know it ahead of time.
 
-Two sources of guesses matter in current systems, and this module builds both:
+That fact doesn't seem that useful on the surface. But the one upshot is *verification* is much cheaper than generating from scratch. If we can have an educated guess for the next `n` tokens, and that verifies correct, then we turn `n` forward completions into just one.
 
-* **A separate drafter** — a smaller model from the same family. Your StoryLM ladder is exactly this: StoryLM-1M drafting for StoryLM-30M, legal because they share one tokenizer.
-* **A multi-token-prediction head** — a small attachment that predicts one step *further* ahead from the model's own hidden state, so the model drafts for itself. This is what "MTP" means on the DeepSeek, GLM, and Qwen model cards, and its serving role is speculation with the drafter built in.
+This is the insight behind *speculative decoding*. Think of it like branch prediction from computer architecture. If we can make a cheap educated guess about the next `N` tokens in a completion, and if we're right, then we reduce the cost from `N` forward passes for generation to one forward pass for verification. 
+
+The question is how do we make a good educated guess? In Module 12 we compared different size models in the same family (same training regime, similar shaped architectures). What we learned is smaller models often produce similar outputs to their larger cousins. Especially over over the next few tokens, before trajectories diverge. 
+
+Speculative decoding comes down to economics. It works best for large, slow, expensive models. We pair with a smaller, faster, cheaper *drafter model* from the same family as the *target model*. For most tokens, most of the time, the large model is "overpowered". A smaller model will correctly guess the same token as the larger model. 
+
+Therefore, the efficiency of speculative decoding comes to two factors. One is the accuracy of the drafter model. What percent of the time does its tokens match the target model? The second is the ratio of the cost of the target model to the drafter model. Pushing the drafter to be smaller and faster, increases efficiency for the latter but trades off against the former.
 
 ## The big idea
 
-Generation is serial because of a data dependency, not a law of arithmetic:
+WeSpeculative decoding runs the following completion loop:
+
+1. Drafter model: Generate `k` *candidate tokens* based on the current completion
+2. Target model: Generate `k+1` *verification tokens* by running a forward pass over the candidate tokens
+3. Emit the first `j` tokens where `candidate[k] == verification[k]`
+4. Discard all remaining candidate tokens
+5. Emit `verification[k+1]`
+6. Repeat loop for the full completion
+
+The overall idea is simple, but there are a few subtleties in that loop that are important to notice.
+
+First, carefully note that there's path dependency in the sequence. The first candidate token that's wrong invalidates all the subsequent tokens, even if they verify. The problem is they're only "correct" for a sequence that we won't be using.
 
 ```
-   generate:  tok_1 → tok_2 → tok_3 → ...     each needs the previous
-   score:     given [tok_1 ... tok_k],        one pass judges ALL of them
+            cand:     verify:    match:     action:
+token 0:    the       the        correct    emit
+token 1:    quick     quick      correct    emit
+token 2:    brown     racer      wrong      discard
+token 3:    fox       fox        correct    discard (correct on wrong sequence)
 ```
 
-Speculative decoding converts generation into mostly-scoring:
+Second, the forward verification pass will always give us one extra token "for free". If one of the candidate tokens is wrong, then the verification token at that slot is what the target model would generate instead. If all of the candidate tokens are correct, then the forward pass finishes with the final token out of sequence. Either way, we always use this "free token" to emit one additional token at the end. This is what keeps the loop moving forward on the completion, even if the draft model gets zero tokens correct.
 
 ```
    drafter (cheap):   proposes  d_1 d_2 d_3 d_4          k serial passes, but cheap
@@ -54,30 +73,41 @@ Speculative decoding converts generation into mostly-scoring:
    emit:              d_1  d_2  t_3          ← accepted prefix + free correction
 ```
 
-Every iteration emits `accepted + 1` tokens for one target pass: the accepted prefix, plus either the target's correction at the first disagreement or — if the whole block survived — the target's *bonus* prediction one past it. The floor is one token per pass, which is exactly plain decoding: speculation can fail to help, but it cannot do worse than the loop it replaces.
+### Sampling Distribution
 
-The property that makes this an *inference optimization* rather than a new sampling policy is the verification rule:
+An important property of speculative decoding is that its purely an *inference optimization*. Its presence or the specific drafter model should never change the distribution of output relative to the target model. 
 
-* **Greedy verification** accepts a draft token only where it equals the target's argmax. The emitted sequence is therefore token-for-token identical to plain greedy decoding — the drafter has no influence on *what* is generated, only on how many passes it took.
-* **Stochastic verification** (the Leviathan/Chen rule) accepts draft token `x` with probability `min(1, p_target(x)/p_draft(x))` and, on rejection, resamples from the normalized leftover mass `(p_target − p_draft)⁺`. The theorem — which the test suite checks empirically — is that emitted tokens are distributed *exactly* according to the target, no matter how bad the drafter is.
+Recall that models themselves only produce logits. Actual token output apply a *sampling policy* across model logits to select the next token. In the previous section we simplified verification to a pairwise comparison of tokens. In actuality there is a specific *verification algorithm* that 1) considers logits of both target and draft models; 2) may be stochastic; and 3) is specific to the target sampling policy. All three levers are necessary, for at least some target sampling policies, to assure output distribution is identical. There are two broad classes:
 
-Drafter quality therefore moves exactly one number: the acceptance length. That is why model cards can report "2.76 average acceptance" as a headline — it is the whole story of how well the drafter and target agree, and the output distribution is off the table by construction.
+* *Greedy verification* accepts a draft token only where it equals the target's argmax. The emitted sequence is therefore token-for-token identical to plain greedy decoding.
 
-### Multi-token prediction: the drafter moves inside
+* *Stochastic verification* accepts the next draft token with probability `min(1, p_target / p_draft)`. If rejected, resamples from normalized leftover mass of `p_target - p_draft`
 
-A separate drafter costs a second model. The MTP alternative attaches a small head to the base model: given the trunk's hidden state at position `t` and the embedding of the just-predicted token `x_{t+1}`, predict `x_{t+2}`. Trained with teacher forcing (the corpus supplies `x_{t+1}` and `x_{t+2}`), it rides the trunk's forward pass at decode time and proposes one token ahead — self-speculation with `k = 1`, no second model to load, and near-zero drafting cost because the trunk pass was happening anyway. Production variants chain several such steps; the mechanism is identical.
+In both cases, a simple mathematical derivation as well as empirical tests (which we run in the test suite) will show that the speculative decoder is tokenwise identical in distribution to the target model. 
 
-### The accounting and the honesty line
+Once we've established pure inference optimization, drafter quality therefore reduces to exactly one metric: the *acceptance length*. Model cards will report a headline like "2.76 average acceptance". With output distribution off the table, acceptance length becomes the whole story of drafter model quality.
+### Multi-token prediction
 
-The clean way to think about the win is *target passes per token*:
+Up until now, we've assumed the drafter is a separate model running in parallel. the alternative is *multi-token prediction (MTP)*. Instead of a whole new model, it works by attaching a small head to the underlying target model (*the trunk model*).
+
+The head learns to predict the token at `t+2` using as inputs the trunk model's just predicted embedding vector at `t+1` as well as the trunk's hidden state at position `t`.  The same approach can be extended to `t+3`, `t+4`, and so on. The head is trained off the same corpus used for training the underlying model. Only with the target of predicting `t+2` from `t+1`. The head is trained purely on top of the trunk, and its training gradient never flows back to any weights in the underlying model.
+
+At decode time, the head simply rides the trunk's forward pass. Each forward pass proposes `N` tokens ahead, which can be used for the next forward pass. The speculative decoding loop is identical to the one above, the only difference being candidate tokens come from the MTP head instead of a separate drafter model. No second model to load, and near-zero drafting cost because the trunk pass happens anyway. 
+
+### The accounting
+
+The clean way to assess speculative decoding efficiency is *target passes per token*:
 
 ```
    plain:        1 target pass per token
+   
    speculative:  1 target pass per (E[accepted] + 1) tokens
                  + k drafter passes per block          (cheap, but not free)
 ```
 
-Whether fewer target passes become faster wall-clock is an engineering question this module measures rather than assumes. At course scale, each verification pass recomputes the whole prefix (our loop does not carry Module 16's KV cache through verification), and the drafter's `k` steps run in a Python loop. The exercises treat "tokens per target pass improved, wall-clock didn't" as a legitimate, reportable result — the same honesty line Beyond Linear Attention draws between demonstrated state savings and demonstrated speed.
+The main knob to turn (besides drafter model selection itself) is block size. The longer the block size, the higher the cumulative probability that verification will reject a candidate token. However a shorter block may leave possibly correct draft tokens on the table by ending the sequence too early.
+
+Longer blocks will never reduce target passes per token, but their overhead cost per token goes up linear, while the target passes per token is subject to decreasing returns on the margin. Whether fewer target passes translate into faster wall-clock efficiency is an engineering question. In this module, like everything else in the course, we measure rather than assume.
 
 ## Concepts to internalize
 
