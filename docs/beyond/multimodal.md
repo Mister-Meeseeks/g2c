@@ -125,6 +125,22 @@ cross-attention:             visual vectors → separate visual memory
 
 Early fusion spends ordinary context positions on visual vectors and lets self-attention mix both modalities. Cross-attention keeps a separate visual stream and adds layers through which text states read it. Neither topology is implied by the phrase “multimodal”; model cards must say where fusion occurs.
 
+### Vision can close the action loop
+
+This module uses an image once as conditioning input, then generates a caption. An agent can use the same interface repeatedly: act on an environment, render or capture the result, encode that visual observation, and decide what to change next.
+
+```text
+goal → edit code or artifact → render / interact → visual observation
+  ▲                                                   │
+  └──────── revise from evidence ◄── assess result ◄──┘
+```
+
+For frontend code, the observation might reveal overlap, clipping, broken hierarchy, or a control that only fails after interaction. The source code alone does not expose all of those failures; the rendered and interactive product is part of the result. Vision therefore expands what enters the reasoning loop—it does not merely add another benchmark input.
+
+GLM-5.3-Flash is a current production example. Z.ai reports synthesizing visual-coding trajectories in which the model interacts with environments, inspects its own output, and iteratively refines it. It also reports reinforcement learning with environment feedback and agent-based GUI verification grounded in user flows. The release does not disclose the exact RL algorithm, visual judge, reward weights, trajectory counts, or ablations, so this is evidence for the **observe–act–verify pattern**, not a recipe the course can reconstruct.
+
+“Self-visual verification” needs one guardrail: seeing the result is not the same as proving it is correct. A model's judgment of a screenshot is another fallible prediction. Stronger validation combines complementary evidence—rendered appearance, deterministic DOM or accessibility checks, executable user flows, task-specific assertions, and sometimes human review. [Module 15](../modules/15-evaluation.md) supplies that artifact-versus-evaluator distinction; [Beyond Harness](harness.md) supplies the provenance, context, and state-management obligations around repeated observations.
+
 ## Concepts to internalize
 
 - **Modality-specific processing ends at a shared interface.** Past the projection, patches and words occupy the same residual stream and are mixed by the same attention, while their vectors still retain modality information the model can use.
@@ -132,6 +148,8 @@ Early fusion spends ordinary context positions on visual vectors and lets self-a
 - **Image tokens are inputs, not targets.** The loss mask carries the asymmetry — Module 13's mechanism, new rationale.
 - **Patchify is tokenization for grids.** Fixed squares plus a linear projection; the "vocabulary" is continuous.
 - **The visual frontend and training regime are separate choices.** A model can be jointly trained from scratch and still use a vision tower; a projector-based system can update every component end to end.
+- **Vision can be an observation channel, not just an initial prompt.** An agent may repeatedly render, inspect, and revise an artifact; the multimodal interface is reused at each turn.
+- **Visual judgment is evidence, not proof.** A screenshot, a model's interpretation of it, and an executable verifier answer different questions and can disagree.
 - **Model-card literacy:** inspect the vision tower, attention geometry, projector/resampler, visual token count, fusion topology, boundary signals, frozen/tuned components, and training stages instead of inferring an architecture from “native multimodal.”
 
 ### What we don't cover
@@ -140,6 +158,7 @@ Early fusion spends ordinary context positions on visual vectors and lets self-a
 - **Contrastive pretraining itself.** We describe what CLIP-style encoders provide; training one is a batch-size-hungry exercise that fights the laptop constraint.
 - **Audio, video, and streaming.** Different token rates, synchronization, and chunking — the Omni-class problems. The representation story is the same; the engineering is its own topic.
 - **Resolution tiling and token budgets.** Production VLMs slice large images into tiles and spend hundreds of tokens per image. Important cost machinery, no new concepts.
+- **A visual agent loop.** We map render–observe–assess–revise conceptually, but do not add browser control, GUI instrumentation, visual-judge training, or RL trajectories to the MNIST captioning scaffold.
 - **A full multimodal evaluation.** Caption accuracy tests this toy's digit recognition and generation path, not grounding, OCR, spatial reasoning, hallucination, or multi-image binding. Production systems need targeted probes for each capability and failure mode.
 
 ---
@@ -250,7 +269,7 @@ Secondary:
 
 Optional:
 
-- **Current multimodal technical reports.** Read the visual-encoder, projector/resampler, token-budget, and training-stage sections separately; “native” alone does not answer any of those architectural questions.
+- **Current multimodal technical reports.** Read the visual-encoder, projector/resampler, token-budget, and training-stage sections separately; “native” alone does not answer any of those architectural questions. The [GLM-5.3-Flash release](https://z.ai/blog/glm-5.3-flash) is also a useful observe–act–verify example: separate its reported visual trajectory synthesis from the architecture that turns each observation into vectors.
 
 ## Deliverable checklist
 
@@ -260,3 +279,4 @@ Optional:
 - [ ] You can explain — out loud, without notes — why the transformer blocks need no modality-specific architectural change to accept images, where modality-specific preprocessing ends, and why modality information itself does not disappear.
 - [ ] You can explain — out loud, without notes — why image positions are masked out of the loss, and what a model that *generates* images has to add.
 - [ ] You can explain — out loud, without notes — what this raw-patch projector teaches, what a production vision tower/projector/resampler adds, and why “native multimodal” does not settle that architecture by itself.
+- [ ] You can explain — out loud, without notes — how vision closes an agent's action loop, and why self-visual judgment still needs independent evidence and verifiers.

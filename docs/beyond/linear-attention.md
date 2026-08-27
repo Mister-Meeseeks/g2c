@@ -140,6 +140,20 @@ The recurrence above is the undecayed `γ = 1` case: it never forgets, so early 
 
 With `γ_h` below 1, every token handled by head `h` decays that head's old state by the same proportion. This is a *fixed learned decay*, not a content-dependent gate. It cannot decide that punctuation should be forgotten quickly while a name should persist. Modern gated recurrent layers compute a decay or write strength from the current token. Delta-rule variants also subtract what the state already predicts for a key before writing the corrected value. Those mechanisms are more selective; this module keeps one scalar per head so the recurrence and its parallel reference remain inspectable.
 
+### From fixed decay to KDA's gated delta write
+
+The additive update above writes every new association on top of the same finite matrix. If two keys overlap, their values interfere; writing the new value does not first remove the old value that the state associates with that key. A delta-rule layer turns the state into a tiny online learner. In the orientation used by this module, its core can be read schematically as:
+
+```text
+prediction_t = k_tᵀ S_(t-1)                         # what memory says for this key
+error_t      = v_t - prediction_t                   # what needs correcting
+S_t          = G_t S_(t-1) + β_t k_t error_tᵀ      # forget, then corrective write
+```
+
+`β_t` controls how strongly the new association is written. `G_t` is a decay gate derived from the current token rather than one fixed `γ_h`; depending on the architecture it may act per head, per channel, or through a more structured transition. The important distinction is conceptual. Fixed decay says “this head forgets at one learned rate.” A gated delta write says “for this token, decay selected memory directions and change only the part of the association that is currently wrong.”
+
+Kimi Delta Attention (KDA) is a production descendant of this rule. It refines Gated DeltaNet with finer-grained diagonal decay; deployed stacks can surround that recurrence with normalization, short convolution, chunkwise training algorithms, and fused kernels. GLM-5.3-Flash uses KDA for 34 of its 45 text layers. That does **not** make this module's `LinearAttention` a toy KDA: the course builds the fixed-state economics and parallel/recurrent equivalence, while KDA's selective transition remains a conceptual bridge.
+
 ### The hybrid pattern
 
 Linear attention compresses history; full attention everywhere pays the full cache. A useful middle point is to stack mostly-linear layers with an occasional full-attention layer:
@@ -155,6 +169,31 @@ Linear attention compresses history; full attention everywhere pays the full cac
 
 The full layer makes exactly addressable token identities available to the residual stream; whether one such layer repairs a given task is empirical. The cache bill scales with the number and cache geometry of the full layers. Exercise 5 computes the contrast: at `D=4096`, one fp16 **MHA** layer needs about 16.4 GB of KV cache at one million tokens, GQA with eight KV heads needs about 4.1 GB, and one linear layer's `(S, z)` state is about 1.1 MB. A 3:1 hybrid pays a growing cache in one quarter of its layers, but the size of that cache still depends on whether those layers use MHA, GQA, or another compression scheme.
 
+### A production hybrid can stack several kinds of compression
+
+GLM-5.3-Flash makes the hybrid distinction unusually concrete. Its published layer list is:
+
+```text
+[KDA, KDA, KDA, DSA] × 11, then one final KDA layer
+ ───── fixed state ─────   ─ selected, token-addressable history
+```
+
+The 34 KDA layers carry recurrent matrix state whose size does not grow with context. The 11 DeepSeek Sparse Attention (DSA) layers retain an MLA-compressed history; the published configuration sets their learned indexer to top-k 2,048. Those layers still have a cache that grows with `T`: selection reduces which entries attention reads, while MLA reduces what each cached entry stores.
+
+IndexPool attacks a third object—the index used to choose those entries. Z.ai reports pooling four indexer key vectors into one weighted key before sparse selection:
+
+```text
+token history
+   ├─ MLA latent payload ────────────────────────────┐
+   └─ indexer keys → pool 4 into 1 → rank top 2,048 ┤
+                                                     ▼
+                                  attend to selected latent payload
+```
+
+Pooling the index does not make the latent values disappear, and it does not turn DSA into recurrent attention. It reduces indexer memory and lookup work while the token-addressable latent history remains. This is a general model-card lesson: a production cache can have separate **payload**, **index**, and **selection-work** bills, and a release may compress each with a different mechanism.
+
+Z.ai reports lower attention compute and KV-cache use for the complete Flash design relative to GLM-5.3. Those ratios combine the layer weave, KDA state, MLA width, sparse top-k, IndexPool, and the denominator's architecture. They are properties of that measured system—not constants you can assign to “linear attention” or to a 3:1 pattern in general.
+
 ## Concepts to internalize
 
 - **There is more than one attention bill.** Pairwise arithmetic, activation memory, KV-cache capacity, bandwidth, and wall-clock execution are related but not interchangeable targets.
@@ -164,17 +203,20 @@ The full layer makes exactly addressable token identities available to the resid
 - **One computation, two forms.** The readable parallel reference and recurrent inference form are equal to floating-point tolerance. The equivalence test is the module's anchor; the reference is not an efficient training kernel.
 - **The state is a compressed summary.** Average loss and targeted recall measure different things; neither experiment's outcome should be assumed in advance.
 - **A fixed decay is not a selective gate.** This module learns one forgetting rate per head. Token-dependent gates can choose what to retain based on content.
+- **A delta write corrects an association instead of only adding another one.** It reads what the state currently predicts for a key and writes the residual error; KDA adds finer-grained, token-dependent decay around that idea.
 - **Hybrids expose a dial.** Full layers retain exact token access and growing caches; recurrent layers use fixed state. The layer pattern chooses where to pay each cost.
-- **Model-card literacy:** "hybrid," "recurrent," "linear," "SSM," and ratios like 3:1 often signal a choice along the growing-cache versus fixed-state axis, though their update equations are not interchangeable.
+- **The payload, its index, and selection work are separate bills.** IndexPool can shrink indexer state and latency without eliminating the token-addressable latent cache it points into.
+- **Model-card literacy:** "hybrid," "recurrent," "linear," "SSM," ratios like 3:1, and fields such as `index_topk` or `index_kpool` describe different choices along the state-and-access axis. Their update equations and cache guarantees are not interchangeable.
 
 ### What we don't cover
 
 - **State-space model derivations.** Mamba's selective-scan formulation arrives at a similar place from control theory. The convergence is the interesting fact; the HiPPO math is its own course.
 - **Efficient dense-attention kernels.** We explain FlashAttention's I/O idea but do not build a tiled softmax kernel.
 - **MQA, GQA, and MLA implementations.** We include their cache geometry in the survey and memory exercise, not new projection or latent-cache scaffolds.
-- **Sparse-attention implementations.** We distinguish local, structured, and learned selection conceptually without building indexing or block-sparse kernels.
+- **Sparse-attention and IndexPool implementations.** We distinguish local, structured, learned selection, and pooled indexing conceptually without building an indexer or block-sparse kernel.
 - **Hardware-aware scan and chunked kernels.** Real implementations balance within-chunk parallelism against recurrent state passing. Our readable parallel reference materializes `T × T` scores, so it proves equivalence but does not realize efficient training.
-- **Input-dependent gates and delta-rule writes.** They let the model choose what to forget and correct an existing association before writing. We keep a fixed per-head decay to isolate the recurrent-state idea.
+- **KDA and other gated delta-rule implementations.** We trace the corrective write and selective-decay bridge, but keep a fixed per-head decay in the scaffold so the recurrent state and its parallel reference remain inspectable.
+- **Recurrent-state commit and rollback.** A fixed summary has no token rows to truncate after rejected speculative drafts. [Beyond Speculative Decoding](specdec.md) explains checkpoint-plus-input replay as the serving bridge; neither module builds the production kernel.
 - **Position embeddings under recurrence.** How RoPE-style rotations interact with state-based attention is a genuinely fiddly topic we sidestep by keeping Module 09's learned positions.
 
 ---
@@ -282,12 +324,13 @@ Linear and recurrent core:
 Further bridges:
 
 - **Yang, Kautz, Hatamizadeh, ["Gated DeltaNet"](https://arxiv.org/abs/2412.06464) (2024).** Decay gating plus the delta rule; the cleanest bridge from this module's code to the mechanism used in Qwen3.5's linear-attention layers.
+- **Kimi Team, ["Kimi Linear: An Expressive, Efficient Attention Architecture"](https://arxiv.org/abs/2510.26692) (2025).** KDA's finer-grained diagonal decay and its chunkwise algorithm. Read the recurrence for the bridge; do not mistake the fused implementation for this module's reference code.
 - **Sun, Dong, Huang et al., ["Retentive Network"](https://arxiv.org/abs/2307.08621) (2023).** An independent derivation of decay-gated linear attention; useful second angle on why the decay is load-bearing.
 - **DeepSeek-AI, ["DeepSeek-V3.2"](https://arxiv.org/abs/2512.02556) (2025).** DeepSeek Sparse Attention's learned indexer and selected-token attention, distinct from Native Sparse Attention above.
 
 Optional:
 
-- **2026 release examples.** [Kimi K3](https://www.kimi.com/news/kimi-k3-open-source) reports 69 KDA and 24 Gated-MLA layers, arranged as a 3:1 hybrid plus a final MLA layer. The official [Qwen3.5-9B model page](https://huggingface.co/Qwen/Qwen3.5-9B) reports eight repeats of three Gated DeltaNet layers followed by one gated full-attention layer. These are production descendants of the fixed-state/full-attention trade, not reproductions of this module's update rule.
+- **2026 release examples.** [Kimi K3](https://www.kimi.com/news/kimi-k3-open-source) reports 69 KDA and 24 Gated-MLA layers, arranged as a 3:1 hybrid plus a final MLA layer. The official [Qwen3.5-9B model page](https://huggingface.co/Qwen/Qwen3.5-9B) reports eight repeats of three Gated DeltaNet layers followed by one gated full-attention layer. [GLM-5.3-Flash](https://z.ai/blog/glm-5.3-flash) publishes a `[KDA,KDA,KDA,DSA] × 11 + KDA` weave and adds IndexPool on the sparse index. These are production descendants of the fixed-state/full-attention trade, not reproductions of this module's update rule.
 - **Gu, Goel, Ré, ["Efficiently Modeling Long Sequences with Structured State Spaces"](https://arxiv.org/abs/2111.00396) (S4, 2021).** Where the SSM lineage began, if the control-theory route appeals.
 
 ## Deliverable checklist
@@ -300,3 +343,5 @@ Optional:
 - [ ] You can explain — out loud, without notes — why hybrid stacks exist, in terms of what the recurrent state cannot do.
 - [ ] You can explain — out loud, without notes — why this module's recurrent inference state is fixed-size while its readable parallel training reference is still quadratic.
 - [ ] You can explain — out loud, without notes — how a fixed per-head decay differs from an input-dependent gate.
+- [ ] You can explain — out loud, without notes — how a delta-rule write corrects the state's current prediction, and why this module does not claim to implement KDA.
+- [ ] You can classify the GLM-5.3-Flash hybrid's recurrent state, latent payload cache, pooled index, and sparse selection as four distinct pieces of the serving bill.

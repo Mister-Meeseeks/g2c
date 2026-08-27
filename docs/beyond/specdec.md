@@ -109,6 +109,49 @@ The main knob to turn (besides drafter model selection itself) is block size. Th
 
 Longer blocks will never reduce target passes per token, but their overhead cost per token goes up linear, while the target passes per token is subject to decreasing returns on the margin. Whether fewer target passes translate into faster wall-clock efficiency is an engineering question. In this module, like everything else in the course, we measure rather than assume.
 
+### Verification is also a state transaction
+
+The losslessness claim has a second half that a token-only implementation can hide. After an iteration, both of these must match ordinary target decoding:
+
+```text
+1. emitted tokens
+2. committed inference state after those tokens
+```
+
+“Match” here means that the state represents the same accepted prefix and produces the same future target outputs, not that every implementation must use the same byte layout. A KV cache and a checkpoint-plus-replay buffer can be semantically equivalent while storing different objects.
+
+For a Transformer KV cache, speculative verification appends `k` candidate rows. If only the first `j` drafts are accepted, rollback can usually move a sequence pointer to the accepted prefix; the rejected K/V rows remain allocated or are overwritten later, but they are no longer visible. The cache is an append-only token history, so every speculative position has an address.
+
+A recurrent layer has a different problem. Its history has already been folded into one state:
+
+```text
+S_t = update(S_(t-1), input_t)
+```
+
+After applying four draft inputs, `S_(t+4)` does not retain four rows that can be truncated back to `S_(t+2)`. The compression that made state independent of context length also removed cheap undo. Saving a full state snapshot after every draft makes rollback possible, but multiplies traffic for a decode path that is often already memory-bound.
+
+The durable systems pattern is to treat verification like a transaction:
+
+```text
+committed checkpoint state S₀ + recent accepted-input buffer
+                         │
+                         ├─ append k speculative inputs to a branch
+                         ├─ compute outputs needed for verification
+                         └─ verifier accepts j
+                                  │
+                    ┌─────────────┴─────────────┐
+                    ▼                           ▼
+             commit first j inputs      discard rejected suffix
+                    │                    by moving a buffer pointer
+                    └─ later flush: replay buffered inputs into S₀
+```
+
+ReplaySSM is one production realization. It keeps a checkpoint recurrent state and caches recent recurrence inputs rather than materializing and storing a full new state at every token. Outputs can be computed from the checkpoint plus that input buffer; when the buffer fills, replay folds the inputs into a new checkpoint. During speculation, accepting or rejecting a suffix becomes a buffer-pointer operation instead of restoration from `k` full-state snapshots.
+
+This does not change the verifier's probability rule or acceptance length. It changes how the target produces verification outputs and how its hidden state commits the accepted prefix. In a hybrid model, the transaction spans both kinds of state: full/sparse attention layers commit cache rows, while recurrent layers commit buffered inputs or a reconstructed state. Every layer must land on the same accepted token boundary.
+
+The course loop deliberately recomputes the prefix and therefore gets correct state by construction. It does not implement ReplaySSM. The bridge matters because it reveals a hidden denominator in speculative-decoding claims: fewer target passes help only if branching, verifying, and committing the target's actual inference state are cheaper than ordinary decode.
+
 ## Concepts to internalize
 
 - **Teacher forcing works on guesses.** One forward pass scores `k+1` positions whether the tokens came from a corpus or a drafter. Verification is Module 06's parallel scoring pointed at the future.
@@ -117,11 +160,14 @@ Longer blocks will never reduce target passes per token, but their overhead cost
 - **Acceptance length is the drafter's whole report card.** `E[accepted] + 1` tokens per pass is the number to sweep, and the number model cards quote.
 - **MTP is speculation with the drafter built in.** A trained head turns one trunk pass into a draft; "MTP layer" on a model card is a serving feature, not just a training trick.
 - **Drafter and target must share a tokenizer.** Draft *ids* are the interface. A vocabulary mismatch isn't degraded — it's meaningless.
+- **Losslessness includes state.** After each block, the emitted tokens *and* every target-layer cache or recurrent state must match target-only decoding at the accepted boundary.
+- **Rollback depends on the state representation.** A KV cache can truncate token rows; a fixed recurrent summary has no intrinsic undo. Snapshotting, replaying inputs, or reconstructing state are different systems costs around the same verifier.
+- **Replay turns recent inputs into a transaction log.** A stable checkpoint plus an input buffer separates speculative work from committed history; commit and rejection can become pointer changes rather than full-state copies.
 
 ### What we don't cover
 
 - **Tree and multi-candidate drafting.** Medusa and EAGLE verify a *tree* of candidate continuations in one pass with specialized attention masks. Our single-chain block is the mechanism; trees are its batched generalization.
-- **KV-cache integration.** Production verification reuses the cache across iterations and rolls back rejected suffixes. Our loop recomputes the prefix so the algorithm stays inspectable; Module 16 has the cache this would compose with.
+- **Cached-state integration and ReplaySSM kernels.** Production verification reuses and commits KV caches, recurrent states, or replay buffers across iterations. Our loop recomputes the prefix so the algorithm stays inspectable; Module 16 has the cache this would compose with, while [Beyond Linear Attention](linear-attention.md) supplies the fixed-state recurrence whose rollback is different.
 - **Hardware-aware speculation scheduling.** DSpark chooses draft lengths against measured server throughput. That is a serving-systems concern layered on top of the mechanism built here.
 - **The full sampled speculative loop.** We build and verify the stochastic acceptance *rule*; the notebook's decoding loop is greedy, where losslessness is checkable by string equality rather than statistics.
 - **Distribution-preservation proofs.** The tests check the theorem empirically; the two primary papers prove it in a page each.
@@ -226,10 +272,11 @@ Secondary:
 
 - **DeepSeek-V3 Technical Report (2024), the MTP section.** The shared-trunk sequential MTP module this module's head is a minimal version of, and the design its successors inherit.
 - **Cai et al., "Medusa" (2024)** and **Li et al., "EAGLE" (2024).** Multiple heads, tree-structured drafts, and feature-level drafting — the generalizations past a single chain.
+- **Dao AI Lab, ["ReplaySSM: Cache SSM Inputs, Not State"](https://dao-lab.ai/blog/2026/replayssm/) (2026).** The state-transaction bridge for recurrent and delta-rule targets: checkpoint state, buffered recurrence inputs, cheap suffix rollback, and output-only speculative verification. Read for the systems contract; this module does not build its kernels.
 
 Optional:
 
-- **The current release lineage.** DeepSeek V4's DSpark report, GLM-5's parameter-shared MTP (2.76 acceptance), and the Qwen3.8 model cards' MTP entries (2026). After this module, their serving sections read as configuration: a drafter, a verification rule, and an acceptance number.
+- **The current release lineage.** DeepSeek V4's DSpark report, GLM-5's parameter-shared MTP (2.76 acceptance), and the Qwen3.8 model cards' MTP entries show different places a drafter can live. [GLM-5.3-Flash](https://z.ai/blog/glm-5.3-flash) adds ReplaySSM to the serving side. After this module, read those systems as a drafter, a verifier, an acceptance number, and a state-commit path—not just a headline speedup.
 
 ## Deliverable checklist
 
@@ -241,3 +288,5 @@ Optional:
 - [ ] You can explain — out loud, without notes — what the stochastic acceptance rule guarantees, and what the drafter can and cannot influence.
 - [ ] You can explain — out loud, without notes — why tokens-per-pass and wall-clock speedup are different claims.
 - [ ] You can explain — out loud, without notes — what an MTP head changes about where the drafter lives, and why the two models must share a tokenizer.
+- [ ] You can explain — out loud, without notes — why token equality is insufficient if rejected drafts remain folded into target state.
+- [ ] You can contrast KV-cache truncation, per-draft recurrent-state snapshots, and checkpoint-plus-input replay as three ways to commit the accepted prefix.

@@ -152,6 +152,32 @@ A permission table is **not a sandbox**. A Python tool still has the process's f
 
 Any tool response, webpage, file, or query result may contain adversarial instructions. Rendering that text with an `Observation` tag records provenance; it does not contain the content or make it safe. Defense is layered: separate instructions from external data, limit tool capabilities, validate consequential actions against deterministic policy, require approval where appropriate, and evaluate adversarial observations.
 
+### A visual observation is evidence, not environment state
+
+[Beyond Multimodal](multimodal.md) adds screenshots, rendered pages, video frames, charts, and document previews to the same observation stream. These artifacts can reveal failures that source text or a tool's exit code misses, but the harness must keep three objects distinct:
+
+```text
+environment state       captured observation       interpretation / verdict
+files, DOM, app state → screenshot or render     → “layout is correct”
+       source of truth     evidence at one moment    a fallible claim
+```
+
+A screenshot is stale as soon as the underlying state changes. A model's description can also omit, misread, or hallucinate details. The event log should therefore bind an observation to the action and world revision that produced it: record an artifact reference and content hash, media type, capture time, environment or workspace revision, and the originating call id. Large media belongs in blob storage or the workspace; the JSONL event records its durable reference and provenance rather than embedding megabytes into every event or prompt.
+
+That provenance supports an inspectable visual loop:
+
+```text
+tool_call(edit_7)
+tool_result(edit_7, workspace_rev=42)
+observation(render_8, rev=42, artifact=page.png, sha256=…)
+verifier_result(render_8, method=user_flow, status=failed, evidence=…)
+tool_call(edit_9)  ← revision is responding to named evidence
+```
+
+The active context need not carry every old bitmap. It can keep the newest relevant image plus compact textual metadata or model-generated descriptions of older observations, while the durable artifact remains available for audit. As elsewhere in this module, the compact view is not the reconstruction source.
+
+Verification should also name its method. Pixel- or model-based visual judgment can catch appearance problems; DOM, accessibility, and task assertions inspect structure; executable user flows test interaction. Agreement is stronger evidence, but no single channel becomes authoritative merely because the model called it “verified.” [Module 15](../modules/15-evaluation.md) supplies the evaluator discipline. Z.ai's reported GLM-5.3-Flash visual-coding pipeline—environment interaction, self-visual judgment, and agent verification grounded in user flows—is one production example of composing these channels. The release does not disclose enough detail to reproduce its verifier or training pipeline.
+
 ### Classify failures before retrying
 
 *Transient failures* may change as the external world changes: a timeout or busy resource may succeed on a bounded retry with the same request. *Deterministic failures* require the request to change; retrying the same missing path or malformed arguments only makes the failure slower. This lesson uses a small visible substring policy, not a production error taxonomy.
@@ -196,6 +222,8 @@ Models may also be post-trained against particular tool schemas and transcript f
 - **An unresolved call has an unknown outcome.** Call ids dedupe recorded results, not ambiguous effects.
 - **Permissions and sandboxing are different layers.** Policy does not contain tool code.
 - **Observations are data, not instructions.** Preserve provenance and constrain authority around untrusted content.
+- **A captured observation is not live environment state.** Bind screenshots and renders to the exact action, artifact hash, and workspace or environment revision they describe.
+- **Interpretation is not verification.** Preserve the image, the model's reading, and each deterministic or user-flow verifier result as distinct evidence with named provenance.
 - **Failures are classified before retrying.** Transient errors may merit retries; deterministic errors need a changed request.
 - **Budgets survive resume.** A process restart must not reset the run's safety limits.
 - **Audit state and operational telemetry differ.** Both may contain sensitive data requiring lifecycle controls.
@@ -208,6 +236,7 @@ Models may also be post-trained against particular tool schemas and transcript f
 - **Security isolation.** VM/container boundaries, egress control, and secret handling are systems-security topics.
 - **A product-specific rules-file resolver.** We cover deterministic discovery, scope, precedence, and resume consistency conceptually, not one tool's file convention.
 - **A complete prompt-injection defense.** We establish the trust boundary and layered mitigations; robust defense remains an active systems problem.
+- **Browser/desktop instrumentation and visual-verifier training.** We specify observation identity and evidence flow, not screenshot capture, GUI automation, perceptual scoring, or RL environment construction.
 - **A telemetry backend.** We identify useful provenance and privacy controls without adding an observability stack.
 - **Power-loss durability and concurrent writers.** The event log is intentionally single-process teaching code.
 - **A multi-agent orchestrator.** We cover delegation patterns and invariants, not scheduling, inter-agent protocols, shared-memory design, or conflict resolution.
@@ -303,6 +332,7 @@ Primary:
 Secondary:
 
 - **Anthropic, “Building Effective Agents” (2024).** A practitioner's case for simple, inspectable loops.
+- **[Z.ai, “GLM-5.3-Flash: Frontier Intelligence, Flash Cost” (2026).](https://z.ai/blog/glm-5.3-flash)** A current example of visual observations inside a coding trajectory: render, inspect, revise, and verify against environment feedback and user flows. Treat the pipeline description as a reported system, not a disclosed reproduction recipe.
 - **[OWASP, “LLM01: Prompt Injection.”](https://genai.owasp.org/llmrisk/llm01-prompt-injection/)** Indirect injection, least privilege, approval, content separation, and adversarial testing.
 - **[OpenTelemetry, “Generative AI semantic conventions.”](https://opentelemetry.io/docs/specs/semconv/registry/attributes/gen-ai/)** A shared vocabulary for model, agent, tool, latency, and token telemetry—with explicit sensitivity warnings.
 - **Terminal-Bench / Harbor.** Reproducible terminal environments with test-based verification.
@@ -317,4 +347,5 @@ Secondary:
 - [ ] You can explain why call-id dedupe handles recorded results but cannot close the unknown-outcome window by itself.
 - [ ] You can explain why applicable rules stay outside compactable trajectory history and how resume can detect that rules changed.
 - [ ] You can distinguish trusted instructions, untrusted observations, audit state, and operational telemetry.
+- [ ] You can distinguish live environment state, a versioned visual observation, the model's interpretation, and a verifier result—and explain why the event log links rather than collapses them.
 - [ ] You can explain why the permission table is not a sandbox and where this event log's durability boundary lies.
