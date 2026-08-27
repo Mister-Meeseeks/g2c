@@ -28,6 +28,7 @@ In progress — drafts live in the repo, not yet on the site:
 - Midtraining
 - Speculative decoding and multi-token prediction
 - Muon and orthogonalized updates
+- Manifold-constrained hyper-connections and residual routing
 
 Watchlist — evidence accumulating, listed as observations rather than promises: diffusion and other non-autoregressive generation; low-precision training.
 

@@ -201,9 +201,11 @@ propagation less prone to expansion. The report implements the constraint with
 Sinkhorn normalization.
 
 G2C teaches why residual connections and normalization stabilize the
-Transformer in [Module 09](../modules/09-transformer-block.md), but it does not
-build hyper-connections or constrained matrix manifolds. This mechanism is
-**not yet covered**.
+Transformer in [Module 09](../modules/09-transformer-block.md). The draft
+[Beyond mHC](../beyond/mhc.md) now specifies a laptop-scale build around
+multi-stream routing, Sinkhorn projection, and propagation diagnostics, but
+its scaffold has not shipped. The mechanism therefore remains **not yet
+covered** by executable course work.
 
 ### Muon changes how most matrices are updated
 
@@ -405,7 +407,7 @@ incomplete latency prediction.
 | Tool schema and interleaved agent state | Modules 18–19 + Beyond Harness | **Conceptual bridge** |
 | Real container/microVM sandboxing | Beyond Harness | **Conceptual bridge**, explicitly outside its build |
 | DSpark speculative decoding | Modules 11 and 16 provide target decoding | **Conceptual bridge** |
-| mHC | Module 09 provides the residual baseline | **Not yet covered** |
+| mHC | Module 09 + draft Beyond mHC | **Not yet covered** — lesson drafted, executable build not shipped |
 | Muon | Module 03B provides the optimizer baseline | **Not yet covered** |
 | Multi-token prediction | Module 06 provides one-token prediction | **Not yet covered** |
 | FP4 quantization-aware training | Module 16 motivates inference precision | **Not yet covered** |
