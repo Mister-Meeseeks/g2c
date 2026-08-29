@@ -128,8 +128,10 @@ Positions are handled with partial RoPE: only a quarter of each head's
 dimensions rotate (`partial_rotary_factor: 0.25`), at a base frequency of
 10,000,000, with the multimodal M-RoPE variant interleaving position across
 text, image height, and width. [Module 05](../modules/05-embeddings.md) builds
-the position problem this answers; the specific long-context tuning — high
-theta, partial rotation, YaRN extension to 1M — is a **conceptual bridge**.
+the position problem this answers, while [draft Beyond Long Context](../beyond/long-context.md)
+separates position adaptation, training exposure, utilization, and retention.
+The specific high-theta, partial-rotation, M-RoPE, and YaRN recipe remains a
+**conceptual bridge** rather than code students have built.
 
 ### A 248,320-token vocabulary is a quarter-billion-row commitment
 
@@ -219,7 +221,7 @@ are all **Max** results and say nothing measured about this checkpoint.
 | Gated DeltaNet specifics (delta rule, gates, conv) | Beyond Linear Attention | **Conceptual bridge** |
 | GQA KV-head sharing | Module 08 baseline; seen in Module 13B's SmolLM | **Conceptual bridge** |
 | Attention output gating | Module 08 baseline | **Not yet covered** |
-| Partial RoPE / M-RoPE / YaRN extension | Module 05 | **Conceptual bridge** |
+| Partial RoPE / M-RoPE / YaRN extension | Module 05 + draft Beyond Long Context | **Conceptual bridge**; executable build not shipped |
 | 248K BPE vocabulary and its parameter price | Module 04 | **Built in g2c** at mechanism scale |
 | Vision patches as tokens | Beyond Multimodal | **Conceptual bridge** |
 | KV-cache economics, prefix reuse, FP8 serving | Module 16 | **Conceptual bridge** |

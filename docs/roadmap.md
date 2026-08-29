@@ -29,8 +29,14 @@ In progress — drafts live in the repo, not yet on the site:
 - Speculative decoding and multi-token prediction
 - Muon and orthogonalized updates
 - Manifold-constrained hyper-connections and residual routing
+- Long context: position, training, and evaluation
+- Hardware-aware model architecture
 
-Watchlist — evidence accumulating, listed as observations rather than promises: diffusion and other non-autoregressive generation; low-precision training.
+Supporting guide in draft — no scaffold or deliverable:
+
+- The efficient-attention map
+
+Watchlist — evidence accumulating, listed as observations rather than promises: sparse and compressed token-addressable attention as its own build; diffusion and other non-autoregressive generation; low-precision training.
 
 ---
 
@@ -57,7 +63,7 @@ laptop-scale build before it earns a Beyond module.
 Bigger than additions — candidate themes for a second course, listed as directions rather than promises:
 
 - **Interpretability: you built it — now open it up.** Logit lens, activation patching, ablations, an induction-head hunt — on the model *you trained*. Module 08 already concedes its attention visualizations underwhelm at tiny scale; a dedicated arc is where that debt pays off, because tiny models aren't a limitation for interpretability — they're the superpower. Fully inspectable, fully yours.
-- **Performance and serving.** Quantization internals, attention tiling, batching, speculative decoding — the "make it fast" half that this course explicitly trades away for legibility.
+- **Performance and serving.** The draft hardware module supplies single-device fundamentals; custom Metal kernels, quantization internals, distributed batching, parallelism, and production serving remain a larger "make it fast" arc.
 
 ---
 

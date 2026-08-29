@@ -2,7 +2,6 @@
 
 > **Question this module answers:** *Why does a model that predicts one token at a time not have to generate one token at a time?*
 
-<!-- TODO(hero pipeline): asset not yet generated -->
 ![A small drafter model racing ahead to propose a block of four tokens while a large target model checks the whole block in a single forward pass, accepting a prefix and correcting the first mistake, next to a multi-token-prediction head bolted onto the model that drafts for itself.](specdec/BeyondSpecdec-Hero.png)
 
 Module 11's generation loop pays one full forward pass per token, and no amount of hardware changes that the passes happen one after another. Current releases all attack this serial bottleneck the same way: DeepSeek V4 ships an attached drafter module (DSpark) and reports 60–85% faster generation; GLM-5 serves through a parameter-shared multi-token-prediction layer with a reported 2.76-token acceptance length; Qwen3.8 trains an MTP head into both of its open checkpoints. This module builds the load-bearing mechanism — draft, verify in one pass, keep the agreeing prefix — and proves the property that makes it safe to deploy: the output is *exactly* what the target model would have produced alone.
@@ -34,21 +33,21 @@ That fact doesn't seem that useful on the surface. But the one upshot is *verifi
 
 This is the insight behind *speculative decoding*. Think of it like branch prediction from computer architecture. If we can make a cheap educated guess about the next `N` tokens in a completion, and if we're right, then we reduce the cost from `N` forward passes for generation to one forward pass for verification. 
 
-The question is how do we make a good educated guess? In Module 12 we compared different size models in the same family (same training regime, similar shaped architectures). What we learned is smaller models often produce similar outputs to their larger cousins. Especially over over the next few tokens, before trajectories diverge. 
+The question is how do we make a good educated guess? In Module 12 we compared different size models in the same family (same training regime, similar shaped architectures). What we learned is smaller models often produce similar outputs to their larger cousins, especially over the next few tokens before trajectories diverge.
 
 Speculative decoding comes down to economics. It works best for large, slow, expensive models. We pair with a smaller, faster, cheaper *drafter model* from the same family as the *target model*. For most tokens, most of the time, the large model is "overpowered". A smaller model will correctly guess the same token as the larger model. 
 
-Therefore, the efficiency of speculative decoding comes to two factors. One is the accuracy of the drafter model. What percent of the time does its tokens match the target model? The second is the ratio of the cost of the target model to the drafter model. Pushing the drafter to be smaller and faster, increases efficiency for the latter but trades off against the former.
+Therefore, the efficiency of speculative decoding comes down to two factors. One is drafter accuracy: what percentage of its tokens match the target model? The second is the ratio of the target model's cost to the drafter model's cost. Making the drafter smaller and faster improves the latter but usually trades off against the former.
 
 ## The big idea
 
-WeSpeculative decoding runs the following completion loop:
+Speculative decoding runs the following completion loop:
 
-1. Drafter model: Generate `k` *candidate tokens* based on the current completion
-2. Target model: Generate `k+1` *verification tokens* by running a forward pass over the candidate tokens
-3. Emit the first `j` tokens where `candidate[k] == verification[k]`
-4. Discard all remaining candidate tokens
-5. Emit `verification[k+1]`
+1. Drafter model: generate `k` candidate tokens `d₁ … d_k` from the current completion
+2. Target model: score the candidate block in one forward pass, producing aligned predictions `t₁ … t_k` plus `t_(k+1)`
+3. Accept the longest prefix `d₁ … d_j` for which every aligned pair `d_i = t_i`
+4. Discard the remaining candidate suffix `d_(j+1) … d_k`
+5. Emit `t_(j+1)` — the correction at the first mismatch, or the bonus token `t_(k+1)` when all `k` drafts match
 6. Repeat loop for the full completion
 
 The overall idea is simple, but there are a few subtleties in that loop that are important to notice.
@@ -73,22 +72,29 @@ Second, the forward verification pass will always give us one extra token "for f
    emit:              d_1  d_2  t_3          ← accepted prefix + free correction
 ```
 
+![A position-alignment diagram shows the last prompt token and four draft inputs producing five target predictions in one pass, then accepts only the matching prefix and emits either the first correction or a bonus token after full acceptance.](specdec/BeyondSpecdec-VerificationAlignment.png)
+*The target's logits are shifted by one input position: the last prompt position predicts `t₁`, while the final draft position predicts the free `t₅`. This is the alignment pinned by the module's anchor test.*
+
 ### Sampling Distribution
 
-An important property of speculative decoding is that its purely an *inference optimization*. Its presence or the specific drafter model should never change the distribution of output relative to the target model. 
+An important property of speculative decoding is that it is purely an *inference optimization*. Its presence or the specific drafter model should never change the distribution of output relative to the target model.
 
-Recall that models themselves only produce logits. Actual token output apply a *sampling policy* across model logits to select the next token. In the previous section we simplified verification to a pairwise comparison of tokens. In actuality there is a specific *verification algorithm* that 1) considers logits of both target and draft models; 2) may be stochastic; and 3) is specific to the target sampling policy. All three levers are necessary, for at least some target sampling policies, to assure output distribution is identical. There are two broad classes:
+Recall that models themselves only produce logits. Actual token output applies a *sampling policy* to those logits. In the previous section we simplified verification to a pairwise comparison of tokens. In actuality there is a specific *verification algorithm* that 1) considers logits of both target and draft models; 2) may be stochastic; and 3) is specific to the target sampling policy. All three levers are necessary, for at least some target sampling policies, to ensure the output distribution is identical. There are two broad classes:
 
 * *Greedy verification* accepts a draft token only where it equals the target's argmax. The emitted sequence is therefore token-for-token identical to plain greedy decoding.
 
-* *Stochastic verification* accepts the next draft token with probability `min(1, p_target / p_draft)`. If rejected, resamples from normalized leftover mass of `p_target - p_draft`
+* *Stochastic verification* accepts the next draft token with probability `min(1, p_target / p_draft)`. If rejected, it resamples from the normalized leftover mass of `p_target - p_draft`.
+
+![Four target-probability bars are decomposed into accepted common mass and correction mass, while a stochastic verification gate either emits the sampled draft token or draws from the normalized positive target residual.](specdec/BeyondSpecdec-StochasticVerification.png)
+*For each token, accepted mass `min(p,q)` plus correction mass `(p−q)₊` reconstructs the target mass exactly. Draft-only excess is rejected, so the drafter can change work but not the target distribution.*
 
 In both cases, a simple mathematical derivation as well as empirical tests (which we run in the test suite) will show that the speculative decoder is tokenwise identical in distribution to the target model. 
 
 Once we've established pure inference optimization, drafter quality therefore reduces to exactly one metric: the *acceptance length*. Model cards will report a headline like "2.76 average acceptance". With output distribution off the table, acceptance length becomes the whole story of drafter model quality.
+
 ### Multi-token prediction
 
-Up until now, we've assumed the drafter is a separate model running in parallel. the alternative is *multi-token prediction (MTP)*. Instead of a whole new model, it works by attaching a small head to the underlying target model (*the trunk model*).
+Up until now, we've assumed the drafter is a separate model running in parallel. The alternative is *multi-token prediction (MTP)*. Instead of a whole new model, it works by attaching a small head to the underlying target model (*the trunk model*).
 
 The head learns to predict the token at `t+2` using as inputs the trunk model's just predicted embedding vector at `t+1` as well as the trunk's hidden state at position `t`.  The same approach can be extended to `t+3`, `t+4`, and so on. The head is trained off the same corpus used for training the underlying model. Only with the target of predicting `t+2` from `t+1`. The head is trained purely on top of the trunk, and its training gradient never flows back to any weights in the underlying model.
 
@@ -147,6 +153,9 @@ committed checkpoint state S₀ + recent accepted-input buffer
 ```
 
 ReplaySSM is one production realization. It keeps a checkpoint recurrent state and caches recent recurrence inputs rather than materializing and storing a full new state at every token. Outputs can be computed from the checkpoint plus that input buffer; when the buffer fills, replay folds the inputs into a new checkpoint. During speculation, accepting or rejecting a suffix becomes a buffer-pointer operation instead of restoration from `k` full-state snapshots.
+
+![Three state-commit strategies accept two of four speculative inputs: a KV cache truncates addressable rows with a sequence pointer, recurrent snapshots restore an earlier full state, and checkpoint-plus-input replay advances a buffer pointer before folding accepted inputs into a new checkpoint.](specdec/BeyondSpecdec-StateTransactions.png)
+*Every strategy commits the same two-token boundary, but the stored object changes the cost of rollback: token rows truncate, compressed state must be restored, and an input log can discard a suffix by pointer before replay.*
 
 This does not change the verifier's probability rule or acceptance length. It changes how the target produces verification outputs and how its hidden state commits the accepted prefix. In a hybrid model, the transaction spans both kinds of state: full/sparse attention layers commit cache rows, while recurrent layers commit buffered inputs or a reconstructed state. Every layer must land on the same accepted token boundary.
 

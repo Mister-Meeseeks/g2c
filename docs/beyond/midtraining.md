@@ -135,37 +135,9 @@ Samples are secondary evidence. A 30M base model does not become a capable codin
 
 ### Long-context extension is also midtraining
 
-Domain adaptation is only one use of this stage. Modern recipes also continue training to change the model's context regime. A useful long-context model needs more than a larger `max_seq_len` value:
+Domain adaptation is only one use of this stage. A model can also continue next-token training on longer sequences, dependency-bearing data, and a new positional regime. That makes long-context extension a form of midtraining, but not a small subtopic of it: accepting a longer tensor, representing positions beyond the training range, learning to use distant evidence, paying the attention bill, and evaluating retention are separate problems.
 
-```
-   base checkpoint
-         ↓
-   adapt positional representation
-         ↓
-   progressively increase sequence length
-         ↓
-   train on long documents + synthetic long-range dependencies
-         ↓
-   evaluate long-context use AND short-context retention
-```
-
-Four pieces interact:
-
-1. **Position representation.** RoPE models often use interpolation or frequency-scaling methods such as YaRN. The course `TransformerLM` uses learned absolute positional embeddings; extending it would require resizing and training that table, making the exercise architecture surgery as well as midtraining.
-2. **Long-sequence exposure.** Accepting a long tensor does not mean the model learned to use distant evidence. Training needs examples whose prediction genuinely depends on far-away tokens.
-3. **A length curriculum.** Recipes commonly increase sequence length progressively. This controls optimization shock and avoids paying maximum attention cost for every early update.
-4. **Two-regime evaluation.** Needle retrieval is a useful diagnostic, not a complete long-context evaluation. Test retrieval, modeling of long documents, and ordinary short-context quality.
-
-For dense attention, the matrix cost grows quadratically:
-
-| Context | Attention cells | Relative to 256 |
-|---:|---:|---:|
-| 256 | 65,536 | 1× |
-| 512 | 262,144 | 4× |
-| 1,024 | 1,048,576 | 16× |
-| 2,048 | 4,194,304 | 64× |
-
-That is why long-context extension remains lecture-only here. On this course model it would combine positional-embedding changes, a new data pipeline, expensive training, and specialized evaluation. The [linear-attention](linear-attention.md) Beyond module attacks the inference/training cost from another direction; this section explains why that cost matters.
+[Beyond Long Context](long-context.md) owns that complete stack, including RoPE scaling, NoPE, length curricula, and long-versus-short evaluation. This module keeps the stage boundary: when those changes use raw-token causal loss, they are continued pretraining rather than SFT.
 
 ## Concepts to internalize
 
@@ -174,11 +146,11 @@ That is why long-context extension remains lecture-only here. On this course mod
 - **Equal total tokens are the fairness control.** Equal target tokens would grant replay extra compute.
 - **Forgetting is an expected consequence, not a mysterious bug.** The new objective contains no old-domain preservation term unless replay supplies one.
 - **Evaluate every affected domain.** In-domain loss alone can make destructive adaptation look unambiguously successful.
-- **Long context is trained behavior, not a configuration claim.** Position handling, long data, curriculum, and evaluation must agree.
+- **Long-context extension can be midtraining.** The objective remains next-token prediction while sequence length, data, and often position handling change.
 
 ### What we don't cover
 
-- **Full long-context training.** It requires positional changes and a substantially larger evaluation surface; the lecture notes provide the map.
+- **Long-context mechanics.** [Beyond Long Context](long-context.md) covers position handling, curricula, utilization, and evaluation as one system.
 - **Tokenizer adaptation.** All branches retain `G2CTokenizer`, isolating weight adaptation. Adding vocabulary changes embeddings and creates a different experiment.
 - **Instruction or preference tuning.** Modules 13–14 cover those objectives after the base-capability stage.
 - **Synthetic capability curricula.** Mathematics and reasoning midtraining often use generated data; [synthetic data](../modules/16b-synthetic-data.md) teaches the quality-control side separately.
@@ -271,12 +243,6 @@ Primary:
 - **Parmar, Satheesh, Patwary et al., [“Reuse, Don't Retrain: A Recipe for Continued Pretraining of Language Models”](https://arxiv.org/abs/2407.07263) (2024).** Data-distribution and learning-rate guidance for continuing mature checkpoints.
 - **Elhady, Agirre, Artetxe, [“Emergent Abilities of Large Language Models under Continued Pretraining for Language Adaptation”](https://arxiv.org/abs/2506.00288) (2025).** Why target-language perplexity can conceal broader capability loss and why replay matters.
 
-Long-context extension:
-
-- **Xiong et al., [“Effective Long-Context Scaling of Foundation Models”](https://ai.meta.com/research/publications/effective-long-context-scaling-of-foundation-models/) (2023).** Continual pretraining with longer sequences, long-data upsampling, and length curricula.
-- **Peng et al., [“YaRN: Efficient Context Window Extension of Large Language Models”](https://arxiv.org/abs/2309.00071) (2023).** Position-frequency adaptation for RoPE models.
-- **Qwen Team, [“Qwen2.5-1M Technical Report”](https://arxiv.org/abs/2501.15383) (2025).** Progressive long-context pretraining, data synthesis, post-training, evaluation, and inference as one system.
-
 ## Deliverable checklist
 
 - [ ] All tests in `tests/test_midtraining.py` pass.
@@ -286,4 +252,4 @@ Long-context extension:
 - [ ] Fixed Python and prose samples are shown without treating isolated attractive output as the primary metric.
 - [ ] You can explain why equal total tokens, not equal Python tokens, is the fairness control used here.
 - [ ] You can explain why replay changes the expected gradient and why it cannot guarantee zero forgetting.
-- [ ] You can explain why long-context extension requires position adaptation, long-sequence training, a curriculum, and two-regime evaluation.
+- [ ] You can explain why a raw-token long-context continuation belongs on the midtraining side of the SFT boundary.

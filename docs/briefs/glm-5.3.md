@@ -145,8 +145,8 @@ sources.
 [Module 08](../modules/08-multi-head-attention.md) builds the projections
 being compressed, [Module 16](../modules/16-inference.md) builds the KV cache
 that makes the memory problem concrete, and
-[Beyond Linear Attention](../beyond/linear-attention.md) frames the question
-every long-context design answers: what state must survive from the history?
+[The efficient-attention map](../beyond/attention-efficiency.md) frames the
+question every long-context design answers: what state must survive from the history?
 GLM's answer — keep everything, but compressed, and consult only a selected
 subset — is a **conceptual bridge**; the course does not build a latent cache
 or a learned indexer.
@@ -284,9 +284,9 @@ API-served model.
 | GLM-5.3 mechanism | G2C connection | Coverage |
 |---|---|---|
 | Transformer, causal objective, MoE total/active split | Modules 07–10, Beyond MoE | **Built in g2c** at mechanism scale |
-| MLA latent KV compression + DSA learned sparse selection | Modules 08, 16 + Beyond Linear Attention | **Conceptual bridge** |
+| MLA latent KV compression + DSA learned sparse selection | Modules 08, 16 + efficient-attention map | **Conceptual bridge** |
 | IndexShare cross-layer indexer reuse | Module 16's cache reasoning | **Conceptual bridge** |
-| Staged long-context extension to 1M | Beyond Midtraining | **Conceptual bridge** |
+| Staged long-context extension to 1M | Beyond Midtraining + draft Beyond Long Context | **Conceptual bridge**; executable build not shipped |
 | Response-masked SFT with thinking traces | Module 13 | **Built in g2c** |
 | GRPO reasoning RL | Beyond RL | **Built in g2c** at toy scale |
 | Critic-based PPO, SAO single-rollout async RL | Beyond RL's GRPO baseline | **Conceptual bridge** |
