@@ -184,8 +184,10 @@ generic “linear attention saves 4.4×” constant.
 [Module 16](../modules/16-inference.md) builds the cache whose growth matters,
 and [the efficient-attention map](../beyond/attention-efficiency.md) separates
 compressed caches, sparse selection, and recurrence. MLA + DSA + IndexPool is
-a **conceptual bridge**; g2c does not implement a learned index or pooled
-indexer cache.
+a **conceptual bridge**. The draft
+[Beyond Sparse Attention](../beyond/sparse-attention.md) specifies a learned
+index and selected-payload build, but its scaffold has not shipped and it does
+not implement MLA or a pooled indexer cache.
 
 ### mHC makes the residual stream four lanes wide
 
@@ -342,7 +344,7 @@ leaderboard with a universal harness.
 | Transformer, causal objective, decoding | Modules 07–11 | **Built in g2c** |
 | Recurrent linear-attention state + hybrid interleave | Beyond Linear Attention | **Built in g2c** at mechanism scale |
 | KDA delta rule, token gates, short convolution | Beyond Linear Attention | **Conceptual bridge** |
-| MLA latent cache + DSA learned sparse selection | Modules 08, 16 + efficient-attention map | **Conceptual bridge** |
+| MLA latent cache + DSA learned sparse selection | Modules 08, 16 + draft Beyond Sparse Attention | **Not yet covered** — lesson drafted, executable build not shipped |
 | IndexPool pooled indexer keys | Module 16 + efficient-attention map | **Conceptual bridge** |
 | Architecture-to-hardware resource accounting | Draft Beyond Hardware | **Not yet covered** — lesson drafted, executable build not shipped |
 | MoE total/active split and routing | Beyond MoE | **Built in g2c** at mechanism scale |

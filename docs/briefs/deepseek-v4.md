@@ -189,7 +189,9 @@ and [the efficient-attention map](../beyond/attention-efficiency.md) supplies
 the central question: what state must survive from an ever-growing history?
 V4's answer is not recurrent linear attention. It keeps an explicit—but
 compressed and partly sparse—cache. That makes it a **conceptual bridge** to
-the other major escape route from dense quadratic attention.
+the other major escape route from dense quadratic attention. The draft
+[Beyond Sparse Attention](../beyond/sparse-attention.md) now specifies the
+laptop-scale selection build, but its executable scaffold has not shipped.
 
 ### mHC widens the residual highway
 
@@ -399,7 +401,7 @@ incomplete latency prediction.
 |---|---|---|
 | Transformer and causal objective | Modules 07–10 | **Built in g2c** |
 | DeepSeekMoE routing and total/active arithmetic | Beyond MoE | **Built in g2c** at mechanism scale |
-| CSA sparse selection and HCA compression | Module 16 + efficient-attention map | **Conceptual bridge** |
+| CSA sparse selection and HCA compression | Module 16 + draft Beyond Sparse Attention | **Not yet covered** — lesson drafted, executable build not shipped |
 | Million-token data and continuation | Beyond Midtraining + draft Beyond Long Context | **Conceptual bridge**; executable build not shipped |
 | Specialist SFT | Module 13 | **Built in g2c** |
 | Specialist GRPO | Beyond RL | **Built in g2c** at toy scale |

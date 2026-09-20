@@ -148,8 +148,10 @@ that makes the memory problem concrete, and
 [The efficient-attention map](../beyond/attention-efficiency.md) frames the
 question every long-context design answers: what state must survive from the history?
 GLM's answer — keep everything, but compressed, and consult only a selected
-subset — is a **conceptual bridge**; the course does not build a latent cache
-or a learned indexer.
+subset — is a **conceptual bridge**. The draft
+[Beyond Sparse Attention](../beyond/sparse-attention.md) specifies a learned
+indexer and exact-payload selection build, but its scaffold has not shipped
+and it does not reproduce MLA compression or IndexShare.
 
 ### Muon, second sighting
 
@@ -284,7 +286,7 @@ API-served model.
 | GLM-5.3 mechanism | G2C connection | Coverage |
 |---|---|---|
 | Transformer, causal objective, MoE total/active split | Modules 07–10, Beyond MoE | **Built in g2c** at mechanism scale |
-| MLA latent KV compression + DSA learned sparse selection | Modules 08, 16 + efficient-attention map | **Conceptual bridge** |
+| MLA latent KV compression + DSA learned sparse selection | Modules 08, 16 + draft Beyond Sparse Attention | **Not yet covered** — lesson drafted, executable build not shipped |
 | IndexShare cross-layer indexer reuse | Module 16's cache reasoning | **Conceptual bridge** |
 | Staged long-context extension to 1M | Beyond Midtraining + draft Beyond Long Context | **Conceptual bridge**; executable build not shipped |
 | Response-masked SFT with thinking traces | Module 13 | **Built in g2c** |
