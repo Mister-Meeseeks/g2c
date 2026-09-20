@@ -446,7 +446,7 @@ These exercises assemble the full assistant and capture the final post-mortem. T
 
 The capstone inherits Module 16-19's compute footprint. There is no new compute-heavy work in Module 20 itself; the assistant is orchestration on top of components you've already characterized.
 
-- **Per-turn latency is dominated by agent backend calls.** With `plan=True`, a typical chat turn is one planning call plus one to five ReAct loop calls. With the default `llama3.2:3b` ProdLM, this is comfortable on an M-series laptop. Larger local models may reason better but will cost more latency and memory.
+- **Per-turn latency is dominated by agent backend calls.** With `plan=True`, a typical chat turn is one planning call plus one to five agent loop calls. The default `qwen3.5:4b` ProdLM runs with thinking off; use the native tool channel and measure the full-turn latency on your machine. Larger local models may reason better but will cost more latency and memory.
 
 - **RAG adds one embedding call per turn.** The retriever embeds the query, then searches the in-memory store. Both are sub-100ms with `OllamaEmbedder`; the retrieval overhead is negligible compared to the agent's backend calls.
 
@@ -490,7 +490,7 @@ Optional:
 ## Deliverable checklist
 
 - [ ] All tests in `tests/test_assistant.py` pass.
-- [ ] ProdLM configured. `./prodlm.sh llama3.2:3b` is the recommended fast default.
+- [ ] ProdLM configured. `./prodlm.sh` selects Qwen3.5-4B; the course backend defaults thinking off.
 - [ ] Notebook: `notebooks/solutions/20-capstone.ipynb`. 
 - [ ] **Eval suite**: `data/work/module20/eval-cases.py` (or similar) with 5-15 `EvalCase`s, using at least two different Module 15 matchers. Pass rate ≥ 80%, reported alongside the `run_capability_baseline` number so the scaffolding gap is measured on your assistant configuration.
 - [ ] **Failure-mode catalog** (Exercise 8) in `docs/capstone-failure-modes.md`. Five failure modes, each with a transcript, localization, and proposed mitigation.

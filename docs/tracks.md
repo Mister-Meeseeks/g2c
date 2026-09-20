@@ -1,6 +1,8 @@
 # Course Tracks and Artifacts
 
-This course is designed to be flexible across a wide range of system capabilities. The one hard constraint is that most of the exercises and libraries will only work on an M-series Mac laptop or desktop. 
+The course requires an M-series Mac (M1 or newer), at least 16GB of RAM (unified memory), and at least 20GB of free storage. Larger tracks require more memory and storage.
+
+Smaller configurations, such as an 8GB Mac with 5–10GB of free storage, may work for parts of the course with smaller models and datasets, but completing the full course on them is not guaranteed.
 
 Everything runs on one conceptual path, but there are several local-compute tracks, depending on your specific machine and its CPU/GPU, memory and storage. Students are encouraged to experiment with different-sized models, training runs, and datasets. However, the course loaders will choose sensible defaults, designed to produce good results for relatively small resource requirements.
 
@@ -31,7 +33,7 @@ The recommendations for each track are:
 
 | Track    | Target                                                  | Chip                         | Memory |   Downloads | Free disk |
 | -------- | ------------------------------------------------------- | ---------------------------- | ------ | ----------: | --------: |
-| Tiny     | Fastest path, weaker hardware, quick Module 10 artifact | Any Apple chip               | 8GB    | about 100MB |    5-10GB |
+| Tiny     | Smallest models and datasets, quick Module 10 artifact  | M1 or newer                  | 16GB   | about 100MB |     20GB |
 | Standard | Recommended local course experience                     | M2 or better                 | 24GB   |  several GB |   20-40GB |
 | Stretch  | Stretch path for stronger machines and longer runs      | M3 or better (16+ GPU cores) | 64GB   |       10GB+ |   40-80GB |
 
@@ -64,7 +66,7 @@ dataset tracks:
 ./prodlm.sh <ollama-tag> [OPTIONAL]
 ```
 
-Both scripts have sensible defaults if you omit the optional model tag. Pick any small base LM for BaseLM and any local instruct model for ProdLM that fits your machine. You can use `sysprobe.sh` to get a list of suggestions, or use any valid Hugging Face or Ollama tag:
+Both scripts have defaults if you omit the optional model tag. ProdLM uses `qwen3.5:4b`, with thinking off in the course backend. Pick any small base LM for BaseLM and any local instruct model for ProdLM that fits your machine. You can use `sysprobe.sh` to get a list of suggestions, or use any valid Hugging Face or Ollama tag:
 
 ```bash
 ./sysprobe.sh    # Run sysprobe checks against suggested candidate set
@@ -75,14 +77,14 @@ Both scripts have sensible defaults if you omit the optional model tag. Pick any
 You can use the scripts to download multiple models. The scripts are idempotent and cache the results, so you can run them multiple times. The last tag the script is run with becomes the canonical BaseLM or ProdLM model:
 
 ```bash
-./prodlm.sh llama3.2:3b    # Downloads llama, sets it as ProdLM
-./prodlm.sh qwen2.5:3b     # Downloads qwen, ProdLM now points to qwen
-./prodlm.sh llama3.2:3b    # Qwen still cached, ProdLM now points to llama
+./prodlm.sh               # Downloads Qwen3.5-4B, sets it as ProdLM
+./prodlm.sh llama3.2:3b    # Downloads a smaller fallback, switches ProdLM
+./prodlm.sh               # Both remain cached; switches back to Qwen3.5-4B
 ```
 
 The notebooks all allow you to specify any valid Hugging Face (BaseLM) or Ollama (ProdLM) model that you have previously downloaded. Re-running the same notebook with different models is a very good learning experience.
 
-Note that ProdLM and BaseLM have different system requirements for equivalent sized models. BaseLM is fine-tuned locally, whereas ProdLM is only used for Ollama inference. Therefore the ceiling for BaseLM is substantially lower than ProdLM's. For example, the course defaults use a 360M param model for BaseLM and a 2B model for ProdLM.
+Note that ProdLM and BaseLM have different system requirements for equivalent sized models. BaseLM is fine-tuned locally, whereas ProdLM is only used for Ollama inference. Therefore the ceiling for BaseLM is substantially lower than ProdLM's. For example, the course defaults use a 360M-parameter model for BaseLM and Qwen3.5-4B for ProdLM.
 
 ## Artifact Roles
 

@@ -415,7 +415,7 @@ class TestProdLMHelpers:
     def test_constants(self) -> None:
         assert PRODLM_NAME == "ProdLM"
         assert PRODLM_KIND == "ollama_backend"
-        assert DEFAULT_PRODLM_MODEL_ID == "llama3.2:3b"
+        assert DEFAULT_PRODLM_MODEL_ID == "qwen3.5:4b"
 
     def test_write_manifest(self, tmp_path) -> None:
         root = write_prodlm_manifest(
@@ -786,7 +786,7 @@ class TestOllamaBackendBoilerplate:
     def test_construction_defaults(self) -> None:
         backend = OllamaBackend()
         assert backend.info.name == "ollama"
-        assert backend.info.model_id == "llama3.2:3b"
+        assert backend.info.model_id == "qwen3.5:4b"
         assert backend.base_url == DEFAULT_OLLAMA_URL
         assert backend.info.extra["base_url"] == DEFAULT_OLLAMA_URL
 
@@ -1465,7 +1465,7 @@ class TestOllamaBackendChatWithTools:
         body = json.loads(captured[0]["body"])
         assert body["think"] is True
 
-    def test_think_omitted_from_body_when_none(self) -> None:
+    def test_think_defaults_off(self) -> None:
         captured: list[dict] = []
         fake = _make_fake_urlopen(
             response=_ok_chat_response(), captured=captured
@@ -1473,8 +1473,8 @@ class TestOllamaBackendChatWithTools:
         backend = self._make(fake)
         backend.chat_with_tools(self._msgs(), None)
         body = json.loads(captured[0]["body"])
-        # Default: no `think` key, let the server pick.
-        assert "think" not in body
+        # Short-budget callers inherit the backend policy.
+        assert body["think"] is False
 
     def test_parses_structured_tool_calls(self) -> None:
         raw_calls = [

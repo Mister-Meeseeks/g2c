@@ -214,6 +214,56 @@ In this course we'll be taking advantage of composability to add a hook to a pro
                           (RAG, tools, agent, eval)
 ```
 
+### Thinking and the answer budget
+
+Some models generate a separate reasoning trace before their answer. Ollama
+returns this in `thinking`, separately from `response` (or `message.content`
+for chat). Hiding the trace does **not** stop the model generating it; use the
+API's `think` setting. See [Ollama's thinking documentation](https://docs.ollama.com/capabilities/thinking).
+
+Our `OllamaBackend` defaults to **thinking off**, on both completion and native
+chat requests. RAG, the planner, and agent loops inherit this policy even when
+they do not pass `think`. Their small `max_new_tokens` budgets are meant to
+produce a visible answer or tool call. On Qwen3.5, thinking and the answer share
+that budget: a 128-token call can end before any answer appears.
+
+For an explicit reasoning experiment, opt in and allow more tokens and time:
+
+```python
+backend = OllamaBackend("qwen3.5:4b", timeout=300)
+result = backend.complete(
+    "A is taller than B. C is shorter than B. D is taller than A. "
+    "Who is second tallest?",
+    think=True,
+    max_new_tokens=1024,
+    temperature=0.0,
+)
+print(result.completion)
+print(result.metadata["done_reason"])  # "length" means the budget was reached
+# Inspect result.metadata["thinking"] separately if useful.
+```
+
+1024 is an experimental budget, not a guarantee that reasoning will finish.
+Compare correctness, latency, and whether an answer arrived against
+`think=False` on the same questions. `completion_tokens` counts the server's
+output tokens, including thinking; it is not a count of visible answer tokens.
+If thinking uses the whole budget with no answer or native tool call, the
+provided transport raises an `OllamaError` with an actionable message. It does
+not silently retry with a larger budget. Partial visible answers retain
+`done_reason="length"` in metadata so you can detect truncation.
+
+Per-call `think=True` / `False` overrides the backend's `default_think`.
+`think=None` inherits it. Constructing `OllamaBackend(..., default_think=None)`
+lets the server choose, which is useful for comparing defaults but unsuitable
+for the course's short-budget loops. This boolean interface targets models
+that support the toggle; models with mandatory reasoning or effort-level-only
+controls may need a different adapter.
+
+Turning this mode off does not remove Module 19's planner or its visible
+`Thought:` / `Action:` format. Those are prompts and orchestration implemented
+by the course. Keep server thinking separate from answers and tool dispatch:
+a reasoning trace that mentions a calculator call is not an executed call.
+
 ### Inference Benchmarks
 
 Training metrics tell us whether the model learned. Inference benchmarks tell us whether the model is usable. Once a model sits behind an assistant, a "good" answer that arrives 45 seconds later may still feel broken. Benchmarking is how we make that cost visible.
@@ -321,12 +371,13 @@ class LocalTransformerBackend(Backend):
 class OllamaError(RuntimeError): ...                           # implemented
 
 class OllamaBackend(Backend):
-    def __init__(self, model_id: str = "llama3.2:3b", *,        # implemented
+    def __init__(self, model_id: str = "qwen3.5:4b", *,        # implemented
                  base_url: str = DEFAULT_OLLAMA_URL,
                  timeout: float = 120.0,
                  urlopen=None,
                  name: str = "ollama",
-                 extra: dict[str, Any] | None = None) -> None: ...
+                 extra: dict[str, Any] | None = None,
+                 default_think: bool | None = False) -> None: ...
     @property
     def info(self) -> BackendInfo: ...                         # implemented
     @property
@@ -335,13 +386,13 @@ class OllamaBackend(Backend):
                        ) -> tuple[dict, float]: ...            #   POST, error->OllamaError,
                                                                #   JSON parse, latency timing)
     def complete(self, prompt, *, max_new_tokens=128,
-                 temperature=1.0, top_k=None, top_p=None,
+                 temperature=1.0, top_k=None, top_p=None, think=None,
                  ) -> InferenceResult:                         # SCAFFOLDED (map params +
         ...                                                    #   response fields; call
                                                                #   self._post_generate)
     def chat_with_tools(self, messages, tools=None, *,         # implemented
                         max_new_tokens=512, temperature=0.2,
-                        top_k=None, top_p=None) -> ChatResult: ...
+                        top_k=None, top_p=None, think=None) -> ChatResult: ...
         # Native tool-calling path used by Module 18. Hits Ollama's
         # /api/chat endpoint with a structured tools= array. Not part
         # of this module's lesson; HTTP plumbing like `_post_generate`.
@@ -501,7 +552,7 @@ This is the most memory-sensitive module of the course. Choose the model size + 
    │   8GB Mac:    1B–3B Q4 only.  llama3.2:1b, qwen2.5:0.5b, qwen2.5:1.5b.│
    │                Tight headroom; close other apps before running.       │
    │                                                                       │
-   │   16GB Mac:   Comfortable up to 7B Q4.  llama3.2:3b is best default.  │
+   │   16GB Mac:   qwen3.5:4b Q4; keep context modest and thinking off.  │
    │                llama3.1:8b Q4 works but leaves ~3 GB for everything   │
    │                else (browser, IDE, OS) — tight at long contexts.      │
    │                                                                       │
@@ -516,12 +567,16 @@ This is the most memory-sensitive module of the course. Choose the model size + 
    └───────────────────────────────────────────────────────────────────────┘
 ```
 
-The course default is `llama3.2:3b`, and this is what will be set up automatically when students run `./prodlm.sh`.
+The course default is `qwen3.5:4b`, configured by `./prodlm.sh`, with
+thinking off in the course backend. It is a roughly 3.4 GB download. In our
+local M2/24 GB trial, Ollama reported about 3.1 GB loaded at a 4K context,
+plus the separate embedding model. Longer contexts and other applications
+need additional memory; this measurement is not a peak-memory guarantee.
 
-- Fits in 4 GB on every reasonable Mac config.
-- Fast enough for interactive use (25–40 tok/s on M2 16GB).
-
-If you have ≥ 32 GB, switching to `llama3.1:8b` is worth it for Module 19 (agent loops) — the 8B handles tool-calling significantly better than the 3B.
+Start with a modest context such as 4K and measure latency on your machine.
+Keep thinking off for the short-budget notebook paths; opt in explicitly for
+the reasoning experiment above. Larger models are optional comparisons, not
+course requirements. `./prodlm.sh llama3.2:3b` remains a smaller fallback.
 
 Other practical notes:
 

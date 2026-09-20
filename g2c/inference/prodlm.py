@@ -21,7 +21,7 @@ from .ollama import DEFAULT_OLLAMA_URL, OllamaBackend
 
 PRODLM_NAME = "ProdLM"
 PRODLM_KIND = "ollama_backend"
-DEFAULT_PRODLM_MODEL_ID = "llama3.2:3b"
+DEFAULT_PRODLM_MODEL_ID = "qwen3.5:4b"
 
 
 def write_prodlm_manifest(

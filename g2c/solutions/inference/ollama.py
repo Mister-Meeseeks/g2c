@@ -69,7 +69,10 @@ class _OllamaBackendImpl:  # patched onto OllamaBackend by apply()
                     "temperature": temperature,
                     "top_k": top_k,
                     "top_p": top_p,
+                    "think": think if think is not None else self.default_think,
                 },
+                "thinking": data.get("thinking", "") or "",
+                "done_reason": data.get("done_reason"),
                 "server_total_duration_ms": (
                     float(total_duration) / 1e6 if total_duration is not None else None
                 ),

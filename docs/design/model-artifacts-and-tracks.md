@@ -57,6 +57,10 @@ conceptual role, not a fixed model name. Students should choose a local model
 that fits their machine through Ollama, MLX, llama.cpp, or a similar local
 runtime.
 
+The reference default is Ollama `qwen3.5:4b`, with thinking off for the
+short-budget course paths. `./prodlm.sh` selects it; other local models remain
+valid comparisons or fallbacks.
+
 Examples by hardware tier:
 
 - smaller fallback: a 1.5B-3B instruct model;
@@ -558,6 +562,17 @@ runtime configuration. These modules should save system artifacts instead:
 - tool-call traces;
 - agent transcripts;
 - eval reports.
+
+Ollama's backend owns the thinking policy for both completion and native chat:
+`default_think=False` keeps short-budget course calls usable, including RAG,
+planning, and the Module 16B teacher. Explicit per-call `think=True` enables
+reasoning experiments; `None` inherits the backend policy. The provided
+transport applies this even to student-written completion mappings. Thinking
+text remains separate in response metadata and never becomes an answer or tool
+observation. Thinking-only budget exhaustion raises an actionable error, with
+no automatic retry or hidden increase in tokens. This policy targets models
+with an Ollama boolean thinking toggle; it does not make all reasoning models
+compatible. See Module 16 for the experimental workflow and token accounting.
 
 Modules 16-18 (inference, RAG, tools) keep the runtime harness backend-agnostic:
 the same messages, tools, and evals can run against TinyLLM/StoryLM when useful,

@@ -11,7 +11,7 @@
 
 * *Finish* `g2c/tools` from [18-tools](18-tools.md) — the agent dispatches through `dispatch_tool_call`, reusing the registry, schema validation, and error wrapping
 * *Finish* `g2c/inference` from [16-inference](16-inference.md) — the agent calls `backend.complete(...)` for every reasoning step
-* *Configure* ProdLM with `./prodlm.sh llama3.2:3b` or another local instruction model — the default live path needs a model that can follow ReAct-style formatting
+* *Configure* ProdLM with `./prodlm.sh qwen3.5:4b` or another local instruction model — the default live path needs a model that can follow ReAct-style formatting
 * *Refresh* JSON request/response patterns — tool inputs and tool results are structured data even when the model emits them as text
 * *Refresh* basic regular expressions — the parser extracts line-oriented markers from free-form model completions
 
@@ -527,15 +527,17 @@ The live section defaults to ProdLM. To compare your own model, set `MODEL_SELEC
 
 ## M-series notes
 
-This module is comfortable on every M-series Mac. Practical considerations:
+Use the course minimum of an M-series Mac with 16 GB RAM. Practical considerations:
 
-- **Each step is one backend call.** A typical run is 1 (planning) + 3-6 (loop) = 4-7 backend calls. With Ollama + Llama 3.2 3B at ~50 tokens/sec on M1, each step is 1-3 seconds; full runs are 10-20 seconds. A stronger 7B-8B model is slower but follows multi-step ReAct prompts better; on M1/16GB it is borderline-comfortable, on M2+/32GB it is smooth.
+- **Each step is one backend call.** A typical run is 1 planning call plus 3–6 loop calls. The default Qwen3.5-4B runs with thinking off; planning and visible ReAct `Thought:` text still happen. Measure full-run latency on your machine rather than assuming a fixed tokens-per-second rate.
 
-- **Context length grows with step count.** A 5-step run with verbose tool results easily reaches 4-8k tokens of prompt. Llama 3.2's 128k context window is comfortable; smaller-context models would force aggressive scratchpad truncation. The default `scratchpad_max_chars=None` (unlimited) works for 8-step runs; for longer agents, set a cap and add a summarization pass.
+- **Context length grows with step count.** A 5-step run with verbose tool results can reach 4–8k tokens of prompt. The model's advertised maximum context is not a laptop memory budget. Start modestly, inspect the actual context in `ollama ps`, and cap or summarize the scratchpad when needed.
+
+- **Text format is a separate failure mode.** In our local trial, Qwen sometimes wrote an invented `Observation:` and `Final Answer:` alongside its proposed action, without waiting for the tool. Thinking off does not fix this. Inspect the actual dispatched actions and compare with `NativeAgent`, which uses structured tool calls.
 
 - **Subprocess startup cost dominates `run_python`.** All Module 18 caveats apply — `subprocess.run([sys.executable, "-c", code])` pays ~50-200ms per call on M-series. If `run_python` is called frequently, the agent's wall time becomes dominated by subprocess startup. Module 18's pitfall section discusses the long-lived child-process variant; out of scope here, but worth knowing.
 
-- **Planning latency.** The planning phase is one extra backend call (~1-3 seconds with Llama 3.2:3b). For one-shot tasks this is pure overhead; for multi-step tasks it pays off. Disable with `plan=False` when the task is obviously single-step.
+- **Planning latency.** The planning phase is one extra backend call. For one-shot tasks this is pure overhead; for multi-step tasks it pays off. Disable with `plan=False` when the task is obviously single-step.
 
 - **Memory considerations are inherited from Module 16/18.** The agent loop itself is pure Python plumbing — microseconds per step. The model's inference is the memory-hungry part, and the requirements are the same as Modules 16, 17, 18.
 
@@ -569,7 +571,7 @@ Optional:
 ## Deliverable checklist
 
 - [ ] All tests in `tests/test_agent.py` pass: 154 tests, all green.
-- [ ] ProdLM configured and Ollama running. `ollama list` shows `llama3.2:3b` (or your chosen model).
+- [ ] ProdLM configured and Ollama running. `ollama list` shows `qwen3.5:4b` (or your chosen model).
 - [ ] Notebook: `notebooks/solutions/19-agent.ipynb`. Wires `Agent` + a multi-tool registry, runs Exercises 1, 2, 3, 4 with output cells visible.
 - [ ] **Failure-mode catalog** (Exercise 9) in `docs/agent-failure-modes.md`. Three failure modes, each with a transcript, hypothesis, and proposed mitigation. The actual deliverable.
 - [ ] You can explain — out loud, without notes — why the parser must use `[ \t]*` instead of `\s*` after the markers' colons.

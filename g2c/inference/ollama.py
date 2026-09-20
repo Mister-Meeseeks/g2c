@@ -3,7 +3,7 @@
 Ollama is the simplest way to run a quantized 7–8B model on a
 MacBook: it bundles llama.cpp, manages model files (GGUF), and
 exposes an HTTP API. See https://ollama.com/ for setup. Once Ollama
-is running and a model has been pulled (`ollama pull llama3.2:3b`),
+is running and a model has been pulled (`ollama pull qwen3.5:4b`),
 this class talks to it via the REST API.
 
 We use stdlib `urllib.request` rather than `requests` so the project
@@ -22,7 +22,7 @@ Request/response shapes (from the Ollama API spec):
 ```
     POST /api/generate
     {
-        "model":   "<model tag, e.g. 'llama3.2:3b'>",
+        "model":   "<model tag, e.g. 'qwen3.5:4b'>",
         "prompt":  "<prompt string>",
         "stream":  false,
         "options": {
@@ -124,7 +124,7 @@ class OllamaBackend(Backend):
     """A `Backend` over a locally-served Ollama HTTP server.
 
     Args:
-        model_id: the Ollama model tag, e.g. `"llama3.2:3b"`,
+        model_id: the Ollama model tag, e.g. `"qwen3.5:4b"`,
             `"qwen2.5:7b-instruct-q4_K_M"`. Must be a model you've
             already pulled (`ollama pull <tag>` from the shell);
             this class does NOT pull on demand.
@@ -141,6 +141,10 @@ class OllamaBackend(Backend):
         name: backend kind label. Defaults to `"ollama"`. Override
             only if you're subclassing.
         extra: additional metadata for the `BackendInfo.extra` dict.
+        default_think: thinking policy for calls that omit `think`. False
+            (the course default) reserves the short output budget for answers.
+            True enables thinking; None leaves the choice to Ollama. Explicit
+            per-call True/False overrides this default on both endpoints.
 
     The `info` property returns a `BackendInfo` snapshot built from
     the constructor args. The base URL is stored in `info.extra`
@@ -154,13 +158,14 @@ class OllamaBackend(Backend):
 
     def __init__(
         self,
-        model_id: str = "llama3.2:3b",
+        model_id: str = "qwen3.5:4b",
         *,
         base_url: str = DEFAULT_OLLAMA_URL,
         timeout: float = 120.0,
         urlopen=None,
         name: str = "ollama",
         extra: dict[str, Any] | None = None,
+        default_think: bool | None = False,
     ) -> None:
         if not isinstance(model_id, str) or not model_id:
             raise ValueError("OllamaBackend requires a non-empty model_id")
@@ -169,12 +174,18 @@ class OllamaBackend(Backend):
         if timeout <= 0:
             raise ValueError(f"timeout must be > 0, got {timeout}")
 
+        if default_think is not None and not isinstance(default_think, bool):
+            raise TypeError("default_think must be bool or None")
+        self.default_think = default_think
         self._model_id = model_id
         self._base_url = base_url.rstrip("/")
         self._timeout = float(timeout)
         self._urlopen = urlopen if urlopen is not None else urllib.request.urlopen
 
-        merged_extra: dict[str, Any] = {"base_url": self._base_url}
+        merged_extra: dict[str, Any] = {
+            "base_url": self._base_url,
+            "default_think": default_think
+        }
         if extra is not None:
             merged_extra.update(extra)
         self._info = BackendInfo(
@@ -191,6 +202,47 @@ class OllamaBackend(Backend):
     def base_url(self) -> str:
         return self._base_url
 
+    def _with_thinking_policy(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Provided request policy, shared by completion and native chat.
+
+        Keep this in the transport so student-written `complete` methods and
+        callers such as RAG/planning inherit the same short-budget default.
+        """
+        body = dict(body)
+        think = body.get("think")
+        if think is None:
+            think = self.default_think
+        if think is None:
+            body.pop("think", None)
+        else:
+            if not isinstance(think, bool):
+                raise TypeError("think must be bool or None")
+            body["think"] = think
+        return body
+
+    def _check_thinking_budget(
+        self, data: dict[str, Any], *, chat: bool = False
+    ) -> None:
+        """Fail visibly when thinking exhausts the budget before an answer.
+
+        A native tool call with empty content is a valid response. Never
+        execute a model's thinking text as a tool call or append it to answers.
+        No automatic retry: that would conceal both the failure and its cost.
+        """
+        message = data.get("message", {}) if chat else data
+        content = message.get("content" if chat else "response", "") or ""
+        if (
+            data.get("done_reason") == "length"
+            and message.get("thinking")
+            and not content.strip()
+            and not (chat and message.get("tool_calls"))
+        ):
+            raise OllamaError(
+                f"{self._model_id} exhausted max_new_tokens while thinking, "
+                "before returning an answer. Use think=False (if supported) "
+                "or increase max_new_tokens and the request timeout."
+            )
+
     def _post_generate(
         self, body: dict[str, Any]
     ) -> tuple[dict[str, Any], float]:
@@ -204,9 +256,11 @@ class OllamaBackend(Backend):
         of the returned dict is the lesson — that stays in `complete`.
 
         Raises:
-            OllamaError: connection failure, non-2xx status, a non-JSON
+            OllamaError: thinking-only budget exhaustion, connection failure,
+                non-2xx status, a non-JSON
                 body, or a response missing the `"response"` field.
         """
+        body = self._with_thinking_policy(body)
         url = f"{self._base_url}/api/generate"
         request = urllib.request.Request(
             url,
@@ -239,6 +293,7 @@ class OllamaBackend(Backend):
                 "Ollama response missing 'response' field: "
                 f"keys={list(data.keys())}"
             )
+        self._check_thinking_budget(data)
         return data, latency_ms
 
     def complete(
@@ -263,8 +318,9 @@ class OllamaBackend(Backend):
             top_p: forwarded as `options.top_p` (likewise).
             think: if set, forwarded as the top-level `think` flag
                 (sibling of `options`, not inside it). Toggles
-                "thinking mode" on models that support it; omitted
-                entirely when None.
+                "thinking mode" on models that support it. None inherits
+                `default_think` (False); use a backend with
+                `default_think=None` to defer to the server.
 
         Returns:
             `InferenceResult` with:
@@ -278,7 +334,9 @@ class OllamaBackend(Backend):
               * metadata = {
                     "server_total_duration_ms": <total_duration / 1e6>,
                     "server_eval_duration_ms":  <eval_duration / 1e6>,
-                    "sampling": {... the four params ...},
+                    "sampling": {... sampling params and effective think ...},
+                    "thinking": <separate reasoning trace, or "">,
+                    "done_reason": <server stop reason, or None>,
                 }
                 (The server's reported timings are kept alongside
                 wall-clock for benchmarking comparisons.)
@@ -342,7 +400,10 @@ class OllamaBackend(Backend):
                            "temperature":    temperature,
                            "top_k":          top_k,
                            "top_p":          top_p,
+                           "think": think if think is not None else self.default_think,
                        },
+                       "thinking": data.get("thinking", "") or "",
+                       "done_reason": data.get("done_reason"),
                        "server_total_duration_ms": (
                            float(total_dur_ns) / 1e6 if total_dur_ns is not None else None
                        ),
@@ -428,6 +489,7 @@ class OllamaBackend(Backend):
                 to 0.2 — near-greedy is the right default for tool
                 selection.
             top_k, top_p: forwarded.
+            think: explicit override; None inherits `default_think`.
 
         Returns:
             `ChatResult` with:
@@ -447,7 +509,8 @@ class OllamaBackend(Backend):
         Raises:
             ValueError: if `messages` is not a non-empty list, or
                 `max_new_tokens <= 0`.
-            OllamaError: same conditions as `complete` — connection
+            OllamaError: same conditions as `complete` — thinking-only
+                budget exhaustion, connection
                 failure, non-JSON response, missing `message` field.
 
         Notes:
@@ -497,6 +560,7 @@ class OllamaBackend(Backend):
         if think is not None:
             body["think"] = bool(think)
 
+        body = self._with_thinking_policy(body)
         url = f"{self._base_url}/api/chat"
         request = urllib.request.Request(
             url,
@@ -528,6 +592,7 @@ class OllamaBackend(Backend):
                 f"keys={list(data.keys())}"
             )
 
+        self._check_thinking_budget(data, chat=True)
         message = data["message"]
         content = message.get("content", "") or ""
         raw_calls = message.get("tool_calls") or []
@@ -568,7 +633,7 @@ class OllamaBackend(Backend):
                     "temperature": temperature,
                     "top_k": top_k,
                     "top_p": top_p,
-                    "think": think,
+                    "think": body.get("think"),
                 },
                 "server_total_duration_ms": (
                     float(total_duration) / 1e6 if total_duration is not None else None
@@ -577,6 +642,8 @@ class OllamaBackend(Backend):
                     float(eval_duration) / 1e6 if eval_duration is not None else None
                 ),
                 "n_tools_offered": len(tools) if tools else 0,
+                "thinking": message.get("thinking", "") or "",
+                "done_reason": data.get("done_reason"),
             },
         )
 

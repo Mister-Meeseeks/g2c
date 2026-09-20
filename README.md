@@ -142,15 +142,13 @@ The course is designed for M-series Macs, but not every student needs the same d
 
 The notebook launcher and course setup scripts will use sensible but relatively small defaults for models and datasets. The exercises and projects are designed to work well with the default options. However, students are encouraged to explore different-sized models and datasets, and the course supports it.
 
-Minimum system recommendations:
-* M2 Apple chip or better
-* 16GB+ memory
+Minimum system requirements:
+
+* An M-series Mac (M1 or newer)
+* 16GB+ RAM (unified memory)
 * 20GB+ free storage
 
-Minimum system requirements (will likely have to use smaller models than defaults):
-* Any M- or A- series Apple chip
-* 8GB memory
-* 5GB free storage
+Smaller configurations, such as an 8GB Mac with 5–10GB of free storage, may work for parts of the course with smaller models and datasets, but completing the full course on them is not guaranteed. Larger tracks require more memory and storage.
 
 **Not on an M-series Mac?** The course is developed, tested, and supported only on Apple Silicon. The code is ordinary PyTorch, so Part I will *probably* run on Linux — CUDA or even CPU — with small device-string changes, but no lesson, test, or wall-clock claim has been validated there, and the M-series notes assume unified memory. Intel Macs fall back to CPU-only PyTorch, which turns the training modules from minutes into hours. Windows is unsupported outright (the course scripts are bash; WSL2 puts you in the untested-Linux camp). You're welcome to adapt the course to other hardware — genuinely — but you'll be off the map, and problems that only reproduce off Apple Silicon aren't something we can debug for you.
 

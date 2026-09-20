@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MODEL_ID="llama3.2:3b"
+MODEL_ID="qwen3.5:4b"
 EMBED_MODEL_ID="nomic-embed-text"
 BASE_URL="http://localhost:11434"
 TIMEOUT="120"
@@ -16,10 +16,10 @@ Configure the course ProdLM backend for Modules 16-20.
 
 Positional:
   MODEL_ID                Ollama generation model tag (shortcut for --model-id;
-                          default: llama3.2:3b)
+                          default: qwen3.5:4b)
 
 Options:
-  --model-id MODEL        Ollama generation model tag (default: llama3.2:3b)
+  --model-id MODEL        Ollama generation model tag (default: qwen3.5:4b)
   --embed-model-id MODEL  Ollama embedding model tag for RAG (default: nomic-embed-text)
   --base-url URL          Ollama server URL (default: http://localhost:11434)
   --timeout SECONDS       Backend timeout in seconds (default: 120)

@@ -26,8 +26,8 @@ submitted `Question:` / `Answer:` independently; skip blank answers.
   explains the diminishing-returns shape: each extra draft position only
   pays off with probability that the whole prefix before it survives, so
   the marginal value of position `k` falls as `k` grows. Compares the 1M
-  and 5M drafters in terms of acceptance bought per unit of drafting cost,
-  using their own measurements.
+  and 5M drafters in terms of accepted-prefix progress or tokens-per-pass
+  bought per unit of drafting cost, using their own measurements.
 - **Mostly correct**: right readings but no mechanism for why large `k`
   flattens, or compares drafters on acceptance alone ignoring their cost.
 - **Partially correct**: reports numbers without interpretation, or claims a
@@ -49,14 +49,17 @@ submitted `Question:` / `Answer:` independently; skip blank answers.
 ## Q4 — The MTP head and self-speculation
 
 - **Correct**: reports the trained head's two-ahead loss/accuracy against
-  the base's one-ahead performance and explains why predicting `x_{t+2}` is
-  strictly harder (the head must marginalize over the unseen `x_{t+1}`'s
-  consequences — one extra step of uncertainty). Compares self-speculation's
-  acceptance and tokens-per-pass against the separate-drafter runs and notes
-  the structural trade honestly: near-free drafting per token versus `k`
-  limited to the head's reach.
-- **Mostly correct**: reports both measurements but explains the two-ahead
-  gap only as "harder" without the extra-uncertainty mechanism.
+  the base's one-ahead performance without assuming which score must be
+  higher. Explains that the head receives `h_t` and the actual `x_{t+1}`
+  embedding but not the trunk's fully updated `h_{t+1}`, and uses that
+  information difference as a possible explanation for the measured result.
+  Compares self-speculation's acceptance and tokens-per-pass against the
+  separate-drafter runs and notes both the head's limited reach and the
+  notebook's proposal-pass caveat: this toy loop does not obtain a production
+  MTP pipeline's near-zero incremental proposal cost.
+- **Mostly correct**: reports both comparisons and identifies the missing
+  updated trunk state, but overstates the result as a universal ranking or
+  omits the proposal-pass caveat.
 - **Partially correct**: trains the head but evaluates it as if it predicted
   `x_{t+1}`, or compares self-speculation and separate-drafter runs on
   different prompts/budgets without flagging it.
@@ -64,15 +67,18 @@ submitted `Question:` / `Answer:` independently; skip blank answers.
 ## Q5 — The cost model
 
 - **Correct**: writes tokens per unit of target-compute as
-  `(E[accepted] + 1) / (1 + k·c)` (or an equivalent formulation), with `c`
-  the drafter/target cost ratio; plugs in their measured acceptance and a
-  defensible `c` (parameter-ratio estimates are acceptable if stated);
-  derives the break-even acceptance for `k = 4`; and interprets GLM-5's
-  reported 2.76 acceptance length as roughly 2.76 tokens per target pass
-  with a near-free drafter (`c ≈ 0` for a parameter-shared MTP layer).
-  Concludes about target-compute, noting wall-clock needs the systems
-  machinery from Q3's caveat.
+  `(E[accepted drafts] + 1) / (1 + k·c)` (or an equivalent formulation),
+  with `c` the drafter/target cost ratio; plugs in their measured accepted
+  drafts and a defensible `c` (parameter-ratio estimates are acceptable if
+  stated); and derives the break-even acceptance for `k = 4`. Treats GLM-5's
+  2.76 as a reported accept length from a private prompt set with four
+  speculative steps, not automatically as this notebook's tokens per target
+  pass. States that the source's counter convention is needed for a numeric
+  substitution, while the qualitative opportunity remains: a shared MTP
+  drafter can make proposal cost small relative to a separate model. Notes
+  that wall-clock still needs the systems caveats from Q3.
 - **Mostly correct**: correct formula and substitution with a slip in the
-  break-even algebra, or omits the GLM interpretation.
+  break-even algebra, or gives the careful GLM comparison without naming the
+  missing metric convention.
 - **Partially correct**: formula ignores drafting cost entirely, or treats
-  acceptance length and acceptance *rate* as interchangeable.
+  accepted drafts, emitted tokens, and acceptance *rate* as interchangeable.

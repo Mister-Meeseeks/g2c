@@ -197,7 +197,7 @@ PRODLM_CANDIDATES: list[ProdLMCandidate] = [
         nominal_params_b=1.24,
     ),
     ProdLMCandidate(
-        display_name="Llama 3.2 3B Instruct (Q4_K_M)  [course default]",
+        display_name="Llama 3.2 3B Instruct (Q4_K_M)",
         ollama_tag="llama3.2:3b",
         hf_repo="bartowski/Llama-3.2-3B-Instruct-GGUF",
         gguf_filename="Llama-3.2-3B-Instruct-Q4_K_M.gguf",

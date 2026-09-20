@@ -22,6 +22,7 @@ In progress — drafts live in the repo, not yet on the site:
 
 - Mixture of experts
 - Linear attention
+- Sparse attention and learned selection
 - RLVR with GRPO
 - Multimodal language models
 - Agent harness engineering
@@ -36,7 +37,7 @@ Supporting guide in draft — no scaffold or deliverable:
 
 - The efficient-attention map
 
-Watchlist — evidence accumulating, listed as observations rather than promises: sparse and compressed token-addressable attention as its own build; diffusion and other non-autoregressive generation; low-precision training.
+Watchlist — evidence accumulating, listed as observations rather than promises: diffusion and other non-autoregressive generation; low-precision training.
 
 ---
 
