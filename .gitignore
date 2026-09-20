@@ -53,3 +53,6 @@ wandb/
 /artifacts/
 trash/
 scratchpad/
+
+# Local full-resolution masters for optimized lesson images
+/image-originals/
