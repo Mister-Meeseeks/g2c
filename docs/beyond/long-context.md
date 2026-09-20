@@ -2,12 +2,11 @@
 
 > **Question this module answers:** *What does a model's context-window number actually promise—and what makes that promise real?*
 
-<!-- TODO(hero pipeline): asset not yet generated -->
-![A context-window claim decomposed into positional representation, long-sequence training, attention cost, utilization tests, and short-context retention.](long-context/BeyondLongContext-Hero.png)
+![A context-window claim decomposed into positional representation, long-sequence training, attention cost, utilization tests, and short-context retention.](long-context/BeyondLongContext-Hero.webp)
 
 A context limit is an interface constraint, not a capability certificate. A model may accept a long tensor yet fail to locate distant evidence, extrapolate its position representation, afford the attention computation, or preserve its short-context quality. This module separates those promises, then proposes a laptop experiment comparing learned absolute positions, RoPE, and NoPE outside their training range.
 
-> **Draft status.** This is a proposed Beyond module specification. Its package, tests, notebook, rubric, and hero asset do not exist yet; the API and exercise counts below are design targets rather than a runnable assignment.
+> **Draft status.** This is a proposed Beyond module specification. Its package, tests, notebook, and rubric do not exist yet; the API and exercise counts below are design targets rather than a runnable assignment.
 
 > **This is a Beyond module.** Beyond modules sit outside the numbered course: nothing in Modules 00–20 depends on them, and they are not part of finishing the course.
 
@@ -96,6 +95,9 @@ Needle-in-a-haystack is a diagnostic: it tests retrieval under controlled placem
 - the original short-context validation and task suite.
 
 Plotting accuracy against distance exposes an **effective context** that a single advertised maximum hides.
+
+![An unfilled evaluation plan sweeps context length and evidence position, tests retrieval and integration separately, and rechecks short-context behavior.](long-context/BeyondLongContext-EvaluationProfile.webp)
+*This is an evaluation design, not a results plot. Sweeping placement and length reveals failures a single window-size claim or average score can hide.*
 
 ## Concepts to internalize
 

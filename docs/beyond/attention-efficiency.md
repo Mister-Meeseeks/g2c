@@ -2,10 +2,9 @@
 
 > **Question this guide answers:** *When a release says “efficient attention,” which bill did it actually make smaller?*
 
-<!-- TODO(hero pipeline): asset not yet generated -->
-![Dense attention branching into exact tiled execution, narrower per-token caches, selected token access, and fixed recurrent state.](attention-efficiency/BeyondAttentionEfficiency-Hero.png)
+![Dense attention branching into exact tiled execution, narrower per-token caches, selected token access, and fixed recurrent state.](attention-efficiency/BeyondAttentionEfficiency-Hero.webp)
 
-Efficient attention is not one replacement for softmax attention. It is a map of techniques that change memory traffic, cache width, token connectivity, or the representation of history. This guide keeps those mechanisms separate, shows how production systems combine them, and routes the recurrent branch to a focused build in [Beyond Linear Attention](linear-attention.md).
+Efficient attention is not one replacement for softmax attention. It is a map of techniques that change memory traffic, cache width, token connectivity, or the representation of history. This guide keeps those mechanisms separate, shows how production systems combine them, and routes the two architecture-changing branches to [Beyond Sparse Attention](sparse-attention.md) and [Beyond Linear Attention](linear-attention.md).
 
 > **Guide status.** This is supporting lecture material, not a standalone coding module. It has no package, notebook, tests, rubric, or deliverable, and nothing in Modules 00–20 depends on it.
 
@@ -21,7 +20,7 @@ Efficient attention is not one replacement for softmax attention. It is a map of
 
 Module 07 builds exact all-to-all attention. Module 16 caches each token's keys and values so decoding does not recompute the past, but the cache still grows with history. Long contexts expose multiple bills: quadratic pairwise work in dense prefill, growing state and bandwidth in decode, and the hardware cost of moving intermediates.
 
-No single “post-transformer attention” module should own every response to those bills. This guide is the map. [Beyond Linear Attention](linear-attention.md) is the build for fixed recurrent state; [Beyond Long Context](long-context.md) owns position and extension training; [Beyond Hardware](hardware.md) owns execution.
+No single “post-transformer attention” module should own every response to those bills. This guide is the map. [Beyond Sparse Attention](sparse-attention.md) specifies the build for selected token-addressable history; [Beyond Linear Attention](linear-attention.md) is the build for fixed recurrent state; [Beyond Long Context](long-context.md) owns position and extension training; [Beyond Hardware](hardware.md) owns execution.
 
 ## The big idea
 
@@ -71,6 +70,8 @@ selection work      ranking, top-k, routing, and gathering
 
 “Sparse” alone tells you neither which objects grow nor how candidates are found.
 
+[Beyond Sparse Attention](sparse-attention.md) turns this branch into a laptop-scale build: a small indexer trained against detached dense-attention targets, hard causal top-k selection, a guaranteed local window, and attention over gathered payload rows. Its readable flat index deliberately leaves selection work linear in history so the remaining production problems stay visible.
+
 ### Replace token rows with state
 
 Factorizable linear attention reassociates computation so past keys and values accumulate in a fixed matrix. Gated delta rules, KDA, recurrent models, and SSMs refine how fixed state is updated and forgotten. They bound history state in `T`, but exact token rows are no longer available. [Beyond Linear Attention](linear-attention.md) builds the parallel/recurrent equivalence, fixed decay, and a recurrent/full hybrid.
@@ -106,9 +107,9 @@ IndexPool shrinks the index, not the payload it points to. KDA, MLA, sparse sele
 
 ### What this guide does not turn into modules yet
 
-- **Sparse and compressed token-addressable attention.** The mechanisms recur across model families, but the course still needs a laptop-scale scaffold that teaches selection rather than library plumbing.
 - **Custom attention kernels.** Kernel concepts belong in [Beyond Hardware](hardware.md); a Metal implementation remains a possible lab.
 - **State-space derivations.** The recurrent destination is relevant, while the full control-theory lineage is broader than this map.
+- **A standalone cache-compression module.** GQA, MLA, grouped payload compression, and pooled indices shrink different stored objects. The sparse-attention draft accounts for those bridges without flattening them into its exact-payload build.
 
 ---
 ## Reading routes

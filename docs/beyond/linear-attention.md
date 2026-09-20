@@ -2,10 +2,9 @@
 
 > **Question this module answers:** *What changes when token-addressable history becomes a fixed recurrent state?*
 
-<!-- TODO(hero pipeline): asset not yet generated -->
-![Token-addressable attention is reassociated into a fixed recurrent matrix state, then combined with occasional full-attention layers in a hybrid stack.](linear-attention/BeyondLinearAttention-Hero.png)
+![Token-addressable attention is reassociated into a fixed recurrent matrix state, then combined with occasional full-attention layers in a hybrid stack.](linear-attention/BeyondLinearAttention-Hero.webp)
 
-Module 07's attention keeps every past token addressable, and Module 16's KV cache makes that growing history visible. Linear attention takes a more radical bargain: compress the past into fixed recurrent state. This module builds the smallest inspectable version of that bargain, tests its parallel and recurrent forms for equivalence, and measures what a recurrent/full-attention hybrid retains and loses. Use [the efficient-attention map](attention-efficiency.md) for FlashAttention, MQA/GQA/MLA, and sparse attention.
+Module 07's attention keeps every past token addressable, and Module 16's KV cache makes that growing history visible. Linear attention takes a more radical bargain: compress the past into fixed recurrent state. This module builds the smallest inspectable version of that bargain, tests its parallel and recurrent forms for equivalence, and measures what a recurrent/full-attention hybrid retains and loses. Use [the efficient-attention map](attention-efficiency.md) for the full taxonomy and [Beyond Sparse Attention](sparse-attention.md) for the sibling build that retains selected token access.
 
 > **This is a Beyond module.** Beyond modules sit outside the numbered course: nothing in Modules 00–20 depends on them, and they are not part of finishing the course. Come here in any order, whenever a model card or paper names the idea and you want the load-bearing version — built, trained, and broken on your own machine.
 
@@ -89,6 +88,9 @@ The recurrence above is the undecayed `γ = 1` case: it never forgets, so early 
 ```
 
 With `γ_h` below 1, every token handled by head `h` decays that head's old state by the same proportion. This is a *fixed learned decay*, not a content-dependent gate. It cannot decide that punctuation should be forgotten quickly while a name should persist. Modern gated recurrent layers compute a decay or write strength from the current token. Delta-rule variants also subtract what the state already predicts for a key before writing the corrected value. Those mechanisms are more selective; this module keeps one scalar per head so the recurrence and its parallel reference remain inspectable.
+
+![A per-head memory update decays both the matrix state and normalizer, adds a feature-mapped key/value association, and reads the new state with a normalized query.](linear-attention/BeyondLinearAttention-MemoryUpdate.webp)
+*Follow the matrix and normalizer together: decaying only one breaks the parallel/recurrent equivalence you test in the notebook. This fixed per-head decay is the baseline for the more selective writes below.*
 
 ### From fixed decay to KDA's gated delta write
 

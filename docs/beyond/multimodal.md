@@ -2,8 +2,7 @@
 
 > **Question this module answers:** *How does a next-token model read a picture?*
 
-<!-- TODO(hero pipeline): asset not yet generated -->
-![An MNIST digit sliced into sixteen patches that enter the transformer's token stream alongside word embeddings, with the loss mask lit only over the text positions.](multimodal/BeyondMultimodal-Hero.png)
+![An MNIST digit sliced into sixteen patches that enter the transformer's token stream alongside word embeddings, with the loss mask lit only over the text positions.](multimodal/BeyondMultimodal-Hero.webp)
 
 We've spent the entire course learning how to model text. This week we discover that the same machinery can be used across images, audio, and video. The key insight is the LLMs natively work with vectors not words. If we have a way to turn media into semantically meaningful vectors, then we have a way to integrate it directly into an LLM.
 
@@ -81,6 +80,9 @@ Module 04 turned a variable-length symbol stream into a manageable discrete voca
 ```
 
 The projection plays the embedding table's role, with one structural difference: there is no discrete patch vocabulary. A patch does not get looked up; it gets *transformed*. Two nearly identical patches can land at nearby vectors — image "tokens" live on a continuum. The batch uses discrete `<image_patch>` ids only to reserve splice positions; their embeddings are overwritten by the continuous patch vectors before attention. Cross-entropy could still mechanically reward predicting those placeholder ids, so the loss mask excludes that meaningless surrogate objective. Patches provide conditioning inputs, while caption tokens provide supervised targets. Models that *generate* images need an actual image-output representation — see "What we don't cover."
+
+![Seven aligned input, next-token target, and loss-mask columns show that the end-image input predicts the first supervised caption token.](multimodal/BeyondMultimodal-LossAlignment.webp)
+*The mask follows the shifted target: the position containing the image-end delimiter already predicts the first caption token. Only two patch slots are shown; the notebook uses sixteen.*
 
 ### A 2D grid becomes a 1D sequence
 

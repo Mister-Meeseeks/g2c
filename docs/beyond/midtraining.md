@@ -2,8 +2,7 @@
 
 > **Question this module answers:** *How can continued next-token training add a capability without erasing what the base model already knows?*
 
-<!-- TODO(hero pipeline): asset not yet generated -->
-![One base checkpoint forks into Python-only and Python-plus-replay midtraining branches, then both meet again at a three-domain evaluation table balancing adaptation against retention.](midtraining/BeyondMidtraining-Hero.png)
+![One base checkpoint forks into Python-only and Python-plus-replay midtraining branches, then both meet again at a three-domain evaluation table balancing adaptation against retention.](midtraining/BeyondMidtraining-Hero.webp)
 
 Pretraining built a general next-token predictor; post-training will teach it how to answer. Between those stages, modern model recipes often continue the same pretraining objective on a deliberately changed distribution: more code, mathematics, another language, longer sequences, or synthetic capability data. This module makes that middle stage concrete. You will fork `TinyLLM-30M-base` into equal-token Python-only and Python-plus-replay runs, then measure the bargain each branch made across code, general text, and stories.
 

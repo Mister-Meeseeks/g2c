@@ -2,8 +2,7 @@
 
 > **Question this module answers:** *What if the path around a Transformer block became learnable—and how do you keep that path stable through depth?*
 
-<!-- TODO(hero pipeline): asset not yet generated -->
-![One residual highway widening into four streams, passing through a constrained mixing matrix whose rows and columns each sum to one, then continuing through a deep Transformer without exploding.](mhc/BeyondMHC-Hero.png)
+![Four residual streams split into a constrained mixing path and a read-transform-write path, then add into four output streams; the mixer constraint does not bound the full nonlinear layer.](mhc/BeyondMHC-Hero.webp)
 
 Module 09 treated the residual connection as fixed plumbing: normalize one stream, transform it, and add the result back. Hyper-connections turn that plumbing into architecture. They carry several residual streams, learn which mixture a layer reads, how its output is written back, and how the streams exchange information. That extra freedom also creates a new failure mode: unconstrained mixing matrices multiply through depth and can amplify or erase the supposedly safe residual path. This module builds the smallest honest version of manifold-constrained hyper-connections (mHC): multi-stream residual routing, differentiable Sinkhorn projection, and a depth probe that makes the stability constraint visible on a laptop.
 
@@ -125,6 +124,9 @@ The constraint buys three concrete properties:
 There is also a useful norm statement. By the Birkhoff–von Neumann theorem, a doubly stochastic matrix is a convex combination of permutation matrices. Every permutation has spectral norm one, so `||M||₂ ≤ 1`: the mixer is non-expansive in the stream dimension.
 
 Be exact about what this does **not** say. A doubly stochastic mixer does not preserve every vector's Euclidean norm; averaging can contract differences between streams. Nor does it force `M = I`. It preserves the all-ones direction and bounds amplification while still permitting exchange among streams. That conservation path—not a literal unchanged copy of each stream—is the identity-like property mHC restores.
+
+![A two-by-two averaging matrix maps streams with values two and zero to one and one, preserving their mean while erasing their difference.](mhc/BeyondMHC-MixerConstraint.webp)
+*Doubly stochastic does not mean norm-preserving: this exact mixer preserves the mean but contracts stream differences. The constraint applies to residual mixing, not to the gain of the complete nonlinear layer.*
 
 ### Sinkhorn projection makes the constraint differentiable
 

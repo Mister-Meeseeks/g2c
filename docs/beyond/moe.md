@@ -2,8 +2,7 @@
 
 > **Question this module answers:** *How can a model store far more parameters than any one token uses?*
 
-<!-- TODO(hero pipeline): asset not yet generated -->
-![A token arriving at a router that lights up one of eight expert FFNs while the other seven stay dark, with total parameters counted across all experts and active parameters counted only along the lit path.](moe/BeyondMoE-Hero.png)
+![A token arriving at a router that lights up one of eight expert FFNs while the other seven stay dark, with total parameters counted across all experts and active parameters counted only along the lit path.](moe/BeyondMoE-Hero.webp)
 
 This week introduces a new variant of the classic transformer architecture. Up until now, we have described models with a single parameter count. MoE asks us to track two: total parameters and active parameters. Done well, it gives a model substantially more parameter capacity without making every token use all of it.
 
@@ -94,6 +93,9 @@ Top-1 systems differ in what they do with the winning probability `p_e`. This on
 In both cases, the discrete winning index remains non-differentiable. Switch-style weighting retains a local surrogate signal through the selected probability; it still does not evaluate the unselected experts and directly reveal which counterfactual route would have been best.
 
 This distinction limits what the headline `k=1` experiment can demonstrate. Its auxiliary loss can move the router toward a more even input-dependent partition, ensuring that every expert receives training traffic. But it carries no task signal about which expert would have predicted a token best. 
+
+![Two top-1 weighting conventions show why normalizing the sole selected probability to one removes the task-loss gradient to the router, while retaining that probability preserves a gradient through its value.](moe/BeyondMoE-RouterGradients.webp)
+*The selected index is discrete in both cases. What changes is the surviving mixture weight—and therefore whether the task loss can train the router before the balancing loss is added.*
 
 ### Load balancing
 

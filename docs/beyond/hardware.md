@@ -2,12 +2,11 @@
 
 > **Question this module answers:** *Why can a model with fewer FLOPs still run slower—and how does hardware feed back into architecture?*
 
-<!-- TODO(hero pipeline): asset not yet generated -->
-![Training, prefill, and decoding workloads pass through arithmetic, memory bandwidth, parallelism, kernels, and communication before becoming wall-clock performance.](hardware/BeyondHardware-Hero.png)
+![Training, prefill, and decoding workloads incur arithmetic, memory-traffic, live-state, and launch costs; kernels and hardware turn those costs into measured latency and throughput.](hardware/BeyondHardware-Hero.webp)
 
 Model architecture is often taught as algebra floating above a machine. Real models run where matrix shapes, memory movement, kernel launches, cache capacity, and available parallelism can matter as much as operation counts. This module builds a durable resource model on an M-series Mac and uses it to read architecture choices—including the hybrid stack in GLM-5.3-Flash—without turning the course into a GPU-programming course.
 
-> **Draft status.** This is a proposed Beyond module specification. Its package, tests, notebook, rubric, and hero asset do not exist yet; the API and exercise counts below are design targets rather than a runnable assignment.
+> **Draft status.** This is a proposed Beyond module specification. Its package, tests, notebook, and rubric do not exist yet; the API and exercise counts below are design targets rather than a runnable assignment.
 
 > **This is a Beyond module.** Beyond modules sit outside the numbered course: nothing in Modules 00–20 depends on them, and they are not part of finishing the course.
 

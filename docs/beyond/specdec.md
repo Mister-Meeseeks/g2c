@@ -2,9 +2,9 @@
 
 > **Question this module answers:** *Why does a model that predicts one token at a time not have to generate one token at a time?*
 
-![A small drafter model racing ahead to propose a block of four tokens while a large target model checks the whole block in a single forward pass, accepting a prefix and correcting the first mistake, next to a multi-token-prediction head bolted onto the model that drafts for itself.](specdec/BeyondSpecdec-Hero.png)
+![A small drafter model racing ahead to propose a block of four tokens while a large target model checks the whole block in a single forward pass, accepting a prefix and correcting the first mistake, next to a multi-token-prediction head bolted onto the model that drafts for itself.](specdec/BeyondSpecdec-Hero.webp)
 
-Module 11's generation loop pays one full forward pass per token, and no amount of hardware changes that the passes happen one after another. Current releases all attack this serial bottleneck the same way: DeepSeek V4 ships an attached drafter module (DSpark) and reports 60–85% faster generation; GLM-5 serves through a parameter-shared multi-token-prediction layer with a reported 2.76-token acceptance length; Qwen3.8 trains an MTP head into both of its open checkpoints. This module builds the load-bearing mechanism — draft, verify in one pass, keep the agreeing prefix — and proves the property that makes it safe to deploy: the output is *exactly* what the target model would have produced alone.
+Module 11's generation loop pays one model pass per token because each new token becomes an input to the next. Faster hardware shortens those passes, but it does not remove the dependency between them. Recent releases share a draft-and-verify pattern while putting the drafter in different places. **Reported:** DeepSeek V4's DSpark increases per-user generation speed by 60–85% over an MTP-1 baseline at matched throughput; GLM-5 reaches a 2.76 accept length on a private prompt set with four speculative steps; and Qwen3.8-27B trains with multiple MTP steps. This module builds the load-bearing mechanism — draft, verify in one pass, keep the agreeing prefix — and the safety contract behind it: greedy decoding must reproduce the target's exact greedy sequence, while sampled decoding must preserve the target distribution.
 
 > **This is a Beyond module.** Beyond modules sit outside the numbered course: nothing in Modules 00–20 depends on them, and they are not part of finishing the course. Come here in any order, whenever a model card or paper names the idea and you want the load-bearing version — built, trained, and broken on your own machine.
 
@@ -18,36 +18,32 @@ Module 11's generation loop pays one full forward pass per token, and no amount 
 	* `g2c/transformer` ([09-transformer-block](../modules/09-transformer-block.md))
 	* `g2c/sampling` ([11-sampling](../modules/11-sampling.md))
 * *Run*
-	* `./checkpoints.sh` — the StoryLM reference ladder (1M/5M/30M share `StoryTokenizer`, which is exactly what makes them a ready-made drafter/target family)
+	* `./checkpoints.sh` — the StoryLM reference ladder (1M/5M/30M share `StoryTokenizer`, giving them the compatible token ids this exercise needs)
 	* `./datasets.sh --tiny` if the TinyStories corpus is missing (the MTP head trains on it)
 	* `G2C_APPLY_SOLUTIONS=01-11 ./notebook.sh specdec` instead of the plain launch if you're entering without your own implementations
 
 ---
 ## Where this fits in
 
-In Module 06 we learned an interesting property of autoregression. For an already extant sequence, a single forward pass gives us prediction logits for every token in the sequence. This was exploited during training to allow us to get log loss for every token in a single pass over a document. 
+In Module 06 we learned a useful property of autoregression: for a sequence we already know, one forward pass produces next-token logits at every position. Training exploits this to compute a loss at every position in parallel.
 
-Unfortunately Module 11 taught us this efficiency doesn't apply for forward completion. If we have `n` tokens in the prompt, we can't generate token `n+2` (or later) until we know token `n+1`. Which means every token in the completion requires its own full forward pass. The paradox is completion is fast but only if you already know it ahead of time.
+Generation is different because the future tokens are not known. Given `n` prompt tokens, we cannot generate token `n+2` until token `n+1` exists. Module 11 therefore pays one serial target pass for each new token.
 
-That fact doesn't seem that useful on the surface. But the one upshot is *verification* is much cheaper than generating from scratch. If we can have an educated guess for the next `n` tokens, and that verifies correct, then we turn `n` forward completions into just one.
+Speculative decoding supplies guesses for those unknown inputs. A target can score a guessed block with the same teacher-forced parallelism used in training, so one target pass may replace several serial target passes. Think of this as branch prediction for a language model: cheap work proposes a path, authoritative work validates it, and only the valid prefix commits. Verification is not automatically cheaper in wall-clock time — the cost of drafting, scoring the block, and committing state still matters — but it can remove expensive serial target passes.
 
-This is the insight behind *speculative decoding*. Think of it like branch prediction from computer architecture. If we can make a cheap educated guess about the next `N` tokens in a completion, and if we're right, then we reduce the cost from `N` forward passes for generation to one forward pass for verification. 
+The StoryLM ladder provides a controlled pairing: the 1M and 5M models are cheap drafters for the 30M target, and all use the same `StoryTokenizer`. A drafter does not generally have to come from the same model family. It does need a compatible token-id mapping and the probabilities required by the verifier's sampling policy.
 
-The question is how do we make a good educated guess? In Module 12 we compared different size models in the same family (same training regime, similar shaped architectures). What we learned is smaller models often produce similar outputs to their larger cousins, especially over the next few tokens before trajectories diverge.
-
-Speculative decoding comes down to economics. It works best for large, slow, expensive models. We pair with a smaller, faster, cheaper *drafter model* from the same family as the *target model*. For most tokens, most of the time, the large model is "overpowered". A smaller model will correctly guess the same token as the larger model. 
-
-Therefore, the efficiency of speculative decoding comes down to two factors. One is drafter accuracy: what percentage of its tokens match the target model? The second is the ratio of the target model's cost to the drafter model's cost. Making the drafter smaller and faster improves the latter but usually trades off against the former.
+The economics have several parts: how many draft tokens survive as a prefix, how much the draft costs, how much useful work the target gets from a verification block, and how expensive it is to commit or roll back inference state. A smaller drafter usually lowers proposal cost while also lowering acceptance. The useful question is not simply "how accurate is it?" but "how much verified progress does it buy for the total work?"
 
 ## The big idea
 
-Speculative decoding runs the following completion loop:
+The module's greedy speculative decoder runs the following completion loop:
 
 1. Drafter model: generate `k` candidate tokens `d₁ … d_k` from the current completion
-2. Target model: score the candidate block in one forward pass, producing aligned predictions `t₁ … t_k` plus `t_(k+1)`
+2. Target model: score the candidate block in one forward pass, producing aligned predictions `t₁ … t_k` plus `t_{k+1}`
 3. Accept the longest prefix `d₁ … d_j` for which every aligned pair `d_i = t_i`
-4. Discard the remaining candidate suffix `d_(j+1) … d_k`
-5. Emit `t_(j+1)` — the correction at the first mismatch, or the bonus token `t_(k+1)` when all `k` drafts match
+4. Discard the remaining candidate suffix `d_{j+1} … d_k`
+5. Emit `t_{j+1}` — the correction at the first mismatch, or the bonus token `t_{k+1}` when all `k` drafts match
 6. Repeat loop for the full completion
 
 The overall idea is simple, but there are a few subtleties in that loop that are important to notice.
@@ -72,10 +68,10 @@ Second, the forward verification pass will always give us one extra token "for f
    emit:              d_1  d_2  t_3          ← accepted prefix + free correction
 ```
 
-![A position-alignment diagram shows the last prompt token and four draft inputs producing five target predictions in one pass, then accepts only the matching prefix and emits either the first correction or a bonus token after full acceptance.](specdec/BeyondSpecdec-VerificationAlignment.png)
+![A position-alignment diagram shows the last prompt token and four draft inputs producing five target predictions in one pass, then accepts only the matching prefix and emits either the first correction or a bonus token after full acceptance.](specdec/BeyondSpecdec-VerificationAlignment.webp)
 *The target's logits are shifted by one input position: the last prompt position predicts `t₁`, while the final draft position predicts the free `t₅`. This is the alignment pinned by the module's anchor test.*
 
-### Sampling Distribution
+### Sampling distribution
 
 An important property of speculative decoding is that it is purely an *inference optimization*. Its presence or the specific drafter model should never change the distribution of output relative to the target model.
 
@@ -85,20 +81,20 @@ Recall that models themselves only produce logits. Actual token output applies a
 
 * *Stochastic verification* accepts the next draft token with probability `min(1, p_target / p_draft)`. If rejected, it resamples from the normalized leftover mass of `p_target - p_draft`.
 
-![Four target-probability bars are decomposed into accepted common mass and correction mass, while a stochastic verification gate either emits the sampled draft token or draws from the normalized positive target residual.](specdec/BeyondSpecdec-StochasticVerification.png)
+![Four target-probability bars are decomposed into accepted common mass and correction mass, while a stochastic verification gate either emits the sampled draft token or draws from the normalized positive target residual.](specdec/BeyondSpecdec-StochasticVerification.webp)
 *For each token, accepted mass `min(p,q)` plus correction mass `(p−q)₊` reconstructs the target mass exactly. Draft-only excess is rejected, so the drafter can change work but not the target distribution.*
 
-In both cases, a simple mathematical derivation as well as empirical tests (which we run in the test suite) will show that the speculative decoder is tokenwise identical in distribution to the target model. 
+For greedy verification, induction gives exact sequence equality: every emitted token is the token plain target decoding would emit at that prefix. For stochastic verification, the acceptance and positive-residual correction rule reconstructs the target's next-token distribution at every accepted prefix. The tests empirically check the one-step stochastic result; the primary papers prove the full distribution-preservation theorem.
 
-Once we've established pure inference optimization, drafter quality therefore reduces to exactly one metric: the *acceptance length*. Model cards will report a headline like "2.76 average acceptance". With output distribution off the table, acceptance length becomes the whole story of drafter model quality.
+Be precise about the counters. In this course, `stats.accepted` counts accepted *draft* tokens, `stats.generated` counts all emitted tokens including the correction or bonus, and `tokens_per_pass = generated / target_passes`. A release's reported *accept length* may use a different convention, so it cannot automatically replace `E[accepted] + 1` in the course accounting. Acceptance is important, but it is not the drafter's whole report card: proposal cost, verification cost and wasted block work, batching, concurrency, and state commit determine whether accepted tokens become wall-clock speed.
 
 ### Multi-token prediction
 
-Up until now, we've assumed the drafter is a separate model running in parallel. The alternative is *multi-token prediction (MTP)*. Instead of a whole new model, it works by attaching a small head to the underlying target model (*the trunk model*).
+Up until now, the drafter has been a separate model. *Multi-token prediction (MTP)* can instead attach future-token prediction modules to the target model's trunk and reuse its representations.
 
-The head learns to predict the token at `t+2` using as inputs the trunk model's just predicted embedding vector at `t+1` as well as the trunk's hidden state at position `t`.  The same approach can be extended to `t+3`, `t+4`, and so on. The head is trained off the same corpus used for training the underlying model. Only with the target of predicting `t+2` from `t+1`. The head is trained purely on top of the trunk, and its training gradient never flows back to any weights in the underlying model.
+The course builds one deliberately small version. `MTPHead` receives the trunk hidden state `h_t` and the embedding of the known or proposed token `x_{t+1}`, then predicts `x_{t+2}`. It does not receive the trunk's fully updated state `h_{t+1}`. The notebook freezes the pretrained StoryLM base and trains only this post-hoc head so the experiment stays cheap and isolates the mechanism. Production MTP systems may jointly train the trunk and several future-token modules. Predicting farther than this course head can require additional, repeated, or parameter-shared MTP layers; it is not a free change from one output head to arbitrary `N`-token drafting.
 
-At decode time, the head simply rides the trunk's forward pass. Each forward pass proposes `N` tokens ahead, which can be used for the next forward pass. The speculative decoding loop is identical to the one above, the only difference being candidate tokens come from the MTP head instead of a separate drafter model. No second model to load, and near-zero drafting cost because the trunk pass happens anyway. 
+At decode time, `mtp_propose` emits the base model's next token and one additional token from the head. Those candidates enter the same verifier used for a separate drafter. In this notebook the proposal and verification are distinct passes, so the timing does **not** realize the near-zero incremental drafting cost available to a production pipeline that carries MTP proposals out of an already-needed trunk pass. The build demonstrates where a drafter can live, not the full serving optimization.
 
 ### The accounting
 
@@ -107,13 +103,15 @@ The clean way to assess speculative decoding efficiency is *target passes per to
 ```
    plain:        1 target pass per token
    
-   speculative:  1 target pass per (E[accepted] + 1) tokens
+   speculative:  1 target pass per (E[accepted drafts] + 1) emitted tokens
                  + k drafter passes per block          (cheap, but not free)
 ```
 
 The main knob to turn (besides drafter model selection itself) is block size. The longer the block size, the higher the cumulative probability that verification will reject a candidate token. However a shorter block may leave possibly correct draft tokens on the table by ending the sequence too early.
 
-Longer blocks will never reduce target passes per token, but their overhead cost per token goes up linear, while the target passes per token is subject to decreasing returns on the margin. Whether fewer target passes translate into faster wall-clock efficiency is an engineering question. In this module, like everything else in the course, we measure rather than assume.
+For this single-chain greedy loop, a larger `k` cannot reduce the number of emitted tokens credited to a target pass: the verifier can always stop at the same earlier mismatch. Draft work per round grows roughly linearly with `k`, however, and larger verification blocks may also increase target work and wasted computation after the first rejection. Per-*emitted-token* overhead depends on the measured acceptance distribution rather than growing by a fixed rule. Whether fewer target passes translate into better wall-clock efficiency is an engineering question. In this module, we measure rather than assume.
+
+If one draft pass costs a fraction `c` of one target pass, a simple course cost model is `(E[accepted drafts] + 1) / (1 + k·c)` emitted tokens per target-equivalent unit. It deliberately leaves out verification-block scaling, batching, and state transactions. GLM-5's reported 2.76 accept length is useful evidence about its own private-prompt, four-step setup; without the source's exact counter convention, it is not automatically 2.76 course tokens per target pass.
 
 ### Verification is also a state transaction
 
@@ -154,7 +152,7 @@ committed checkpoint state S₀ + recent accepted-input buffer
 
 ReplaySSM is one production realization. It keeps a checkpoint recurrent state and caches recent recurrence inputs rather than materializing and storing a full new state at every token. Outputs can be computed from the checkpoint plus that input buffer; when the buffer fills, replay folds the inputs into a new checkpoint. During speculation, accepting or rejecting a suffix becomes a buffer-pointer operation instead of restoration from `k` full-state snapshots.
 
-![Three state-commit strategies accept two of four speculative inputs: a KV cache truncates addressable rows with a sequence pointer, recurrent snapshots restore an earlier full state, and checkpoint-plus-input replay advances a buffer pointer before folding accepted inputs into a new checkpoint.](specdec/BeyondSpecdec-StateTransactions.png)
+![Three state-commit strategies accept two of four speculative inputs: a KV cache truncates addressable rows with a sequence pointer, recurrent snapshots restore an earlier full state, and checkpoint-plus-input replay advances a buffer pointer before folding accepted inputs into a new checkpoint.](specdec/BeyondSpecdec-StateTransactions.webp)
 *Every strategy commits the same two-token boundary, but the stored object changes the cost of rollback: token rows truncate, compressed state must be restored, and an input log can discard a suffix by pointer before replay.*
 
 This does not change the verifier's probability rule or acceptance length. It changes how the target produces verification outputs and how its hidden state commits the accepted prefix. In a hybrid model, the transaction spans both kinds of state: full/sparse attention layers commit cache rows, while recurrent layers commit buffered inputs or a reconstructed state. Every layer must land on the same accepted token boundary.
@@ -164,11 +162,11 @@ The course loop deliberately recomputes the prefix and therefore gets correct st
 ## Concepts to internalize
 
 - **Teacher forcing works on guesses.** One forward pass scores `k+1` positions whether the tokens came from a corpus or a drafter. Verification is Module 06's parallel scoring pointed at the future.
-- **Verification is what makes speculation lossless.** Greedy: identical tokens. Stochastic: identical distribution. The drafter can only change speed. If your implementation's output differs from plain decoding, it is wrong, not "approximately faster."
-- **Every iteration advances.** Accepted prefix plus one free correction/bonus token — the floor is plain decoding, never worse.
-- **Acceptance length is the drafter's whole report card.** `E[accepted] + 1` tokens per pass is the number to sweep, and the number model cards quote.
-- **MTP is speculation with the drafter built in.** A trained head turns one trunk pass into a draft; "MTP layer" on a model card is a serving feature, not just a training trick.
-- **Drafter and target must share a tokenizer.** Draft *ids* are the interface. A vocabulary mismatch isn't degraded — it's meaningless.
+- **Verification is what makes speculation lossless.** Greedy verification preserves the target's exact greedy sequence; stochastic verification preserves its distribution when the acceptance and correction rules match the sampling policy. The drafter may change work, not the target policy.
+- **Every iteration advances.** The accepted prefix plus one correction or bonus token guarantees at least one emitted token. Target-pass accounting is therefore no worse than plain decoding, although total compute and wall-clock time can be.
+- **Name the acceptance metric.** Accepted drafts, emitted tokens per round, and emitted tokens per target pass are related but not interchangeable. A model-card accept length needs its source convention before it enters your cost equation.
+- **MTP can provide an internal drafter.** The course's frozen one-head build proposes only one extra future token; production systems may jointly train multiple or shared MTP layers and integrate proposal work into serving.
+- **Drafter and target need compatible token ids and sampling information.** Sharing a tokenizer is the straightforward case. A mismatched vocabulary without an explicit mapping makes draft ids meaningless to the target.
 - **Losslessness includes state.** After each block, the emitted tokens *and* every target-layer cache or recurrent state must match target-only decoding at the accepted boundary.
 - **Rollback depends on the state representation.** A KV cache can truncate token rows; a fixed recurrent summary has no intrinsic undo. Snapshotting, replaying inputs, or reconstructing state are different systems costs around the same verifier.
 - **Replay turns recent inputs into a transaction log.** A stable checkpoint plus an input buffer separates speculative work from committed history; commit and rejection can become pointer changes rather than full-state copies.
@@ -179,7 +177,7 @@ The course loop deliberately recomputes the prefix and therefore gets correct st
 - **Cached-state integration and ReplaySSM kernels.** Production verification reuses and commits KV caches, recurrent states, or replay buffers across iterations. Our loop recomputes the prefix so the algorithm stays inspectable; Module 16 has the cache this would compose with, while [Beyond Linear Attention](linear-attention.md) supplies the fixed-state recurrence whose rollback is different.
 - **Hardware-aware speculation scheduling.** DSpark chooses draft lengths against measured server throughput. That is a serving-systems concern layered on top of the mechanism built here.
 - **The full sampled speculative loop.** We build and verify the stochastic acceptance *rule*; the notebook's decoding loop is greedy, where losslessness is checkable by string equality rather than statistics.
-- **Distribution-preservation proofs.** The tests check the theorem empirically; the two primary papers prove it in a page each.
+- **Distribution-preservation proofs.** The tests empirically check the one-step theorem; the two primary papers supply the mathematical proof.
 
 ---
 ## What you'll build
@@ -230,26 +228,14 @@ The anchor test: `test_speculative_generate_matches_argmax_chain_with_any_drafte
 
 ## Exercises
 
-To launch the exercise notebook run:
-
-```bash
-./notebook.sh specdec
-```
-
-If at any point you want to archive the work in your current notebook and restart fresh:
-
-```bash
-./notebook.sh specdec --fresh
-```
-
-Written exercises live in the notebook as `Question:` / `Answer:` cells; ask a coding agent for hints or grading when you're ready, and partial submissions are fine — blank answers are skipped.
+Open the working notebook with `./notebook.sh specdec` (or `./notebook.sh specdec --fresh` to archive the current copy and reset from the clean scaffold), write your answers in the `Question:` / `Answer:` cells, and ask a coding agent for hints or grading. Partial submissions are fine because blank answers are skipped.
 
 1. **Prove losslessness on the real ladder.** StoryLM-1M drafts for StoryLM-30M; assert the speculative output is byte-identical to plain greedy decoding across several prompts, then read the `SpecStats`.
 2. **Sweep the acceptance curve.** Tokens-per-pass across `k ∈ {1, 2, 4, 8}` for both drafters (1M and 5M). Where does a bigger block stop paying, and which drafter earns its extra cost?
 3. **The wall-clock honesty benchmark.** Time plain versus speculative decoding at your best configuration, with MPS synchronization. Report tokens/sec next to tokens/pass, including "the accounting improved and the clock didn't," if that is what you measure.
-4. **Train the MTP head.** Bolt `MTPHead` onto frozen StoryLM-5M, train it on TinyStories, and plot the two-ahead loss and top-1 accuracy. How much worse is predicting `x_{t+2}` than `x_{t+1}`?
+4. **Train the MTP head.** Bolt `MTPHead` onto frozen StoryLM-5M, train it on TinyStories, and plot the two-ahead loss and top-1 accuracy. Compare it with the base model's one-ahead accuracy without assuming which must be higher; use the information available to each predictor to interpret what you observe.
 5. **Self-speculation.** Decode with `mtp_propose` + `greedy_verify` (a five-line loop) and compare its acceptance and tokens-per-pass against the separate-drafter runs from Exercise 2.
-6. **Written: the cost model.** With drafter/target cost ratio `c` and measured acceptance, derive tokens per unit of target-compute for your best run, state the break-even acceptance for `k = 4`, and interpret GLM-5's reported 2.76 acceptance length in these terms.
+6. **Written: the cost model.** With drafter/target cost ratio `c` and measured accepted drafts, derive emitted tokens per unit of target-equivalent compute for your best run and state the break-even acceptance for `k = 4`. Then compare the course metric carefully with GLM-5's reported 2.76 accept length, naming what you would need to know before equating them.
 
 ## Pitfalls to expect
 
@@ -259,7 +245,7 @@ Written exercises live in the notebook as `Question:` / `Answer:` cells; ask a c
 - **Timing MPS without synchronization.** The Python timer stops before Metal finishes. Synchronize around every measured region, and report medians of repeats.
 - **Expecting wall-clock to follow tokens-per-pass at toy scale.** Our verification recomputes the full prefix and the drafter loops in Python. The accounting win is real and measured; the latency win depends on machinery (KV cache, batching) this module deliberately doesn't build.
 - **The MTP shift-by-one.** Misalign `mtp_loss` and the head cheerfully learns to predict `x_{t+1}` — a job the base already does perfectly — and every draft it proposes later gets rejected. The alignment test pins the correct shift; trust it over your intuition.
-- **Cross-family drafting.** A drafter with a different tokenizer produces ids the target reads as arbitrary noise. Acceptance near zero with no error message is the symptom.
+- **Tokenizer mismatch.** A drafter with an incompatible token-id mapping produces ids the target reads as arbitrary symbols. Acceptance near zero with no error message is the symptom; model-family membership itself is not the requirement.
 
 ## M-series notes
 
@@ -273,19 +259,19 @@ Written exercises live in the notebook as `Question:` / `Answer:` cells; ask a c
 
 Primary:
 
-- **Leviathan, Kalman, Matias, "Fast Inference from Transformers via Speculative Decoding" (2022).** The draft-and-verify loop and the acceptance rule — this module is this paper, built. Read it first.
-- **Chen, Borgeaud, Irving, Lespiau, Sifre, Jumper, "Accelerating Large Language Model Decoding with Speculative Sampling" (2023).** Independent derivation of the same rule, with the cleanest one-page proof that the target distribution survives.
-- **Gloeckle, Idrissi, Rozière, Lopez-Paz, Synnaeve, "Better & Faster Large Language Models via Multi-token Prediction" (2024).** MTP as a *training* objective, before it became a serving feature.
+- **Leviathan, Kalman, Matias, ["Fast Inference from Transformers via Speculative Decoding"](https://arxiv.org/abs/2211.17192) (2022).** The draft-and-verify loop and the acceptance rule — this module is this paper, built. Read it first.
+- **Chen, Borgeaud, Irving, Lespiau, Sifre, Jumper, ["Accelerating Large Language Model Decoding with Speculative Sampling"](https://arxiv.org/abs/2302.01318) (2023).** Independent derivation of the same rule, with the cleanest one-page proof that the target distribution survives.
+- **Gloeckle, Idrissi, Rozière, Lopez-Paz, Synnaeve, ["Better & Faster Large Language Models via Multi-token Prediction"](https://arxiv.org/abs/2404.19737) (2024).** MTP as a *training* objective, before it became a serving feature.
 
 Secondary:
 
-- **DeepSeek-V3 Technical Report (2024), the MTP section.** The shared-trunk sequential MTP module this module's head is a minimal version of, and the design its successors inherit.
-- **Cai et al., "Medusa" (2024)** and **Li et al., "EAGLE" (2024).** Multiple heads, tree-structured drafts, and feature-level drafting — the generalizations past a single chain.
+- **[DeepSeek-V3 Technical Report](https://arxiv.org/abs/2412.19437) (2024), the MTP section.** A shared-trunk sequential MTP design related to this module's much smaller post-hoc head. Do not flatten the production objective into the course implementation.
+- **Cai et al., ["Medusa"](https://arxiv.org/abs/2401.10774) (2024)** and **Li et al., ["EAGLE"](https://arxiv.org/abs/2401.15077) (2024).** Multiple heads, tree-structured drafts, and feature-level drafting — generalizations beyond a single chain.
 - **Dao AI Lab, ["ReplaySSM: Cache SSM Inputs, Not State"](https://dao-lab.ai/blog/2026/replayssm/) (2026).** The state-transaction bridge for recurrent and delta-rule targets: checkpoint state, buffered recurrence inputs, cheap suffix rollback, and output-only speculative verification. Read for the systems contract; this module does not build its kernels.
 
 Optional:
 
-- **The current release lineage.** DeepSeek V4's DSpark report, GLM-5's parameter-shared MTP (2.76 acceptance), and the Qwen3.8 model cards' MTP entries show different places a drafter can live. [GLM-5.3-Flash](https://z.ai/blog/glm-5.3-flash) adds ReplaySSM to the serving side. After this module, read those systems as a drafter, a verifier, an acceptance number, and a state-commit path—not just a headline speedup.
+- **The current release lineage.** [DeepSeek V4's DSpark report](https://arxiv.org/abs/2607.05147), [GLM-5's parameter-shared MTP report](https://arxiv.org/abs/2602.15763), and the [Qwen3.8-27B model card](https://huggingface.co/Qwen/Qwen3.8-27B) show different places and training schemes for a drafter. [GLM-5.3-Flash](https://z.ai/blog/glm-5.3-flash) adds ReplaySSM to the serving side. After this module, read each system in terms of its drafter, verifier, stated metric convention, and state-commit path — not just its headline speedup.
 
 ## Deliverable checklist
 
@@ -296,6 +282,6 @@ Optional:
 - [ ] You can explain — out loud, without notes — why greedy speculative decoding cannot change the output, only the pass count.
 - [ ] You can explain — out loud, without notes — what the stochastic acceptance rule guarantees, and what the drafter can and cannot influence.
 - [ ] You can explain — out loud, without notes — why tokens-per-pass and wall-clock speedup are different claims.
-- [ ] You can explain — out loud, without notes — what an MTP head changes about where the drafter lives, and why the two models must share a tokenizer.
+- [ ] You can explain — out loud, without notes — what an MTP head changes about where the drafter lives, and why separate models need compatible token ids and sampling information.
 - [ ] You can explain — out loud, without notes — why token equality is insufficient if rejected drafts remain folded into target state.
 - [ ] You can contrast KV-cache truncation, per-draft recurrent-state snapshots, and checkpoint-plus-input replay as three ways to commit the accepted prefix.

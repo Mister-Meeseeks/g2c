@@ -2,8 +2,7 @@
 
 > **Question this module answers:** *If initialization has to respect a matrix's geometry, why doesn't the update rule?*
 
-<!-- TODO(hero pipeline): asset not yet generated -->
-![A momentum matrix's singular-value spectrum, wildly uneven, passing through five Newton–Schulz polynomial steps and emerging as a flat band near one, next to a model diagram whose weight matrices are routed to Muon while its embeddings, norm gains, and biases are routed to AdamW.](muon/BeyondMuon-Hero.png)
+![A momentum matrix's singular-value spectrum, wildly uneven, passing through five Newton–Schulz polynomial steps and emerging as a flat band near one, next to a model diagram whose weight matrices are routed to Muon while its embeddings, norm gains, and biases are routed to AdamW.](muon/BeyondMuon-Hero.webp)
 
 For seven years AdamW has been the default answer to "which optimizer," and Module 03B built it. In 2025–26 the default cracked at the frontier: DeepSeek V4 applies Muon to most matrix parameters and keeps AdamW for the rest; GLM-5 pretrained 28.5T tokens on a per-head "Muon Split" variant; Moonshot's Kimi K2 ran MuonClip at trillion-parameter scale. This module builds Muon — momentum, orthogonalized by a five-step polynomial iteration — races it against your own AdamW, and shows why every production deployment is a *hybrid* that still needs the optimizer you built in Module 03B.
 

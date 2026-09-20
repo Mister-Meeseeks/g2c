@@ -2,8 +2,7 @@
 
 > **Question this module answers:** *How do you turn a capable tool-using model into a reliable, inspectable, resumable system?*
 
-<!-- TODO(hero pipeline): asset not yet generated -->
-![An agent loop wrapped in an event log, context policy, permissions, retry classification, and explicit stopping rules.](harness/BeyondHarness-Hero.png)
+![An agent loop wrapped in an event log, context policy, permissions, retry classification, and explicit stopping rules.](harness/BeyondHarness-Hero.webp)
 
 Module 19's loop works—and then the process dies mid-run, old tool output crowds the task out of context, or a side effect lands without its result reaching the transcript. This module rebuilds the loop around an append-only event log, a deterministic context view, explicit permissions, conservative crash recovery, and bounded retries. It ends with a controlled comparison: the same scripted backend and tools, under two harnesses and the same injected failures.
 
@@ -141,6 +140,9 @@ With agent tool calls, the most dangerous interval is between executing a side e
 `call_id` solves one critical case: if `tool_result(call_id)` exists, replay returns that result without executing the tool again. The id must remain bound to the same tool and arguments; reusing it for a different operation is an invariant violation. It cannot tell whether a call with no result ran. This runner therefore takes a conservative posture: it records `unknown_outcome_after_crash`, refuses a blind re-execution, and asks the agent to reconcile workspace state.
 
 That is not exactly-once execution. Exactly-once effects require cooperation below the harness: a tool-level idempotency key, a transaction coupling effect and record, or operation-specific reconciliation. The crash drill constructs both possible worlds behind the same unresolved log so the ambiguity is impossible to wave away.
+
+![Crashes before and after a tool's side effect leave the same intent-without-result log, while a completed call-result pair can be replayed without repeating the effect.](harness/BeyondHarness-UnresolvedCalls.webp)
+*A missing result cannot distinguish an unstarted action from an unrecorded success. The crash drill must reconcile that ambiguity instead of blindly repeating a side effect.*
 
 ### Permissions are policy, not containment
 

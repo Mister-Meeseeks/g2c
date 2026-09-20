@@ -2,8 +2,7 @@
 
 > **Question this module answers:** *How can a model learn when checking an outcome is easier than writing the ideal trajectory?*
 
-<!-- TODO(hero pipeline): asset not yet generated -->
-![The GRPO loop drawn as a circle: one prompt fans out to K sampled completions, a programmatic verifier scores each one, scores become group-relative advantages, and the policy update pushes up above-average completions while a KL leash anchors the model to its frozen reference.](rl/BeyondRL-Hero.png)
+![The GRPO loop drawn as a circle: one prompt fans out to K sampled completions, a programmatic verifier scores each one, scores become group-relative advantages, and the policy update pushes up above-average completions while a KL leash anchors the model to its frozen reference.](rl/BeyondRL-Hero.webp)
 
 "*It doesn't matter if a cat is black or white, so long as it catches mice"
 - Deng Xiaoping 
@@ -122,6 +121,9 @@ One degenerate case is load-bearing. If all K rewards are equal (all failed, or 
 This exposes the *exploration boundary* of verifier-based RL. A verifier is only useful when the current policy actually sees different reward outcomes. RL cannot reinforce a solution that never appears in its rollouts. Prompting, task difficulty, curriculum, sampling, and group size therefore all factor into whether a verifier produces a learning signal at all.
 
 To complete the training gradient, the policy activation has to be translated back into per-token loss. This is just `−A_i · log p(token)` summed **over completion tokens only**. The same loss mask we learned in Module 13.
+
+![Mixed binary rewards create positive and negative group-relative advantages, while all-wrong and all-correct groups have zero variance and are skipped.](rl/BeyondRL-GroupSignal.webp)
+*Both all-wrong and all-correct groups lack relative signal. Use the notebook's degenerate-group count to distinguish an uninformative task from a broken optimizer.*
 
 ### The KL leash
 
