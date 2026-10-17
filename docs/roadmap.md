@@ -63,7 +63,7 @@ laptop-scale build before it earns a Beyond module.
 
 Bigger than additions — candidate themes for a second course, listed as directions rather than promises:
 
-- **Interpretability: you built it — now open it up.** Logit lens, activation patching, ablations, an induction-head hunt — on the model *you trained*. Module 08 already concedes its attention visualizations underwhelm at tiny scale; a dedicated arc is where that debt pays off, because tiny models aren't a limitation for interpretability — they're the superpower. Fully inspectable, fully yours.
+- **Interpretability: you built it — now open it up.** Logit lens, activation patching, ablations, an induction-head hunt — on the model *you trained*. Module 08 already concedes its attention visualizations underwhelm at tiny scale; a dedicated arc is where that debt pays off, because a tiny model is one you can inspect completely: every weight, every activation, every training step, all yours. The trade-off is that small models may pack more into each neuron than large ones, so a tiny model is the place to learn the tools, not proof of what bigger models look like inside.
 - **Performance and serving.** The draft hardware module supplies single-device fundamentals; custom Metal kernels, quantization internals, distributed batching, parallelism, and production serving remain a larger "make it fast" arc.
 
 ---

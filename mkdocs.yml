@@ -7,11 +7,11 @@ edit_uri: edit/main/docs/
 
 docs_dir: docs
 
-# Under construction: drafts live in version control but are not published.
-# Remove entries here when the corresponding section ships to the site.
-exclude_docs: |
-  beyond/
-  briefs/
+# Published but unlisted: these pages build and have stable URLs, but stay out
+# of the nav and off the lobby pages. Add them to `nav:` to list them.
+not_in_nav: |
+  /beyond/
+  /briefs/
 
 theme:
   name: material

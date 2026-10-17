@@ -126,35 +126,48 @@ Prefer inline chat practice over creating files. When the student asks for more 
 
 ## When authoring a G2C Brief
 
-G2C Briefs (`docs/briefs/`) are dated field guides that use the course to
-decode one current model release. They are neither lesson pages nor complete
-paper summaries. The Brief index at `docs/briefs/index.md` owns the public
-contract and list of published Briefs.
+G2C Briefs (`docs/briefs/`) are dated field reports on new developments in AI
+that a g2c graduate would want to understand: a model release, a research
+result, a training or serving technique, a tool or infrastructure shift. Each
+uses the course to decode one development. They are neither lesson pages nor
+complete paper summaries. The Brief index at `docs/briefs/index.md` owns the
+public contract and list of published Briefs.
 
-- Pin the release, primary-source version, and last-verification date. Current
-  release facts must be checked against primary sources rather than recalled.
-- Label the epistemic status of important statements: **Reported** for a
-  releasing organization's claim, **Derived** for shown arithmetic from
+- Write for the public: a graduate of the course, not a maintainer. Assume
+  the course but no prior background on the subject (e.g. no V4 background
+  for a V4.1 Brief). Don't copy the shape of earlier Briefs; let the subject
+  set the structure.
+- Pin the subject, primary-source version, and last-verification date.
+  Current facts must be checked against primary sources rather than recalled.
+- Label the epistemic status of important statements: **Reported** for the
+  source's own claim or observation, **Derived** for shown arithmetic from
   disclosed values, **G2C interpretation** for the course's inference, and
-  **Not disclosed** where the source cannot support a stronger conclusion.
-- Map mechanisms as **Built in g2c**, **Conceptual bridge**, or **Not yet
-  covered**. Do not flatten a production variant into a toy implementation
-  merely because they share an ancestor.
-- Trace the whole release stack when relevant: architecture, data/training,
-  post-training, inference, and agent infrastructure. Keep production systems
-  high-level unless their mechanics are necessary to understand a capability
-  or efficiency claim.
-- State the laptop-scale boundary plainly. A Brief may explain a model too
+  **Not disclosed** where the source cannot support a stronger conclusion. If
+  a label needs a subject-specific reading (e.g. an essay with no technical
+  report), say so near the top of the Brief.
+- Map mechanisms and concepts as **Built in g2c**, **Conceptual bridge**, or
+  **Not yet covered**. Do not flatten a production variant into a toy
+  implementation merely because they share an ancestor.
+- Trace whatever stack the subject has. For a model release that means
+  architecture, data/training, post-training, inference, and agent
+  infrastructure. For research it means the claim, the evidence, its limits,
+  and where informed readers push back. Keep production systems high-level
+  unless their mechanics are necessary to understand a capability or
+  efficiency claim.
+- State the laptop-scale boundary plainly. A Brief may explain something too
   large to run locally; it must not add cloud, paid-API, checkpoint, or
-  reproduction requirements.
+  reproduction requirements. When part of a development is checkable on the
+  course's own models, say how, as an optional sketch rather than a task.
 - Do not add a notebook, scaffold, tests, rubric, exercise deliverable, hero
   image requirement, or downstream course dependency. Worked arithmetic,
-  compact diagrams, reading routes, and ungraded comprehension goals are fine.
+  compact diagrams, short ungraded code sketches, reading routes, and
+  ungraded comprehension goals are fine.
 - Prefer links from the Brief to durable modules. Modules 00–20 must never
   depend on a Brief, and should not need edits when a dated Brief ages.
-- An uncovered mechanism in one release is evidence, not an automatic roadmap
+- An uncovered mechanism in one Brief is evidence, not an automatic roadmap
   commitment. The Beyond-module threshold still requires recurrence across
-  independent model families and a useful laptop-scale build.
+  independent model families or research groups and a useful laptop-scale
+  build.
 
 ## When authoring a new module
 
