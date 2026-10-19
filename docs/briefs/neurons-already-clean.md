@@ -2,6 +2,8 @@
 
 > **Question this Brief answers:** *When a neuron seems to mean two unrelated things, is the network packing them together, or are we reading it wrong?*
 
+![A whiteboard researcher compares an apparently tangled network with a closer view of a shared V-shaped pattern, asking whether the network or the microscope needs a better explanation.](neurons-already-clean/AlreadyClean-Hero.webp)
+
 Most Briefs decode a model release. This one decodes an *argument*. On October
 15, 2026, Nick Cammarata of Goodfire published a long essay,
 [*Neural Networks Are Already Clean*](https://already-clean.goodfire.com/). It
@@ -87,6 +89,9 @@ from wheel and window neurons means the layer below "represents" a car
 without having a car neuron. Much of the apparent disagreement between this
 essay and the work it criticizes dissolves once you keep these two senses
 apart. What remains is the argument about sense 2.
+
+![Two meanings of superposition: wheels and windows compose a car representation, while a hypothetical unit responding to rain and syntax illustrates the separate claim of arbitrary packing.](neurons-already-clean/AlreadyClean-TwoMeanings.webp)
+*Sharing a representation does not explain why things share it. **G2C interpretation:** this sketch separates composition, which the [essay](https://already-clean.goodfire.com/) accepts, from arbitrary packing, which it disputes. The rain/syntax unit is an invented illustration, not an observed neuron.*
 
 ---
 
@@ -193,6 +198,9 @@ a pattern described as a list of nouns.
 > reader. Describe a neuron as a *distinction it draws for downstream units*
 > (V versus O), not as a set of things it "detects." The negative pole is
 > often the fastest check on whether a grouping is real.
+
+![The pointed contours of a cat's face and a car's grille share a V shape; the 4e:55 neuron is re-read as contrasting V-like and O-like shapes across its positive and negative poles.](neurons-already-clean/AlreadyClean-SharedPattern.webp)
+*Different nouns can share a useful distinction. **Reported:** the [essay re-reads 4e:55](https://already-clean.goodfire.com/) as V versus O. This conceptual drawing shows that proposed contrast; it is not an activation measurement or a reconstruction of the circuit.*
 
 **The original "superposition circuit" was pose, plus a reward-hacked tool.**
 **Reported.** The circuit that appeared to show a car feature hiding among dog
@@ -324,6 +332,9 @@ the 183 neurons never fired on them at all. In a separate "blind maximum" test,
 a sentence written from the explanation alone often fired a neuron harder than
 anything found in 10 billion tokens of corpus.
 
+![An explanation generates new matches, near misses, and distant probes before the model runs; measured responses can support the prediction or send the explanation back for revision.](neurons-already-clean/AlreadyClean-TestExplanation.webp)
+*Make the prediction before looking at the answer. **G2C interpretation:** the [essay's explanation tests](https://already-clean.goodfire.com/) motivate this loop. The V-shaped hypothesis and probe drawings are illustrative; the language-neuron results reported above are separate evidence.*
+
 **Experts are specialized too.** **Reported.** In MoE models, experts get
 narrower with depth, much as neurons do. The essay argues that MoE is almost
 an *anti*-packing architecture: a small linear router would have to recognize
@@ -374,6 +385,9 @@ architecture designers to look into it.
 > product) that conflates two sign regimes. You have the background to see it
 > from the activation function's graph alone.
 
+![Four SwiGLU sign regimes using g equal to plus or minus two and u equal to plus or minus one: both positive-positive and negative-negative inputs produce positive products, through different routes.](neurons-already-clean/AlreadyClean-SwiGLU.webp)
+*A positive product does not tell you which route produced it. **Derived:** at `g = ±2`, the formula above gives `SiLU(g) ≈ 1.76` or `−0.24`. These illustrative values make the sign trap visible; the product's magnitude also depends on `u`.*
+
 ---
 
 ## The proposed mechanism: recursive generalization and circuit ecology
@@ -402,6 +416,9 @@ ConvNeXt trained on the same data, the equivalent neuron reached for balls and
 fruit, let them go, and stayed on the fields. The essay credits the idea to a subsection of its own earlier
 [*Multimodal Neurons*](https://distill.pub/2021/multimodal-neurons/) paper,
 which called these "conjoined features."
+
+![A branching sketch connects iy to diy and then do it yourself, with Miyazaki on a side branch; hiding the intermediate step makes the endpoints seem unrelated.](neurons-already-clean/AlreadyClean-RecursiveGrowth.webp)
+*Nearby steps can leave distant endpoints. **Reported:** the [essay uses this language example](https://already-clean.goodfire.com/) to explain recursive generalization. The branch is a conceptual history, not a measured language-model checkpoint timeline; the vision training observations are separate evidence.*
 
 **Reported: circuit ecology.** The essay also proposes a reason why
 generalization keeps winning, and labels it a guess. Circuits *race* to capture
