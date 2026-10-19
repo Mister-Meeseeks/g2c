@@ -1,6 +1,8 @@
-# G2C Brief — DeepSeek V4.1-Flash: a model designed around its KV cache
+ # G2C Brief — DeepSeek V4.1-Flash: a model designed around its KV cache
 
 > **Release question:** *If an agent spends most of its life reading rather than writing, what should a language model be optimized for?*
+
+![DeepSeek V4.1-Flash turns a long input history into a compact KV cache by shrinking entry size, compressing token groups, and sharing memory across layers.](deepseek-v4.1-flash/DeepSeekV41Flash-Hero.webp)
 
 On October 17, 2026, DeepSeek released **DeepSeek-V4.1-Flash-1017**. It is a new
 checkpoint of a model family that first shipped five weeks earlier. The update
@@ -24,14 +26,14 @@ evaluation, and today's checkpoint against that picture.
 
 ## Snapshot
 
-| | |
-|---|---|
-| **Model family** | DeepSeek-V4.1. Flash is the only size released so far; the September release note refers to a forthcoming V4.1-Pro |
-| **Checkpoints** | [DeepSeek-V4.1-Flash](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash), September 10, 2026; [DeepSeek-V4.1-Flash-1017](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash-1017), October 17, 2026 |
-| **Technical report** | [*DeepSeek-V4.1-Flash: Pushing the Limits of KV Cache Compression*](https://arxiv.org/abs/2609.19969), arXiv v1 (also in the model repository) |
-| **Release notes** | [September 10 launch](https://api-docs.deepseek.com/news/news260910) · [October 17 update](https://api-docs.deepseek.com/news/news261017) |
-| **License** | MIT, code and weights |
-| **Last verified** | October 17, 2026 |
+|                      |                                                                                                                                                                                                              |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Model family**     | DeepSeek-V4.1. Flash is the only size released so far; the September release note refers to a forthcoming V4.1-Pro                                                                                           |
+| **Checkpoints**      | [DeepSeek-V4.1-Flash](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash), September 10, 2026; [DeepSeek-V4.1-Flash-1017](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash-1017), October 17, 2026 |
+| **Technical report** | [*DeepSeek-V4.1-Flash: Pushing the Limits of KV Cache Compression*](https://arxiv.org/abs/2609.19969), arXiv v1 (also in the model repository)                                                               |
+| **Release notes**    | [September 10 launch](https://api-docs.deepseek.com/news/news260910) · [October 17 update](https://api-docs.deepseek.com/news/news261017)                                                                    |
+| **License**          | MIT, code and weights                                                                                                                                                                                        |
+| **Last verified**    | October 17, 2026                                                                                                                                                                                             |
 
 The report describes the September checkpoint. The 1017 checkpoint comes with
 a model card and a release note but no new report. Everything about
@@ -221,6 +223,9 @@ mode   SWA   │ F  R  R  R  R  R │ F  R...  │ F  R...   ║ F  R  R  R  │
 layers run an indexer (the four Full layers plus four Reindex layers). The other
 28 attend using a cache and a selection someone else made.
 
+![Three CSA2 modes: Full builds global KV and selects entries, Reindex borrows global KV but selects again, and Reuse borrows both memory and the selection. All retain their own attention query and local window.](deepseek-v4.1-flash/DeepSeekV41Flash-CSA2-v2.webp)
+*Who stores the memory, and who chooses where to look? **Reported:** [CSA2's three modes](https://arxiv.org/html/2609.19969v1#S2.SS3.SSS1) separate those decisions. **Derived:** counts follow the [released config](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash/blob/main/config.json). The cards compare modes rather than consecutive layers; the hidden-state source follows the CED rule below.*
+
 **G2C interpretation.** This is a strong claim about redundancy. Adjacent layers
 in a trained Transformer apparently want to look at *roughly the same history*.
 They need different queries against it, but not different keys and values.
@@ -275,6 +280,9 @@ post-training so the model learns to tolerate it.
 That is half the layers, so roughly half the activated parameters: 16B → 8B.
 **Reported.** The report quotes prefill complexity falling from `O(N·L)` to
 approximately `O(N·L/2)`.
+
+![During long-prompt prefill, the encoder produces H20 and the decoder global cache is projected from it; encoder states for the last 128 prompt positions replay through the decoder for approximate local state. Generated tokens run through all 40 layers.](deepseek-v4.1-flash/DeepSeekV41Flash-CED-v2.webp)
+*The long prompt and generated tokens take different paths. **Reported:** [CED](https://arxiv.org/html/2609.19969v1#S2.SS2) projects decoder global KV from encoder states; [bounded replay](https://arxiv.org/html/2609.19969v1#S3.SS2.SSS2) runs the decoder on the last 128 positions to approximate local state. The 8B prefill figure applies to long prompts; generation and training run all 40 layers.*
 
 **G2C interpretation.** CED is the most direct example in this release of
 optimizing for the agent workload. In a chat app, prefill is a one-time cost. In
@@ -354,6 +362,9 @@ are evicted, the server rebuilds them approximately by replaying only the last
 The 4× smaller global cache supplies the other factor, which gives the headline
 **~1/8 of V4-Flash's persistent cache**. The report finds the approximation
 "barely compromises response quality."
+
+![Cache lifecycle across agent turns: global KV persists, encoder local windows move to a short-lived host pool, and after eviction a 128-token prefix replay rebuilds approximate encoder local state. Decoder local state is rebuilt at every prefill.](deepseek-v4.1-flash/DeepSeekV41Flash-CacheLifecycle-v2.webp)
+*What survives between turns determines the storage bill. **Reported:** [the serving policy](https://arxiv.org/html/2609.19969v1#S3.SS2) keeps encoder windows briefly in host memory and rebuilds decoder windows at each prefill. The 890 bytes covers global cache only; the 1/4 global and 1/8 persistent comparisons measure different cache categories, both relative to V4-Flash.*
 
 **G2C interpretation.** This is the first place in the stack where the model
 gives up *exactness*. After a cache miss, the model's state is no longer exactly
