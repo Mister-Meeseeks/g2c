@@ -65,3 +65,8 @@ around it.
   polysemanticity comes from bad tools, bad learning, and recursive
   generalization rather than superposition, with the evidence, its limits,
   and what you can check on your own BaseLM.
+- [System One models — Decisions without generation](system-one-models.md)
+  — a category Brief on models that answer typed questions in one forward
+  pass instead of generating text: the shared API, Cloudflare's Clef head read
+  from its released code, training for calibration, Clairic's extraction
+  model, and what "can't hallucinate" does and doesn't mean.
