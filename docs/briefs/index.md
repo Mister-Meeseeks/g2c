@@ -70,3 +70,8 @@ around it.
   pass instead of generating text: the shared API, Cloudflare's Clef head read
   from its released code, training for calibration, Clairic's extraction
   model, and what "can't hallucinate" does and doesn't mean.
+- [DeepInfer — Reading a production inference engine](deepinfer.md) — DeepSeek's
+  open-sourced serving engine, read for the places where course pieces return
+  at scale: prefill vs decode, paged and persistent KV caches, reproducible
+  sampling and batch invariance, budgeted speculative verification, and
+  special-token safety at the tokenizer boundary.
