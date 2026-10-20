@@ -31,7 +31,21 @@ Common issues:
 - Asserting cold start without looking at the per-request series.
 - Comparing absolute numbers across machines or model tags as if portable.
 
-## Exercise 16.03 — Generation eval misses: model vs matcher
+## Exercise 16.03 — Prefill versus decode on ProdLM
+
+A correct answer should include:
+
+- The two rates cited from their long-prompt row, with prefill (prompt tokens per second) many times faster than decode (output tokens per second). The exact ratio is machine-dependent; an order of magnitude is typical.
+- The mechanism: prefill processes all prompt tokens in one pass, so each weight read from memory is reused across the whole prompt and the step is limited by arithmetic. Decode produces one token per step, so every weight is streamed again for a single token and the step is limited by memory bandwidth.
+- The second identical send: prefill time collapses even though `prompt_eval_count` still shows the full prompt, because Ollama reused the KV cache for the shared prefix. In a multi-turn chat each new turn shares the earlier transcript, so with a warm cache time to first token is spent mostly on the new tokens; without one, the whole growing transcript is prefilled again every turn.
+
+Common issues:
+
+- Reading the cache hit as the model "warming up" or getting faster.
+- Comparing a prefill rate from the short prompt, where a handful of tokens makes the rate noisy, instead of the long one.
+- Explaining the gap with "prompt tokens are easier" rather than weight reuse versus weight streaming.
+
+## Exercise 16.04 — Generation eval misses: model vs matcher
 
 A correct answer should include:
 
@@ -44,7 +58,7 @@ Common issues:
 - Forgetting `contains_match` is substring-based and case-insensitive, so verbose answers pass easily — the loose direction is the quiet one.
 - Blaming the model for a matcher artifact (or vice versa) without quoting the output.
 
-## Exercise 16.04 — The quantization cliff
+## Exercise 16.05 — The quantization cliff
 
 A correct answer should include:
 
@@ -57,7 +71,7 @@ Common issues:
 - Claiming the fake quantization saves memory — the cell prints that it does not; weights stay float tensors, this is a quality experiment only.
 - Conflating this per-tensor fake quant with GGUF per-block K-quants — the per-block scales are why real Q4 hurts less than fake int4.
 
-## Exercise 16.05 — Routing on prompt length
+## Exercise 16.06 — Routing on prompt length
 
 A correct answer should include:
 
@@ -70,7 +84,7 @@ Common issues:
 - Answering the signal half and skipping the cost half.
 - Concluding routing is useless rather than that the signal was wrong.
 
-## Exercise 16.06 — Why the KV cache must match
+## Exercise 16.07 — Why the KV cache must match
 
 A correct answer should include:
 
@@ -83,7 +97,34 @@ Common issues:
 - Treating the cache as an approximation that trades accuracy for speed.
 - Attributing a mismatch to sampling randomness when temperature is 0.
 
-## Exercise 16.07 — Choosing the default backend
+## Exercise 16.08 — Reading the cache speedup curve
+
+A correct answer should include:
+
+- Whether the cached/uncached gap widened with generated-token count in their table, cited with at least two rows. A widening gap is the O(T²) versus O(T) signature, independent of the headline multiplier.
+- A break-even point from their run (on small models usually somewhere around 16–32 new tokens) and the reason below it: per-step Python and kernel-dispatch overhead dominates both paths, and with a short context there is little recomputation for the cache to save.
+
+Common issues:
+
+- Judging the implementation by the absolute speedup and expecting production's 5–20× on a few-million-parameter model.
+- Calling the cache broken because it is slower at 16 tokens.
+- Citing one length only, which can't show a trend.
+
+## Exercise 16.09 — Prefill two ways
+
+A correct answer should include:
+
+- The scaling from their table: one-pass time grows slowly with prompt length (on MPS it can stay nearly flat), while token-by-token time grows roughly linearly, so the ratio widens with length.
+- Why the logits match: the causal mask means each position in a full forward pass sees exactly the tokens before it, which is the same history the cached loop has accumulated at that step, so the K/V rows and the last position's logits are the same computation in a different order (equal up to floating-point tolerance).
+- What would change: `forward_cached` would need to accept a block of several new tokens, apply a causal mask within the block, and append all of their K/V rows at once. For a 4,000-token RAG prompt, prefill is most of time to first token, so a token-by-token prefill pays decode's per-step cost thousands of times before the first output token.
+
+Common issues:
+
+- Saying the loop is slow "because of Python" without noting that it also gives up the batched matrix multiply.
+- Expecting bit-identical logits; the contract is equality within tolerance, because the summation order differs.
+- Missing the causal-mask-within-the-block requirement for multi-token cached steps.
+
+## Exercise 16.10 — Choosing the default backend
 
 A correct answer should include:
 

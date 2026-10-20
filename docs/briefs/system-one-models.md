@@ -28,7 +28,7 @@ answers from a model's logits and measured calibration in
 low-rank adapter in [Module 13B](../modules/13b-lora.md). You made malformed
 JSON impossible with a grammar mask in [Module 18](../modules/18-tools.md), and
 you learned there that a guarantee about *format* is not a guarantee about
-*content*. You split inference into prefill and decode in
+*content*. You measured prefill against decode in
 [Module 16](../modules/16-inference.md). System One models are those pieces
 rearranged, plus one new component: a small head that reads the questions and
 their options out of the prompt itself.
@@ -656,7 +656,7 @@ None of this is required.
 | ECE and reliability diagrams | **Built in g2c** | Module 15 |
 | Cross-entropy as a calibration-aware loss | **Built in g2c** | [Probability primer](../primers/probability-cross-entropy.md), [Module 06](../modules/06-language-models.md) |
 | Frozen backbone, LoRA, merging | **Built in g2c** | [Module 13B](../modules/13b-lora.md) |
-| Prefill vs decode cost; turning thinking off | **Built in g2c** | [Module 16](../modules/16-inference.md) |
+| Prefill vs decode cost; turning thinking off | **Built in g2c** | [Module 16](../modules/16-inference.md#prefill-and-decode) |
 | Cross-attention (options querying the prompt) | **Conceptual bridge** | [Module 07](../modules/07-attention.md) builds self-attention; cross-attention swaps the K/V source |
 | Constrained JSON as the generative alternative | **Built in g2c** | [Module 18](../modules/18-tools.md) |
 | Synthetic training data with permuted schemas | **Conceptual bridge** | [Module 16B](../modules/16b-synthetic-data.md) |

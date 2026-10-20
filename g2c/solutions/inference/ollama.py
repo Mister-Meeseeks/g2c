@@ -55,6 +55,7 @@ class _OllamaBackendImpl:  # patched onto OllamaBackend by apply()
         data, latency_ms = self._post_generate(body)
 
         total_duration = data.get("total_duration")
+        prompt_eval_duration = data.get("prompt_eval_duration")
         eval_duration = data.get("eval_duration")
         return InferenceResult(
             prompt=prompt,
@@ -75,6 +76,11 @@ class _OllamaBackendImpl:  # patched onto OllamaBackend by apply()
                 "done_reason": data.get("done_reason"),
                 "server_total_duration_ms": (
                     float(total_duration) / 1e6 if total_duration is not None else None
+                ),
+                "server_prompt_eval_duration_ms": (
+                    float(prompt_eval_duration) / 1e6
+                    if prompt_eval_duration is not None
+                    else None
                 ),
                 "server_eval_duration_ms": (
                     float(eval_duration) / 1e6 if eval_duration is not None else None

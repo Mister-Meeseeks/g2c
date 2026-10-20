@@ -843,6 +843,7 @@ def _ok_response(
     prompt_eval_count: int = 4,
     eval_count: int = 7,
     total_duration: int = 1_500_000_000,  # 1.5 s in ns
+    prompt_eval_duration: int = 150_000_000,
     eval_duration: int = 1_300_000_000,
 ) -> dict:
     return {
@@ -852,6 +853,7 @@ def _ok_response(
         "prompt_eval_count": prompt_eval_count,
         "eval_count": eval_count,
         "total_duration": total_duration,
+        "prompt_eval_duration": prompt_eval_duration,
         "eval_duration": eval_duration,
     }
 
@@ -956,6 +958,27 @@ class TestOllamaBackendComplete:
         r = backend.complete("hi")
         assert r.metadata["server_total_duration_ms"] == pytest.approx(2000.0)
         assert r.metadata["server_eval_duration_ms"] == pytest.approx(1500.0)
+
+    def test_metadata_separates_prefill_from_decode_duration(self) -> None:
+        # Prompt processing (prefill) and generation (decode) are different
+        # workloads, so the server times them separately.
+        fake = _make_fake_urlopen(
+            response=_ok_response(
+                prompt_eval_duration=250_000_000,  # 250 ms
+                eval_duration=1_500_000_000,  # 1500 ms
+            )
+        )
+        backend = self._make(fake)
+        r = backend.complete("hi")
+        assert r.metadata["server_prompt_eval_duration_ms"] == pytest.approx(250.0)
+        assert r.metadata["server_eval_duration_ms"] == pytest.approx(1500.0)
+
+    def test_metadata_prefill_duration_none_when_missing(self) -> None:
+        response = _ok_response()
+        del response["prompt_eval_duration"]
+        backend = self._make(_make_fake_urlopen(response=response))
+        r = backend.complete("hi")
+        assert r.metadata["server_prompt_eval_duration_ms"] is None
 
     def test_metadata_includes_sampling(self) -> None:
         fake = _make_fake_urlopen(response=_ok_response())
@@ -1358,6 +1381,7 @@ def _ok_chat_response(
     prompt_eval_count: int = 6,
     eval_count: int = 9,
     total_duration: int = 1_200_000_000,
+    prompt_eval_duration: int = 100_000_000,
     eval_duration: int = 1_000_000_000,
 ) -> dict:
     msg: dict = {"role": "assistant", "content": content}
@@ -1370,6 +1394,7 @@ def _ok_chat_response(
         "prompt_eval_count": prompt_eval_count,
         "eval_count": eval_count,
         "total_duration": total_duration,
+        "prompt_eval_duration": prompt_eval_duration,
         "eval_duration": eval_duration,
     }
 
@@ -1563,13 +1588,16 @@ class TestOllamaBackendChatWithTools:
     def test_metadata_includes_server_durations_and_n_tools(self) -> None:
         fake = _make_fake_urlopen(
             response=_ok_chat_response(
-                total_duration=2_000_000_000, eval_duration=1_500_000_000
+                total_duration=2_000_000_000,
+                prompt_eval_duration=250_000_000,
+                eval_duration=1_500_000_000,
             )
         )
         r = self._make(fake).chat_with_tools(
             self._msgs(), [self._calc_tool_spec()]
         )
         assert r.metadata["server_total_duration_ms"] == pytest.approx(2000.0)
+        assert r.metadata["server_prompt_eval_duration_ms"] == pytest.approx(250.0)
         assert r.metadata["server_eval_duration_ms"] == pytest.approx(1500.0)
         assert r.metadata["n_tools_offered"] == 1
 

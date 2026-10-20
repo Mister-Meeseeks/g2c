@@ -41,7 +41,8 @@ Request/response shapes (from the Ollama API spec):
         "prompt_eval_count": <int — input tokens>,
         "eval_count":        <int — output tokens>,
         "total_duration":    <int — nanoseconds>,
-        "eval_duration":     <int — nanoseconds, just generation>,
+        "prompt_eval_duration": <int — nanoseconds, just prompt processing (prefill)>,
+        "eval_duration":     <int — nanoseconds, just generation (decode)>,
         ... (other fields we ignore)
     }
 ```
@@ -333,13 +334,16 @@ class OllamaBackend(Backend):
               * backend = self.info
               * metadata = {
                     "server_total_duration_ms": <total_duration / 1e6>,
+                    "server_prompt_eval_duration_ms": <prompt_eval_duration / 1e6>,
                     "server_eval_duration_ms":  <eval_duration / 1e6>,
                     "sampling": {... sampling params and effective think ...},
                     "thinking": <separate reasoning trace, or "">,
                     "done_reason": <server stop reason, or None>,
                 }
                 (The server's reported timings are kept alongside
-                wall-clock for benchmarking comparisons.)
+                wall-clock for benchmarking comparisons. Prompt
+                processing and generation are timed separately because
+                they are different workloads: prefill and decode.)
 
         Raises:
             OllamaError: if Ollama isn't running, the HTTP call fails,
@@ -385,8 +389,9 @@ class OllamaBackend(Backend):
                # the API's names: `eval_count` is OUTPUT tokens,
                # `prompt_eval_count` is INPUT tokens, and the durations
                # are in NANOSECONDS (divide by 1e6 for ms).
-               total_dur_ns = data.get("total_duration")
-               eval_dur_ns  = data.get("eval_duration")
+               total_dur_ns  = data.get("total_duration")
+               prompt_dur_ns = data.get("prompt_eval_duration")
+               eval_dur_ns   = data.get("eval_duration")
                return InferenceResult(
                    prompt=prompt,
                    completion=data["response"],
@@ -406,6 +411,9 @@ class OllamaBackend(Backend):
                        "done_reason": data.get("done_reason"),
                        "server_total_duration_ms": (
                            float(total_dur_ns) / 1e6 if total_dur_ns is not None else None
+                       ),
+                       "server_prompt_eval_duration_ms": (
+                           float(prompt_dur_ns) / 1e6 if prompt_dur_ns is not None else None
                        ),
                        "server_eval_duration_ms": (
                            float(eval_dur_ns)  / 1e6 if eval_dur_ns  is not None else None
@@ -618,6 +626,7 @@ class OllamaBackend(Backend):
             )
 
         total_duration = data.get("total_duration")
+        prompt_eval_duration = data.get("prompt_eval_duration")
         eval_duration = data.get("eval_duration")
         return ChatResult(
             messages=messages,
@@ -637,6 +646,11 @@ class OllamaBackend(Backend):
                 },
                 "server_total_duration_ms": (
                     float(total_duration) / 1e6 if total_duration is not None else None
+                ),
+                "server_prompt_eval_duration_ms": (
+                    float(prompt_eval_duration) / 1e6
+                    if prompt_eval_duration is not None
+                    else None
                 ),
                 "server_eval_duration_ms": (
                     float(eval_duration) / 1e6 if eval_duration is not None else None

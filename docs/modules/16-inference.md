@@ -132,6 +132,56 @@ This week, you'll implement KV caching on top of the transformer machinery you a
    └─────────────────────────────────────────────────────────────────────────┘
 ```
 
+### Prefill and decode
+
+The KV cache splits generation into two phases with very different costs. Every modern inference stack, from Ollama on your laptop to a datacenter serving engine, is organized around that split.
+
+```
+   ┌───────────────────────────────────────────────────────────────────────┐
+   │   TWO PHASES OF ONE REQUEST                                           │
+   ├───────────────────────────────────────────────────────────────────────┤
+   │                                                                       │
+   │   PREFILL   the whole prompt, in one forward pass                     │
+   │             [P1 P2 P3 ... P500]  ──►  K/V rows for all 500 positions  │
+   │                                       + logits to sample S1           │
+   │             cost: one big matmul per layer; each weight is read       │
+   │                   once and reused for all 500 tokens                  │
+   │                                                                       │
+   │   DECODE    one new token per step, attending to the cache            │
+   │             [S1] ──► S2,   [S2] ──► S3,   [S3] ──► S4,  ...           │
+   │             cost: every weight is read again for every single token   │
+   │                                                                       │
+   │   user sees:  time to first token  ≈  prefill                         │
+   │               tokens per second    ≈  decode                          │
+   │                                                                       │
+   └───────────────────────────────────────────────────────────────────────┘
+```
+
+**Prefill** processes the prompt. Every prompt token is known in advance, so they can all go through the network together, exactly the way your Module 09 `forward` processes a training sequence. The causal mask keeps each position from seeing the future, so one parallel pass produces the same keys and values as feeding the tokens one at a time. It also produces the logits for the first generated token.
+
+**Decode** produces the response, one token per step, using the cache from prefill. Each step depends on the token sampled in the step before it, so there is nothing to parallelize within a single sequence.
+
+The two phases hit different hardware limits. A forward pass has to read every weight from memory. In prefill, that read is amortized over the whole prompt: each weight multiplies a matrix of 500 token vectors, so the chip spends its time doing arithmetic. In decode, each weight multiplies a single vector. The arithmetic is trivial, and the step takes as long as it takes to stream the weights out of memory. Prefill is **compute-bound**. Decode is **memory-bandwidth-bound**.
+
+That gives a quick ceiling on decode speed for one request:
+
+```
+   decode tokens/sec  ≤  memory bandwidth / bytes of weights read per token
+
+   base M2:  ~100 GB/s ÷ ~3 GB of 4-bit weights  ≈  33 tokens/sec at most
+```
+
+Real numbers land below that ceiling, but the ceiling explains the shape: a bigger model or a slower memory bus means slower decode, almost regardless of how many FLOPs the chip can do. Prefill has no such ceiling per token, so on the same machine a model typically processes prompt tokens many times faster than it generates new ones. You'll measure the ratio on ProdLM in Exercise 2.
+
+Four consequences show up everywhere in production:
+
+- **Latency has two numbers.** Time to first token is mostly prefill, so it grows with prompt length. Tokens per second after that is decode. A long RAG prompt (Module 17) or a long agent transcript (Module 19) makes the first token slow even when generation is fast.
+- **Batching is nearly free for decode.** If a decode step is waiting on memory anyway, serving 8 or 32 users in the same step reuses each weight read for all of them. That is why serving engines batch many users' decode steps together, and why the per-user speed of a busy server is lower than its total throughput would suggest.
+- **A cached prompt doesn't need prefilling again.** If the next request starts with the same tokens, the server can reuse the cache for that prefix and only prefill what's new. Ollama does this between consecutive requests, and you'll see it in the exercise. Hosted APIs bill for it: input tokens usually cost less than output tokens, and cached input tokens cost less still.
+- **Benchmarks must say which phase they measure.** "Tokens per second" for prompt processing and for generation can differ by an order of magnitude. This is why Ollama reports `prompt_eval_duration` and `eval_duration` separately, and why your `OllamaBackend` keeps both.
+
+One simplification in this module is worth naming. Your `forward_cached` accepts **one token at a time**, so `generate_cached` prefills by looping over the prompt token by token. That keeps the cache code small, and it is exactly correct, but it pays decode's cost for every prompt token. A production `forward_cached` takes the whole prompt in one pass and writes all of its K/V rows at once. Exercise 7 measures what the simplification costs.
+
 ### Speculative decoding
 
 ![Diagram of speculative decoding: a small draft model proposes K tokens, the large model verifies them in one forward pass, and the longest matching prefix is accepted — yielding 2-3x fewer expensive passes.](16-inference/Module16-Decoding.png)
@@ -298,6 +348,7 @@ When benchmarking, be aware of cold-start overhead. The first request can includ
 
 - **Quantization buys you headroom, not magic.** A 4-bit 7B model fits in 4 GB and runs at usable speeds on M2; an fp16 7B does not fit on a 16 GB Mac at all (even before KV cache). The accuracy cost is 1–3% on benchmarks. 
 - **KV cache is mandatory at scale.** Naive `O(T²)` decoding is fine at 32-token contexts; at 2k contexts it's not. 
+- **Prefill and decode are different workloads.** Prefill runs the whole prompt in one parallel pass and is limited by arithmetic; decode generates one token per step and is limited by how fast weights stream from memory. Time to first token tracks prefill, tokens per second tracks decode, and batching helps decode almost for free.
 - **Wall clock vs server-reported latency are different things.** Ollama tells you the GPU-side compute time. Your wrapper records wall-clock latency. Track both.
 - **Tokens-per-second is the headline throughput metric.** But it depends on what you count: prompt processing tokens? Generation tokens? Both? When comparing numbers, check the convention.
 - **The first request is always slower.** Cold cache, model load, MPS / Metal kernel JIT compilation. Always warm up before measuring.
@@ -308,6 +359,7 @@ When benchmarking, be aware of cold-start overhead. The first request can includ
 - Details of GGUF, MLX, and other optimized model formats. It's enough to know these formats at a high level.
 - Manual model quantization. Download a pre-quantized local model instead.
 - Streaming, async I/O, and MLX serving. They are useful extensions, not required for the module deliverable.
+- Multi-token `forward_cached`, chunked prefill, and serving many users at once. A production engine prefills whole prompts in one pass, splits very long prompts into chunks, batches many users' decode steps together, and manages thousands of caches like paged memory. The one-token cache you build here is the mechanism they all share; the rest is serving engineering.
 
 ---
 ## What you'll build
@@ -485,7 +537,7 @@ The cache is the opposite kind of work, and it is the only place this module tou
 
 ## How to run the tests
 
-Tests live in `tests/test_inference.py`. Initial state: 80 passed, 51 failed, 1 skipped.
+Tests live in `tests/test_inference.py`. Initial state: 80 passed, 53 failed, 1 skipped.
 
 ```bash
 source .venv/bin/activate
@@ -520,12 +572,12 @@ If at any point you want to archive the work in your current notebook and restar
 The notebook defaults to BaseLM for the artifact backend, automatically preferring `-DPO`, then `-SFT`, then base when those stages exist. You can switch to a course-trained artifact in the model-selection cell and compare that local artifact path with ProdLM.
 
 1. **Backend smoke test.** Compare artifact and ProdLM completions on a few prompts.
-2. **Benchmark ProdLM.** Measure latency, throughput, and wall-clock behavior.
+2. **Benchmark ProdLM.** Measure latency, throughput, and wall-clock behavior. Then split each request's server time into prefill and decode, and send one long prompt twice to see Ollama reuse a cached prefix.
 3. **Optional MLX backend.** Extension path: install `mlx-lm` and implement the same backend interface through MLX.
 4. **ProdLM evaluation.** Re-run a Module 15-style eval through the ProdLM adapter.
 5. **Quantization quality.** Compare fp16 and fake-quantized BaseLM outputs.
 6. **Router backend.** Dispatch between a tiny artifact and ProdLM.
-7. **Build the KV cache.** Implement `LayerKVCache.append`, `MultiHeadAttention.forward_cached`, and `TransformerLM.forward_cached` (`pytest -k cached` plus `-k layer_kv_cache_append`). The contract is equivalence: decoding one token at a time through the cache must produce the same logits as re-running the full uncached `forward` on the whole prefix. `Block.forward_cached` and `generate_cached` are provided, so what you write is the cache itself, the single-query attention step, and the position bookkeeping. Then benchmark cached against uncached generation across a sweep of generation lengths and confirm the O(T²) → O(T) claim on your own model. Read the *shape* of the curve, not the headline number: what proves the claim is the gap widening with token count. On a 5M model expect roughly break-even at 16 new tokens and around 1.7× by 192 — far short of the 5–20× quoted for production serving, because at this scale per-step Python and dispatch overhead dominates and a short context has little recomputation to save. That gap between "correct but barely worth it here" and "mandatory at 2k context on 7B" is the lesson.
+7. **Build the KV cache.** Implement `LayerKVCache.append`, `MultiHeadAttention.forward_cached`, and `TransformerLM.forward_cached` (`pytest -k cached` plus `-k layer_kv_cache_append`). The contract is equivalence: decoding one token at a time through the cache must produce the same logits as re-running the full uncached `forward` on the whole prefix. `Block.forward_cached` and `generate_cached` are provided, so what you write is the cache itself, the single-query attention step, and the position bookkeeping. Then benchmark cached against uncached generation across a sweep of generation lengths and confirm the O(T²) → O(T) claim on your own model. Read the *shape* of the curve, not the headline number: what proves the claim is the gap widening with token count. On a 5M model expect roughly break-even at 16 new tokens and around 1.7× by 192 — far short of the 5–20× quoted for production serving, because at this scale per-step Python and dispatch overhead dominates and a short context has little recomputation to save. That gap between "correct but barely worth it here" and "mandatory at 2k context on 7B" is the lesson. Finally, time prefill both ways: the whole prompt through `forward` in one pass, against `generate_cached`'s token-by-token loop through `forward_cached`.
 8. **Optional streaming.** Add a streaming completion method.
 9. **Inference post-mortem.** Summarize speed, quality, memory, and routing tradeoffs.
 
@@ -616,4 +668,5 @@ Optional:
 - [ ] You can explain — out loud, without notes — the rough memory cost of running a 7B model at fp32 vs fp16 vs int8 vs int4, and which fits on a 16 GB Mac.
 - [ ] `pytest -k "cached or layer_kv_cache_append"` passes: your cached decode path produces the same logits as the uncached `forward`.
 - [ ] You can explain — out loud, without notes — what a KV cache is, why it's necessary at scale, why no causal mask is needed in the cached step, and why the assistant path still runs on ProdLM's production cache rather than the toy one you built.
+- [ ] You can explain — out loud, without notes — what prefill and decode are, why prefill is limited by arithmetic and decode by memory bandwidth, and which one sets time to first token.
 - [ ] You can explain — out loud, without notes — the difference between wall-clock latency (what `InferenceResult.latency_ms` records) and server-reported latency (what Ollama's `total_duration` reports), and what each is good for.
