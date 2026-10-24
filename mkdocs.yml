@@ -15,6 +15,7 @@ not_in_nav: |
 
 theme:
   name: material
+  custom_dir: overrides
   features:
     - navigation.instant
     - navigation.tracking
@@ -46,6 +47,14 @@ theme:
 
 plugins:
   - search
+
+# Reuse each page's existing hero for link previews; no image generation at build time.
+hooks:
+  - scripts/docs_social.py
+
+extra:
+  social_image: CourseCover.png
+  social_image_alt: An illustrated map of the From Gradients to ChatGPT course.
 
 extra_css:
   - stylesheets/extra.css

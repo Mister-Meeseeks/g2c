@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block extrahead %}
+  {{ super() }}
+  {% if page and page.meta.social_preview %}
+    {% set card = page.meta.social_preview %}
+    <meta property="og:type" content="{{ card.type | e }}">
+    <meta property="og:site_name" content="{{ config.site_name | e }}">
+    <meta property="og:title" content="{{ card.title | e }}">
+    <meta property="og:description" content="{{ card.description | e }}">
+    <meta property="og:url" content="{{ page.canonical_url | e }}">
+    <meta property="og:image" content="{{ card.image | e }}">
+    <meta property="og:image:type" content="{{ card.image_type | e }}">
+    <meta property="og:image:alt" content="{{ card.image_alt | e }}">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="{{ card.title | e }}">
+    <meta name="twitter:description" content="{{ card.description | e }}">
+    <meta name="twitter:image" content="{{ card.image | e }}">
+    <meta name="twitter:image:alt" content="{{ card.image_alt | e }}">
+  {% endif %}
+{% endblock %}
