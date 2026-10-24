@@ -75,3 +75,8 @@ around it.
   at scale: prefill vs decode, paged and persistent KV caches, reproducible
   sampling and batch invariance, budgeted speculative verification, and
   special-token safety at the tokenizer boundary.
+- [MiniMax M3.1 Flash — Three changes, read from the config](minimax-m3.1-flash.md)
+  — a release with no technical report, read by diffing configs and counting
+  tensors: MiniMax Sparse Attention in every layer, quantization-aware
+  training to 4-bit experts, and DeepSeek's DSpark drafter with a Markov head
+  that is a low-rank bigram model. Assumes no M3 background.
